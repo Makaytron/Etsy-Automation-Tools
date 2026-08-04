@@ -5,12 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-08-04
+
+### Changed
+
+- Finalized the public distribution release after the immutable tag-only `v1.0.1` checkpoint.
+- Corrected Greasy Fork documentation to describe automatic Raw `main` synchronization plus the release-only immediate-refresh webhook.
+- Added post-push Raw source-parity validation; no Etsy campaign, navigation, storage, or write behavior changed.
+
 ## [1.0.1] - 2026-08-04
 
 ### Changed
 
 - Canonical repository, Raw update, support, logo, and privacy URLs were verified against `Makaytron/Etsy-Automation-Tools`.
-- Greasy Fork distribution follows the exact public Raw source and updates only from published GitHub releases through a release-only webhook.
+- Greasy Fork distribution follows the exact public Raw source with automatic synchronization and a release-only immediate-refresh webhook.
 - The legacy `@namespace` remains unchanged to preserve existing userscript identity; it is not used as a network endpoint.
 - The visible product name is now **Makaytron Etsy Sale Manager**, positioned as **Bulk Sales & Discounts Automation**; the established file path, userscript namespace, and `eda-*` storage keys remain unchanged for compatibility.
 - In-app automatic update checks now run no more than once per 24 hours; manual checks remain user-triggered.
@@ -19,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Added explicit `@antifeature tracking` disclosure for the documented privacy-preserving telemetry.
+- Verified and retained the existing `@antifeature tracking` disclosure for the documented privacy-preserving telemetry.
 - Update installation remains user-confirmed and is blocked while a campaign job is active.
 
 ## [1.0.0] - 2026-08-01

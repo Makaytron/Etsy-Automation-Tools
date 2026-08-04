@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [switch]$Online
+    [switch]$Online,
+    [switch]$RemoteParity
 )
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +9,10 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $versionPath = Join-Path $repoRoot 'VERSION'
 $canonicalRepo = 'https://github.com/Makaytron/Etsy-Automation-Tools'
 $canonicalRaw = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main'
+
+if ($RemoteParity -and -not $Online) {
+    throw '-RemoteParity requires -Online.'
+}
 
 function Assert-True {
     param(
@@ -32,6 +37,18 @@ function Metadata-Values {
     )
 }
 
+function Get-Sha256Hex {
+    param([byte[]]$Bytes)
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([System.BitConverter]::ToString($sha256.ComputeHash($Bytes))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
 Assert-True (Test-Path -LiteralPath $versionPath -PathType Leaf) 'VERSION is missing.'
 $version = (Get-Content -LiteralPath $versionPath -Raw -Encoding UTF8).Trim()
 Assert-True ($version -match '^\d+\.\d+\.\d+$') "VERSION is not strict SemVer: $version"
@@ -43,6 +60,7 @@ $onlineUrls = [System.Collections.Generic.List[string]]::new()
 $onlineUrls.Add($canonicalRepo)
 $onlineUrls.Add("$canonicalRepo/issues")
 $onlineUrls.Add('https://api.github.com/repos/Makaytron/Etsy-Automation-Tools/commits/main')
+$remoteParityFiles = [System.Collections.Generic.List[object]]::new()
 
 foreach ($script in $scripts) {
     $source = [System.IO.File]::ReadAllText($script.FullName, [System.Text.Encoding]::UTF8)
@@ -72,6 +90,11 @@ foreach ($script in $scripts) {
     & node --check $script.FullName
     Assert-True ($LASTEXITCODE -eq 0) "node --check failed for $relativePath."
     $onlineUrls.Add($expectedRaw)
+    $remoteParityFiles.Add([pscustomobject]@{
+        Url = $expectedRaw
+        Path = $script.FullName
+        RelativePath = $relativePath
+    })
     Write-Host "PASS $relativePath $version"
 }
 
@@ -105,6 +128,25 @@ if ($Online) {
         catch {
             throw "Online URL validation failed for $url`: $($_.Exception.Message)"
         }
+    }
+}
+
+if ($RemoteParity) {
+    Add-Type -AssemblyName System.Net.Http
+    $httpClient = [System.Net.Http.HttpClient]::new()
+    $httpClient.DefaultRequestHeaders.UserAgent.ParseAdd('Makaytron-distribution-validator')
+    try {
+        foreach ($check in $remoteParityFiles) {
+            $remoteBytes = $httpClient.GetByteArrayAsync($check.Url).GetAwaiter().GetResult()
+            $localBytes = [System.IO.File]::ReadAllBytes($check.Path)
+            $remoteHash = Get-Sha256Hex -Bytes $remoteBytes
+            $localHash = Get-Sha256Hex -Bytes $localBytes
+            Assert-True ($remoteHash -eq $localHash) "Remote Raw content mismatch for $($check.RelativePath): local $localHash, remote $remoteHash"
+            Write-Host "REMOTE MATCH $($check.RelativePath) $remoteHash"
+        }
+    }
+    finally {
+        $httpClient.Dispose()
     }
 }
 

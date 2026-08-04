@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.0.1
+// @version      1.0.2
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -36,7 +36,7 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.0.1';
+    const APP_VERSION = '1.0.2';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';

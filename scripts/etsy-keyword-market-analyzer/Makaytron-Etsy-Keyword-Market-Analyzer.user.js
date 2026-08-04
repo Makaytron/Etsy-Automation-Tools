@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Keyword & Market Analyzer
 // @name:tr      Makaytron Etsy Keyword & Market Analyzer
 // @name:en      Makaytron Etsy Keyword & Market Analyzer
-// @version      1.0.1
+// @version      1.0.2
 // @description  Etsy Marketplace Insights verilerini sayfada analiz edin ve Listing Analyzer ile güvenli araştırma sonuçları paylaşın.
 // @description:tr Etsy Marketplace Insights verilerini sayfada analiz edin ve Listing Analyzer ile güvenli araştırma sonuçları paylaşın.
 // @description:en Analyze Etsy Marketplace Insights data in-page and securely share research results with Listing Analyzer.
@@ -33,7 +33,7 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.0.1';
+    const APP_VERSION = '1.0.2';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';

@@ -4,12 +4,20 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.0.2] - 2026-08-04
+
+### Changed
+
+- Finalized the public distribution release after the immutable tag-only `v1.0.1` checkpoint.
+- Corrected Greasy Fork documentation to describe automatic Raw `main` synchronization plus the release-only immediate-refresh webhook.
+- Added post-push Raw source-parity validation; no Etsy or keyword-management behavior changed.
+
 ## [1.0.1] - 2026-08-04
 
 ### Changed
 
 - Canonical repository, Raw update, support, logo, privacy, and keyword-rule URLs were verified against `Makaytron/Etsy-Automation-Tools`.
-- Greasy Fork distribution now follows the exact public Raw source and updates only from published GitHub releases through a release-only webhook.
+- Greasy Fork distribution follows the exact public Raw source with automatic synchronization and a release-only immediate-refresh webhook.
 - The legacy `@namespace` remains unchanged to preserve existing userscript identity; it is not used as a network endpoint.
 
 ### Added
@@ -20,7 +28,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak 
 
 ### Security
 
-- Added explicit `@antifeature tracking` disclosure for the documented privacy-preserving telemetry.
+- Verified and retained the existing `@antifeature tracking` disclosure for the documented privacy-preserving telemetry.
 - Uzak script kodu çalıştırılmadan yalnız SemVer karşılaştırması yapılır; sessiz kurulum yoktur.
 - Greasy Fork gibi harici kurulum kaynaklarında özel GitHub denetimi zorlanmaz.
 - Canlı anahtar kelime işlemi, liste güncellemesi veya açık editör sırasında sürüm/kurulum eylemleri fail-closed engellenir.

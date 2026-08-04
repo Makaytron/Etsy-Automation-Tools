@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Sale Manager
 // @name:tr      Makaytron Etsy Sale Manager
 // @name:en      Makaytron Etsy Sale Manager
-// @version      1.0.1
+// @version      1.0.2
 // @description  Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
 // @description:tr Etsy Sales and Discounts kampanyalarını güvenli toplu seriler hâlinde planlar, doğrular ve raporlar
 // @description:en Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
@@ -37,7 +37,7 @@
 (async function () {
     'use strict';
 
-    const VERSION = '1.0.1';
+    const VERSION = '1.0.2';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -5309,7 +5309,7 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
         } catch (error) {
             if (error instanceof AutomationCancelledError) return;
             if (!(error instanceof SafetyStopError) && error?.telemetryCode !== 'storage_sale_state') void trackTelemetryError('runtime_sale_action');
-            console.error('EDA v1.0.1 tick failed', error);
+            console.error('EDA v1.0.2 tick failed', error);
             const active = await gmGet(JOB_KEY, null);
             job = active;
             const plan = active?.currentDate ? buildPlan(active.currentDate, active) : null;
@@ -5758,7 +5758,7 @@ Mağaza: ${shopLabel(job.shop)}`
             document.addEventListener('visibilitychange', () => { if (!document.hidden) { syncRouteUi().catch(() => {}); processTick(); } });
             if (job?.active && !job.paused) setTimeout(processTick, 450);
         } catch (error) {
-            console.error('EDA v1.0.1 initialize failed', error);
+            console.error('EDA v1.0.2 initialize failed', error);
             if (isSupportedRoute()) { mountPanel(); toast(`Script başlatılamadı: ${error?.message || error}`, 'error', 7000); }
         }
     }

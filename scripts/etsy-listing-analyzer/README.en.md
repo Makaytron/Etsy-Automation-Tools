@@ -1,6 +1,6 @@
 # Makaytron Etsy Listing Analyzer
 
-Version: `1.0.1`
+Version: `1.0.2`
 
 A Tampermonkey userscript that reads visible performance data from Etsy Shop Manager listing cards without asking for a separate API key or OAuth connection, evaluates local history with Health Engine, and prepares listing-level, user-approved improvement queues.
 
@@ -44,7 +44,7 @@ Every image below is an element-level capture of the userscript itself. No Etsy 
 - Invalid AI JSON identifies the exact failing field path and expected type, provides an example payload, and writes no proposal until the complete response validates.
 - An interrupted or unverified action queue opens a dedicated recovery screen with safe review and stop choices; a possibly submitted Etsy write is never retried automatically.
 - Feedback is stored locally first in a privacy-safe form. The prepared text excludes listing titles and IDs, and the canonical GitHub form opens only after the user presses the action.
-- For GitHub-origin installations, checks the public GitHub `main` commit identity and userscript metadata only at that immutable commit at most once every six hours with anonymous requests. Settings provide **Check for updates** and **Update in Tampermonkey**, including a user-confirmed same-version refresh; the exact verified commit URL always finishes in Tampermonkey’s own confirmation screen. A detected Greasy Fork or other distribution source keeps its own update mechanism instead of being forced through the GitHub flow.
+- For GitHub-origin installations, checks the public GitHub `main` commit identity and userscript metadata only at that immutable commit at most once every 24 hours with anonymous requests. Settings provide **Check for updates** and **Update in Tampermonkey**, including a user-confirmed same-version refresh; the exact verified commit URL always finishes in Tampermonkey’s own confirmation screen. A detected Greasy Fork or other distribution source keeps its own update mechanism instead of being forced through the GitHub flow.
 
 Missing or unreadable metrics remain unknown; they are never coerced to zero and never produce a deactivation or improvement decision.
 
@@ -88,7 +88,7 @@ If no compatible companion responds, Listing Analyzer does not begin any install
 
 When the companion is available, the selected listing uses this bounded delivery:
 
-1. Analyzer stores an opaque `L001`, one seed keyword by default in v1.0.1, and a title/tag SHA-256 hash in its bounded GM storage for ten minutes; the real listing ID remains local.
+1. Analyzer stores an opaque `L001`, one seed keyword by default in v1.0.2, and a title/tag SHA-256 hash in its bounded GM storage for ten minutes; the real listing ID remains local.
 2. The Insights tab opens at the canonical Marketplace Insights address without putting the nonce, seed, or payload in its query or fragment. Bounded retries allow its userscript listener to load and complete `PROBE → CAPABILITIES + RESEARCH_READY`; all delivery then stays on `BroadcastChannel` through `RESEARCH_REQUEST → RESEARCH_ACK → RESEARCH_RESULT → RESEARCH_RECEIVED`.
    While processing a seed, Keyword & Market Analyzer opens Etsy's normal Marketplace Insights search with a `query` value. This is a real Etsy Insights query: it may consume the search allowance Etsy provides to the account and, depending on the plan, may incur a query charge. The inter-script nonce, request ID, and payload are not added to that URL.
 3. Every envelope validates a versioned schema, exact key set, field types, sender, expiry, one-time nonce, and 64 KiB limit; numeric metrics must be numbers or `null`. Changed content, expired messages, unknown/extra fields, and conflicting replays fail closed. For a matching but invalid result, Listing Analyzer sends terminal `RESULT_REJECTED`; the companion removes that pending result and its seed data from the queue.

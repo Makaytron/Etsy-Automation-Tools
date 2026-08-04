@@ -1,6 +1,6 @@
 # Distribution and update policy
 
-Version: `1.0.1`
+Version: `1.0.2`
 
 GitHub repository: <https://github.com/Makaytron/Etsy-Automation-Tools>
 
@@ -11,7 +11,7 @@ GitHub is the only source of truth. Every hosted copy must be derived from the e
 | Channel | Role | Update mechanism |
 |---|---|---|
 | GitHub | Canonical source and signed releases | Maintainer-reviewed version change and release |
-| [Greasy Fork](https://greasyfork.org/en/users/1630152-makaytron) | Primary userscript host | Exact nested Raw URL sync plus a GitHub webhook subscribed only to `release` |
+| [Greasy Fork](https://greasyfork.org/en/users/1630152-makaytron) | Primary userscript host | Automatic sync from exact nested Raw `main` URLs, plus an immediate refresh request from a GitHub webhook subscribed only to `release` |
 | [Userscript.Zone](https://www.userscript.zone/) | Search index | Crawler discovers public GitHub and Greasy Fork listings; there is no upload account or webhook |
 | SourceForge | Optional GitHub Release mirror | Native read-only GitHub Release importer; never a userscript update endpoint |
 | OpenUserJS | Manual secondary host | Automatic webhook sync is disabled while its official importer remains tied to the `master` branch; this repository uses `main` |
@@ -29,10 +29,11 @@ Chocolatey and WinGet/WingetUI are not distribution targets for `.user.js` files
 ## Release flow
 
 1. Change `VERSION`, all five metadata/runtime version markers, README version labels, and changelogs together.
-2. Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online` and review `git diff --check`.
+2. Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online` for local version, syntax, secret-pattern, and URL-reachability checks; then review `git diff --check`.
 3. Create a signed commit and signed `vX.Y.Z` tag from the reviewed commit.
-4. Publish the complete GitHub Release once. The release-only webhook asks Greasy Fork to fetch each exact nested path from the release tag.
-5. Verify every Greasy Fork listing shows the same version and confirm downstream indexing/mirroring.
+4. After pushing canonical `main`, run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online -RemoteParity` to prove that every public Raw file is byte-equivalent to its local source.
+5. Publish the complete GitHub Release once. The release-only webhook requests an immediate Greasy Fork refresh from the configured exact Raw `main` paths; Greasy Fork's own automatic synchronization may also poll those paths.
+6. Verify every Greasy Fork listing shows the same version and confirm downstream indexing/mirroring.
 
 ## Security invariants
 

@@ -1,11 +1,18 @@
 # Changelog
 
+## 1.0.2 - 2026-08-04
+
+- Finalized the public distribution release after the immutable tag-only `v1.0.1` checkpoint.
+- Corrected the documented automatic update interval from six hours to the implemented 24 hours.
+- Corrected Greasy Fork documentation to describe automatic Raw `main` synchronization plus the release-only immediate-refresh webhook.
+- Added post-push Raw source-parity validation; no Etsy analysis, editing, deactivation, storage, or network behavior changed.
+
 ## 1.0.1 - 2026-08-04
 
 - Verified every live repository, Raw update, support, API, install, logo, privacy, and issue URL against `Makaytron/Etsy-Automation-Tools`.
-- Added Greasy Fork URL synchronization driven by a release-only GitHub webhook; no GitHub credential is shared with Greasy Fork.
+- Configured Greasy Fork automatic synchronization from the exact Raw source plus a release-only immediate-refresh webhook; no GitHub credential is shared with Greasy Fork.
 - Preserved the legacy `@namespace` and its exact trust check as the stable installed-script identity while keeping every network endpoint on the canonical repository.
-- Declared the documented privacy-preserving telemetry with `@antifeature tracking`.
+- Verified and retained the existing `@antifeature tracking` disclosure for the documented privacy-preserving telemetry.
 - No Etsy analysis, editing, deactivation, storage, or network behavior changed in this distribution patch.
 
 ## 1.0.0 - 2026-08-03

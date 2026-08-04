@@ -5,13 +5,21 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.0.2] - 2026-08-04
+
+### Changed
+
+- Finalized the public distribution release after the immutable tag-only `v1.0.1` checkpoint.
+- Corrected Greasy Fork documentation to describe automatic Raw `main` synchronization plus the release-only immediate-refresh webhook.
+- Added post-push Raw source-parity validation; no Etsy message, translation, reply, storage, or provider behavior changed.
+
 ## [1.0.1] - 2026-08-04
 
 ### Security
 
 - Canonical repository, Raw update, support, release, logo, and privacy URLs were verified against `Makaytron/Etsy-Automation-Tools`.
-- Greasy Fork distribution follows the exact public Raw source and updates only from published GitHub releases through a release-only webhook.
-- Added explicit `@antifeature tracking` disclosure for the documented privacy-preserving telemetry.
+- Greasy Fork distribution follows the exact public Raw source with automatic synchronization and a release-only immediate-refresh webhook.
+- Verified and retained the existing `@antifeature tracking` disclosure for the documented privacy-preserving telemetry.
 - Güncelleme indirme adresi tam HTTPS origin ve userscript yolu eşitliğiyle sınırlandırıldı; benzer host/yol önekleri, credentials, query ve bozuk adresler canonical adrese düşürülür.
 - Aktif veya bilinmeyen durumdaki mesaj kampanyası sürerken Tampermonkey güncelleme ekranının açılması fail-closed engellendi.
 - GitHub dışındaki kurulum kaynaklarında özel GitHub update akışı zorlanmaz; dağıtım platformunun mekanizması korunur.
