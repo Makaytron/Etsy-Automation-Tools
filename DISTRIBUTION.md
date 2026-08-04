@@ -13,10 +13,11 @@ GitHub is the only source of truth. Every hosted copy must be derived from the e
 | GitHub | Canonical source and signed releases | Maintainer-reviewed version change and release |
 | [Greasy Fork](https://greasyfork.org/en/users/1630152-makaytron) | Primary userscript host | Automatic sync from exact nested Raw `main` URLs, plus an immediate refresh request from a GitHub webhook subscribed only to `release` |
 | [Userscript.Zone](https://www.userscript.zone/) | Search index | Crawler discovers public GitHub and Greasy Fork listings; there is no upload account or webhook |
-| SourceForge | Optional GitHub Release mirror | Native read-only GitHub Release importer; never a userscript update endpoint |
-| OpenUserJS | Manual secondary host | Automatic webhook sync is disabled while its official importer remains tied to the `master` branch; this repository uses `main` |
+| [SourceForge](https://sourceforge.net/projects/etsy-automation-tools/) | Active GitHub Release mirror | Official release-only integration mirrors public GitHub Release files; never a userscript update endpoint |
 
 Chocolatey and WinGet/WingetUI are not distribution targets for `.user.js` files. They require Windows installer/package formats and must not receive a fake wrapper package.
+
+OpenUserJS is not an active distribution target. Its production publisher currently rejects documented modern `GM.*` grants, and its GitHub importer returns `503`; both failures were reported to the official project in [issue #2102](https://github.com/OpenUserJS/OpenUserJS.org/issues/2102) and [issue #1705](https://github.com/OpenUserJS/OpenUserJS.org/issues/1705#issuecomment-5179490002). Do not create a host-specific modified script, share a PAT, or grant repository write access to work around those failures. Reconsider the channel only after an official fix is verified.
 
 ## Greasy Fork listings
 
@@ -41,5 +42,5 @@ Chocolatey and WinGet/WingetUI are not distribution targets for `.user.js` files
 - The webhook secret exists only in Greasy Fork and GitHub repository settings. It is never stored in Git, Actions, artifacts, logs, or documentation.
 - GitHub sends only public release-event metadata to the HTTPS webhook endpoint. SSL verification stays enabled.
 - GitHub Actions is not required for synchronization and remains disabled unless a separately reviewed release workflow is introduced.
-- SourceForge integration, when enabled, is read-only and limited to public GitHub Release data.
+- SourceForge integration is active, release-only, and limited to public GitHub Release data; it has no PAT, deploy key, GitHub App, or repository write permission.
 - No automatic promotional posting is performed to Product Hunt, DEV, Hacker News, AlternativeTo, Chocolatey, or WinGet catalogs.
