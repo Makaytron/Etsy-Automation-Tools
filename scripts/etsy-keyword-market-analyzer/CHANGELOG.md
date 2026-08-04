@@ -1,0 +1,21 @@
+# Changelog
+
+All notable changes to Makaytron Etsy Keyword & Market Analyzer are documented here.
+
+## [1.0.0] - 2026-08-03
+
+### Added
+
+- Standalone Marketplace Insights search, structured capture, bounded storage, and JSON export.
+- Idempotent inline keyword details for the primary result and up to 25 similar search terms.
+- Etsy DOM metrics plus an explicitly labelled Makaytron-derived opportunity score.
+- Optional, strict BroadcastChannel integration with Makaytron Etsy Listing Analyzer.
+- Sequential and cancellable research queue, DOM timeouts, acknowledgement handshake, and seven-day cache.
+- Single-leader cross-tab GM-storage lease with an instance-bound owner, bounded duplicate-tab presence handshake, safe TTL takeover, and duplicate-navigation/result protection.
+- Deadline-based `awaiting-receipt` terminalization and bounded pruning that prevents expired result resends or queue exhaustion.
+- Strict complete `RESEARCH_REQUEST` JSON import and complete `RESEARCH_RESULT` copy/download fallback for independent use.
+- Normal Etsy query-only navigation without exposing request IDs, nonces, or research payloads in URLs or history state.
+- Turkish and English Shadow DOM interface with canonical Makaytron branding and accessibility controls.
+- Shared black, white, and neutral-gray panel/launcher/inline hierarchy; color is limited to compact, labelled semantic opportunity and trend badges.
+- Source-aware, non-blocking 24-hour update checks and user-confirmed canonical install-page opening.
+- User-confirmed local research cleanup with deletion readback while preserving language preferences.

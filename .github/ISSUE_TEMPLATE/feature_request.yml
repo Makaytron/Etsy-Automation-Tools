@@ -1,0 +1,59 @@
+name: Özellik önerisi
+description: Bir userscript için güvenli ve somut geliştirme önerin.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - "status: needs-triage"
+body:
+  - type: dropdown
+    id: script
+    attributes:
+      label: İlgili script
+      options:
+        - Makaytron Etsy Sale Manager
+        - Makaytron Etsy Message Assistant
+        - Makaytron Etsy Ads Keyword Manager
+        - Makaytron Etsy Listing Analyzer
+        - Makaytron Etsy Keyword & Market Analyzer
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Çözülmesini istediğiniz sorun
+      description: Mevcut iş akışında ne zor veya eksik?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Önerilen çözüm
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Güvenlik ve Etsy etkisi
+      description: Otomatik gönderim, canlı kampanya, reklam/listing değişikliği, Marketplace Insights kotası, analyzer entegrasyonu, yerel geçmiş veya üçüncü taraf sağlayıcıya veri aktarımı açısından etkisini açıklayın.
+    validations:
+      required: true
+  - type: textarea
+    id: live_write
+    attributes:
+      label: Canlı Etsy yazma gereksinimi
+      description: Öneri mesaj gönderimi, kampanya oluşturma, reklam anahtar kelimesi veya listing değiştirme ya da başka bir canlı Etsy işlemi gerektiriyor mu? Gerektirmiyorsa "Hayır" yazın.
+      placeholder: Hayır — özellik yalnızca taslak veya önizleme üretir.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redakte edilmiş örnek veya kanıt
+      description: İsteğe bağlı ekran görüntüsü veya örnek ekleyebilirsiniz. API anahtarı, çerez, müşteri mesajı, mağaza/listing ve sipariş bilgisi ile reklam metriklerini kapatın.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Gizlilik kontrolü
+      options:
+        - label: Örneğimde veya kanıtımda hassas Etsy ya da sağlayıcı verisi paylaşmadım; eklediğim alanları redakte ettim.
+          required: true

@@ -1,0 +1,59 @@
+name: Feature request (English)
+description: Propose a specific and safe userscript improvement in English.
+title: "[Feature]: "
+labels:
+  - enhancement
+  - "status: needs-triage"
+body:
+  - type: dropdown
+    id: script
+    attributes:
+      label: Related script
+      options:
+        - Makaytron Etsy Sale Manager
+        - Makaytron Etsy Message Assistant
+        - Makaytron Etsy Ads Keyword Manager
+        - Makaytron Etsy Listing Analyzer
+        - Makaytron Etsy Keyword & Market Analyzer
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What is difficult or missing in the current workflow?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Security, privacy, and Etsy impact
+      description: Explain the impact on automatic sending, live campaigns, advertising/listing changes, Marketplace Insights quota, analyzer integration, local history, or data sent to third-party providers.
+    validations:
+      required: true
+  - type: textarea
+    id: live_write
+    attributes:
+      label: Live Etsy write requirement
+      description: Would this proposal send a message, create a campaign, change an advertising keyword or listing, or perform another live Etsy action? Enter "No" if it would not.
+      placeholder: No — the feature only creates a draft or preview.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted example or evidence
+      description: You may attach an optional screenshot or example. Remove API keys, cookies, customer messages, shop/listing details, order details, and advertising metrics.
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: My example or evidence contains no sensitive Etsy or provider data, and I redacted all attached material.
+          required: true
