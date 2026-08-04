@@ -10,7 +10,7 @@ Etsy mesajlarını Türkçe önizlemek, Türkçe cevabı müşterinin diline çe
 
 Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulması gerekmez.
 
-**Sürüm:** 1.0.0 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.0.1 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 ## Kurulum
 

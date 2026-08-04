@@ -1,6 +1,6 @@
 # Makaytron Etsy Listing Analyzer
 
-**Sürüm:** 1.0.0 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.0.1 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 Etsy Shop Manager listing kartlarındaki görünür performans verilerini ayrı bir API anahtarı veya OAuth bağlantısı istemeden okuyan; Health Engine ile yerel geçmişi değerlendiren ve listing bazında kullanıcı onaylı iyileştirme kuyruğu hazırlayan Tampermonkey userscriptidir.
 
@@ -88,7 +88,7 @@ Companion algılanmazsa script hiçbir kurulum başlatmaz. Modalda **İptal**, t
 
 Algılanırsa yalnız seçili tek listing için şu güvenli teslimat uygulanır:
 
-1. Analyzer, gerçek listing ID’si yerine `L001`, v1.0.0 varsayılanı olarak tek seed keyword ve başlık/etiket SHA-256 özetini kendi sınırlandırılmış GM deposunda 10 dakika saklar.
+1. Analyzer, gerçek listing ID’si yerine `L001`, v1.0.1 varsayılanı olarak tek seed keyword ve başlık/etiket SHA-256 özetini kendi sınırlandırılmış GM deposunda 10 dakika saklar.
 2. Insights sekmesi canonical Marketplace Insights adresinde, query veya fragment içine nonce, seed ya da payload yazılmadan açılır. Sekmenin userscript dinleyicisine yüklenme payı veren sınırlı tekrarlarla `PROBE → CAPABILITIES + RESEARCH_READY` el sıkışması tamamlanır; ardından tüm teslimat yalnız `BroadcastChannel` üzerinden `RESEARCH_REQUEST → RESEARCH_ACK → RESEARCH_RESULT → RESEARCH_RECEIVED` akışıyla yapılır.
    Keyword & Market Analyzer, seed'i işlerken Etsy'nin normal Marketplace Insights aramasını `query` değeriyle açar. Bu gerçek bir Etsy Insights sorgusudur; hesabınızın Etsy tarafından sağlanan sorgu kotasını kullanabilir ve planınıza göre sorgu maliyeti doğurabilir. Scriptler arası nonce, istek kimliği ve payload bu URL'ye eklenmez.
 3. Her envelope sürümlü şema, tam anahtar kümesi, alan tipi, kaynak, zaman aşımı, tek kullanımlık nonce ve 64 KiB sınırıyla doğrulanır; sayısal metrikler yalnız sayı veya `null` olabilir. Değişmiş içerik, süresi dolmuş mesaj, bilinmeyen/ek alan ve çakışan replay reddedilir. Eşleşen fakat geçersiz bir sonuç için Listing Analyzer terminal `RESULT_REJECTED` gönderir; companion ilgili bekleyen sonucu ve seed verisini kuyruğundan temizler.

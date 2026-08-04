@@ -2,7 +2,7 @@
 
 **Kısa ad:** Etsy Keyword & Market Analyzer
 
-**Sürüm:** 1.0.0
+**Sürüm:** 1.0.1
 
 Etsy Marketplace Insights sonuç sayfasındaki ana sorguyu ve en fazla 25 benzer arama terimini okur. Her anahtar kelimenin altında Etsy'nin 30 günlük arama sayısını, arama sonucu göstergesini, varsa 7 günlük değişimi, yakalama zamanını ve açıkça Makaytron tarafından türetilen fırsat puanını gösterir.
 

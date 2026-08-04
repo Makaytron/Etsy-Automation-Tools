@@ -14,11 +14,11 @@ Open-source Etsy automation tools and Tampermonkey userscripts for sellers. The 
 
 | Script | Version | Purpose |
 |---|---:|---|
-| [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/) | 1.0.0 | Bulk Sales & Discounts Automation that schedules, verifies, and reports Etsy sale campaigns in controlled, fail-closed batches. |
-| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/) | 1.0.0 | Provides translation, reply drafts, templates, and user-selected AI provider profiles. |
-| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/) | 1.0.0 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
-| [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/) | 1.0.0 | Collects every page in order, returns to page 1, and adds retries, error reports, presets, charts, AI comparison, and Health Engine workflows. |
-| [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/) | 1.0.0 | Reads visible Marketplace Insights metrics, explains them beneath keyword rows, and can return evidence to Listing Analyzer, which derives the title/tag suggestion locally. |
+| [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/) | 1.0.1 | Bulk Sales & Discounts Automation that schedules, verifies, and reports Etsy sale campaigns in controlled, fail-closed batches. |
+| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/) | 1.0.1 | Provides translation, reply drafts, templates, and user-selected AI provider profiles. |
+| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/) | 1.0.1 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
+| [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/) | 1.0.1 | Collects every page in order, returns to page 1, and adds retries, error reports, presets, charts, AI comparison, and Health Engine workflows. |
+| [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/) | 1.0.1 | Reads visible Marketplace Insights metrics, explains them beneath keyword rows, and can return evidence to Listing Analyzer, which derives the title/tag suggestion locally. |
 
 Listing Analyzer and Keyword & Market Analyzer are independently installable and fully usable on their own. When the user starts the optional market-research action in Listing Analyzer and the companion is missing, the script explains why it is needed and opens the canonical install URL only after the user approves **Open install page**. Tampermonkey and the user always retain final installation control.
 
@@ -87,6 +87,10 @@ These images capture only **standalone panel/modal elements** rendered by the re
    - [Install Makaytron Etsy Keyword & Market Analyzer](https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js)
 3. Review the requested permissions and confirm installation in Tampermonkey.
 
+## Distribution and updates
+
+GitHub is the canonical source. The five Greasy Fork listings sync from the exact public Raw paths and are refreshed by a release-only GitHub webhook; Greasy Fork receives no GitHub token or repository write permission. See [DISTRIBUTION.md](./DISTRIBUTION.md) for the channel map and security model.
+
 ## Safe use
 
 - Start Etsy Sale Manager with the [one-day user-controlled dry-run checklist](./docs/campaign-dry-run-checklist.md), and use the [Listing Analyzer dry-run checklist](./docs/listing-analyzer-dry-run-checklist.en.md) before a listing write.
@@ -94,7 +98,7 @@ These images capture only **standalone panel/modal elements** rendered by the re
 - Read every generated message before sending it. Automatic sending is off by default.
 - Ads Keyword Manager's **Disable/Enable matches on this page** actions change visible Etsy controls. **Disable matches on all pages** requires explicit confirmation; manually verify the result in Etsy Ads.
 - Listing Analyzer Health Engine analysis is decision support based only on visible Etsy metrics and local history in the browser. Lifecycle, cohort, confidence, evidence, and experiment results do not claim causation or an Etsy-wide benchmark; listing improvements, deactivation, and other bulk writes must start only after explicit user selection and confirmation.
-- Listing Analyzer `v1.0.0` has no AI network integration: it exports an anonymizable request JSON/prompt and imports validated proposal JSON. Every listing waits for user confirmation before Etsy Publish. For deactivation, the script only opens Etsy's options and focuses the relevant item; the user clicks Deactivate and Etsy's final confirmation. Delete is never automated.
+- Listing Analyzer `v1.0.1` has no AI network integration: it exports an anonymizable request JSON/prompt and imports validated proposal JSON. Every listing waits for user confirmation before Etsy Publish. For deactivation, the script only opens Etsy's options and focuses the relevant item; the user clicks Deactivate and Etsy's final confirmation. Delete is never automated.
 - Keyword & Market Analyzer reads only rendered keyword, search, search-result, and trend data on the open Marketplace Insights page. After the user starts research, each seed keyword is sent to Etsy as the `query` in normal Marketplace Insights search navigation and may consume Etsy research quota/query cost. Its “opportunity” value is a Makaytron-derived signal, not an Etsy competition or sales guarantee. Research never changes a listing automatically.
 - When both analyzers are installed, title, tags, an anonymous local reference, and a content hash travel in a versioned, expiring browser message. Expired, replayed, or stale results are rejected; Listing Analyzer derives its suggestion locally from the evidence and still requires user review.
 - Do not put API keys, cookies, customer/order data, shop/listing identifiers, or advertising metrics in issues or screenshots.

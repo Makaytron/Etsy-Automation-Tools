@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Ads Keyword Manager
 // @name:tr      Makaytron Etsy Ads Keyword Manager
 // @name:en      Makaytron Etsy Ads Keyword Manager
-// @version      1.0.0
+// @version      1.0.1
 // @description  Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:tr Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:en Manage Etsy Ads keyword matches from a form-based control panel.
@@ -38,7 +38,7 @@
 
     const SCRIPT_SOURCE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
     const WORD_LIST_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/keyword-rules.txt';
-    const APP_VERSION = '1.0.0';
+    const APP_VERSION = '1.0.1';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';

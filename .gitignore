@@ -1,0 +1,25 @@
+# Local credentials and private material must never enter the repository.
+.env
+.env.*
+!.env.example
+.secrets/
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+*.token
+credentials*.json
+
+# Local build/test output.
+dist/
+release-assets/
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# The public, credential-free distribution validator is intentionally tracked.
+!tools/
+!tools/Test-Distribution.ps1

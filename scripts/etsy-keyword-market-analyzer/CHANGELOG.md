@@ -2,6 +2,16 @@
 
 All notable changes to Makaytron Etsy Keyword & Market Analyzer are documented here.
 
+## [1.0.1] - 2026-08-04
+
+### Changed
+
+- Verified every live repository, Raw update, support, logo, and privacy URL against `Makaytron/Etsy-Automation-Tools`.
+- Added Greasy Fork URL synchronization driven by a release-only GitHub webhook; no GitHub credential is shared with Greasy Fork.
+- Preserved the legacy `@namespace` as the stable installed-script identity while keeping every network endpoint on the canonical repository.
+- Declared the documented privacy-preserving telemetry with `@antifeature tracking`.
+- No Etsy reading, navigation, storage, or write behavior changed in this distribution patch.
+
 ## [1.0.0] - 2026-08-03
 
 ### Added

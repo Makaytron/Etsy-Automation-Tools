@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 - 2026-08-04
+
+- Verified every live repository, Raw update, support, API, install, logo, privacy, and issue URL against `Makaytron/Etsy-Automation-Tools`.
+- Added Greasy Fork URL synchronization driven by a release-only GitHub webhook; no GitHub credential is shared with Greasy Fork.
+- Preserved the legacy `@namespace` and its exact trust check as the stable installed-script identity while keeping every network endpoint on the canonical repository.
+- Declared the documented privacy-preserving telemetry with `@antifeature tracking`.
+- No Etsy analysis, editing, deactivation, storage, or network behavior changed in this distribution patch.
+
 ## 1.0.0 - 2026-08-03
 
 - Renamed the product, package directory, userscript file, and canonical distribution path to **Makaytron Etsy Listing Analyzer**.

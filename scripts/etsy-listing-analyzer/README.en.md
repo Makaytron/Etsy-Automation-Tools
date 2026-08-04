@@ -1,6 +1,6 @@
 # Makaytron Etsy Listing Analyzer
 
-Version: `1.0.0`
+Version: `1.0.1`
 
 A Tampermonkey userscript that reads visible performance data from Etsy Shop Manager listing cards without asking for a separate API key or OAuth connection, evaluates local history with Health Engine, and prepares listing-level, user-approved improvement queues.
 
@@ -88,7 +88,7 @@ If no compatible companion responds, Listing Analyzer does not begin any install
 
 When the companion is available, the selected listing uses this bounded delivery:
 
-1. Analyzer stores an opaque `L001`, one seed keyword by default in v1.0.0, and a title/tag SHA-256 hash in its bounded GM storage for ten minutes; the real listing ID remains local.
+1. Analyzer stores an opaque `L001`, one seed keyword by default in v1.0.1, and a title/tag SHA-256 hash in its bounded GM storage for ten minutes; the real listing ID remains local.
 2. The Insights tab opens at the canonical Marketplace Insights address without putting the nonce, seed, or payload in its query or fragment. Bounded retries allow its userscript listener to load and complete `PROBE → CAPABILITIES + RESEARCH_READY`; all delivery then stays on `BroadcastChannel` through `RESEARCH_REQUEST → RESEARCH_ACK → RESEARCH_RESULT → RESEARCH_RECEIVED`.
    While processing a seed, Keyword & Market Analyzer opens Etsy's normal Marketplace Insights search with a `query` value. This is a real Etsy Insights query: it may consume the search allowance Etsy provides to the account and, depending on the plan, may incur a query charge. The inter-script nonce, request ID, and payload are not added to that URL.
 3. Every envelope validates a versioned schema, exact key set, field types, sender, expiry, one-time nonce, and 64 KiB limit; numeric metrics must be numbers or `null`. Changed content, expired messages, unknown/extra fields, and conflicting replays fail closed. For a matching but invalid result, Listing Analyzer sends terminal `RESULT_REJECTED`; the companion removes that pending result and its seed data from the queue.
