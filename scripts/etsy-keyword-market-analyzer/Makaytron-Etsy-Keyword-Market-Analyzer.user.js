@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Keyword & Market Analyzer
 // @name:tr      Makaytron Etsy Keyword & Market Analyzer
 // @name:en      Makaytron Etsy Keyword & Market Analyzer
-// @version      1.0.2
+// @version      1.0.3
 // @description  Etsy Marketplace Insights verilerini sayfada analiz edin ve Listing Analyzer ile güvenli araştırma sonuçları paylaşın.
 // @description:tr Etsy Marketplace Insights verilerini sayfada analiz edin ve Listing Analyzer ile güvenli araştırma sonuçları paylaşın.
 // @description:en Analyze Etsy Marketplace Insights data in-page and securely share research results with Listing Analyzer.
@@ -33,7 +33,7 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.0.2';
+    const APP_VERSION = '1.0.3';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -1733,6 +1733,13 @@
         return true;
     }
 
+    function textWithoutEkmaInline(element) {
+        if (!element) return '';
+        const clone = element.cloneNode(true);
+        clone.querySelectorAll?.('[data-ekma-inline]').forEach((node) => node.remove());
+        return normalizeText(clone.textContent);
+    }
+
     function valueFromMetricLabel(aliases, scope) {
         if (!scope || !isVisibleResultElement(scope)) return null;
         const labels = Array.from(scope.querySelectorAll('h1,h2,h3,h4,h5,h6,span,div'));
@@ -1743,10 +1750,11 @@
             const container = label.parentElement;
             if (!container || !scope.contains(container) || !isVisibleResultElement(container)) continue;
             const preferred = container.querySelector('.wt-text-title-larger');
-            const preferredValue = isVisibleResultElement(preferred) ? parseCompactNumber(preferred?.textContent) : null;
+            const preferredValue = isVisibleResultElement(preferred) && !preferred?.closest('[data-ekma-inline]')
+                ? parseCompactNumber(preferred.textContent) : null;
             if (preferredValue !== null) return { value: preferredValue, container };
             for (const child of Array.from(container.children)) {
-                if (child === label || !isVisibleResultElement(child)) continue;
+                if (child === label || child.closest('[data-ekma-inline]') || !isVisibleResultElement(child)) continue;
                 const parsed = parseCompactNumber(child.textContent);
                 if (parsed !== null) return { value: parsed, container };
             }
@@ -1818,10 +1826,13 @@
             if (!isVisibleResultElement(row)) continue;
             const cells = Array.from(row.children).filter((cell) => cell.matches('th,td'));
             if (cells.length < 3 || cells.some((cell) => !isVisibleResultElement(cell))) continue;
-            const keywordTarget = cells[0].querySelector('[data-ekma-keyword],[role="button"]') || cells[0];
-            const keyword = normalizeText(keywordTarget.textContent);
-            const searches30d = parseCompactNumber(cells[1].textContent);
-            const searchResults = parseCompactNumber(cells[2].textContent);
+            const keywordTarget = Array.from(cells[0].querySelectorAll('[data-ekma-keyword],[role="button"]'))
+                .find((target) => !target.closest('[data-ekma-inline]'));
+            const keyword = keywordTarget
+                ? normalizeText(keywordTarget.textContent)
+                : textWithoutEkmaInline(cells[0]);
+            const searches30d = parseCompactNumber(textWithoutEkmaInline(cells[1]));
+            const searchResults = parseCompactNumber(textWithoutEkmaInline(cells[2]));
             if (!keyword || keyword.length > MAX_KEYWORD_LENGTH || searches30d === null || searchResults === null) continue;
             values.push({
                 keyword,
@@ -1845,7 +1856,7 @@
         const percentCandidates = Array.from(searches.container.querySelectorAll('span,button,div'));
         let trend7dPercent = null;
         for (const candidate of percentCandidates) {
-            if (!isVisibleResultElement(candidate)) continue;
+            if (!isVisibleResultElement(candidate) || candidate.closest('[data-ekma-inline]')) continue;
             trend7dPercent = parsePercent(candidate.textContent);
             if (trend7dPercent !== null) break;
         }
@@ -1939,7 +1950,11 @@
             ? anchor
             : (anchor.closest('[data-ekma-main-keyword-cell],[class*="wt-grid__item"]') || anchor.parentElement || anchor);
         const id = keywordDomId(keyword.keyword);
-        let inline = container.querySelector(`:scope > [data-ekma-inline="${id}"]`);
+        let inline = null;
+        for (const existing of Array.from(container.querySelectorAll(':scope > [data-ekma-inline]'))) {
+            if (!inline && existing.dataset.ekmaInline === id) inline = existing;
+            else existing.remove();
+        }
         if (!inline) {
             inline = document.createElement('div');
             inline.className = 'ekma-inline';
