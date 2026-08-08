@@ -4,7 +4,7 @@ Bu liste kullanıcı kontrollü son doğrulamadır. Gerçek hesap HTML'ini, çer
 
 ## Ön koşullar
 
-- [ ] Kurulan dosyanın adı `Makaytron-Etsy-Keyword-Market-Analyzer.user.js`, ürün adı **Makaytron Etsy Keyword & Market Analyzer**, sürümü `1.0.2`.
+- [ ] Kurulan dosyanın adı `Makaytron-Etsy-Keyword-Market-Analyzer.user.js`, ürün adı **Makaytron Etsy Keyword & Market Analyzer**, sürümü `1.0.3`.
 - [ ] Kurulum kaynağı canonical `scripts/etsy-keyword-market-analyzer` raw adresi.
 - [ ] Etsy Marketplace Insights kotası ve olası sorgu maliyeti kullanıcı tarafından görüldü.
 - [ ] Test edilecek keyword kişisel, müşteri veya sipariş verisi içermiyor.
@@ -12,7 +12,7 @@ Bu liste kullanıcı kontrollü son doğrulamadır. Gerçek hesap HTML'ini, çer
 ## Tek başına kullanım
 
 - [ ] Yalnız Keyword & Market Analyzer kurulu iken Marketplace Insights rotası dışında panel oluşmuyor.
-- [ ] Marketplace Insights'ta sağ kenardaki beyaz Makaytron logolu açıcı, ürün adı, `v1.0.2`, TR/EN ve erişilebilir durum metni görünüyor.
+- [ ] Marketplace Insights'ta sağ kenardaki beyaz Makaytron logolu açıcı, ürün adı, `v1.0.3`, TR/EN ve erişilebilir durum metni görünüyor.
 - [ ] Panel ve veri şeritleri siyah/beyaz/nötr gri; birincil eylem siyah; renk yalnız metinle etiketlenmiş küçük fırsat ve trend rozetlerinde kullanılıyor.
 - [ ] Kullanıcı eylemi olmadan yeni keyword araması veya Etsy yazma işlemi başlamıyor.
 - [ ] Bir sonuç sayfasında ana keyword ve benzer terimler okunuyor; her özgün satırın altında en fazla bir Makaytron detay satırı oluşuyor.
@@ -49,6 +49,7 @@ Bu liste kullanıcı kontrollü son doğrulamadır. Gerçek hesap HTML'ini, çer
 - [ ] Greasy Fork veya başka dağıtım kaynağı simülasyonunda GitHub güncellemesi zorlanmıyor.
 - [ ] Yalnız iki metadata URL'si de tam canonical, HTTPS ve parametresiz `.user.js` yoluysa GitHub kanalı kabul ediliyor; fork/farklı yol/port/query/hash/credentials ve karışık URL'ler reddediliyor.
 - [ ] Aktif araştırmada güncelleme kurulum sayfası açılmıyor.
+- [ ] Yeni sürüm uyarısındaki **Güncelle** eylemi, denetlenen 40 karakterlik GitHub commit SHA'sına sabitlenmiş exact Keyword Analyzer `.user.js` dosyasını açıyor; Tampermonkey önizlemesinde ürün adı ve sürüm `1.0.3` görünüyor.
 - [ ] Cache yedi gün/üst sınır kuralıyla temizleniyor ve paneldeki temizleme eylemi yerel araştırma verisini kaldırıyor.
 - [ ] Aynı bağımsız kullanım ve iki-script turu güncel Firefox Tampermonkey ile Microsoft Edge Tampermonkey'de tekrarlanıyor.
 

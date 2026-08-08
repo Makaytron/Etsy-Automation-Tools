@@ -4,7 +4,7 @@ This checklist is the final user-controlled validation. Never add authenticated 
 
 ## Preconditions
 
-- [ ] Installed file is `Makaytron-Etsy-Keyword-Market-Analyzer.user.js`, product name is **Makaytron Etsy Keyword & Market Analyzer**, and version is `1.0.2`.
+- [ ] Installed file is `Makaytron-Etsy-Keyword-Market-Analyzer.user.js`, product name is **Makaytron Etsy Keyword & Market Analyzer**, and version is `1.0.3`.
 - [ ] Installation came from the canonical raw `scripts/etsy-keyword-market-analyzer` URL.
 - [ ] The user has reviewed the Etsy Marketplace Insights quota and possible query cost.
 - [ ] The test keyword contains no personal, customer, or order data.
@@ -12,7 +12,7 @@ This checklist is the final user-controlled validation. Never add authenticated 
 ## Standalone mode
 
 - [ ] With only Keyword & Market Analyzer installed, no panel appears outside Marketplace Insights routes.
-- [ ] Marketplace Insights shows the white Makaytron-logo launcher on the right edge, product name, `v1.0.2`, TR/EN control, and accessible status text.
+- [ ] Marketplace Insights shows the white Makaytron-logo launcher on the right edge, product name, `v1.0.3`, TR/EN control, and accessible status text.
 - [ ] The panel and data strips are black/white/neutral gray, the primary action is black, and color is limited to small text-labelled opportunity and trend badges.
 - [ ] No new keyword search or Etsy write starts without a user action.
 - [ ] A result page reads the primary keyword and similar terms; each unique row gets at most one Makaytron detail row.
@@ -49,6 +49,7 @@ This checklist is the final user-controlled validation. Never add authenticated 
 - [ ] A simulated Greasy Fork or other distribution source does not force the GitHub updater.
 - [ ] GitHub is accepted only when both metadata URLs are the exact canonical parameter-free HTTPS `.user.js` URL; forks, wrong paths, ports, query/hash/credentials, and mixed URLs are rejected.
 - [ ] An active research job blocks opening the update installation page.
+- [ ] The new-version warning's **Update** action opens the exact Keyword Analyzer `.user.js` file pinned to the checked 40-character GitHub commit SHA; Tampermonkey's preview shows product name and version `1.0.3`.
 - [ ] Cache pruning applies the seven-day/cap limits and the panel cleanup action removes local research data.
 - [ ] Repeat the same standalone and dual-script tour in current Firefox Tampermonkey and Microsoft Edge Tampermonkey.
 

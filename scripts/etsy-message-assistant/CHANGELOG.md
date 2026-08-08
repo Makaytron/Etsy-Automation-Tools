@@ -5,6 +5,12 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.0.3] - 2026-08-04
+
+### Changed
+
+- Synchronized the standalone package version with the reviewed analyzer updater release; no Etsy message, translation, reply, storage, or provider behavior changed.
+
 ## [1.0.2] - 2026-08-04
 
 ### Changed

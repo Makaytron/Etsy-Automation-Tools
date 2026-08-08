@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Ads Keyword Manager
 // @name:tr      Makaytron Etsy Ads Keyword Manager
 // @name:en      Makaytron Etsy Ads Keyword Manager
-// @version      1.0.2
+// @version      1.0.3
 // @description  Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:tr Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:en Manage Etsy Ads keyword matches from a form-based control panel.
@@ -38,7 +38,7 @@
 
     const SCRIPT_SOURCE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
     const WORD_LIST_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/keyword-rules.txt';
-    const APP_VERSION = '1.0.2';
+    const APP_VERSION = '1.0.3';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -1356,7 +1356,8 @@ oversized
     addStyle(`
         #${PANEL_ROOT_ID}{--maw-bg:#fff;--maw-fg:#171717;--maw-card:#fff;--maw-muted:#f7f7f7;--maw-muted-2:#f2f2f2;--maw-muted-fg:#737373;--maw-border:#e7e7e7;--maw-input:#dedede;--maw-primary:#1f1f1f;--maw-primary-fg:#fafafa;--maw-danger:#b91c1c;--maw-danger-soft:#fff1f1;--maw-warning:#8a5a00;--maw-warning-soft:#fff8ed;--maw-success:#276749;--maw-success-soft:#eef8f1;position:fixed;right:18px;top:86px;width:372px;z-index:2147483645;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--maw-fg);font-variant-numeric:tabular-nums}
         #${PANEL_ROOT_ID} *,#${EDITOR_MODAL_ID} *{box-sizing:border-box}
-        #${PANEL_ROOT_ID} .maw-card{overflow:hidden;border:1px solid var(--maw-border);border-radius:11px;background:var(--maw-card);box-shadow:0 1px 3px rgba(15,23,42,.08),0 12px 30px rgba(15,23,42,.08)}
+        #${PANEL_ROOT_ID} .maw-card{max-height:calc(100vh - 104px);max-height:calc(100dvh - 104px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--maw-border);border-radius:11px;background:var(--maw-card);box-shadow:0 1px 3px rgba(15,23,42,.08),0 12px 30px rgba(15,23,42,.08)}
+        #${PANEL_ROOT_ID} .maw-card[hidden],#${PANEL_ROOT_ID} .maw-collapsed-tab[hidden]{display:none!important}
         #${PANEL_ROOT_ID} .maw-head{padding:13px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--maw-border);background:#fff}
         #${PANEL_ROOT_ID} .maw-brand,.maw-modal-brand{min-width:0;display:flex;align-items:center;gap:10px}
         #${PANEL_ROOT_ID} .maw-logo-shell,.maw-modal-logo-shell{width:48px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;text-decoration:none}
@@ -1386,7 +1387,7 @@ oversized
         #${PANEL_ROOT_ID} .maw-lang-btn{height:24px;min-height:24px!important;min-width:30px;padding:0 7px!important;border:1px solid var(--maw-border);border-radius:6px;background:#fff;color:#404040;font-size:10.5px!important;font-weight:750!important;letter-spacing:.03em}
         #${PANEL_ROOT_ID} .maw-lang-btn:hover{border-color:#cfcfcf;background:#f7f7f7}
         .maw-svg{width:15px;height:15px;display:block;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-        #${PANEL_ROOT_ID} .maw-body{padding:14px}
+        #${PANEL_ROOT_ID} .maw-body{min-height:0;padding:14px;overflow-x:hidden;overflow-y:auto}
         #${PANEL_ROOT_ID} .maw-status-card{margin-bottom:12px;padding:10px 11px;display:flex;align-items:flex-start;gap:9px;border:1px solid var(--maw-border);border-radius:8px;background:var(--maw-muted)}
         #${PANEL_ROOT_ID} .maw-status-icon{width:25px;height:25px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--maw-border);border-radius:7px;background:#fff;color:#525252}
         #${PANEL_ROOT_ID} .maw-status-copy{min-width:0}
@@ -1400,13 +1401,15 @@ oversized
         #${PANEL_ROOT_ID} .maw-update-message{min-width:0;overflow-wrap:anywhere}
         #${PANEL_ROOT_ID} .maw-update-install{min-height:30px;padding:0 9px;flex:0 0 auto;border:1px solid currentColor;background:#fff;color:inherit;font-size:11px}
         #${PANEL_ROOT_ID} .maw-update-install[hidden]{display:none}
-        #${PANEL_ROOT_ID} .maw-grid{margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+        #${PANEL_ROOT_ID} .maw-grid{margin-bottom:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
         #${PANEL_ROOT_ID} .maw-chip{min-width:0;padding:9px 10px;border:1px solid var(--maw-border);border-radius:8px;background:#fff}
         #${PANEL_ROOT_ID} .maw-label{margin-bottom:4px;color:#8a8a8a;font-size:10px;font-weight:650;letter-spacing:.07em;text-transform:uppercase}
         #${PANEL_ROOT_ID} .maw-value{overflow:hidden;color:#171717;font-size:13px;font-weight:700;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
         #${PANEL_ROOT_ID} .maw-value[data-tone='warning']{color:var(--maw-warning)}
         #${PANEL_ROOT_ID} .maw-value[data-tone='danger']{color:var(--maw-danger)}
-        #${PANEL_ROOT_ID} .maw-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+        #${PANEL_ROOT_ID} .maw-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+        #${PANEL_ROOT_ID} .maw-actions>button{width:100%;min-width:0;height:auto;min-height:40px;padding-top:8px;padding-bottom:8px;line-height:1.25;white-space:normal}
+        #${PANEL_ROOT_ID} .maw-actions>button>span{min-width:0;overflow-wrap:anywhere}
         #${PANEL_ROOT_ID} .maw-actions .maw-wide{grid-column:1/-1}
         #${PANEL_ROOT_ID} .maw-primary{border:1px solid var(--maw-primary);background:var(--maw-primary);color:var(--maw-primary-fg);box-shadow:0 1px 2px rgba(0,0,0,.08)}
         #${PANEL_ROOT_ID} .maw-primary:hover{border-color:#303030;background:#303030}
@@ -1420,10 +1423,9 @@ oversized
         #${PANEL_ROOT_ID} .maw-footer-tools{display:flex;align-items:center;justify-content:flex-end;gap:7px;min-width:0}
         #${PANEL_ROOT_ID} .maw-footer a{display:inline-flex;align-items:center;gap:5px;color:#525252;font-weight:600;text-decoration:none}
         #${PANEL_ROOT_ID} .maw-footer a:hover{color:#171717;text-decoration:underline;text-underline-offset:3px}
-        #${PANEL_ROOT_ID} .maw-collapsed-tab{display:none;width:44px;height:58px;min-height:58px;padding:0;border:1px solid #2b2b2b;border-right:0;border-radius:9px 0 0 9px;background:#1f1f1f;color:#fff;box-shadow:0 8px 22px rgba(0,0,0,.18)}
-        #${PANEL_ROOT_ID}.is-collapsed{right:0;top:148px;width:44px}
-        #${PANEL_ROOT_ID}.is-collapsed .maw-card{display:none}
-        #${PANEL_ROOT_ID}.is-collapsed .maw-collapsed-tab{display:flex}
+        #${PANEL_ROOT_ID} .maw-collapsed-tab{width:62px;height:52px;min-height:52px;padding:0;border:1px solid #d7d7d7;border-right:0;border-radius:10px 0 0 10px;background:#fff;color:#171717;box-shadow:0 10px 26px rgba(0,0,0,.17)}
+        #${PANEL_ROOT_ID} .maw-collapsed-logo{display:block;width:43px;height:auto;object-fit:contain}
+        #${PANEL_ROOT_ID}.is-collapsed{right:0;top:148px;width:62px}
         #${TOAST_ROOT_ID}{position:fixed;right:18px;bottom:18px;z-index:2147483647;max-width:390px;display:flex;flex-direction:column;gap:8px;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;pointer-events:none}
         .maw-toast{opacity:0;transform:translateY(8px);padding:11px 13px;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:#262626;color:#fff;box-shadow:0 12px 28px rgba(15,23,42,.2);font-size:12.5px;line-height:1.45;white-space:pre-line;transition:opacity .2s ease,transform .2s ease}
         .maw-toast.is-visible{opacity:1;transform:translateY(0)}.maw-toast.success{background:#276749}.maw-toast.warning{background:#8a5a00}.maw-toast.error{background:#b91c1c}
@@ -1454,7 +1456,7 @@ oversized
         .maw-modal-footer{padding:12px 16px;display:flex;align-items:center;justify-content:flex-end;gap:8px;border-top:1px solid var(--maw-border);background:#fafafa}
         .maw-modal-status{margin-right:auto;color:#737373;font-size:11.5px}.maw-modal-status.is-dirty{color:#8a5a00}.maw-modal-status.is-saved{color:#276749}
         .maw-modal .maw-primary{border:1px solid #1f1f1f;background:#1f1f1f;color:#fafafa}.maw-modal .maw-primary:hover{background:#303030;border-color:#303030}
-        @media(max-width:760px){#${PANEL_ROOT_ID}{top:auto;right:12px;bottom:12px;left:12px;width:auto}#${PANEL_ROOT_ID}.is-collapsed{top:auto;right:0;bottom:88px;left:auto;width:44px}#${PANEL_ROOT_ID} .maw-card{max-height:calc(100dvh - 24px);overflow-x:hidden;overflow-y:auto}#${PANEL_ROOT_ID} .maw-head{position:sticky;top:0;z-index:2}#${PANEL_ROOT_ID} .maw-grid,#${PANEL_ROOT_ID} .maw-actions{grid-template-columns:1fr}#${PANEL_ROOT_ID} .maw-actions .maw-wide{grid-column:auto}#${TOAST_ROOT_ID}{right:12px;bottom:12px;left:auto;width:min(320px,calc(100vw - 24px));max-width:none}#${TOAST_ROOT_ID} .maw-toast{width:100%}#${TOAST_ROOT_ID} .maw-toast:nth-last-child(n+3){display:none}.maw-modal-backdrop{padding:10px}.maw-modal{width:100%;max-height:calc(100dvh - 20px)}.maw-modal-body{padding:12px}.maw-form-grid{grid-template-columns:1fr}.maw-rule-input,.maw-rule-select,.maw-rule-search{height:44px;font-size:16px}.maw-rule-submit{width:100%;height:44px;min-height:44px!important}.maw-rule-form-meta{align-items:flex-start;flex-wrap:wrap}.maw-cancel-edit{margin-left:auto}.maw-section-head{align-items:flex-start;flex-wrap:wrap}.maw-rule-search-wrap{width:100%}.maw-rule-list{max-height:42vh}.maw-rule-row{grid-template-columns:1fr auto;gap:7px}.maw-rule-badge{grid-column:1;justify-self:start}.maw-rule-value{grid-column:1}.maw-rule-actions{grid-column:2;grid-row:1/3}.maw-row-btn{width:38px!important;min-width:38px!important;height:38px!important;min-height:38px!important}.maw-modal-footer{flex-wrap:wrap}.maw-modal-footer>button{flex:1}.maw-modal-status{width:100%;margin:0 0 4px}}
+        @media(max-width:760px){#${PANEL_ROOT_ID}{top:auto;right:12px;bottom:12px;left:12px;width:auto}#${PANEL_ROOT_ID}.is-collapsed{top:auto;right:0;bottom:88px;left:auto;width:62px}#${PANEL_ROOT_ID} .maw-card{max-height:calc(100dvh - 24px)}#${PANEL_ROOT_ID} .maw-head{position:sticky;top:0;z-index:2}#${PANEL_ROOT_ID} .maw-grid,#${PANEL_ROOT_ID} .maw-actions{grid-template-columns:1fr}#${PANEL_ROOT_ID} .maw-actions .maw-wide{grid-column:auto}#${TOAST_ROOT_ID}{right:12px;bottom:12px;left:auto;width:min(320px,calc(100vw - 24px));max-width:none}#${TOAST_ROOT_ID} .maw-toast{width:100%}#${TOAST_ROOT_ID} .maw-toast:nth-last-child(n+3){display:none}.maw-modal-backdrop{padding:10px}.maw-modal{width:100%;max-height:calc(100dvh - 20px)}.maw-modal-body{padding:12px}.maw-form-grid{grid-template-columns:1fr}.maw-rule-input,.maw-rule-select,.maw-rule-search{height:44px;font-size:16px}.maw-rule-submit{width:100%;height:44px;min-height:44px!important}.maw-rule-form-meta{align-items:flex-start;flex-wrap:wrap}.maw-cancel-edit{margin-left:auto}.maw-section-head{align-items:flex-start;flex-wrap:wrap}.maw-rule-search-wrap{width:100%}.maw-rule-list{max-height:42vh}.maw-rule-row{grid-template-columns:1fr auto;gap:7px}.maw-rule-badge{grid-column:1;justify-self:start}.maw-rule-value{grid-column:1}.maw-rule-actions{grid-column:2;grid-row:1/3}.maw-row-btn{width:38px!important;min-width:38px!important;height:38px!important;min-height:38px!important}.maw-modal-footer{flex-wrap:wrap}.maw-modal-footer>button{flex:1}.maw-modal-status{width:100%;margin:0 0 4px}}
     `);
 
     const ICON_PATHS = {
@@ -1595,16 +1597,22 @@ oversized
 
     // ─── DOM helpers ──────────────────────────────────────────────────────────
 
+    function getReadableCellText(cellEl) {
+        if (!cellEl) return null;
+        const textEl = Array.from(cellEl.querySelectorAll('p, span')).find((candidate) => {
+            if (!candidate.textContent?.trim()) return false;
+            return !candidate.closest(
+                '[aria-hidden="true"], [hidden], .wt-table--responsive__title, '
+                + '.wt-screen-reader-only, button, label, [role="button"], [role="switch"]'
+            );
+        });
+        return textEl?.textContent?.trim() || null;
+    }
+
     /** Extract keyword text from a table row */
     function getRowWord(rowEl) {
         const wordCell = rowEl.querySelector('th.wt-table__row__cell');
-        if (!wordCell) return null;
-        const wordEl = Array.from(wordCell.querySelectorAll(':scope > p, :scope > span')).find(
-            (candidate) => candidate.getAttribute('aria-hidden') !== 'true' &&
-                !candidate.closest('.wt-table--responsive__title') &&
-                !candidate.matches('.wt-screen-reader-only')
-        );
-        return wordEl?.textContent?.trim() || null;
+        return getReadableCellText(wordCell);
     }
 
     /** All keyword rows currently in the DOM */
@@ -1617,7 +1625,10 @@ oversized
     }
 
     function waitForKeywordRows(timeoutMs = INITIAL_ROWS_TIMEOUT_MS) {
-        return waitUntil(() => getAllRows().length > 0, timeoutMs);
+        return waitUntil(() => {
+            const rows = getAllRows();
+            return rows.length > 0 && rows.every((row) => Boolean(getRowWord(row)));
+        }, timeoutMs);
     }
 
     /** Rows whose keyword matches the current wordlist */
@@ -1650,8 +1661,7 @@ oversized
         const cell = semanticCell || (columnIndex >= 0 ? row.children[columnIndex] : null);
         if (!cell) return 0;
 
-        const valueEl = cell?.querySelector(':scope > p, :scope > span');
-        const rawValue = valueEl?.textContent ?? '';
+        const rawValue = getReadableCellText(cell) ?? '';
         const integerText = rawValue.replace(/[^\d-]/g, '');
         return integerText ? Number(integerText) : 0;
     }
@@ -1837,9 +1847,18 @@ oversized
         if (highEl) highEl.dataset.tone = highCount ? 'danger' : '';
     }
 
+    function renderPanelVisibility() {
+        if (!panelEl) return;
+        panelEl.classList.toggle('is-collapsed', panelCollapsed);
+        const card = panelEl.querySelector('.maw-card');
+        const launcher = panelEl.querySelector('.maw-collapsed-tab');
+        if (card) card.hidden = panelCollapsed;
+        if (launcher) launcher.hidden = !panelCollapsed;
+    }
+
     async function setPanelCollapsed(collapsed) {
         panelCollapsed = Boolean(collapsed);
-        panelEl?.classList.toggle('is-collapsed', panelCollapsed);
+        renderPanelVisibility();
         try { await GM.setValue(PANEL_COLLAPSED_KEY, panelCollapsed); }
         catch { /* Panel state persistence is optional. */ }
         if (!panelCollapsed && panelEl?.isConnected) telemetryPanelOpened();
@@ -1898,10 +1917,10 @@ oversized
                     <footer class="maw-footer"><a href="${MAKAYTRON_WEBSITE_URL}" target="_blank" rel="noopener noreferrer">Makaytron</a><div class="maw-footer-tools"><button type="button" class="maw-lang-btn" data-language-toggle data-busy-action aria-label="${t('switchLanguage')}" title="${t('switchLanguage')}">${currentLanguage === 'tr' ? 'EN' : 'TR'}</button><span data-safe-mode>${t('safeMatchMode')}</span></div></footer>
                 </div>
             </div>
-            <button type="button" class="maw-collapsed-tab" data-expand aria-label="${t('expandPanel')}" title="${t('expandPanel')}">${uiIcon('chevronLeft')}</button>
+            <button type="button" class="maw-collapsed-tab" data-expand aria-label="${t('expandPanel')}" title="${t('expandPanel')}"><img class="maw-collapsed-logo" src="${MAKAYTRON_LOGO_URL}" alt=""></button>
         `;
         document.documentElement.appendChild(panelEl);
-        panelEl.classList.toggle('is-collapsed', panelCollapsed);
+        renderPanelVisibility();
         if (!panelCollapsed) telemetryPanelOpened();
         applyPanelLanguage();
         panelEl.querySelector('[data-collapse]')?.addEventListener('click', () => { void setPanelCollapsed(true); });

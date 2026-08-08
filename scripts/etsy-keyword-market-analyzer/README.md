@@ -2,7 +2,7 @@
 
 **Kısa ad:** Etsy Keyword & Market Analyzer
 
-**Sürüm:** 1.0.2
+**Sürüm:** 1.0.3
 
 Etsy Marketplace Insights sonuç sayfasındaki ana sorguyu ve en fazla 25 benzer arama terimini okur. Her anahtar kelimenin altında Etsy'nin 30 günlük arama sayısını, arama sonucu göstergesini, varsa 7 günlük değişimi, yakalama zamanını ve açıkça Makaytron tarafından türetilen fırsat puanını gösterir.
 
@@ -52,7 +52,7 @@ Listing Analyzer yoksa bağımsız özellikler etkilenmez. Entegrasyon sonucu hi
 | `@match https://www.etsy.com/your/shops/*/marketplace-insights*` | Yalnız Marketplace Insights açılış ve sonuç rotalarında çalışmak için. |
 | `GM.getValue`, `GM.setValue`, `GM.deleteValue` | Ayar, üst sınırlı yapılandırılmış yakalama, kuyruk, geçerli sonuç zarfları, sekmeler arası kısa süreli işlemci lease'i ve 7 günlük cache; ayrıca açık onaylı yerel veri temizliği için. |
 | `GM_registerMenuCommand` | Panel, yakalama, tam araştırma zarfı fallback'i, dışa aktarma ve manuel güncelleme denetimi kısayolları için. |
-| `GM.xmlHttpRequest` + `@connect raw.githubusercontent.com` | En fazla 24 saatte bir, non-blocking canonical sürüm kontrolü için. `GM.xmlHttpRequest` Etsy için kullanılmaz; normal Marketplace Insights `query` navigasyonu yukarıda açıklanmıştır. |
+| `GM.xmlHttpRequest` + `@connect api.github.com` / `raw.githubusercontent.com` | En fazla 24 saatte bir public `main` commit kimliğini ve yalnız o değişmez committeki canonical userscript metadata'sını denetlemek için. `GM.xmlHttpRequest` Etsy için kullanılmaz; normal Marketplace Insights `query` navigasyonu yukarıda açıklanmıştır. |
 | `GM.xmlHttpRequest` + `@connect` | Görünür ilk kullanım bildirimiyle varsayılan açık sınırlı psödonimleştirilmiş telemetri ve tek tık opt-out silme isteği için. |
 | `GM.openInTab` | Yalnız kullanıcı onayından sonra canonical `.user.js` kurulum sayfasını açmak için. Son onay userscript yöneticisindedir. |
 | `GM.info` | Kurulum kaynağını ayırt edip başka dağıtım platformlarının güncelleme mekanizmasını zorlamamak için. |
@@ -93,7 +93,8 @@ Birincil güncelleme yolu userscript yöneticisinin `@updateURL` / `@downloadURL
 - ağ hatasında ana analiz özelliğini engellemez;
 - manuel `Şimdi güncelleme denetle` eylemini destekler;
 - aktif araştırma varken kurulum sayfasını açmaz;
-- ancak kullanıcı onayından sonra canonical sayfayı açar; script kendini değiştirmez.
+- yalnız tam ürün adı, namespace, sürüm ve canonical `@updateURL` / `@downloadURL` metadata'sı doğrulanan değişmez commit dosyasını açar;
+- ancak kullanıcı onayından sonra SHA'ya sabitlenmiş doğru `.user.js` dosyasını Tampermonkey onay ekranında açar; script kendini değiştirmez.
 
 ## Sınırlar
 

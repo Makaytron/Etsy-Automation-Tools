@@ -2,7 +2,7 @@
 
 **Short name:** Etsy Keyword & Market Analyzer
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 
 Reads the primary query and up to 25 similar search terms from an Etsy Marketplace Insights result page. Beneath each keyword, it shows Etsy's 30-day searches, search-result indicator, optional 7-day change, capture time, and an opportunity score explicitly identified as derived by Makaytron.
 
@@ -52,7 +52,7 @@ Standalone features are unaffected when Listing Analyzer is absent. Integration 
 | `@match https://www.etsy.com/your/shops/*/marketplace-insights*` | Run only on Marketplace Insights landing and result routes. |
 | `GM.getValue`, `GM.setValue`, `GM.deleteValue` | Store settings, bounded structured captures, queue, valid result envelopes, short cross-tab processor lease, and seven-day cache; also supports explicitly confirmed local-data cleanup. |
 | `GM_registerMenuCommand` | Panel, capture, complete-envelope fallback, export, and manual update-check shortcuts. |
-| `GM.xmlHttpRequest` + `@connect raw.githubusercontent.com` | Non-blocking canonical version check no more than once per 24 hours. `GM.xmlHttpRequest` is never used for Etsy; normal Marketplace Insights `query` navigation is documented above. |
+| `GM.xmlHttpRequest` + `@connect api.github.com` / `raw.githubusercontent.com` | Check the public `main` commit identity and canonical userscript metadata only at that immutable commit, no more than once per 24 hours. `GM.xmlHttpRequest` is never used for Etsy; normal Marketplace Insights `query` navigation is documented above. |
 | `GM.xmlHttpRequest` + `@connect` | Bounded pseudonymous telemetry, enabled by default with a visible first-use notice, and its one-click opt-out deletion request. |
 | `GM.openInTab` | Open the canonical `.user.js` installation page only after user approval. The userscript manager owns final confirmation. |
 | `GM.info` | Detect installation source and avoid forcing GitHub updates over another distributor's mechanism. |
@@ -93,7 +93,8 @@ The userscript manager's `@updateURL` / `@downloadURL` mechanism is primary. The
 - never blocks core analysis on a network failure;
 - supports a manual `Check for updates now` action;
 - blocks opening the installation page while research is active;
-- opens the canonical page only after user confirmation and never replaces the script itself.
+- opens only an immutable-commit file whose exact product name, namespace, version, and canonical `@updateURL` / `@downloadURL` metadata were verified;
+- opens the SHA-pinned correct `.user.js` file in Tampermonkey's confirmation screen only after user confirmation and never replaces the script itself.
 
 ## Limits
 

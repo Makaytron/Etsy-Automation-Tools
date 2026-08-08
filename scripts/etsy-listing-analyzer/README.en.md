@@ -1,6 +1,6 @@
 # Makaytron Etsy Listing Analyzer
 
-Version: `1.0.2`
+Version: `1.0.4`
 
 A Tampermonkey userscript that reads visible performance data from Etsy Shop Manager listing cards without asking for a separate API key or OAuth connection, evaluates local history with Health Engine, and prepares listing-level, user-approved improvement queues.
 
@@ -21,14 +21,14 @@ Every image below is an element-level capture of the userscript itself. No Etsy 
 ## Features
 
 - A collapsible premium card workspace built from pure black, white, and neutral gray Makaytron surfaces; semantic color is limited to rise/fall deltas, lifecycle pills, and the activity line, alongside standardized toasts and persistent Turkish/English selection.
-- Extracts listing ID from the edit link and reads title, SKU, stock, price, status, 30-day visits/favorites, and all-time sales/revenue/renewals.
-- **Collect all pages** or `Ctrl + Alt + A` walks Etsy listing pages from page 1 to the end, returns to page 1, and shows analysis cards only after that return succeeds. Temporary card/read and navigation failures are retried three times with increasing delays; exhaustion produces a safe detailed report with page, phase, attempts, and technical counts. The same control pauses and resumes the persisted run.
-- Once the completed run—or its oldest captured page—reaches 24 hours, **Listing analysis** hides stale cards and does not start collection automatically. The run must also match the current Etsy scope and page count. The centered **Start analysis** control—or the `Ctrl + Alt + A` shortcut shown directly below it—starts a fresh full run only after the user acts; cards unlock when it completes.
-- Search plus scope, lifecycle, issue/opportunity, performance, change, stock, and confidence filters; context-aware counts on every facet option; six built-in presets; up to eight custom presets; sorting; and 40-card batches keep large shops navigable.
+- Extracts the listing ID from the edit link and reads title, SKU, stock, price, renewal/expiry text, 30-day visits/favorites, and all-time sales/revenue/renewals; it verifies the real active/draft/expired/sold-out/inactive state separately from Etsy's status filter.
+- **Collect all pages** or `Ctrl + Alt + A` walks Etsy listing pages from page 1 to the end, returns to page 1, and shows analysis cards only after that return succeeds. It validates pagination and card counts on every page, reads statistic rows only inside canonical listing cards, and requires three consecutive identical complete reads before saving. Missing metrics, repeated/overlapping pages, or mixed transient DOM state keep analysis locked. Temporary card/read and navigation failures are retried three times with increasing delays; exhaustion produces a safe detailed report with page, phase, attempts, and technical counts. The same control pauses and resumes the persisted run.
+- Once the completed run—or its oldest captured page—reaches 24 hours, **Listing analysis** hides stale cards and does not start collection automatically. The run must also match the verified public shop identity from seller navigation, the current Etsy scope, and page count; collection fails closed when that identity cannot be verified. The centered **Start analysis** control—or the `Ctrl + Alt + A` shortcut shown directly below it—starts a fresh full run only after the user acts; cards unlock when it completes.
+- Search plus scope, lifecycle, issue/opportunity, rolling 30-day performance, change, stock, and confidence filters; context-aware counts on every facet option; six built-in presets; up to eight custom presets; sorting; and 40-card batches keep large shops navigable.
 - The Makaytron logo in panel and modal headers opens `makaytron.com` safely in a new tab.
-- Replaces the same-day snapshot and keeps at most 120 snapshots and 400 days per listing in local Tampermonkey storage.
+- Replaces the same-day snapshot without carrying a metric missing from the new capture forward as if it were fresh, and keeps at most 120 snapshots and 400 days per listing in local Tampermonkey storage.
 - Health Engine considers lifecycle, a performance hypothesis, confidence, decision evidence, and the next review time as one evaluation context.
-- Considers a within-shop comparison group (cohort) when enough comparable local records exist; weak samples leave the result low-confidence or inconclusive.
+- Builds a within-shop comparison group (cohort) only from fresh listings in the current completed collection; stale, anomalous, and out-of-scope records are not peers. Weak samples leave the result low-confidence or inconclusive.
 - Renders accessible inline SVG history charts for visits, favorites, sales, revenue, and renewals without coercing missing values to zero.
 - Records improvement proposals, their baseline snapshot, and verified publish outcome, then renders a planned/published/observing/evaluation/result experiment timeline.
 - Creates AI-request JSON with opaque references such as `L001`; real listing IDs are not copied outside the script.
@@ -88,7 +88,7 @@ If no compatible companion responds, Listing Analyzer does not begin any install
 
 When the companion is available, the selected listing uses this bounded delivery:
 
-1. Analyzer stores an opaque `L001`, one seed keyword by default in v1.0.2, and a title/tag SHA-256 hash in its bounded GM storage for ten minutes; the real listing ID remains local.
+1. Analyzer stores an opaque `L001`, one seed keyword by default, and a title/tag SHA-256 hash in its bounded GM storage for ten minutes; the real listing ID remains local.
 2. The Insights tab opens at the canonical Marketplace Insights address without putting the nonce, seed, or payload in its query or fragment. Bounded retries allow its userscript listener to load and complete `PROBE → CAPABILITIES + RESEARCH_READY`; all delivery then stays on `BroadcastChannel` through `RESEARCH_REQUEST → RESEARCH_ACK → RESEARCH_RESULT → RESEARCH_RECEIVED`.
    While processing a seed, Keyword & Market Analyzer opens Etsy's normal Marketplace Insights search with a `query` value. This is a real Etsy Insights query: it may consume the search allowance Etsy provides to the account and, depending on the plan, may incur a query charge. The inter-script nonce, request ID, and payload are not added to that URL.
 3. Every envelope validates a versioned schema, exact key set, field types, sender, expiry, one-time nonce, and 64 KiB limit; numeric metrics must be numbers or `null`. Changed content, expired messages, unknown/extra fields, and conflicting replays fail closed. For a matching but invalid result, Listing Analyzer sends terminal `RESULT_REJECTED`; the companion removes that pending result and its seed data from the queue.

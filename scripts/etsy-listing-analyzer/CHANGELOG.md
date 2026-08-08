@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.4 - 2026-08-08
+
+- Tightened final GitHub URL equality to reject fragment and credential drift as well as host, port, path, and query drift.
+- Require exactly one trusted product name, namespace, SemVer, `@updateURL`, and `@downloadURL` before opening the verified immutable-commit userscript in Tampermonkey.
+- Added automated warning, click handoff, current-version, active collection/action-queue, redirect, API-ref, identity, and wrong-file tests.
+- Made all-page collection wait for three identical complete card reads, validate pagination and the seller-nav public shop identity, ignore transient tracking parameters, reject cross-page listing overlap, and invalidate older collection manifests before analysis unlocks.
+- Reconciled page identity with Etsy's strict listings-route `page` parameter and made pagination prefer the shadow select's input/change contract, so stale serialized select values and icon-button event differences no longer block pages 2 through the final page.
+- Scoped metrics to listing-card statistic rows so title text and menu Edit links cannot be mistaken for visits, favorites, sales, revenue, or renewals; missing metrics now stop the page read instead of being accepted.
+- Separated the card renewal/expiry text from Etsy's real active/draft/expired/sold-out/inactive state, bound that state to collection scope, and excluded non-active listings from active cohorts and deactivation safeguards.
+- Updated Health Engine to keep missing observations unknown, require real 60-day evidence for dormant status, isolate benchmarks to the current complete collection, exclude stale/anomalous peers, and keep deactivation fail-closed until non-seasonal status is explicit.
+- Changed performance filters and threshold calibration to rolling 30-day results, bounded percentile scores to 0–100, preserved detected revenue currency, and added offline regression coverage for the corrected parser, collection, snapshot, and analysis rules.
+- Etsy editing, publishing, and user-confirmed deactivation boundaries remain unchanged.
+
 ## 1.0.2 - 2026-08-04
 
 - Finalized the public distribution release after the immutable tag-only `v1.0.1` checkpoint.

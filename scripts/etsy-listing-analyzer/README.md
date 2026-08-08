@@ -1,6 +1,6 @@
 # Makaytron Etsy Listing Analyzer
 
-**Sürüm:** 1.0.2 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.0.4 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 Etsy Shop Manager listing kartlarındaki görünür performans verilerini ayrı bir API anahtarı veya OAuth bağlantısı istemeden okuyan; Health Engine ile yerel geçmişi değerlendiren ve listing bazında kullanıcı onaylı iyileştirme kuyruğu hazırlayan Tampermonkey userscriptidir.
 
@@ -21,14 +21,14 @@ Aşağıdaki her görsel yalnız userscript öğesinden alınmıştır. Etsy say
 ## Neler yapar?
 
 - Saf siyah, beyaz ve nötr gri Makaytron yüzeylerini kullanan; yalnız anlam taşıyan artış/düşüş, yaşam döngüsü rozeti ve aktivite çizgisinde semantik renk kullanan açılır/kapanır premium kart çalışma alanı, standart toast bildirimleri ve kalıcı TR/EN dil seçimi sunar.
-- Listing bağlantısından ID’yi çıkarır ve karttaki başlık, SKU, stok, fiyat, durum, son 30 gün ziyaret/favori, tüm zamanlar satış/gelir/yenileme değerlerini okur.
-- **Tüm sayfaları tara** düğmesi veya `Ctrl + Alt + A` ile Etsy listing sayfalarını 1’den son sayfaya kadar sırayla toplar, ardından yeniden 1. sayfaya döner ve analiz kartlarını yalnız bu dönüş tamamlanınca gösterir. Geçici kart/yükleme ve sayfa geçişi hatalarını artan bekleme ile üç kez dener; sonuç alamazsa sayfa, aşama, deneme ve teknik sayaçları içeren güvenli bir ayrıntılı rapor üretir. Aynı düğme taramayı durdurur ve kaldığı yerden devam ettirir.
-- Son tamamlanan tüm-sayfa taraması veya taramadaki en eski sayfa 24 saati doldurduğunda **Listing analizleri** eski kartları göstermez ve kendiliğinden tarama başlatmaz. Taramanın güncel Etsy kapsamı ve sayfa sayısıyla da eşleşmesi gerekir. Ortadaki **Analizi başlat** düğmesi veya hemen altında gösterilen `Ctrl + Alt + A` kısayolu yeni tam taramayı kullanıcı kararıyla başlatır; tamamlanınca kartlar açılır.
-- Arama; kayıt kapsamı, yaşam döngüsü, sorun/fırsat, performans, değişim, stok ve veri güveni filtreleri; her seçenekte bağlama göre sonuç adedi, altı hazır preset, en fazla sekiz özel preset, öncelik/ziyaret/satış/gelir/güven sıralaması ve sonuç sayacı sunar. Büyük mağazalarda kartlar 40’lık gruplarla yüklenir.
+- Listing bağlantısından ID’yi çıkarır ve karttaki başlık, SKU, stok, fiyat, yenileme/bitiş metni, son 30 gün ziyaret/favori, tüm zamanlar satış/gelir/yenileme değerlerini okur; gerçek aktif/taslak/süresi dolmuş/tükenmiş/pasif durumunu Etsy’nin durum filtresinden ayrı doğrular.
+- **Tüm sayfaları tara** düğmesi veya `Ctrl + Alt + A` ile Etsy listing sayfalarını 1’den son sayfaya kadar sırayla toplar, ardından yeniden 1. sayfaya döner ve analiz kartlarını yalnız bu dönüş tamamlanınca gösterir. Her sayfada numaralandırma ve kart sayısını doğrular; yalnız listing kartının istatistik satırlarını okur ve aynı eksiksiz içeriği art arda üç kez görmeden kaydetmez. Eksik metrik, yinelenen/örtüşen sayfa veya geçici DOM karışımında analiz açılmaz. Geçici kart/yükleme ve sayfa geçişi hatalarını artan bekleme ile üç kez dener; sonuç alamazsa sayfa, aşama, deneme ve teknik sayaçları içeren güvenli bir ayrıntılı rapor üretir. Aynı düğme taramayı durdurur ve kaldığı yerden devam ettirir.
+- Son tamamlanan tüm-sayfa taraması veya taramadaki en eski sayfa 24 saati doldurduğunda **Listing analizleri** eski kartları göstermez ve kendiliğinden tarama başlatmaz. Taramanın seller-nav içindeki doğrulanmış public mağaza kimliği, güncel Etsy kapsamı ve sayfa sayısıyla da eşleşmesi gerekir; mağaza kimliği doğrulanamazsa tarama güvenli biçimde başlamaz. Ortadaki **Analizi başlat** düğmesi veya hemen altında gösterilen `Ctrl + Alt + A` kısayolu yeni tam taramayı kullanıcı kararıyla başlatır; tamamlanınca kartlar açılır.
+- Arama; kayıt kapsamı, yaşam döngüsü, sorun/fırsat, son 30 günlük performans, değişim, stok ve veri güveni filtreleri; her seçenekte bağlama göre sonuç adedi, altı hazır preset, en fazla sekiz özel preset, öncelik/ziyaret/satış/gelir/güven sıralaması ve sonuç sayacı sunar. Büyük mağazalarda kartlar 40’lık gruplarla yüklenir.
 - Panel ve modal başlığındaki Makaytron logosu `makaytron.com` adresini güvenli biçimde yeni sekmede açar.
-- Aynı günkü snapshotı günceller; listing başına en fazla 120 snapshotı ve en fazla 400 günlük geçmişi yerel Tampermonkey alanında tutar.
+- Aynı günkü snapshotı günceller; yeni okumada eksik kalan metriği önceki değerden taşıyıp güncelmiş gibi göstermez. Listing başına en fazla 120 snapshotı ve en fazla 400 günlük geçmişi yerel Tampermonkey alanında tutar.
 - Health Engine değerlendirme bağlamında yaşam döngüsünü, performans hipotezini, güven düzeyini, karar kanıtlarını ve sonraki inceleme zamanını birlikte ele alır.
-- Yeterli ve karşılaştırılabilir yerel kayıt bulunduğunda mağaza içi karşılaştırma grubunu (cohort) dikkate alır; örneklem zayıfsa sonuç düşük güvenli veya belirsiz kalır.
+- Yeterli ve karşılaştırılabilir kayıt bulunduğunda yalnız güncel, tamamlanmış taramadaki listinglerden mağaza içi karşılaştırma grubu (cohort) kurar; eski, anomalili veya tarama dışı kayıtları emsal yapmaz. Örneklem zayıfsa sonuç düşük güvenli veya belirsiz kalır.
 - Geçmiş ayrıntısında ziyaret, favori, satış, gelir ve yenileme için erişilebilir inline SVG değişim grafikleri gösterir; eksik değerleri sıfıra dönüştürmez.
 - İyileştirme önerilerini, başlangıç snapshotını ve doğrulanmış yayınlama sonucunu kaydeder; planlama, yayınlama, gözlem, değerlendirme tarihi ve sonucu ayrı olaylarla gösteren deney zaman çizelgesi oluşturur.
 - Seçili listingler için gerçek listing ID’lerini dışarı vermeyen `L001` benzeri geçici referanslarla AI istek JSON’u oluşturur.
@@ -88,7 +88,7 @@ Companion algılanmazsa script hiçbir kurulum başlatmaz. Modalda **İptal**, t
 
 Algılanırsa yalnız seçili tek listing için şu güvenli teslimat uygulanır:
 
-1. Analyzer, gerçek listing ID’si yerine `L001`, v1.0.2 varsayılanı olarak tek seed keyword ve başlık/etiket SHA-256 özetini kendi sınırlandırılmış GM deposunda 10 dakika saklar.
+1. Analyzer, gerçek listing ID’si yerine `L001`, varsayılan olarak tek seed keyword ve başlık/etiket SHA-256 özetini kendi sınırlandırılmış GM deposunda 10 dakika saklar.
 2. Insights sekmesi canonical Marketplace Insights adresinde, query veya fragment içine nonce, seed ya da payload yazılmadan açılır. Sekmenin userscript dinleyicisine yüklenme payı veren sınırlı tekrarlarla `PROBE → CAPABILITIES + RESEARCH_READY` el sıkışması tamamlanır; ardından tüm teslimat yalnız `BroadcastChannel` üzerinden `RESEARCH_REQUEST → RESEARCH_ACK → RESEARCH_RESULT → RESEARCH_RECEIVED` akışıyla yapılır.
    Keyword & Market Analyzer, seed'i işlerken Etsy'nin normal Marketplace Insights aramasını `query` değeriyle açar. Bu gerçek bir Etsy Insights sorgusudur; hesabınızın Etsy tarafından sağlanan sorgu kotasını kullanabilir ve planınıza göre sorgu maliyeti doğurabilir. Scriptler arası nonce, istek kimliği ve payload bu URL'ye eklenmez.
 3. Her envelope sürümlü şema, tam anahtar kümesi, alan tipi, kaynak, zaman aşımı, tek kullanımlık nonce ve 64 KiB sınırıyla doğrulanır; sayısal metrikler yalnız sayı veya `null` olabilir. Değişmiş içerik, süresi dolmuş mesaj, bilinmeyen/ek alan ve çakışan replay reddedilir. Eşleşen fakat geçersiz bir sonuç için Listing Analyzer terminal `RESULT_REJECTED` gönderir; companion ilgili bekleyen sonucu ve seed verisini kuyruğundan temizler.

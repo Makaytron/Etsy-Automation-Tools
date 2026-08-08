@@ -1,6 +1,6 @@
 # Distribution and update policy
 
-Version: `1.0.2`
+Suite version: `1.0.3`
 
 GitHub repository: <https://github.com/Makaytron/Etsy-Automation-Tools>
 
@@ -29,12 +29,12 @@ OpenUserJS is not an active distribution target. Its production publisher curren
 
 ## Release flow
 
-1. Change `VERSION`, all five metadata/runtime version markers, README version labels, and changelogs together.
-2. Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online` for local version, syntax, secret-pattern, and URL-reachability checks; then review `git diff --check`.
-3. Create a signed commit and signed `vX.Y.Z` tag from the reviewed commit.
+1. Version each standalone package independently. For a changed script, update only its metadata/runtime marker, package README files, latest changelog heading, and root README row. Change the suite `VERSION` and bundle release note only for an actual suite release.
+2. Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online` for local version, syntax, updater behavior, secret-pattern, and URL-reachability checks; then review `git diff --check`.
+3. Create a signed commit and a scope-matching signed tag from the reviewed commit: `vX.Y.Z` for a suite release or `<package-slug>-vX.Y.Z` for one standalone package.
 4. After pushing canonical `main`, run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online -RemoteParity` to prove that every public Raw file is byte-equivalent to its local source.
 5. Publish the complete GitHub Release once. The release-only webhook requests an immediate Greasy Fork refresh from the configured exact Raw `main` paths; Greasy Fork's own automatic synchronization may also poll those paths.
-6. Verify every Greasy Fork listing shows the same version and confirm downstream indexing/mirroring.
+6. Verify the affected Greasy Fork listing shows its new package version, confirm unchanged listings kept their versions, and then confirm downstream indexing/mirroring.
 
 ## Security invariants
 

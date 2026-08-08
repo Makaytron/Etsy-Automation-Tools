@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-08-04
+
+### Changed
+
+- Synchronized the standalone package version with the reviewed analyzer updater release; no Etsy campaign, navigation, storage, or write behavior changed.
+
 ## [1.0.2] - 2026-08-04
 
 ### Changed

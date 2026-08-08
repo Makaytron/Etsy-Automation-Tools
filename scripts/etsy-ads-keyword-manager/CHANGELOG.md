@@ -4,6 +4,15 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.0.3] - 2026-08-08
+
+### Fixed
+
+- Etsy'nin anahtar kelime metnini ek `div` katmanları içine taşıdığı yeni Ads tablo yapısında satır metni artık güvenli biçimde okunur; responsive kolon başlığı, gizli ve yardımcı erişilebilirlik metinleri eşleşme dışında bırakılır.
+- Anahtar kelime satırları yalnız DOM'a eklenmiş olmakla kalmayıp okunabilir metinle hydrate edilene kadar beklenir; erken `Anahtar kelime satırları yüklenemedi` hatası önlenir.
+- Clicks/Orders metrikleri aynı görünür-içerik okuyucusunu kullanarak iç içe hücre yapılarında doğru ayrıştırılır.
+- Panel düğmeleri dar alanda taşmadan sarılır, kısa ekranlarda panel içi kaydırma çalışır ve kapalı panel açma sekmesi diğer Makaytron araçlarındaki logo görünümüne uyarlanır.
+
 ## [1.0.2] - 2026-08-04
 
 ### Changed

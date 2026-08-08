@@ -61,6 +61,7 @@ $onlineUrls.Add($canonicalRepo)
 $onlineUrls.Add("$canonicalRepo/issues")
 $onlineUrls.Add('https://api.github.com/repos/Makaytron/Etsy-Automation-Tools/commits/main')
 $remoteParityFiles = [System.Collections.Generic.List[object]]::new()
+$scriptVersions = @{}
 
 foreach ($script in $scripts) {
     $source = [System.IO.File]::ReadAllText($script.FullName, [System.Text.Encoding]::UTF8)
@@ -71,12 +72,29 @@ foreach ($script in $scripts) {
 
     $metadataVersion = @(Metadata-Values -Source $source -Key 'version')
     Assert-True ($metadataVersion.Count -eq 1) "$relativePath must contain exactly one @version."
-    Assert-True ($metadataVersion[0] -eq $version) "$relativePath metadata version $($metadataVersion[0]) does not match VERSION $version."
+    $scriptVersion = $metadataVersion[0]
+    Assert-True ($scriptVersion -match '^\d+\.\d+\.\d+$') "$relativePath @version is not strict SemVer: $scriptVersion"
+    $scriptVersions[$slug] = $scriptVersion
 
     $runtimePattern = '(?m)^\s*const\s+(?:APP_VERSION|VERSION)\s*=\s*[''"](?<version>\d+\.\d+\.\d+)[''"]\s*;\s*\r?$'
     $runtimeMatches = @([regex]::Matches($source, $runtimePattern))
     Assert-True ($runtimeMatches.Count -eq 1) "$relativePath must contain exactly one runtime version marker."
-    Assert-True ($runtimeMatches[0].Groups['version'].Value -eq $version) "$relativePath runtime version does not match VERSION $version."
+    Assert-True ($runtimeMatches[0].Groups['version'].Value -eq $scriptVersion) "$relativePath runtime version does not match @version $scriptVersion."
+
+    $readmeVersionPattern = '(?m)^(?:\*\*[^*\r\n]+:\*\*|Version:)\s+`?{0}`?(?:\s|$)' -f [regex]::Escape($scriptVersion)
+    foreach ($readmeName in @('README.md', 'README.en.md')) {
+        $readmePath = Join-Path $script.Directory.FullName $readmeName
+        Assert-True (Test-Path -LiteralPath $readmePath -PathType Leaf) "$slug/$readmeName is missing."
+        $readmeSource = [System.IO.File]::ReadAllText($readmePath, [System.Text.Encoding]::UTF8)
+        Assert-True ([regex]::IsMatch($readmeSource, $readmeVersionPattern)) "$slug/$readmeName does not declare current version $scriptVersion."
+    }
+
+    $changelogPath = Join-Path $script.Directory.FullName 'CHANGELOG.md'
+    Assert-True (Test-Path -LiteralPath $changelogPath -PathType Leaf) "$slug/CHANGELOG.md is missing."
+    $changelogSource = [System.IO.File]::ReadAllText($changelogPath, [System.Text.Encoding]::UTF8)
+    $latestChangelog = [regex]::Match($changelogSource, '(?m)^##\s+\[?(?<version>\d+\.\d+\.\d+)\]?')
+    Assert-True ($latestChangelog.Success) "$slug/CHANGELOG.md has no release heading."
+    Assert-True ($latestChangelog.Groups['version'].Value -eq $scriptVersion) "$slug/CHANGELOG.md latest release does not match @version $scriptVersion."
 
     Assert-True ((Metadata-Values -Source $source -Key 'homepageURL') -join '' -eq $expectedHomepage) "$relativePath has a non-canonical @homepageURL."
     Assert-True ((Metadata-Values -Source $source -Key 'supportURL') -join '' -eq "$canonicalRepo/issues") "$relativePath has a non-canonical @supportURL."
@@ -95,8 +113,41 @@ foreach ($script in $scripts) {
         Path = $script.FullName
         RelativePath = $relativePath
     })
-    Write-Host "PASS $relativePath $version"
+    Write-Host "PASS $relativePath $scriptVersion"
 }
+
+foreach ($rootReadmeName in @('README.md', 'README.tr.md')) {
+    $rootReadmePath = Join-Path $repoRoot $rootReadmeName
+    $rootReadmeSource = [System.IO.File]::ReadAllText($rootReadmePath, [System.Text.Encoding]::UTF8)
+    foreach ($slug in $scriptVersions.Keys) {
+        $scriptVersion = $scriptVersions[$slug]
+        $pathPattern = [regex]::Escape("./scripts/$slug/")
+        $versionPattern = [regex]::Escape($scriptVersion)
+        $rowMatches = [regex]::Matches($rootReadmeSource, "(?m)^\|.*\($pathPattern\)\s*\|\s*$versionPattern\s*\|")
+        Assert-True ($rowMatches.Count -eq 1) "$rootReadmeName must list $slug exactly once at version $scriptVersion."
+    }
+}
+
+$distributionPath = Join-Path $repoRoot 'DISTRIBUTION.md'
+$distributionSource = [System.IO.File]::ReadAllText($distributionPath, [System.Text.Encoding]::UTF8)
+Assert-True ([regex]::IsMatch($distributionSource, ('(?m)^Suite version:\s+`{0}`\s*$' -f [regex]::Escape($version)))) 'DISTRIBUTION.md suite version does not match VERSION.'
+$releaseNotesPath = Join-Path $repoRoot "docs/releases/v$version.md"
+Assert-True (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf) "Release notes are missing: docs/releases/v$version.md"
+
+$updaterTestPath = Join-Path $repoRoot 'tools/Test-Updaters.mjs'
+Assert-True (Test-Path -LiteralPath $updaterTestPath -PathType Leaf) 'Updater behavior test is missing.'
+& node --test $updaterTestPath
+Assert-True ($LASTEXITCODE -eq 0) 'Updater behavior tests failed.'
+
+$listingAnalyzerTestPath = Join-Path $repoRoot 'tools/Test-Listing-Analyzer.mjs'
+Assert-True (Test-Path -LiteralPath $listingAnalyzerTestPath -PathType Leaf) 'Listing Analyzer behavior test is missing.'
+& node --test $listingAnalyzerTestPath
+Assert-True ($LASTEXITCODE -eq 0) 'Listing Analyzer behavior tests failed.'
+
+$adsKeywordManagerTestPath = Join-Path $repoRoot 'tools/Test-Ads-Keyword-Manager.mjs'
+Assert-True (Test-Path -LiteralPath $adsKeywordManagerTestPath -PathType Leaf) 'Ads Keyword Manager behavior test is missing.'
+& node --test $adsKeywordManagerTestPath
+Assert-True ($LASTEXITCODE -eq 0) 'Ads Keyword Manager behavior tests failed.'
 
 $secretPatterns = @(
     ('-----BEGIN ' + '(?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
@@ -105,7 +156,7 @@ $secretPatterns = @(
     ('sb_' + 'secret_[A-Za-z0-9_-]{20,}'),
     ('xox' + '[baprs]-[A-Za-z0-9-]{20,}')
 )
-$textExtensions = @('.js', '.json', '.md', '.ps1', '.txt', '.yaml', '.yml')
+$textExtensions = @('.js', '.mjs', '.json', '.md', '.ps1', '.txt', '.yaml', '.yml')
 $repositoryFiles = @(& git -C $repoRoot ls-files --cached --others --exclude-standard)
 Assert-True ($LASTEXITCODE -eq 0) 'git ls-files failed.'
 foreach ($relative in $repositoryFiles) {
@@ -150,4 +201,9 @@ if ($RemoteParity) {
     }
 }
 
-Write-Host "Distribution validation passed for five userscripts at version $version."
+$versionSummary = @(
+    $scriptVersions.GetEnumerator() |
+        Sort-Object Name |
+        ForEach-Object { "$($_.Name)=$($_.Value)" }
+) -join ', '
+Write-Host "Distribution validation passed for suite $version. Script versions: $versionSummary"

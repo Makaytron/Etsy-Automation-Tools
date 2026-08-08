@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.0.2
+// @version      1.0.4
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -36,7 +36,7 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.0.2';
+    const APP_VERSION = '1.0.4';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -709,12 +709,17 @@
 
     const RECORD_SCHEMA_VERSION = 1;
     const HEALTH_RESULT_SCHEMA_VERSION = 1;
-    const HEALTH_ENGINE_VERSION = 1;
+    const HEALTH_ENGINE_VERSION = 2;
     const HEALTH_POLICY_VERSION = 1;
+    const COLLECTION_SCHEMA_VERSION = 2;
     const MAX_COLLECTION_PAGES = 250;
     const COLLECTION_TRANSITION_TIMEOUT_MS = 15000;
     const COLLECTION_RETRY_ATTEMPTS = 3;
     const COLLECTION_RETRY_DELAYS_MS = Object.freeze([800, 1800]);
+    const COLLECTION_STABLE_SAMPLES = 3;
+    const COLLECTION_STABLE_SAMPLE_INTERVAL_MS = 250;
+    const COLLECTION_STABLE_READ_TIMEOUT_MS = 4000;
+    const SNAPSHOT_OBSERVATION_MAX_SKEW_MS = 15 * 60 * 1000;
     const ANALYSIS_BATCH_SIZE = 40;
     const ANALYSIS_FRESHNESS_MS = 24 * 60 * 60 * 1000;
     const MAX_FILTER_PRESETS = 8;
@@ -1038,7 +1043,7 @@
             guardActiveStock: 'Listing aktif ve stoklu',
             guardNoExperiment: 'Aktif deney yok',
             guardCooldown: 'Son 45 günde yayımlanan iyileştirme yok',
-            guardSeasonal: 'Mevsimsel koruma işareti yok',
+            guardSeasonal: 'Mevsimsel olmadığı açıkça doğrulandı',
             guardConfidence: 'Güven puanı en az 80',
             experimentPlanned: 'Planlandı',
             experimentObserving: 'İzleniyor · {day}/30 gün',
@@ -1058,7 +1063,7 @@
             lifecycleDataGap: 'Data incomplete', lifecycleBaseline: 'Building baseline', lifecycleLearning: 'Learning', lifecycleStable: 'Stable', lifecycleGrowing: 'Growing', lifecycleDeclining: 'Declining', lifecycleProtected: 'Protected', lifecycleExperiment: 'Experiment running', lifecycleDormant: 'Dormant', lifecycleDeactivate: 'Review deactivation', lifecycleInactive: 'Inactive',
             diagnosisDiscovery: 'Low discovery', diagnosisEngagement: 'Weak post-visit interest', diagnosisPurchase: 'Possible purchase friction', diagnosisScale: 'Ready for more reach', diagnosisHealthy: 'No clear issue', diagnosisInsufficient: 'Not enough signal', confidenceLow: 'Low', confidenceMedium: 'Medium', confidenceHigh: 'High', confidenceVeryHigh: 'Very high',
             evidenceHistory: '{days} days of history · {count} snapshots', evidenceTraffic: '30-day visits: {current}; previous window: {previous} · {percent}%', evidenceRecentSales: 'Approximate last 30 days: {sales} sales · {revenue} revenue', evidenceCohort: 'Traffic percentile among {size} shop listings: {percentile}', evidenceAnomaly: '{count} data-integrity warning(s) found.',
-            guardHistory: '60+ days and at least 3 complete snapshots', guardZeroTraffic: 'Repeated zero traffic at least 14 days apart', guardNoSales: 'No new sales or revenue in the last 60 days', guardRenewals: 'Renewal cost continues without sales', guardActiveStock: 'Listing is active and in stock', guardNoExperiment: 'No active experiment', guardCooldown: 'No published improvement in the last 45 days', guardSeasonal: 'No seasonal-protection flag', guardConfidence: 'Confidence score is at least 80',
+            guardHistory: '60+ days and at least 3 complete snapshots', guardZeroTraffic: 'Repeated zero traffic at least 14 days apart', guardNoSales: 'No new sales or revenue in the last 60 days', guardRenewals: 'Renewal cost continues without sales', guardActiveStock: 'Listing is active and in stock', guardNoExperiment: 'No active experiment', guardCooldown: 'No published improvement in the last 45 days', guardSeasonal: 'Explicitly confirmed as non-seasonal', guardConfidence: 'Confidence score is at least 80',
             experimentPlanned: 'Planned', experimentObserving: 'Observing · day {day}/30', experimentWinner: 'Winner', experimentUnderperformed: 'Underperformed', experimentInconclusive: 'Inconclusive', experimentContaminated: 'Contaminated by another change', experimentStopped: 'Stopped', contentChanged: 'The listing content changed after the proposal was saved. The form was preserved and processing stopped; review the proposal again.', proposalStale: 'Listing data or analysis settings changed after the proposal was saved. No queue was created; review the proposal again.', manualApproval: 'Every Etsy write action requires listing-level user approval.',
         }),
     });
@@ -1066,10 +1071,10 @@
     const EXTRA_I18N = Object.freeze({
         tr: Object.freeze({
             scanAllPages: 'Tüm sayfaları tara', stopCollection: 'Taramayı durdur', resumeCollection: 'Taramaya devam et', collectionShortcut: 'Kısayol: CTRL + ALT + A',
-            collectionStarting: 'Tüm sayfa taraması başlatılıyor…', collectionFirstPage: 'İlk sayfaya geçiliyor…', collectionProgress: 'Sayfa {current}/{total} · {pages} sayfa · {count} benzersiz listing', collectionComplete: '{pages} sayfada {count} benzersiz listing toplandı.', collectionPaused: 'Tarama durduruldu. Aynı düğmeyle kaldığınız yerden devam edebilirsiniz.', collectionBlocked: 'Tarama güvenli biçimde durdu: {reason}', collectionBusy: 'Tüm sayfa taraması başka bir sekmede çalışıyor.', collectionRouteRequired: 'Tüm sayfa taraması yalnız Etsy listing sayfasında başlatılabilir.', collectionPageChanged: 'Beklenen Etsy sayfası yüklenmedi.', collectionRepeatedPage: 'Aynı Etsy sayfası tekrar açıldığı için döngü durduruldu.', collectionStorageFailed: 'Yerel depolama yazılamadı; kota veya kapasite dolu olabilir. Yedek alın, eski analiz verilerini temizleyin ve yeniden deneyin.', collectionNewerSchema: 'Tarama kaydı daha yeni bir script sürümüne ait; veri korunarak işlem durduruldu.', collectionLimit: 'Güvenlik için {count} sayfa sınırında tarama durduruldu.', collectionPages: 'Toplanan sayfa', collectionListings: 'Benzersiz listing', collectionStatus: 'Toplu veri toplama',
+            collectionStarting: 'Tüm sayfa taraması başlatılıyor…', collectionFirstPage: 'İlk sayfaya geçiliyor…', collectionProgress: 'Sayfa {current}/{total} · {pages} sayfa · {count} benzersiz listing', collectionComplete: '{pages} sayfada {count} benzersiz listing toplandı.', collectionPaused: 'Tarama durduruldu. Aynı düğmeyle kaldığınız yerden devam edebilirsiniz.', collectionBlocked: 'Tarama güvenli biçimde durdu: {reason}', collectionBusy: 'Tüm sayfa taraması başka bir sekmede çalışıyor.', collectionRouteRequired: 'Tüm sayfa taraması yalnız Etsy listing sayfasında başlatılabilir.', collectionPageChanged: 'Beklenen Etsy sayfası yüklenmedi.', collectionRepeatedPage: 'Aynı Etsy sayfası tekrar açıldığı için döngü durduruldu.', collectionOverlap: 'Farklı sayfalarda aynı listing görüldü; eksik veya karışık analiz oluşmaması için tarama durduruldu.', collectionStorageFailed: 'Yerel depolama yazılamadı; kota veya kapasite dolu olabilir. Yedek alın, eski analiz verilerini temizleyin ve yeniden deneyin.', collectionNewerSchema: 'Tarama kaydı daha yeni bir script sürümüne ait; veri korunarak işlem durduruldu.', collectionLimit: 'Güvenlik için {count} sayfa sınırında tarama durduruldu.', collectionPages: 'Toplanan sayfa', collectionListings: 'Benzersiz listing', collectionStatus: 'Toplu veri toplama',
             filters: 'Filtreler', hideFilters: 'Filtreleri gizle', clearFilters: 'Filtreleri sıfırla', resultsCount: '{visible} / {total} listing', showingCount: '{shown} gösteriliyor · {total} eşleşme', scope: 'Kapsam', scopeAll: 'Kayıtlı tüm listingler', scopePage: 'Bu Etsy sayfası', lifecycleFilter: 'Durum', diagnosisFilter: 'Sorun / fırsat', performanceFilter: 'Performans', trendFilter: 'Değişim', stockFilter: 'Stok', confidenceFilter: 'Veri güveni', sortBy: 'Sırala',
             analysisOverdueTitle: 'Analiz saati gecikti.', analysisOverdueCopy: 'Doğru veriler için tüm listinglerin analizi yapılmalı.', startAnalysis: 'Analizi başlat', openListingsForAnalysis: 'Listing sayfasına git', collectionActionStale: 'Listing analizi değişti veya süresi doldu. Doğru veriler için analizi yeniden başlatın.',
-            optionAll: 'Tümü', performanceSales: 'Satış yapanlar', performanceTrafficNoSales: 'Ziyaret var, satış yok', performanceNoActivity: 'Hiç hareket yok', performanceMissing: 'Verisi eksik', trendRising: 'Yükselenler', trendFalling: 'Düşenler', trendStable: 'Değişmeyenler', trendUnknown: 'Karşılaştırması olmayanlar', stockIn: 'Stokta', stockOut: 'Tükendi', stockUnknown: 'Stok bilinmiyor', confidenceLowFilter: 'Düşük güven', confidenceMediumFilter: 'Orta güven', confidenceHighFilter: 'Yüksek / çok yüksek güven', sortPriority: 'Öncelikli öneri', sortVisits: 'En çok ziyaret', sortSales: 'En çok satış', sortRevenue: 'En yüksek gelir', sortConfidence: 'En yüksek güven', sortTitle: 'Başlık A–Z', noFilterResults: 'Bu filtrelere uyan listing bulunamadı.', loadMore: 'Daha fazla göster', hiddenSelected: '{count} seçim filtre nedeniyle gizli',
+            optionAll: 'Tümü', performanceSales: 'Son 30 günde satış', performanceTrafficNoSales: 'Son 30 günde ziyaret var, satış yok', performanceNoActivity: 'Son 30 günde hareket yok', performanceMissing: 'Verisi eksik', trendRising: 'Yükselenler', trendFalling: 'Düşenler', trendStable: 'Değişmeyenler', trendUnknown: 'Karşılaştırması olmayanlar', stockIn: 'Stokta', stockOut: 'Tükendi', stockUnknown: 'Stok bilinmiyor', confidenceLowFilter: 'Düşük güven', confidenceMediumFilter: 'Orta güven', confidenceHighFilter: 'Yüksek / çok yüksek güven', sortPriority: 'Öncelikli öneri', sortVisits: 'En çok ziyaret', sortSales: 'En çok satış', sortRevenue: 'En yüksek gelir', sortConfidence: 'En yüksek güven', sortTitle: 'Başlık A–Z', noFilterResults: 'Bu filtrelere uyan listing bulunamadı.', loadMore: 'Daha fazla göster', hiddenSelected: '{count} seçim filtre nedeniyle gizli',
             filterPresets: 'Hazır filtreler', presetGrowing: 'Yükselişte', presetImprove: 'İyileştirilecek', presetDeclining: 'Düşüşte', presetDeactivate: 'Kapatmayı incele', presetExperiments: 'Aktif deneyler', presetMissing: 'Eksik veri', presetName: 'Preset adı', savePreset: 'Mevcut filtreyi kaydet', deletePreset: 'Preseti sil', presetSaved: 'Filtre preseti kaydedildi.', presetDeleted: 'Filtre preseti silindi.', presetLimit: 'En fazla {count} özel filtre preseti kaydedilebilir.', presetInvalid: 'Preset adı 2–32 karakter olmalı.',
             historyCharts: 'Tarihsel değişim grafikleri', noChartData: 'Grafik için en az iki geçerli kayıt gerekir.', experimentTimeline: 'İyileştirme deney zaman çizelgesi', timelinePlanned: 'Öneri planlandı', timelinePublished: 'Etsy’de yayınlandı', timelineObserving: 'Gözlem başladı', timelineEvaluationDue: 'Değerlendirme tarihi', timelineEvaluated: 'Deney sonucu', timelineNotApplied: 'Henüz uygulanmadı',
             aiComparison: 'AI önerisi önce / sonra', aiComparisonEmpty: 'İçe aktarılmış bir AI önerisi henüz yok.', beforeValue: 'Önce', proposedValue: 'AI önerisi', appliedValue: 'Doğrulanan sonuç', changedFields: 'Değişen alanlar', valueNotCaptured: 'Önceki değer yakalanmadı.',
@@ -1088,10 +1093,10 @@
         }),
         en: Object.freeze({
             scanAllPages: 'Collect all pages', stopCollection: 'Stop collection', resumeCollection: 'Resume collection', collectionShortcut: 'Shortcut: CTRL + ALT + A',
-            collectionStarting: 'Starting all-page collection…', collectionFirstPage: 'Opening the first page…', collectionProgress: 'Page {current}/{total} · {pages} pages · {count} unique listings', collectionComplete: '{count} unique listings collected across {pages} pages.', collectionPaused: 'Collection stopped. Use the same button to resume.', collectionBlocked: 'Collection stopped safely: {reason}', collectionBusy: 'All-page collection is running in another tab.', collectionRouteRequired: 'All-page collection can only start on the Etsy listings page.', collectionPageChanged: 'The expected Etsy page did not load.', collectionRepeatedPage: 'Collection stopped because the same Etsy page appeared again.', collectionStorageFailed: 'Local storage could not be written; its quota or capacity may be full. Export a backup, clear old analysis data, and retry.', collectionNewerSchema: 'The collection record belongs to a newer script schema; it was preserved and collection stopped.', collectionLimit: 'Collection stopped at the {count}-page safety limit.', collectionPages: 'Pages collected', collectionListings: 'Unique listings', collectionStatus: 'Bulk data collection',
+            collectionStarting: 'Starting all-page collection…', collectionFirstPage: 'Opening the first page…', collectionProgress: 'Page {current}/{total} · {pages} pages · {count} unique listings', collectionComplete: '{count} unique listings collected across {pages} pages.', collectionPaused: 'Collection stopped. Use the same button to resume.', collectionBlocked: 'Collection stopped safely: {reason}', collectionBusy: 'All-page collection is running in another tab.', collectionRouteRequired: 'All-page collection can only start on the Etsy listings page.', collectionPageChanged: 'The expected Etsy page did not load.', collectionRepeatedPage: 'Collection stopped because the same Etsy page appeared again.', collectionOverlap: 'The same listing appeared on different pages; collection stopped to avoid an incomplete or mixed analysis.', collectionStorageFailed: 'Local storage could not be written; its quota or capacity may be full. Export a backup, clear old analysis data, and retry.', collectionNewerSchema: 'The collection record belongs to a newer script schema; it was preserved and collection stopped.', collectionLimit: 'Collection stopped at the {count}-page safety limit.', collectionPages: 'Pages collected', collectionListings: 'Unique listings', collectionStatus: 'Bulk data collection',
             filters: 'Filters', hideFilters: 'Hide filters', clearFilters: 'Reset filters', resultsCount: '{visible} / {total} listings', showingCount: '{shown} shown · {total} matches', scope: 'Scope', scopeAll: 'All stored listings', scopePage: 'This Etsy page', lifecycleFilter: 'Status', diagnosisFilter: 'Issue / opportunity', performanceFilter: 'Performance', trendFilter: 'Change', stockFilter: 'Stock', confidenceFilter: 'Data confidence', sortBy: 'Sort',
             analysisOverdueTitle: 'Analysis is overdue.', analysisOverdueCopy: 'All listings must be analyzed to show reliable data.', startAnalysis: 'Start analysis', openListingsForAnalysis: 'Open Listings', collectionActionStale: 'The listing analysis changed or expired. Start the analysis again before continuing.',
-            optionAll: 'All', performanceSales: 'Has sales', performanceTrafficNoSales: 'Traffic, no sales', performanceNoActivity: 'No activity', performanceMissing: 'Missing data', trendRising: 'Rising', trendFalling: 'Falling', trendStable: 'Unchanged', trendUnknown: 'No comparison', stockIn: 'In stock', stockOut: 'Out of stock', stockUnknown: 'Stock unknown', confidenceLowFilter: 'Low confidence', confidenceMediumFilter: 'Medium confidence', confidenceHighFilter: 'High / very high confidence', sortPriority: 'Action priority', sortVisits: 'Most visits', sortSales: 'Most sales', sortRevenue: 'Highest revenue', sortConfidence: 'Highest confidence', sortTitle: 'Title A–Z', noFilterResults: 'No listings match these filters.', loadMore: 'Show more', hiddenSelected: '{count} selected item(s) hidden by filters',
+            optionAll: 'All', performanceSales: 'Sales in the last 30 days', performanceTrafficNoSales: 'Traffic but no sales in the last 30 days', performanceNoActivity: 'No activity in the last 30 days', performanceMissing: 'Missing data', trendRising: 'Rising', trendFalling: 'Falling', trendStable: 'Unchanged', trendUnknown: 'No comparison', stockIn: 'In stock', stockOut: 'Out of stock', stockUnknown: 'Stock unknown', confidenceLowFilter: 'Low confidence', confidenceMediumFilter: 'Medium confidence', confidenceHighFilter: 'High / very high confidence', sortPriority: 'Action priority', sortVisits: 'Most visits', sortSales: 'Most sales', sortRevenue: 'Highest revenue', sortConfidence: 'Highest confidence', sortTitle: 'Title A–Z', noFilterResults: 'No listings match these filters.', loadMore: 'Show more', hiddenSelected: '{count} selected item(s) hidden by filters',
             filterPresets: 'Filter presets', presetGrowing: 'Growing', presetImprove: 'Needs improvement', presetDeclining: 'Declining', presetDeactivate: 'Review deactivation', presetExperiments: 'Active experiments', presetMissing: 'Missing data', presetName: 'Preset name', savePreset: 'Save current filters', deletePreset: 'Delete preset', presetSaved: 'Filter preset saved.', presetDeleted: 'Filter preset deleted.', presetLimit: 'You can save up to {count} custom filter presets.', presetInvalid: 'Preset names must contain 2–32 characters.',
             historyCharts: 'Historical change charts', noChartData: 'At least two valid records are required for a chart.', experimentTimeline: 'Improvement experiment timeline', timelinePlanned: 'Proposal planned', timelinePublished: 'Published on Etsy', timelineObserving: 'Observation started', timelineEvaluationDue: 'Evaluation due', timelineEvaluated: 'Experiment result', timelineNotApplied: 'Not applied yet',
             aiComparison: 'AI proposal before / after', aiComparisonEmpty: 'No imported AI proposal is available yet.', beforeValue: 'Before', proposedValue: 'AI proposal', appliedValue: 'Verified result', changedFields: 'Changed fields', valueNotCaptured: 'The previous value was not captured.',
@@ -1260,7 +1265,7 @@
         const positions = sorted.map((item, index) => item === target ? index : -1).filter((index) => index >= 0);
         if (positions.length) return Math.round((median(positions) / (sorted.length - 1)) * 100);
         const below = sorted.filter((item) => item < target).length;
-        return Math.round((below / (sorted.length - 1)) * 100);
+        return clamp(Math.round((below / (sorted.length - 1)) * 100), 0, 100);
     }
     function percentChange(current, previous) {
         const currentValue = finiteOrNull(current); const previousValue = finiteOrNull(previous);
@@ -1279,15 +1284,6 @@
             hash = Math.imul(hash, 0x01000193) >>> 0;
         }
         return hash.toString(16).padStart(8, '0');
-    }
-
-    function parseCount(text, labels) {
-        const source = normalizeSpace(text);
-        for (const label of labels) {
-            const match = source.match(new RegExp(`([\\d][\\d.,\\s]*)\\s+${label}`, 'i'));
-            if (match) return Number(match[1].replace(/[^\d-]/g, '')) || 0;
-        }
-        return null;
     }
 
     function parseDecimal(raw) {
@@ -1310,13 +1306,68 @@
         return Number.isFinite(parsed) ? parsed : null;
     }
 
-    function parseMoneyFromLabel(text, labels) {
-        const source = normalizeSpace(text);
-        for (const label of labels) {
-            const match = source.match(new RegExp(`([^\\s]+)\\s+${label}`, 'i'));
-            if (match) return parseDecimal(match[1]);
+    function escapeRegExp(value) {
+        return String(value).replace(/[.*+?^{}$()|[\]\\]/g, '\\$&');
+    }
+
+    function parseCountValue(raw) {
+        const source = normalizeSpace(raw);
+        const compact = source.match(/^(-?[\d][\d.,\s]*?)\s*([kmb])?$/i);
+        if (!compact) return null;
+        if (compact[2]) {
+            const base = parseDecimal(compact[1]);
+            const multiplier = { k: 1_000, m: 1_000_000, b: 1_000_000_000 }[compact[2].toLowerCase()];
+            return Number.isFinite(base) ? Math.round(base * multiplier) : null;
+        }
+        const parsed = Number(compact[1].replace(/[^\d-]/g, ''));
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    function labeledPrefix(rows, labels) {
+        const labelPattern = labels.map(escapeRegExp).join('|');
+        const matcher = new RegExp(`^(.+?)\\s+(?:${labelPattern})$`, 'i');
+        for (const row of rows) {
+            const match = normalizeSpace(row).match(matcher);
+            if (match) return match[1];
         }
         return null;
+    }
+
+    function parseCount(text, labels) {
+        const prefix = labeledPrefix([text], labels);
+        return prefix === null ? null : parseCountValue(prefix);
+    }
+
+    function parseCountFromRows(rows, labels) {
+        const prefix = labeledPrefix(rows, labels);
+        return prefix === null ? null : parseCountValue(prefix);
+    }
+
+    function parseMoneyFromLabel(text, labels) {
+        const prefix = labeledPrefix([text], labels);
+        return prefix === null ? null : parseDecimal(prefix);
+    }
+
+    function currencyMarker(text) {
+        const source = normalizeSpace(text);
+        const symbol = source.match(/[$€£₺¥₹₽₩]/)?.[0];
+        if (symbol) return symbol;
+        const code = source.match(/\b(?:USD|EUR|GBP|TRY|TL|CAD|AUD|NZD|JPY|CNY|INR|BRL|MXN|SEK|NOK|DKK|CHF|PLN)\b/i)?.[0];
+        if (code?.toUpperCase() === 'TL') return '₺';
+        return code ? `${code.toUpperCase()} ` : '';
+    }
+
+    function parseListingMetrics(rows) {
+        const source = Array.isArray(rows) ? rows.map(normalizeSpace).filter(Boolean) : [];
+        const revenuePrefix = labeledPrefix(source, ['revenue', 'gelir']);
+        return {
+            visits: parseCountFromRows(source, ['visit', 'visits', 'ziyaret', 'ziyaretler']),
+            favorites: parseCountFromRows(source, ['favorite', 'favorites', 'favori', 'favoriler']),
+            sales: parseCountFromRows(source, ['sale', 'sales', 'satış']),
+            revenue: revenuePrefix === null ? null : parseDecimal(revenuePrefix),
+            renewals: parseCountFromRows(source, ['renewal', 'renewals', 'yenileme', 'yenilemeler']),
+            currency: revenuePrefix === null ? '' : currencyMarker(revenuePrefix),
+        };
     }
 
     function parsePriceRange(text) {
@@ -1541,7 +1592,8 @@
                 ...existing.meta,
                 title: listing.title || existing.meta?.title || '', sku: listing.sku || existing.meta?.sku || '', editUrl: listing.editUrl || existing.meta?.editUrl || '',
                 publicUrl: listing.publicUrl || existing.meta.publicUrl || '', imageUrl: listing.imageUrl || existing.meta.imageUrl || '',
-                statusLabel: listing.statusLabel || existing.meta?.statusLabel || '', lastSeenAt: capturedAt,
+                listingState: normalizeListingState(listing.listingState) || existing.meta?.listingState || '',
+                statusLabel: listing.statusLabel || existing.meta?.statusLabel || '', renewalLabel: listing.renewalLabel || existing.meta?.renewalLabel || '', lastSeenAt: capturedAt,
                 shopKey: listing.shopKey || existing.meta?.shopKey || shopKeyFromUrl(listing.editUrl),
             };
             const snapshot = snapshotFromListing(listing, capturedAt);
@@ -1724,6 +1776,31 @@
             : '';
     }
 
+    function exactHttpsTarget(actualValue, expectedValue) {
+        try {
+            const actual = new URL(actualValue);
+            const expected = new URL(expectedValue);
+            return actual.protocol === 'https:'
+                && actual.protocol === expected.protocol
+                && actual.hostname === expected.hostname
+                && actual.port === expected.port
+                && actual.pathname === expected.pathname
+                && actual.search === expected.search
+                && actual.hash === expected.hash
+                && !actual.username && !actual.password;
+        } catch {
+            return false;
+        }
+    }
+
+    function metadataValues(source, key) {
+        const escapedKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return Array.from(
+            String(source || '').matchAll(new RegExp(`^// @${escapedKey}\\s+(.+?)\\s*$`, 'gm')),
+            (match) => match[1].trim(),
+        );
+    }
+
     function distributionUrlKind(value) {
         const candidate = String(value || '').trim();
         if (candidate === GITHUB_CANONICAL_SCRIPT_URL) return 'github';
@@ -1762,12 +1839,7 @@
                     onload: (response) => {
                         try {
                             if (!response.finalUrl) throw new Error('The update response did not expose its final address.');
-                            const expected = new URL(url);
-                            const finalUrl = new URL(response.finalUrl);
-                            const sameTarget = finalUrl.protocol === 'https:' && finalUrl.protocol === expected.protocol
-                                && finalUrl.hostname === expected.hostname && finalUrl.port === expected.port
-                                && finalUrl.pathname === expected.pathname && finalUrl.search === expected.search;
-                            if (!sameTarget) throw new Error('GitHub response left the canonical update address.');
+                            if (!exactHttpsTarget(response.finalUrl, url)) throw new Error('GitHub response left the canonical update address.');
                             if (Number(response.status) !== 200) throw new Error(`GitHub HTTP ${Number(response.status) || 0}`);
                             const text = String(response.responseText || '');
                             if (!text || text.length > 2_000_000) throw new Error('The update response is empty or too large.');
@@ -1791,10 +1863,23 @@
         const installUrl = pinnedUpdateUrl(commitSha);
         const source = await requestExactText(installUrl, 'text/plain');
         if (!/^\/\/ ==UserScript==[\r\n]/.test(source)) throw new Error('The update metadata block is missing.');
-        if (!/^\/\/ @namespace\s+https:\/\/github\.com\/Makaytron\/EtsyScript\s*$/m.test(source)) throw new Error('The update namespace is not trusted.');
-        if (!/^\/\/ @name\s+Makaytron Etsy Listing Analyzer\s*$/m.test(source)) throw new Error('The update product name is not trusted.');
-        const version = source.match(/^\/\/ @version\s+(\d+\.\d+\.\d+)\s*$/m)?.[1] || '';
-        if (!version) throw new Error('The update version is invalid.');
+        const namespaces = metadataValues(source, 'namespace');
+        const names = metadataValues(source, 'name');
+        const updateUrls = metadataValues(source, 'updateURL');
+        const downloadUrls = metadataValues(source, 'downloadURL');
+        const versions = metadataValues(source, 'version');
+        if (namespaces.length !== 1 || namespaces[0] !== 'https://github.com/Makaytron/EtsyScript') {
+            throw new Error('The update namespace is not trusted.');
+        }
+        if (names.length !== 1 || names[0] !== 'Makaytron Etsy Listing Analyzer') {
+            throw new Error('The update product name is not trusted.');
+        }
+        if (updateUrls.length !== 1 || downloadUrls.length !== 1
+            || updateUrls[0] !== GITHUB_CANONICAL_SCRIPT_URL || downloadUrls[0] !== GITHUB_CANONICAL_SCRIPT_URL) {
+            throw new Error('The update distribution address is not trusted.');
+        }
+        const version = versions.length === 1 && /^\d+\.\d+\.\d+$/.test(versions[0]) ? versions[0] : '';
+        if (!version || compareSemver(version, APP_VERSION) === null) throw new Error('The update version is invalid.');
         return { version, commitSha, installUrl };
     }
 
@@ -1843,6 +1928,12 @@
         return true;
     }
 
+    function bindInstallUpdate(button) {
+        if (!button || typeof button.addEventListener !== 'function') return false;
+        button.addEventListener('click', () => { openTampermonkeyUpdate(); });
+        return true;
+    }
+
     function captureEditableFieldsFromRecord(record) {
         return {
             title: record?.editor?.title || record?.meta?.title || '',
@@ -1879,8 +1970,73 @@
         });
     }
 
+    function currentShopKey(root = document) {
+        const keys = Array.from(root?.querySelectorAll?.('[data-seller-nav="true"] a[href*="/shop/"]') || []).flatMap((anchor) => {
+            try {
+                const url = new URL(anchor.href, location.href);
+                const match = url.pathname.match(/^\/shop\/([A-Za-z0-9]+)\/?$/);
+                if (url.protocol !== 'https:' || url.hostname !== 'www.etsy.com' || url.port || url.username || url.password || !match) return [];
+                return [`etsy-shop:${match[1].toLowerCase()}`];
+            } catch { return []; }
+        });
+        const unique = uniqueStrings(keys);
+        return unique.length === 1 ? unique[0] : '';
+    }
+
+    function normalizeListingState(value) {
+        const normalized = normalizeSpace(value).toLowerCase().replace(/[\s-]+/g, '_');
+        const aliases = {
+            active: 'active', aktif: 'active',
+            draft: 'draft', taslak: 'draft',
+            expired: 'expired', süresi_dolmuş: 'expired', suresi_dolmus: 'expired',
+            sold_out: 'sold_out', tükendi: 'sold_out', tukendi: 'sold_out',
+            inactive: 'inactive', deactivated: 'inactive', pasif: 'inactive', devre_dışı: 'inactive', devre_disi: 'inactive',
+        };
+        return aliases[normalized] || '';
+    }
+
+    function listingStateLabel(value) {
+        return { active: 'Active', draft: 'Draft', expired: 'Expired', sold_out: 'Sold out', inactive: 'Inactive' }[normalizeListingState(value)] || '';
+    }
+
+    function pageListingState(root = document, href = location.href) {
+        const signals = [];
+        try {
+            const explicit = normalizeListingState(new URL(href, location.href).searchParams.get('item_status'));
+            if (explicit) signals.push(explicit);
+        } catch { return ''; }
+        Array.from(root?.querySelectorAll?.('input[name="item_status"]') || []).forEach((input) => {
+            const label = input.closest?.('label');
+            let selected = Boolean(input.checked || input.getAttribute?.('checked') !== null || input.getAttribute?.('aria-checked') === 'true');
+            try { selected = selected || input.matches?.(':checked'); } catch { /* optional selector support */ }
+            selected = selected || label?.getAttribute?.('aria-current') === 'true'
+                || Boolean(label?.querySelector?.('[data-clg-id="WtAnnouncement"][role="status"]'));
+            const stateValue = selected ? normalizeListingState(input.value) : '';
+            if (stateValue) signals.push(stateValue);
+        });
+        const unique = uniqueStrings(signals);
+        return unique.length === 1 ? unique[0] : '';
+    }
+
+    function recordListingState(record, derived = null) {
+        const metaState = normalizeListingState(record?.meta?.listingState || record?.meta?.statusLabel);
+        const currentState = normalizeListingState(derived?.current?.listingState || derived?.current?.statusLabel);
+        if (metaState && currentState && metaState !== currentState) return '';
+        return currentState || metaState;
+    }
+
     function shopKeyFromUrl(url) {
-        return String(url || '').match(/\/your\/shops\/([^/]+)/i)?.[1]?.toLocaleLowerCase() || 'current-shop';
+        const routeShop = String(url || '').match(/\/your\/shops\/([^/]+)/i)?.[1]?.toLowerCase() || '';
+        if (routeShop && routeShop !== 'me') return `etsy-shop:${routeShop}`;
+        return currentShopKey();
+    }
+
+    function snapshotMetricIsCurrent(snapshot, field) {
+        if (!Number.isFinite(snapshot?.[field])) return false;
+        const capturedAt = validTime(snapshot.at);
+        const observedAt = validTime(snapshot.observedAt?.[field]);
+        if (capturedAt === null || observedAt === null || observedAt > capturedAt + 1000) return false;
+        return capturedAt - observedAt <= SNAPSHOT_OBSERVATION_MAX_SKEW_MS;
     }
 
     function snapshotFromListing(listing, capturedAt) {
@@ -1888,11 +2044,12 @@
             at: capturedAt, day: dayKey(capturedAt), visits: finiteOrNull(listing.visits), favorites: finiteOrNull(listing.favorites),
             sales: finiteOrNull(listing.sales), revenue: finiteOrNull(listing.revenue), renewals: finiteOrNull(listing.renewals), stock: finiteOrNull(listing.stock),
             priceMin: finiteOrNull(listing.price?.min), priceMax: finiteOrNull(listing.price?.max), priceLabel: normalizeSpace(listing.price?.label),
-            statusLabel: normalizeSpace(listing.statusLabel), observedAt: {},
+            currency: normalizeSpace(listing.currency), listingState: normalizeListingState(listing.listingState),
+            statusLabel: normalizeSpace(listing.statusLabel), renewalLabel: normalizeSpace(listing.renewalLabel), observedAt: {},
         };
         SNAPSHOT_NUMBER_FIELDS.forEach((field) => { if (Number.isFinite(snapshot[field])) snapshot.observedAt[field] = capturedAt; });
         snapshot.quality = {
-            parserVersion: 2,
+            parserVersion: 3,
             observedFields: HEALTH_METRIC_FIELDS.filter((field) => Number.isFinite(snapshot[field])),
             missingFields: HEALTH_METRIC_FIELDS.filter((field) => !Number.isFinite(snapshot[field])),
             capturedAt,
@@ -1910,33 +2067,42 @@
             if (Number.isFinite(snapshot[field])) snapshot.observedAt[field] = observed === null ? at : new Date(observed).toISOString();
         });
         snapshot.priceLabel = normalizeSpace(raw.priceLabel);
+        snapshot.currency = normalizeSpace(raw.currency);
+        snapshot.listingState = normalizeListingState(raw.listingState || raw.statusLabel);
         snapshot.statusLabel = normalizeSpace(raw.statusLabel);
+        snapshot.renewalLabel = normalizeSpace(raw.renewalLabel);
+        const observedFields = HEALTH_METRIC_FIELDS.filter((field) => snapshotMetricIsCurrent(snapshot, field));
         snapshot.quality = {
             parserVersion: Number(raw.quality?.parserVersion) || 1,
-            observedFields: HEALTH_METRIC_FIELDS.filter((field) => Number.isFinite(snapshot[field])),
-            missingFields: HEALTH_METRIC_FIELDS.filter((field) => !Number.isFinite(snapshot[field])),
+            observedFields,
+            missingFields: HEALTH_METRIC_FIELDS.filter((field) => !observedFields.includes(field)),
             capturedAt: validTime(raw.quality?.capturedAt) === null ? at : new Date(validTime(raw.quality.capturedAt)).toISOString(),
         };
         return snapshot;
     }
 
     function mergeDailySnapshot(previousRaw, incomingRaw) {
-        const previous = normalizeSnapshot(previousRaw); const incoming = normalizeSnapshot(incomingRaw);
-        if (!previous) return incoming;
-        if (!incoming) return previous;
-        if (previous.day !== incoming.day) return incoming;
-        const merged = { ...previous, at: validTime(incoming.at) >= validTime(previous.at) ? incoming.at : previous.at, day: previous.day, observedAt: { ...previous.observedAt } };
+        const left = normalizeSnapshot(previousRaw); const right = normalizeSnapshot(incomingRaw);
+        if (!left) return right;
+        if (!right) return left;
+        if (left.day !== right.day) return validTime(right.at) >= validTime(left.at) ? right : left;
+        const [previous, incoming] = validTime(left.at) <= validTime(right.at) ? [left, right] : [right, left];
+        const merged = { ...previous, at: incoming.at, day: previous.day, observedAt: { ...previous.observedAt } };
         SNAPSHOT_NUMBER_FIELDS.forEach((field) => {
             if (Number.isFinite(incoming[field])) {
                 merged[field] = incoming[field];
                 merged.observedAt[field] = incoming.observedAt?.[field] || incoming.at;
-            } else if (!Number.isFinite(previous[field])) merged[field] = null;
+            } else {
+                merged[field] = null;
+                delete merged.observedAt[field];
+            }
         });
-        ['priceLabel', 'statusLabel'].forEach((field) => { if (normalizeSpace(incoming[field])) merged[field] = normalizeSpace(incoming[field]); });
+        ['priceLabel', 'currency', 'listingState', 'statusLabel', 'renewalLabel'].forEach((field) => { if (normalizeSpace(incoming[field])) merged[field] = normalizeSpace(incoming[field]); });
+        const observedFields = HEALTH_METRIC_FIELDS.filter((field) => snapshotMetricIsCurrent(merged, field));
         merged.quality = {
             parserVersion: Math.max(Number(previous.quality?.parserVersion) || 1, Number(incoming.quality?.parserVersion) || 1),
-            observedFields: HEALTH_METRIC_FIELDS.filter((field) => Number.isFinite(merged[field])),
-            missingFields: HEALTH_METRIC_FIELDS.filter((field) => !Number.isFinite(merged[field])),
+            observedFields,
+            missingFields: HEALTH_METRIC_FIELDS.filter((field) => !observedFields.includes(field)),
             capturedAt: merged.at,
             mergedCaptures: (Number(previous.quality?.mergedCaptures) || 1) + 1,
         };
@@ -1955,6 +2121,7 @@
             proposal: raw.proposal && typeof raw.proposal === 'object' ? { ...raw.proposal } : null,
         };
         record.meta.shopKey = record.meta.shopKey || shopKeyFromUrl(record.meta.editUrl);
+        record.meta.listingState = normalizeListingState(record.meta.listingState || record.meta.statusLabel);
         const quarantine = Array.isArray(raw.quarantine) ? [...raw.quarantine] : [];
         const historySource = Array.isArray(raw.history) ? raw.history : [];
         if (raw.history !== undefined && !Array.isArray(raw.history)) quarantine.push({ reason: 'invalid-history-container', value: raw.history });
@@ -2072,12 +2239,27 @@
         let best = null;
         history.forEach((snapshot) => {
             if (snapshot === current) return;
+            if (!HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot?.[field]))) return;
             const actualDays = daysBetween(current.at, snapshot.at);
             if (!Number.isFinite(actualDays) || actualDays <= 0) return;
             const distance = Math.abs(actualDays - targetDays);
             if (!best || distance < best.distance || (distance === best.distance && actualDays < best.actualDays)) best = { snapshot, targetDays, actualDays, distance };
         });
         return best && best.distance <= tolerance ? { ...best, complete: true } : { snapshot: null, targetDays, actualDays: null, distance: best?.distance ?? null, complete: false };
+    }
+
+    function snapshotForAnalysis(raw) {
+        const snapshot = normalizeSnapshot(raw);
+        if (!snapshot) return null;
+        const staleObservedFields = [];
+        SNAPSHOT_NUMBER_FIELDS.forEach((field) => {
+            if (Number.isFinite(snapshot[field]) && !snapshotMetricIsCurrent(snapshot, field)) {
+                snapshot[field] = null;
+                staleObservedFields.push(field);
+            }
+        });
+        snapshot.staleObservedFields = staleObservedFields;
+        return snapshot;
     }
 
     function cumulativeWindow(current, anchor, field, targetDays) {
@@ -2091,6 +2273,7 @@
     function inspectHistory(history, evaluatedAt) {
         const anomalies = [];
         history.forEach((snapshot, index) => {
+            (snapshot.staleObservedFields || []).forEach((field) => anomalies.push(`stale-observation-${field}`));
             SNAPSHOT_NUMBER_FIELDS.forEach((field) => { if (Number.isFinite(snapshot[field]) && snapshot[field] < 0) anomalies.push(`negative-${field}`); });
             if (snapshot.visits === 0 && Number(snapshot.favorites) > 0) anomalies.push('favorites-without-visits');
             if (daysBetween(snapshot.at, evaluatedAt) > 1) anomalies.push('future-snapshot');
@@ -2104,7 +2287,7 @@
     }
 
     function deriveRecordMetrics(record, evaluatedAt) {
-        const history = Array.isArray(record.history) ? record.history.map(normalizeSnapshot).filter(Boolean).sort((a, b) => String(a.at).localeCompare(String(b.at))) : [];
+        const history = Array.isArray(record.history) ? record.history.map(snapshotForAnalysis).filter(Boolean).sort((a, b) => String(a.at).localeCompare(String(b.at))) : [];
         const current = history.at(-1) || null;
         if (!current) return { history, current: null, anchors: {}, anomalies: ['missing-history'], complete: false, snapshotCount: 0, completeSnapshotCount: 0, historySpanDays: 0 };
         const anchors = { d30: findAnchor(history, current, 30), d60: findAnchor(history, current, 60), d90: findAnchor(history, current, 90) };
@@ -2157,7 +2340,9 @@
         const targetShop = record.meta?.shopKey || shopKeyFromUrl(record.meta?.editUrl);
         let cohort = records.filter((candidate) => {
             const derived = derivations.get(candidate.listingId);
-            if (!derived?.complete || isInactiveStatus(candidate.meta?.statusLabel || derived.current?.statusLabel)) return false;
+            if (!/^etsy-shop:[a-z0-9]+$/.test(targetShop)) return false;
+            if (!derived?.complete || recordListingState(candidate, derived) !== 'active') return false;
+            if (derived.freshnessDays > 1 || derived.anomalies?.length) return false;
             if (!Number.isFinite(derived.current?.stock) || derived.current.stock <= 0) return false;
             if ((candidate.meta?.shopKey || shopKeyFromUrl(candidate.meta?.editUrl)) !== targetShop) return false;
             if (activeExperiment(candidate, evaluatedAt)) return false;
@@ -2165,28 +2350,40 @@
             return !recentChange;
         });
         const targetPrice = finiteOrNull(target?.current?.priceMin);
+        let priceBandApplied = false;
         if (targetPrice !== null) {
             const priceBand = cohort.filter((candidate) => {
                 const price = finiteOrNull(derivations.get(candidate.listingId)?.current?.priceMin);
                 return price !== null && price >= targetPrice * 0.7 && price <= targetPrice * 1.3;
             });
-            if (priceBand.length >= policy.thresholds.minimumCohortSize) cohort = priceBand;
+            if (priceBand.length >= policy.thresholds.minimumCohortSize) {
+                cohort = priceBand;
+                priceBandApplied = true;
+            }
         }
         const metricNames = ['visits30', 'favoriteRate', 'salesRateProxy', 'revenuePerVisitProxy', 'sales30'];
         const metrics = {};
         metricNames.forEach((name) => {
             const values = cohort.map((candidate) => derivations.get(candidate.listingId)?.[name]).filter(Number.isFinite);
-            metrics[name] = { median: median(values), p25: quantile(values, 0.25), p75: quantile(values, 0.75), percentile: percentileRank(values, target?.[name]), samples: values.length };
+            metrics[name] = {
+                median: median(values), p25: quantile(values, 0.25), p75: quantile(values, 0.75),
+                percentile: percentileRank(values, target?.[name]), samples: values.length,
+                reliable: values.length >= policy.thresholds.minimumCohortSize,
+            };
         });
-        return { size: cohort.length, reliable: cohort.length >= policy.thresholds.minimumCohortSize, scope: cohort.length >= policy.thresholds.minimumCohortSize && targetPrice !== null ? 'shop-price-band' : 'shop', metrics };
+        const reliable = cohort.length >= policy.thresholds.minimumCohortSize;
+        return { size: cohort.length, reliable, scope: priceBandApplied ? 'shop-price-band' : 'shop', metrics };
     }
 
     function confidenceFor(derived, benchmark, policy) {
         const completeness = Math.round((derived.observedMetrics?.length || 0) / HEALTH_METRIC_FIELDS.length * 100);
         const historyDepth = Math.round(Math.min(100, (Math.min(derived.historySpanDays || 0, 60) / 60) * 70 + (Math.min(derived.completeSnapshotCount || 0, 3) / 3) * 30));
-        const repeatedZeroEvidence = derived.completeSnapshotCount >= 3 && derived.historySpanDays >= 58 && derived.current?.visits === 0;
+        const zeroTrafficSnapshots = (derived.history || []).filter((snapshot) => HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot?.[field])) && snapshot.visits === 0);
+        const repeatedZeroEvidence = derived.current?.visits === 0 && zeroTrafficSnapshots.some((left, index) => zeroTrafficSnapshots.slice(index + 1)
+            .some((right) => Math.abs(daysBetween(right.at, left.at) || 0) >= HEALTH_RULES.deactivationZeroObservationGapDays));
         const trafficSample = repeatedZeroEvidence ? 100 : Math.round(Math.min(100, ((finiteOrNull(derived.current?.visits) || 0) / Math.max(1, policy.thresholds.minVisitsToProtect)) * 100));
-        const cohortStrength = Math.round(Math.min(100, (benchmark.size / HEALTH_RULES.minimumCohortSize) * 100));
+        const comparableSamples = Number(benchmark.metrics?.visits30?.samples) || 0;
+        const cohortStrength = Math.round(Math.min(100, (comparableSamples / HEALTH_RULES.minimumCohortSize) * 100));
         const freshness = derived.freshnessDays <= 1 ? 100 : derived.freshnessDays <= 7 ? 75 : derived.freshnessDays <= 30 ? 35 : 0;
         const integrity = Math.max(0, 100 - (derived.anomalies?.length || 0) * 25);
         const components = { dataQuality: completeness, historyDepth, trafficSample, cohortStrength, freshness, dataIntegrity: integrity };
@@ -2195,7 +2392,7 @@
         if (!derived.complete) { score = Math.min(score, 39); caps.push('missing-metrics'); }
         if (!derived.anchors?.d30?.complete) { score = Math.min(score, 39); caps.push('insufficient-30-day-history'); }
         else if (!derived.anchors?.d60?.complete || derived.completeSnapshotCount < 3) { score = Math.min(score, 69); caps.push('insufficient-60-day-history'); }
-        if ((derived.anomalies || []).some((item) => /future|cumulative-decrease|favorites-without/.test(item))) { score = Math.min(score, 39); caps.push('data-integrity'); }
+        if ((derived.anomalies || []).some((item) => /future|cumulative-decrease|favorites-without|stale-observation|negative-/.test(item))) { score = Math.min(score, 39); caps.push('data-integrity'); }
         const band = score < 40 ? 'low' : score < 70 ? 'medium' : score < 85 ? 'high' : 'veryHigh';
         return { score, band, components, caps };
     }
@@ -2204,9 +2401,9 @@
         if (!derived.complete || confidence.score < 40) return 'INSUFFICIENT_SIGNAL';
         const visits = derived.visits30; const favoriteRate = derived.favoriteRate; const sales = derived.sales30;
         if (benchmark.reliable) {
-            const visitsRank = benchmark.metrics.visits30.percentile;
-            const favoriteRank = benchmark.metrics.favoriteRate.percentile;
-            const salesRank = benchmark.metrics.salesRateProxy.percentile;
+            const visitsRank = benchmark.metrics.visits30.reliable ? benchmark.metrics.visits30.percentile : null;
+            const favoriteRank = benchmark.metrics.favoriteRate.reliable ? benchmark.metrics.favoriteRate.percentile : null;
+            const salesRank = benchmark.metrics.salesRateProxy.reliable ? benchmark.metrics.salesRateProxy.percentile : null;
             if (Number.isFinite(visitsRank) && visitsRank <= 25) return 'DISCOVERY_WEAK';
             if (Number.isFinite(favoriteRank) && favoriteRank <= 25 && visitsRank >= 40) return 'ENGAGEMENT_WEAK';
             if ((sales === 0 || (Number.isFinite(salesRank) && salesRank <= 25)) && favoriteRank >= 50 && visitsRank >= 40) return 'PURCHASE_FRICTION';
@@ -2233,10 +2430,10 @@
             { key: 'guardZeroTraffic', passed: zeroObservations.length >= 2 && separatedZeros },
             { key: 'guardNoSales', passed: derived.sales60Raw === 0 && derived.revenue60Raw === 0 && derived.current.sales === 0 && derived.current.revenue === 0 },
             { key: 'guardRenewals', passed: Number(derived.renewals60Raw) >= 1 && Number(derived.current.renewals) >= policy.thresholds.minRenewalsToReview },
-            { key: 'guardActiveStock', passed: !isInactiveStatus(record.meta?.statusLabel || derived.current.statusLabel) && Number(derived.current.stock) > 0 },
+            { key: 'guardActiveStock', passed: recordListingState(record, derived) === 'active' && Number(derived.current.stock) > 0 },
             { key: 'guardNoExperiment', passed: !experiment },
             { key: 'guardCooldown', passed: !recentImprovement },
-            { key: 'guardSeasonal', passed: record.meta?.seasonal !== true },
+            { key: 'guardSeasonal', passed: record.meta?.seasonal === false },
             { key: 'guardConfidence', passed: confidence.score >= 80 },
         ];
         return { checks, passed: checks.every((item) => item.passed), zeroObservationCount: zeroObservations.length };
@@ -2245,8 +2442,10 @@
     function healthScore(derived, benchmark) {
         if (!derived.complete) return null;
         if (benchmark.reliable) {
-            const values = ['visits30', 'favoriteRate', 'salesRateProxy', 'revenuePerVisitProxy'].map((key) => benchmark.metrics[key].percentile).filter(Number.isFinite);
-            if (values.length) return Math.round(median(values));
+            const values = ['visits30', 'favoriteRate', 'salesRateProxy', 'revenuePerVisitProxy']
+                .filter((key) => benchmark.metrics[key].reliable)
+                .map((key) => benchmark.metrics[key].percentile).filter(Number.isFinite);
+            if (values.length) return clamp(Math.round(median(values)), 0, 100);
         }
         let score = 45;
         if (Number(derived.sales30) > 0) score += 25;
@@ -2274,18 +2473,21 @@
         const diagnosis = diagnosePerformance(derived, benchmark, policy, confidence);
         const deactivation = derived.current ? deactivationSafeguards(record, derived, confidence, evaluatedAt, policy) : { checks: [], passed: false };
         const experiment = activeExperiment(record, evaluatedAt);
-        const inactive = isInactiveStatus(record.meta?.statusLabel || derived.current?.statusLabel);
+        const listingState = recordListingState(record, derived);
+        const inactive = Boolean(listingState && listingState !== 'active');
         const persistentGrowth = Number(derived.trafficChangePercent) >= 15 && Number(derived.priorTrafficChangePercent) >= 5;
         const persistentDecline = Number(derived.trafficChangePercent) <= -policy.thresholds.declinePercent && Number(derived.priorTrafficChangePercent) <= -10;
         const recentStrength = Number(derived.sales30) >= 2 || Number(derived.salesRateProxy) >= 2 || Number(derived.revenue30) > 0;
         let lifecycle = 'ACTIVE_STABLE';
-        if (record.unsupportedSchema || !derived.current || !derived.complete) lifecycle = 'DATA_GAP';
+        if (record.unsupportedSchema || !derived.current || !derived.complete || !listingState) lifecycle = 'DATA_GAP';
         else if (inactive) lifecycle = 'INACTIVE';
         else if (experiment) lifecycle = 'EXPERIMENT_RUNNING';
         else if (deactivation.passed) lifecycle = 'DEACTIVATION_REVIEW';
         else if (derived.snapshotCount === 1) lifecycle = 'BASELINE';
         else if (!derived.anchors.d30.complete) lifecycle = 'LEARNING';
-        else if (derived.current.visits === 0 && derived.current.favorites === 0 && Number(derived.sales60Raw) === 0) lifecycle = 'DORMANT';
+        else if (confidence.score < 40 || diagnosis === 'INSUFFICIENT_SIGNAL') lifecycle = 'DATA_GAP';
+        else if (derived.current.visits === 0 && derived.current.favorites === 0
+            && derived.anchors.d60.complete && derived.sales60Raw === 0 && derived.revenue60Raw === 0) lifecycle = 'DORMANT';
         else if (persistentGrowth) lifecycle = 'ACTIVE_GROWING';
         else if (persistentDecline && recentStrength) lifecycle = 'PROTECTED';
         else if (persistentDecline) lifecycle = 'ACTIVE_DECLINING';
@@ -2444,6 +2646,17 @@
         return 'stable';
     }
 
+    function recentPerformanceMetrics(record) {
+        const derived = record?.analysis?.derived || record?.health?.result?.derived || {};
+        return {
+            visits: finiteOrNull(derived.visits30),
+            favorites: finiteOrNull(derived.favorites30),
+            sales: finiteOrNull(derived.sales30),
+            revenue: finiteOrNull(derived.revenue30),
+            renewals: finiteOrNull(derived.renewals30),
+        };
+    }
+
     function recordMatchesAnalysisFilters(record, filters, query, pageIds) {
         const normalized = normalizeAnalysisFilters(filters);
         const latest = record.history?.at(-1) || {};
@@ -2454,11 +2667,12 @@
         if (normalized.lifecycle && analysis.lifecycle !== normalized.lifecycle) return false;
         if (normalized.diagnosis && analysis.diagnosis !== normalized.diagnosis) return false;
         if (normalized.performance) {
-            const observed = ['visits', 'favorites', 'sales', 'revenue', 'renewals'].map((key) => finiteOrNull(latest[key]));
+            const recent = recentPerformanceMetrics(record);
+            const observed = Object.values(recent);
             const missing = observed.some((value) => value === null);
             const matches = {
-                sales: finiteOrNull(latest.sales) !== null && finiteOrNull(latest.sales) > 0,
-                'traffic-no-sales': finiteOrNull(latest.visits) > 0 && finiteOrNull(latest.sales) === 0,
+                sales: recent.sales !== null && recent.sales > 0,
+                'traffic-no-sales': recent.visits > 0 && recent.sales === 0,
                 'no-activity': !missing && observed.every((value) => value === 0),
                 missing,
             };
@@ -2514,17 +2728,40 @@
         return output;
     }
 
-    function thresholdCalibration(records = state.records) {
-        const readable = (Array.isArray(records) ? records : []).filter((record) => {
-            const latest = record?.history?.at(-1);
-            return latest && finiteOrNull(latest.visits) !== null && finiteOrNull(latest.sales) !== null && !isInactiveStatus(record.meta?.statusLabel);
-        });
+    function readableCalibrationRows(records = null, evaluatedAt = nowIso()) {
+        const candidates = Array.isArray(records) ? records : (analysisCollectionIsFresh() ? collectedAnalysisRecords() : []);
+        return candidates.map((candidate) => {
+            const record = normalizeRecord(candidate, candidate?.listingId);
+            const derived = record ? deriveRecordMetrics(record, evaluatedAt) : null;
+            return { record, derived };
+        }).filter(({ record, derived }) => record && derived?.complete && derived.anchors?.d30?.complete
+            && derived.freshnessDays <= 1 && !derived.anomalies?.length
+            && Number.isFinite(derived.visits30) && Number.isFinite(derived.sales30)
+            && recordListingState(record, derived) === 'active');
+    }
+
+    function thresholdImpactCounts(records = null, values = state.settings, evaluatedAt = nowIso()) {
+        const readable = readableCalibrationRows(records, evaluatedAt);
+        return {
+            improve: readable.filter(({ derived }) => derived.sales30 === 0 && derived.visits30 >= Number(values.minVisitsToImprove)).length,
+            protect: readable.filter(({ derived }) => derived.sales30 > 0 && derived.visits30 >= Number(values.minVisitsToProtect)).length,
+        };
+    }
+
+    function thresholdCalibration(records = null, evaluatedAt = nowIso()) {
+        const readable = readableCalibrationRows(records, evaluatedAt);
         if (readable.length < 8) return { available: false, sampleSize: readable.length, values: null };
-        const visits = readable.map((record) => finiteOrNull(record.history.at(-1).visits)).filter(Number.isFinite);
-        const noSaleVisits = readable.filter((record) => finiteOrNull(record.history.at(-1).sales) === 0).map((record) => finiteOrNull(record.history.at(-1).visits)).filter((value) => Number.isFinite(value) && value > 0);
-        const sellingVisits = readable.filter((record) => finiteOrNull(record.history.at(-1).sales) > 0).map((record) => finiteOrNull(record.history.at(-1).visits)).filter(Number.isFinite);
-        const dormantRenewals = readable.filter((record) => finiteOrNull(record.history.at(-1).sales) === 0).map((record) => finiteOrNull(record.history.at(-1).renewals)).filter(Number.isFinite);
-        const declines = readable.map((record) => finiteOrNull(record.analysis?.derived?.trafficChangePercent)).filter((value) => Number.isFinite(value) && value < 0).map(Math.abs);
+        const visits = readable.map(({ derived }) => finiteOrNull(derived.visits30)).filter(Number.isFinite);
+        const noSaleVisits = readable.filter(({ derived }) => derived.sales30 === 0)
+            .map(({ derived }) => finiteOrNull(derived.visits30)).filter((value) => Number.isFinite(value) && value > 0);
+        const sellingVisits = readable.filter(({ derived }) => Number(derived.sales30) > 0)
+            .map(({ derived }) => finiteOrNull(derived.visits30)).filter(Number.isFinite);
+        const dormantRenewals = readable.filter(({ derived }) => derived.anchors?.d60?.complete
+            && derived.sales60Raw === 0 && derived.revenue60Raw === 0
+            && derived.current?.sales === 0 && derived.current?.revenue === 0)
+            .map(({ derived }) => finiteOrNull(derived.current?.renewals)).filter(Number.isFinite);
+        const declines = readable.map(({ derived }) => finiteOrNull(derived.trafficChangePercent))
+            .filter((value) => Number.isFinite(value) && value < 0).map(Math.abs);
         const improve = Math.max(10, Math.round(quantile(noSaleVisits.length >= 3 ? noSaleVisits : visits, 0.25) || DEFAULT_SETTINGS.minVisitsToImprove));
         const protectBase = Math.round(quantile(sellingVisits.length >= 3 ? sellingVisits : visits, 0.75) || DEFAULT_SETTINGS.minVisitsToProtect);
         return {
@@ -3320,89 +3557,186 @@
         return pathname.match(/\/listing-editor\/edit\/(\d+)/i)?.[1] || '';
     }
 
+    function elementIsUsable(element) {
+        if (!element || element.closest?.('[hidden],[aria-hidden="true"],[inert]')) return false;
+        try {
+            if (typeof element.checkVisibility === 'function' && !element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })) return false;
+        } catch { /* Fall back to computed style. */ }
+        try {
+            const style = typeof getComputedStyle === 'function' ? getComputedStyle(element) : null;
+            if (style && (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')) return false;
+        } catch { /* A detached transient node is not accepted below. */ }
+        return !document.documentElement?.contains || document.documentElement.contains(element);
+    }
+
     const ListingPageAdapter = {
+        cardRoots() {
+            return Array.from(document.querySelectorAll('li.wt-block-grid__item')).filter(elementIsUsable);
+        },
         cardLinks() {
-            const selectors = [
-                'li.wt-block-grid__item a.card-body[href*="/listing-editor/edit/"]',
-                'a[href*="/listing-editor/edit/"]',
-            ];
             const found = [];
             const seen = new Set();
-            for (const selector of selectors) {
-                document.querySelectorAll(selector).forEach((link) => {
-                    const id = link.href.match(/\/listing-editor\/edit\/(\d+)/i)?.[1];
-                    if (id && !seen.has(id)) { seen.add(id); found.push(link); }
-                });
-            }
+            this.cardRoots().forEach((card) => {
+                const candidates = Array.from(card.querySelectorAll('a[href*="/listing-editor/edit/"]')).filter(elementIsUsable);
+                const link = candidates.find((item) => item.matches('a.card-body'))
+                    || candidates.find((item) => !item.closest('[role="menu"],.card-actions') && item.querySelector('.card-title, h2[title], h2'));
+                const id = link?.href.match(/\/listing-editor\/edit\/(\d+)/i)?.[1];
+                if (id && !seen.has(id)) { seen.add(id); found.push(link); }
+            });
             return found;
         },
-        parseCard(link) {
-            const card = link.closest('li.wt-block-grid__item') || link.closest('li') || link.parentElement;
+        metricRows(link) {
+            const containers = Array.from(link?.querySelectorAll('.card-meta') || []).filter((container) => container.querySelector('h6'));
+            return containers.flatMap((container) => Array.from(container.querySelectorAll('.card-meta-row-item')).map((item) => normalizeSpace(item.textContent))).filter(Boolean);
+        },
+        parseCard(link, verifiedShopKey = currentShopKey(), verifiedListingState = pageListingState()) {
+            const card = link?.closest('li.wt-block-grid__item');
+            if (!card || !elementIsUsable(card) || !elementIsUsable(link)) return null;
             const editId = link.href.match(/\/listing-editor\/edit\/(\d+)/i)?.[1] || '';
-            const publicLink = card?.querySelector('a[href*="/listing/"]');
+            const publicLink = card.querySelector('a[href*="/listing/"]');
             const publicId = publicLink?.href.match(/\/listing\/(\d+)(?:\/|$)/i)?.[1] || '';
-            const statsLink = card?.querySelector('a[href*="/stats/listings/"]');
+            const statsLink = card.querySelector('a[href*="/stats/listings/"]');
             const statsId = statsLink?.href.match(/\/stats\/listings\/(\d+)/i)?.[1] || '';
             const ids = [editId, publicId, statsId].filter(Boolean);
             if (!editId || new Set(ids).size > 1) return null;
-            const title = normalizeSpace(card?.querySelector('.card-title, h2[title], h2')?.getAttribute('title') || card?.querySelector('.card-title, h2')?.textContent);
-            const sku = normalizeSpace(card?.querySelector('.card-meta-row-sku [data-value="true"], .card-meta-row-sku')?.textContent);
-            const quantityText = normalizeSpace(card?.querySelector('.card-meta-row-quantity')?.textContent);
-            const priceText = normalizeSpace(card?.querySelector('.card-meta-row-price span, .card-meta-row-price')?.textContent);
-            const statusLabel = normalizeSpace(card?.querySelector('.card-meta-row-status')?.textContent);
-            const image = card?.querySelector('.card-img-wrap img, img');
-            const text = normalizeSpace(link.textContent);
+            const title = normalizeSpace(card.querySelector('.card-title, h2[title], h2')?.getAttribute('title') || card.querySelector('.card-title, h2')?.textContent);
+            const sku = normalizeSpace(card.querySelector('.card-meta-row-sku [data-value="true"], .card-meta-row-sku')?.textContent);
+            const quantityText = normalizeSpace(card.querySelector('.card-meta-row-quantity')?.textContent);
+            const priceText = normalizeSpace(card.querySelector('.card-meta-row-price span, .card-meta-row-price')?.textContent);
+            const renewalLabel = normalizeSpace(card.querySelector('.card-meta-row-status')?.textContent);
+            const image = card.querySelector('.card-img-wrap img, img');
+            const metrics = parseListingMetrics(this.metricRows(link));
+            if (!verifiedShopKey || !normalizeListingState(verifiedListingState) || !title
+                || !HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(metrics[field]))) return null;
+            const listingState = normalizeListingState(verifiedListingState);
             return {
-                listingId: editId, title, sku, editUrl: link.href,
+                listingId: editId, title, sku, editUrl: link.href, shopKey: verifiedShopKey,
                 publicUrl: publicLink?.href || '', imageUrl: image?.currentSrc || image?.src || '',
-                stock: parseCount(quantityText, ['in stock', 'stokta', 'stock']),
-                price: parsePriceRange(priceText), statusLabel,
-                visits: parseCount(text, ['visits?', 'ziyaret']),
-                favorites: parseCount(text, ['favorites?', 'favori']),
-                sales: parseCount(text, ['sales?', 'satış']),
-                revenue: parseMoneyFromLabel(text, ['revenue', 'gelir']),
-                renewals: parseCount(text, ['renewals?', 'yenileme']),
-                capturedAt: nowIso(),
+                stock: parseCount(quantityText, ['in stock', 'stokta', 'stock', 'stok']),
+                price: parsePriceRange(priceText), currency: metrics.currency || currencyMarker(priceText),
+                listingState, statusLabel: listingStateLabel(listingState), renewalLabel,
+                visits: metrics.visits, favorites: metrics.favorites, sales: metrics.sales,
+                revenue: metrics.revenue, renewals: metrics.renewals, capturedAt: nowIso(),
             };
         },
-        scan() { return this.cardLinks().map((link) => this.parseCard(link)).filter(Boolean); },
+        scan() {
+            const shopKey = currentShopKey();
+            const listingState = pageListingState();
+            if (!shopKey || !listingState) return [];
+            return this.cardLinks().map((link) => this.parseCard(link, shopKey, listingState)).filter(Boolean);
+        },
         contentSignature(listings = this.scan()) {
-            return listings.map((item) => String(item.listingId)).join('\u001f');
+            return listings.map((item) => String(item.listingId)).sort().join('\u001f');
+        },
+        readSignature(listings) {
+            return JSON.stringify([...listings].sort((left, right) => String(left.listingId).localeCompare(String(right.listingId))).map((item) => [
+                String(item.listingId), item.title, item.sku, item.listingState, item.statusLabel, item.renewalLabel, item.stock,
+                item.price?.min, item.price?.max, item.visits, item.favorites, item.sales, item.revenue, item.renewals,
+            ]));
         },
         paginationNav() {
-            return document.querySelector('nav[aria-label="Listings pagination"], nav[aria-label*="pagination" i]');
+            const candidates = Array.from(document.querySelectorAll('nav[aria-label="Listings pagination"],nav[aria-label*="pagination" i],nav[aria-label*="sayfa" i]'));
+            return candidates.find(elementIsUsable) || null;
         },
-        pageSelect() {
-            const nav = this.paginationNav();
+        pageSelect(nav = this.paginationNav()) {
             const host = nav?.querySelector('clg-select');
             return host?.shadowRoot?.querySelector('select') || nav?.querySelector('select') || null;
         },
         pageInfo() {
             const nav = this.paginationNav();
-            const text = normalizeSpace(nav?.textContent);
+            const cardCount = this.cardLinks().length;
+            let routeCurrent = null;
+            let routeOffset = 0;
+            let routePageValid = true;
+            if (routeKind() === 'listings') {
+                try {
+                    const params = new URL(location.href).searchParams;
+                    const values = params.getAll('page');
+                    if (!values.length) routeCurrent = 1;
+                    else if (values.length === 1 && /^[1-9]\d*$/.test(values[0])) routeCurrent = Number(values[0]);
+                    else routePageValid = false;
+                    const offsets = params.getAll('offset');
+                    if (!offsets.length) routeOffset = 0;
+                    else if (offsets.length === 1 && offsets[0] === '0') routeOffset = 0;
+                    else routePageValid = false;
+                } catch { routePageValid = false; }
+            }
+            if (!nav) {
+                const ambiguous = cardCount >= ANALYSIS_BATCH_SIZE;
+                let explicitPagedLocation = false;
+                try {
+                    const url = new URL(location.href);
+                    explicitPagedLocation = (routeCurrent ?? Number(url.searchParams.get('page') || 1)) > 1 || routeOffset > 0 || Number(url.searchParams.get('offset') || 0) > 0;
+                } catch { explicitPagedLocation = true; }
+                return { current: 1, total: 1, valid: routePageValid && cardCount > 0 && !ambiguous && !explicitPagedLocation, hasPagination: false, ambiguous, explicitPagedLocation };
+            }
+            const text = normalizeSpace(nav.textContent);
             const match = text.match(/(?:Page|Sayfa)\s*(\d+).*?(?:of|\/)\s*(\d+)/i);
-            const select = this.pageSelect();
-            return {
-                current: Number(select?.value || match?.[1] || 1),
-                total: Number(match?.[2] || select?.options?.length || 1),
-            };
+            const select = this.pageSelect(nav);
+            const current = routeCurrent ?? Number(select?.value || match?.[1]);
+            const total = Number(match?.[2] || select?.options?.length);
+            const valid = routePageValid && Number.isInteger(current) && Number.isInteger(total) && current >= 1 && total >= 1 && current <= total;
+            return { current: valid ? current : 0, total: valid ? total : 0, valid, hasPagination: true, ambiguous: false };
         },
-        pageSignature(listings = this.scan()) {
-            const page = this.pageInfo().current;
-            const ids = listings.map((item) => String(item.listingId));
+        pageSignature(listings = this.scan(), page = this.pageInfo().current) {
+            const ids = listings.map((item) => String(item.listingId)).sort();
             return `${page}|${ids.length}|${ids.join('\u001f')}`;
+        },
+        snapshotState(options = {}) {
+            const pageInfo = this.pageInfo();
+            const links = this.cardLinks();
+            const listings = this.scan();
+            const expectedCount = Math.max(0, Number(options.expectedCount) || 0);
+            let valid = pageInfo.valid && links.length > 0 && listings.length === links.length;
+            if (options.requirePagination && !pageInfo.hasPagination) valid = false;
+            if (expectedCount) valid = valid && listings.length === expectedCount;
+            else if (pageInfo.total > 1 && pageInfo.current < pageInfo.total) valid = valid && listings.length === ANALYSIS_BATCH_SIZE;
+            else valid = valid && listings.length <= ANALYSIS_BATCH_SIZE;
+            const signature = valid ? JSON.stringify([pageInfo.current, pageInfo.total, this.readSignature(listings)]) : '';
+            return { valid, pageInfo, links, listings, signature };
+        },
+        async readStable(options = {}) {
+            const timeout = window.__MAKAYTRON_LISTING_TEST__ === true
+                ? (Number(options.timeout) || 600)
+                : (Number(options.timeout) || COLLECTION_STABLE_READ_TIMEOUT_MS);
+            const interval = window.__MAKAYTRON_LISTING_TEST__ === true ? 10 : COLLECTION_STABLE_SAMPLE_INTERVAL_MS;
+            const deadline = Date.now() + timeout;
+            let previousSignature = '';
+            let stableSamples = 0;
+            let deferredUnboundedPage = null;
+            while (Date.now() <= deadline) {
+                const snapshot = this.snapshotState(options);
+                if (snapshot.valid) {
+                    const sameSignature = snapshot.signature === previousSignature;
+                    const requiresFullObservation = !Number(options.expectedCount)
+                        && snapshot.pageInfo.current === snapshot.pageInfo.total;
+                    if (!sameSignature || !requiresFullObservation) deferredUnboundedPage = null;
+                    stableSamples = sameSignature ? stableSamples + 1 : 1;
+                    previousSignature = snapshot.signature;
+                    if (stableSamples >= COLLECTION_STABLE_SAMPLES) {
+                        if (!requiresFullObservation) return snapshot;
+                        deferredUnboundedPage = snapshot;
+                    }
+                } else {
+                    previousSignature = '';
+                    stableSamples = 0;
+                    deferredUnboundedPage = null;
+                }
+                await sleep(interval);
+            }
+            return deferredUnboundedPage;
         },
         nextButton() {
             const nav = this.paginationNav();
-            const host = Array.from(nav?.querySelectorAll('clg-icon-button') || []).find((element) => element.shadowRoot?.querySelector('button[aria-label="Next"],button[aria-label="Sonraki"]'));
-            return host?.shadowRoot?.querySelector('button[aria-label="Next"],button[aria-label="Sonraki"]')
-                || nav?.querySelector('button[aria-label="Next"],button[aria-label="Sonraki"]');
+            const matchesNext = (button) => /^(?:next|next page|sonraki|sonraki sayfa)$/i.test(normalizeSpace(button?.getAttribute('aria-label')));
+            const shadowButtons = Array.from(nav?.querySelectorAll('clg-icon-button') || []).map((host) => host.shadowRoot?.querySelector('button')).filter(Boolean);
+            return shadowButtons.find(matchesNext) || Array.from(nav?.querySelectorAll('button') || []).find(matchesNext) || null;
         },
         pageControl(page) {
-            const select = this.pageSelect();
+            const nav = this.paginationNav();
+            const select = this.pageSelect(nav);
             const option = Array.from(select?.options || []).find((item) => Number(item.value || normalizeSpace(item.textContent)) === Number(page));
             if (select && option) return { type: 'select', element: select, value: option.value };
-            const nav = this.paginationNav();
             const candidates = Array.from(nav?.querySelectorAll('a[href],button') || []);
             const element = candidates.find((item) => Number(normalizeSpace(item.textContent)) === Number(page) || Number(item.getAttribute('aria-label')?.match(/\d+/)?.[0]) === Number(page));
             return element ? { type: 'click', element } : null;
@@ -3476,13 +3810,14 @@
         },
         async captureCurrent() {
             const listingId = currentListingId();
-            if (!listingId || !this.ready()) return null;
+            const shopKey = currentShopKey();
+            if (!listingId || !shopKey || !this.ready()) return null;
             const record = await Store.getRecord(listingId) || {
-                schema: APP.schema, listingId, meta: { title: this.read().title, editUrl: location.href, lastSeenAt: nowIso() },
+                schema: APP.schema, listingId, meta: { title: this.read().title, editUrl: location.href, shopKey, lastSeenAt: nowIso() },
                 history: [], improvements: [], proposal: null,
             };
             record.editor = { ...this.read(), capturedAt: nowIso() };
-            record.meta = { ...record.meta, title: record.editor.title || record.meta?.title || '', editUrl: location.href, lastSeenAt: nowIso() };
+            record.meta = { ...record.meta, title: record.editor.title || record.meta?.title || '', editUrl: location.href, shopKey, lastSeenAt: nowIso() };
             await Store.putRecord(record);
             return record;
         },
@@ -3797,16 +4132,17 @@
     function normalizeCollection(raw) {
         if (!raw || typeof raw !== 'object') return null;
         const schema = Math.max(1, Number(raw.schema) || 1);
-        if (schema > 1) {
+        if (schema > COLLECTION_SCHEMA_VERSION) {
             return {
                 schema, id: String(raw.id || 'unsupported-collection'), status: 'blocked', scopeKey: String(raw.scopeKey || ''),
                 startedAt: String(raw.startedAt || ''), updatedAt: String(raw.updatedAt || ''), completedAt: null, stoppedAt: null,
                 expectedPage: 1, totalPages: 1, pages: {}, uniqueIds: [], duplicateCount: 0, returningToFirst: false,
-                leaseToken: '', handoffToken: '', handoffPage: 0, handoffExpiresAt: '', unsupportedSchema: true,
+                leaseToken: '', handoffToken: '', handoffPage: 0, handoffExpiresAt: '', unsupportedSchema: true, legacySchema: false,
                 retry: null, failureReports: [],
                 error: { key: 'collectionNewerSchema', reason: 'Unsupported collection schema.', reportId: '' },
             };
         }
+        const legacySchema = schema < COLLECTION_SCHEMA_VERSION;
         const allowedStatuses = ['starting', 'running', 'paused', 'blocked', 'completed'];
         const pages = {};
         Object.entries(raw.pages && typeof raw.pages === 'object' ? raw.pages : {}).forEach(([pageKey, value]) => {
@@ -3840,23 +4176,52 @@
             lastAt: String(raw.retry.lastAt || nowIso()),
         } : null;
         return {
-            schema: 1, id: String(raw.id || `collection-${Date.now()}`),
-            status: allowedStatuses.includes(raw.status) ? raw.status : 'blocked', scopeKey: String(raw.scopeKey || ''),
+            schema, id: String(raw.id || `collection-${Date.now()}`),
+            status: legacySchema ? 'blocked' : (allowedStatuses.includes(raw.status) ? raw.status : 'blocked'), scopeKey: String(raw.scopeKey || ''),
             startedAt: String(raw.startedAt || nowIso()), updatedAt: String(raw.updatedAt || nowIso()),
-            completedAt: raw.completedAt ? String(raw.completedAt) : null, stoppedAt: raw.stoppedAt ? String(raw.stoppedAt) : null,
+            completedAt: legacySchema ? null : (raw.completedAt ? String(raw.completedAt) : null), stoppedAt: raw.stoppedAt ? String(raw.stoppedAt) : null,
             expectedPage: Math.max(1, Number(raw.expectedPage) || 1), totalPages: Math.max(1, Number(raw.totalPages) || 1), pages,
             uniqueIds: uniqueStrings([...(Array.isArray(raw.uniqueIds) ? raw.uniqueIds.map(String) : []), ...pageIds]),
             duplicateCount: Math.max(0, Number(raw.duplicateCount) || 0),
             returningToFirst: Boolean(raw.returningToFirst),
             leaseToken: String(raw.leaseToken || ''), handoffToken: String(raw.handoffToken || ''),
-            handoffPage: Math.max(0, Number(raw.handoffPage) || 0), handoffExpiresAt: String(raw.handoffExpiresAt || ''), unsupportedSchema: false,
+            handoffPage: Math.max(0, Number(raw.handoffPage) || 0), handoffExpiresAt: String(raw.handoffExpiresAt || ''), unsupportedSchema: false, legacySchema,
             retry, failureReports,
-            error: raw.error && typeof raw.error === 'object' ? { key: String(raw.error.key || ''), reason: String(raw.error.reason || ''), reportId: String(raw.error.reportId || '') } : null,
+            error: legacySchema
+                ? { key: 'collectionPageChanged', reason: 'Collection must be rescanned with the current parser.', reportId: '' }
+                : (raw.error && typeof raw.error === 'object' ? { key: String(raw.error.key || ''), reason: String(raw.error.reason || ''), reportId: String(raw.error.reportId || '') } : null),
         };
     }
 
+    function collectionManifestIsComplete(collection) {
+        const totalPages = Number(collection?.totalPages);
+        if (!collection || !Number.isInteger(totalPages) || totalPages < 1 || totalPages > MAX_COLLECTION_PAGES) return false;
+        if (Number(collection.duplicateCount) !== 0 || !Array.isArray(collection.uniqueIds) || !collection.uniqueIds.length) return false;
+        const pageKeys = Object.keys(collection.pages || {});
+        if (pageKeys.length !== totalPages || pageKeys.some((key) => !/^\d+$/.test(key) || Number(key) < 1 || Number(key) > totalPages)) return false;
+        const collectedIds = [];
+        for (let page = 1; page <= totalPages; page += 1) {
+            const manifest = collection.pages?.[String(page)];
+            const ids = Array.isArray(manifest?.ids) ? manifest.ids.map(String) : [];
+            const count = Number(manifest?.count);
+            if (!manifest || !Number.isInteger(count) || count < 1 || count > ANALYSIS_BATCH_SIZE || ids.length !== count) return false;
+            if (page < totalPages && count !== ANALYSIS_BATCH_SIZE) return false;
+            if (new Set(ids).size !== ids.length || ids.some((id) => !id)) return false;
+            const contentSignature = [...ids].sort().join('\u001f');
+            if (manifest.contentSignature !== contentSignature || manifest.signature !== `${page}|${count}|${contentSignature}`) return false;
+            collectedIds.push(...ids);
+        }
+        const uniqueIds = collection.uniqueIds.map(String);
+        const collectedSet = new Set(collectedIds);
+        return collectedSet.size === collectedIds.length
+            && new Set(uniqueIds).size === uniqueIds.length
+            && uniqueIds.length === collectedIds.length
+            && uniqueIds.every((id) => collectedSet.has(id));
+    }
+
     function collectionIsFresh(collection = state.collection, referenceTime = Date.now(), expected = {}) {
-        if (!collection || collection.status !== 'completed') return false;
+        if (!collection || collection.schema !== COLLECTION_SCHEMA_VERSION || collection.legacySchema
+            || collection.status !== 'completed' || !collectionManifestIsComplete(collection)) return false;
         const completedAt = Date.parse(collection.completedAt || '');
         if (!Number.isFinite(completedAt)) return false;
         const age = Number(referenceTime) - completedAt;
@@ -3880,7 +4245,7 @@
     }
 
     function collectionHasAllRecords(collection = state.collection, records = state.records) {
-        if (!collection || collection.status !== 'completed') return false;
+        if (!collection || collection.status !== 'completed' || !collectionManifestIsComplete(collection)) return false;
         const readableIds = new Set((records || []).filter((record) => record && !record.unsupportedSchema).map((record) => String(record.listingId)));
         return (collection.uniqueIds || []).every((listingId) => readableIds.has(String(listingId)));
     }
@@ -3942,6 +4307,20 @@
             const error = new Error('Collection lease was lost.'); error.code = 'COLLECTION_LEASE_LOST'; throw error;
         },
         async acquire(options = {}) {
+            const pendingHandoff = normalizeCollection(await GMX.get(KEYS.collection, null));
+            const pendingLease = await GMX.get(KEYS.collectionLease, null);
+            const pendingLeaseActive = Boolean((pendingLease?.token || pendingLease?.owner) && Number(pendingLease.expiresAt) > Date.now());
+            const pendingHandoffActive = pendingHandoff?.status === 'running' && pendingHandoff.handoffToken
+                && (validTime(pendingHandoff.handoffExpiresAt) || 0) > Date.now();
+            if (pendingHandoffActive && !(options.allowAbandonedHandoff && !pendingLeaseActive)) {
+                const handoffPage = Math.max(1, Number(pendingHandoff.handoffPage) || 1);
+                const stable = await ListingPageAdapter.readStable({
+                    requirePagination: pendingHandoff.totalPages > 1,
+                    expectedCount: pendingHandoff.pages?.[String(handoffPage)]?.count || 0,
+                    timeout: 10000,
+                });
+                if (!stable || stable.pageInfo.current !== handoffPage || stable.pageInfo.total !== pendingHandoff.totalPages) return false;
+            }
             clearInterval(state.collectionLeaseTimer);
             state.collectionLeaseTimer = 0;
             const acquired = await withNamedLock(STORAGE_MUTATION_LOCK, async () => {
@@ -4013,12 +4392,23 @@
         },
     };
 
-    function collectionScopeKey() {
-        const url = new URL(location.href);
-        ['page', 'offset'].forEach((key) => url.searchParams.delete(key));
+    function collectionScopeKey(href = location.href, shopKey = currentShopKey(), listingState = pageListingState(document, href)) {
+        const normalizedState = normalizeListingState(listingState);
+        if (!/^etsy-shop:[a-z0-9]+$/.test(shopKey) || !normalizedState) return '';
+        const url = new URL(href, location.href);
+        const transient = new Set(['page', 'offset', 'ref', 'referrer', 'from_page', 'click_key', 'click_sum', 'organic_search_click', 'campaign_label']);
+        [...url.searchParams.keys()].forEach((key) => {
+            if (transient.has(key.toLowerCase()) || /^utm_/i.test(key)) url.searchParams.delete(key);
+        });
         url.hash = '';
         url.searchParams.sort();
-        return `${url.pathname}?${url.searchParams.toString()}`;
+        const query = url.searchParams.toString();
+        return `${shopKey}|status:${normalizedState}|${url.pathname}${query ? `?${query}` : ''}`;
+    }
+
+    function collectionScopeMatches(collection = state.collection, href = location.href, root = document) {
+        const actual = collectionScopeKey(href, currentShopKey(root), pageListingState(root, href));
+        return Boolean(actual && collection?.scopeKey && actual === collection.scopeKey);
     }
 
     async function activatePageControl(control, page) {
@@ -4037,6 +4427,28 @@
         }
         control.element.click();
         return true;
+    }
+
+    function collectionPageConflict(collection, snapshot) {
+        const current = Number(snapshot?.pageInfo?.current) || 0;
+        const listings = Array.isArray(snapshot?.listings) ? snapshot.listings : [];
+        const contentSignature = ListingPageAdapter.contentSignature(listings);
+        const repeated = Object.entries(collection?.pages || {}).some(([page, item]) => Number(page) !== current && item.contentSignature === contentSignature);
+        const collected = new Set((collection?.uniqueIds || []).map(String));
+        const overlap = !collection?.pages?.[String(current)] && listings.some((item) => collected.has(String(item.listingId)));
+        return { repeated, overlap };
+    }
+
+    function collectionPageMatchesManifest(collection, snapshot) {
+        const current = Number(snapshot?.pageInfo?.current) || 0;
+        const manifest = collection?.pages?.[String(current)];
+        if (!manifest) return true;
+        const listings = Array.isArray(snapshot?.listings) ? snapshot.listings : [];
+        return manifest.signature === ListingPageAdapter.pageSignature(listings, current);
+    }
+
+    function pageIdentityMatchesCollection(pageInfo, collection) {
+        return Boolean(pageInfo?.valid && Number(pageInfo.total) === Number(collection?.totalPages));
     }
 
     const Collection = {
@@ -4126,8 +4538,10 @@
             state.collectionPauseRequested = false;
             if (routeKind() !== 'listings') { UI.setStatus('collectionRouteRequired', 'blocked'); UI.render(); return null; }
             if (state.collection?.unsupportedSchema) { UI.setStatus('collectionNewerSchema', 'blocked'); UI.render(); return null; }
+            const initial = await ListingPageAdapter.readStable({ requirePagination: false });
+            if (!initial?.pageInfo?.valid) { UI.setStatus('collectionPageChanged', 'blocked'); UI.render(); return null; }
             if (!await CollectionLease.acquire()) { UI.setStatus('collectionBusy', 'blocked'); UI.render(); return null; }
-            const pageInfo = ListingPageAdapter.pageInfo();
+            const pageInfo = initial.pageInfo;
             if (pageInfo.total > MAX_COLLECTION_PAGES) {
                 await CollectionLease.release();
                 UI.setStatus('collectionLimit', 'blocked', { count: MAX_COLLECTION_PAGES }); UI.render(); return null;
@@ -4135,7 +4549,7 @@
             const createdAt = nowIso();
             try {
                 await Store.saveCollection({
-                    schema: 1, id: `collection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, status: 'running',
+                    schema: COLLECTION_SCHEMA_VERSION, id: `collection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, status: 'running',
                     scopeKey: collectionScopeKey(), startedAt: createdAt, updatedAt: createdAt, expectedPage: 1,
                     totalPages: pageInfo.total, pages: {}, uniqueIds: [], duplicateCount: 0, returningToFirst: false, leaseToken: state.collectionLeaseToken,
                     handoffToken: '', handoffPage: 0, handoffExpiresAt: '', retry: null, failureReports: [], error: null,
@@ -4153,7 +4567,11 @@
             state.collectionPauseRequested = false;
             if (routeKind() !== 'listings') { UI.setStatus('collectionRouteRequired', 'blocked'); UI.render(); return null; }
             if (!state.collection || !['paused', 'running'].includes(state.collection.status)) return this.start();
-            if (state.collection.scopeKey !== collectionScopeKey() || state.collection.totalPages !== ListingPageAdapter.pageInfo().total) { UI.setStatus('collectionPageChanged', 'blocked'); UI.render(); return null; }
+            const observed = await ListingPageAdapter.readStable({ requirePagination: state.collection.totalPages > 1 });
+            if (!observed?.pageInfo?.valid || state.collection.schema !== COLLECTION_SCHEMA_VERSION
+                || state.collection.scopeKey !== collectionScopeKey() || state.collection.totalPages !== observed.pageInfo.total) {
+                UI.setStatus('collectionPageChanged', 'blocked'); UI.render(); return null;
+            }
             if (!await CollectionLease.acquire({ allowAbandonedHandoff: true })) { UI.setStatus('collectionBusy', 'blocked'); UI.render(); return null; }
             const firstMissing = Array.from({ length: state.collection.totalPages }, (_, index) => index + 1).find((page) => !state.collection.pages[String(page)]);
             const expectedPage = state.collection.returningToFirst ? 1 : firstMissing || state.collection.totalPages;
@@ -4210,14 +4628,16 @@
             UI.setStatus('collectionBlocked', 'blocked', { reason }); UI.render();
             return null;
         },
-        async complete() {
-            if (ListingPageAdapter.pageInfo().current !== 1) return this.block('collectionPageChanged');
-            const firstPageListings = ListingPageAdapter.scan();
+        async complete(firstPageListings = []) {
+            const pageInfo = ListingPageAdapter.pageInfo();
+            if (!pageInfo.valid || pageInfo.current !== 1) return this.block('collectionPageChanged');
             const firstPageManifest = state.collection?.pages?.['1'];
             const firstPageIds = firstPageListings.map((item) => String(item.listingId));
-            if (!firstPageManifest || !firstPageListings.length || firstPageIds.join('\u001f') !== firstPageManifest.ids.map(String).join('\u001f')) return this.block('collectionPageChanged');
+            if (!collectionManifestIsComplete(state.collection) || !firstPageManifest || !firstPageListings.length
+                || ListingPageAdapter.contentSignature(firstPageListings) !== firstPageManifest.contentSignature) return this.block('collectionPageChanged');
+            if (new Set(firstPageIds).size !== firstPageIds.length) return this.block('collectionOverlap');
             state.pageListings = firstPageListings;
-            await refreshRecords({ persist: true });
+            await refreshRecords({ persist: true, scopeIds: state.collection.uniqueIds });
             await this.persist({ status: 'completed', completedAt: nowIso(), expectedPage: 1, returningToFirst: false, handoffToken: '', handoffPage: 0, handoffExpiresAt: '', retry: null, error: null });
             pruneSelectionToCollection();
             await Store.appendAudit({ type: 'collection-complete', collectionId: state.collection.id, pages: this.pageCount(), count: state.collection.uniqueIds.length });
@@ -4247,7 +4667,8 @@
         async navigateTo(page, beforeContentSignature) {
             const current = ListingPageAdapter.pageInfo().current;
             const next = page === current + 1 ? ListingPageAdapter.nextButton() : null;
-            const control = next && !ListingPageAdapter.isDisabled(next) ? { type: 'click', element: next } : ListingPageAdapter.pageControl(page);
+            const direct = ListingPageAdapter.pageControl(page);
+            const control = direct || (next && !ListingPageAdapter.isDisabled(next) ? { type: 'click', element: next } : null);
             const beforeFirstLink = ListingPageAdapter.cardLinks()[0] || null;
             if (!control || !await this.prepareNavigationHandoff(page) || !await activatePageControl(control, page)) return false;
             const transitioned = await waitFor(() => {
@@ -4264,9 +4685,11 @@
         async navigateWithRetry(page, beforeContentSignature) {
             return this.retryTransient('navigation', async () => {
                 if (ListingPageAdapter.pageInfo().current === Number(page)) {
-                    const links = ListingPageAdapter.cardLinks();
-                    const listings = ListingPageAdapter.scan();
-                    if (listings.length > 0 && listings.length === links.length) return CollectionLease.acquire();
+                    const stable = await ListingPageAdapter.readStable({
+                        requirePagination: state.collection?.totalPages > 1,
+                        expectedCount: state.collection?.pages?.[String(page)]?.count || 0,
+                    });
+                    if (stable) return CollectionLease.acquire();
                 }
                 return this.navigateTo(page, beforeContentSignature);
             }, 'collectionPageChanged');
@@ -4276,7 +4699,7 @@
             state.collectionLoop = (async () => {
                 if (!state.collection || state.collection.status !== 'running') return null;
                 const expectedCollectionId = state.collection.id;
-                if (!await CollectionLease.acquire()) {
+                if (!await CollectionLease.acquire({ allowAbandonedHandoff: true })) {
                     UI.setStatus('collectionBusy', 'blocked'); UI.render();
                     return null;
                 }
@@ -4298,9 +4721,22 @@
                         return this.pause();
                     }
                     if (routeKind() !== 'listings') return this.block('collectionRouteRequired');
-                    if (collectionScopeKey() !== state.collection.scopeKey) return this.block('collectionPageChanged');
-                    const pageInfo = ListingPageAdapter.pageInfo();
-                    if (pageInfo.total !== state.collection.totalPages || pageInfo.total > MAX_COLLECTION_PAGES) return this.block('collectionPageChanged');
+                    const scopeReadiness = await this.retryTransient('shop-scope', () => waitFor(
+                        () => collectionScopeMatches(state.collection) ? true : null,
+                        window.__MAKAYTRON_LISTING_TEST__ === true ? 700 : 10000,
+                        250,
+                    ));
+                    if (!scopeReadiness.ok) return scopeReadiness.cancelled ? state.collection : this.block('collectionPageChanged', {}, scopeReadiness.report);
+                    const pageIdentity = await this.retryTransient('page-identity', () => waitFor(() => {
+                        const observed = ListingPageAdapter.pageInfo();
+                        return pageIdentityMatchesCollection(observed, state.collection) ? observed : null;
+                    }, window.__MAKAYTRON_LISTING_TEST__ === true ? 700 : 10000, 250));
+                    if (!pageIdentity.ok) {
+                        if (!pageIdentity.cancelled) void trackTelemetryError('selector_listing_pagination');
+                        return pageIdentity.cancelled ? state.collection : this.block('collectionPageChanged', {}, pageIdentity.report);
+                    }
+                    let pageInfo = pageIdentity.value;
+                    if (pageInfo.total > MAX_COLLECTION_PAGES) return this.block('collectionLimit', { count: MAX_COLLECTION_PAGES });
                     if (pageInfo.current !== state.collection.expectedPage) {
                         const before = ListingPageAdapter.contentSignature();
                         UI.setStatus(state.collection.expectedPage === 1 ? 'collectionFirstPage' : 'collectionProgress', 'scanning', this.progressParams(pageInfo)); UI.render();
@@ -4311,32 +4747,65 @@
                         }
                         continue;
                     }
-                    const pageRead = await this.retryTransient('page-read', async () => {
-                        const ready = await waitFor(() => ListingPageAdapter.cardLinks().length > 0, window.__MAKAYTRON_LISTING_TEST__ === true ? 700 : 10000, 250);
-                        if (!ready) return null;
-                        const links = ListingPageAdapter.cardLinks();
-                        const listings = ListingPageAdapter.scan();
-                        return listings.length > 0 && listings.length === links.length ? { links, listings } : null;
+                    let pageRead = await this.retryTransient('page-read', async () => {
+                        return ListingPageAdapter.readStable({
+                            requirePagination: state.collection.totalPages > 1,
+                            expectedCount: state.collection.pages[String(state.collection.expectedPage)]?.count || 0,
+                        });
                     }, 'noCards');
                     if (!pageRead.ok) {
                         if (!pageRead.cancelled) void trackTelemetryError('selector_listing_cards');
                         return pageRead.cancelled ? state.collection : this.block('noCards', {}, pageRead.report);
                     }
+                    if (!collectionPageMatchesManifest(state.collection, pageRead.value)) {
+                        const settledManifest = await this.retryTransient('page-settle', async () => {
+                            const snapshot = await ListingPageAdapter.readStable({
+                                requirePagination: state.collection.totalPages > 1,
+                                expectedCount: state.collection.pages[String(state.collection.expectedPage)]?.count || 0,
+                            });
+                            return snapshot && collectionPageMatchesManifest(state.collection, snapshot) ? snapshot : null;
+                        }, 'collectionPageChanged');
+                        if (!settledManifest.ok) {
+                            if (!settledManifest.cancelled) void trackTelemetryError('selector_listing_cards');
+                            return settledManifest.cancelled ? state.collection : this.block('collectionPageChanged', {}, settledManifest.report);
+                        }
+                        pageRead = settledManifest;
+                    }
+                    const initialConflict = collectionPageConflict(state.collection, pageRead.value);
+                    const repeatedPage = !state.collection.returningToFirst && initialConflict.repeated;
+                    const overlappingPage = !state.collection.returningToFirst && initialConflict.overlap;
+                    if (repeatedPage || overlappingPage) {
+                        const settled = await this.retryTransient('page-settle', async () => {
+                            const snapshot = await ListingPageAdapter.readStable({
+                                requirePagination: state.collection.totalPages > 1,
+                                expectedCount: state.collection.pages[String(state.collection.expectedPage)]?.count || 0,
+                            });
+                            const conflict = collectionPageConflict(state.collection, snapshot);
+                            return snapshot && !conflict.repeated && !conflict.overlap ? snapshot : null;
+                        }, repeatedPage ? 'collectionRepeatedPage' : 'collectionOverlap');
+                        if (!settled.ok) {
+                            if (!settled.cancelled) void trackTelemetryError('selector_listing_pagination');
+                            const key = repeatedPage ? 'collectionRepeatedPage' : 'collectionOverlap';
+                            return settled.cancelled ? state.collection : this.block(key, {}, settled.report);
+                        }
+                        pageRead = settled;
+                    }
                     const { links, listings } = pageRead.value;
+                    pageInfo = pageRead.value.pageInfo;
+                    if (pageInfo.current !== state.collection.expectedPage || pageInfo.total !== state.collection.totalPages) return this.block('collectionPageChanged');
                     const signature = ListingPageAdapter.pageSignature(listings);
                     const contentSignature = ListingPageAdapter.contentSignature(listings);
                     if (state.collection.returningToFirst) {
                         const firstPage = state.collection.pages['1'];
                         if (pageInfo.current !== 1 || !firstPage || firstPage.signature !== signature) return this.block('collectionPageChanged');
-                        return this.complete();
+                        return this.complete(listings);
                     }
-                    const repeated = Object.entries(state.collection.pages).find(([page, item]) => Number(page) !== pageInfo.current && item.contentSignature === contentSignature);
-                    if (repeated) { void trackTelemetryError('selector_listing_pagination'); return this.block('collectionRepeatedPage'); }
                     if (!state.collection.pages[String(pageInfo.current)]) {
-                        await scanCurrentPage({ deferEvaluation: true, silentStatus: true, collectionLeaseToken: state.collectionLeaseToken });
-                        await CollectionLease.assertOwns();
                         const previousIds = new Set(state.collection.uniqueIds);
                         const duplicateCount = listings.reduce((count, item) => count + (previousIds.has(String(item.listingId)) ? 1 : 0), 0);
+                        if (duplicateCount > 0) return this.block('collectionOverlap');
+                        await scanCurrentPage({ listings, deferEvaluation: true, silentStatus: true, collectionLeaseToken: state.collectionLeaseToken });
+                        await CollectionLease.assertOwns();
                         listings.forEach((item) => previousIds.add(String(item.listingId)));
                         state.collection.pages[String(pageInfo.current)] = { signature, contentSignature, ids: listings.map((item) => String(item.listingId)), count: listings.length, capturedAt: nowIso() };
                         await this.persist({ uniqueIds: [...previousIds], duplicateCount: state.collection.duplicateCount + duplicateCount });
@@ -4346,7 +4815,7 @@
                     const next = ListingPageAdapter.nextButton();
                     if (pageInfo.current === pageInfo.total) {
                         if (!ListingPageAdapter.isDisabled(next)) return this.block('collectionPageChanged');
-                        if (pageInfo.total === 1) return this.complete();
+                        if (pageInfo.total === 1) return this.complete(listings);
                         await this.persist({ expectedPage: 1, returningToFirst: true });
                         const navigation = await this.navigateWithRetry(1, contentSignature);
                         if (!navigation.ok) {
@@ -4888,7 +5357,7 @@
             root.querySelector('[data-overview-action="settings"]')?.addEventListener('click', () => { this.openSettings(); });
             root.querySelector('[data-open-settings-modal]')?.addEventListener('click', () => { this.openSettingsModal(); });
             root.querySelector('[data-check-update]')?.addEventListener('click', () => { void checkForUpdates({ manual: true, force: true }); });
-            root.querySelector('[data-install-update]')?.addEventListener('click', () => { openTampermonkeyUpdate(); });
+            bindInstallUpdate(root.querySelector('[data-install-update]'));
             root.querySelectorAll('[data-error-report]').forEach((button) => button.addEventListener('click', () => { this.openCollectionErrorReport(); }));
             root.querySelector('[data-action="go-current"]')?.addEventListener('click', () => { void Queue.navigate(); });
             root.querySelector('[data-action="apply"]')?.addEventListener('click', () => { void applyCurrentProposal(); });
@@ -5261,11 +5730,14 @@
             const latest = record.history?.at(-1) || {};
             const analysis = record.analysis || record.health?.result || analyseRecord(record, state.records);
             const deltas = analysis.deltas || {};
+            const currency = normalizeSpace(latest.currency) || '$';
             const signed = (value) => value === null || value === undefined ? '' : value === 0 ? '±0' : `${value > 0 ? '+' : ''}${formatNumber(value)}`;
             const reviewLine = analysis.experiment ? experimentStateLabel(analysis.experiment) : `${t('nextReview')}: ${formatDate(analysis.nextReviewAt)}`;
-            const metric = (label, value, delta, money = false) => {
-                const deltaText = money && Number.isFinite(delta) ? (delta === 0 ? '±$0' : `${delta > 0 ? '+' : ''}${formatMoney(delta)}`) : signed(delta);
-                return `<div class="meli-metric"><span>${escapeHtml(label)}</span><div><strong>${money ? formatMoney(value) : formatNumber(value)}</strong><small class="${Number(delta) > 0 ? 'up' : Number(delta) < 0 ? 'down' : ''}">${escapeHtml(deltaText)}</small></div></div>`;
+            const metric = (label, value, delta, moneyCurrency = '') => {
+                const deltaText = moneyCurrency && Number.isFinite(delta)
+                    ? (delta === 0 ? `±${formatMoney(0, moneyCurrency)}` : `${delta > 0 ? '+' : '−'}${formatMoney(Math.abs(delta), moneyCurrency)}`)
+                    : signed(delta);
+                return `<div class="meli-metric"><span>${escapeHtml(label)}</span><div><strong>${moneyCurrency ? formatMoney(value, moneyCurrency) : formatNumber(value)}</strong><small class="${Number(delta) > 0 ? 'up' : Number(delta) < 0 ? 'down' : ''}">${escapeHtml(deltaText)}</small></div></div>`;
             };
             const selected = state.selectedIds.has(record.listingId);
             const needsAction = ['improve', 'declining', 'deactivateReview'].includes(analysis.code);
@@ -5285,7 +5757,7 @@
                     ${metric(t('visits'), latest.visits, deltas.visits)}
                     ${metric(t('favorites'), latest.favorites, deltas.favorites)}
                     ${metric(t('sales'), latest.sales, deltas.sales)}
-                    ${metric(t('revenue'), latest.revenue, deltas.revenue, true)}
+                    ${metric(t('revenue'), latest.revenue, deltas.revenue, currency)}
                     ${metric(t('renewals'), latest.renewals, deltas.renewals)}
                     ${metric(t('stock'), latest.stock, null)}
                 </div>
@@ -5368,9 +5840,9 @@
                 this.render(true);
             });
         },
-        historyChart(history, metric, label, money = false) {
+        historyChart(history, metric, label, moneyCurrency = '') {
             const model = buildHistoryChartModel(history, metric);
-            const valueLabel = (value) => money ? formatMoney(value) : formatNumber(value);
+            const valueLabel = (value) => moneyCurrency ? formatMoney(value, moneyCurrency) : formatNumber(value);
             if (model.points.length < 2) return `<article class="meli-chart" data-history-chart="${escapeHtml(metric)}"><div class="meli-chart-head"><b>${escapeHtml(label)}</b><span>—</span></div><div class="meli-chart-empty">${escapeHtml(t('noChartData'))}</div></article>`;
             const lineMarkup = model.segments.filter((segment) => segment.length > 1).map((segment) => `<polyline class="meli-chart-line" points="${segment.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')}"></polyline>`).join('');
             const pointsMarkup = model.points.map((point) => `<circle class="meli-chart-point" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="3"><title>${escapeHtml(`${formatDate(point.at)} · ${valueLabel(point.value)}`)}</title></circle>`).join('');
@@ -5417,6 +5889,7 @@
             const history = Array.isArray(record.history) ? [...record.history].reverse() : [];
             const improvements = Array.isArray(record.improvements) ? [...record.improvements].reverse() : [];
             const analysis = record.analysis || record.health?.result || analyseRecord(record, state.records);
+            const currency = normalizeSpace(record.history?.at(-1)?.currency) || '$';
             const evidence = Array.isArray(analysis.evidence) ? analysis.evidence : [];
             const components = analysis.confidenceComponents || {};
             const componentKeys = ['dataQuality', 'historyDepth', 'trafficSample', 'cohortStrength', 'freshness', 'dataIntegrity'];
@@ -5427,9 +5900,9 @@
             const confidenceCard = `<section class="meli-detail-card"><h3>${escapeHtml(t('confidenceDetails'))}</h3><div class="meli-confidence-list">${componentKeys.map((key) => `<div class="meli-confidence-row"><span>${escapeHtml(t(key))}</span><div><i style="width:${clamp(components[key], 0, 100)}%"></i></div><b>${formatNumber(components[key])}</b></div>`).join('')}</div></section>`;
             const experimentCard = experiment ? `<section class="meli-detail-card"><h3>${escapeHtml(t('experiment'))}</h3><div class="meli-history-metrics"><span>${escapeHtml(t('experimentState'))}: <b>${escapeHtml(experimentStateLabel(experiment))}</b></span><span>${escapeHtml(t('primaryMetric'))}: <b>${escapeHtml(experiment.primaryMetric || '—')}</b></span><span>${escapeHtml(t('adjustedEffect'))}: <b>${Number.isFinite(experiment.effectPercent) ? `${experiment.effectPercent > 0 ? '+' : ''}${experiment.effectPercent}%` : '—'}</b></span></div></section>` : '';
             const safeguardCard = ['DEACTIVATION_REVIEW', 'DORMANT'].includes(analysis.lifecycle) && analysis.safeguards?.length ? `<section class="meli-detail-card"><h3>${escapeHtml(t('deactivateReview'))}</h3><ul class="meli-safeguards">${analysis.safeguards.map((item) => `<li data-passed="${item.passed}"><span>${item.passed ? '✓' : '—'}</span>${escapeHtml(t(item.key))}</li>`).join('')}</ul></section>` : '';
-            const charts = `<section class="meli-detail-card"><h3>${escapeHtml(t('historyCharts'))}</h3><div class="meli-chart-grid">${this.historyChart(record.history, 'visits', t('visits'))}${this.historyChart(record.history, 'favorites', t('favorites'))}${this.historyChart(record.history, 'sales', t('sales'))}${this.historyChart(record.history, 'revenue', t('revenue'), true)}${this.historyChart(record.history, 'renewals', t('renewals'))}</div></section>`;
+            const charts = `<section class="meli-detail-card"><h3>${escapeHtml(t('historyCharts'))}</h3><div class="meli-chart-grid">${this.historyChart(record.history, 'visits', t('visits'))}${this.historyChart(record.history, 'favorites', t('favorites'))}${this.historyChart(record.history, 'sales', t('sales'))}${this.historyChart(record.history, 'revenue', t('revenue'), currency)}${this.historyChart(record.history, 'renewals', t('renewals'))}</div></section>`;
             const experimentTimeline = this.experimentTimeline(record);
-            const timeline = `<section class="meli-detail-card"><h3>${escapeHtml(t('historyTitle'))}</h3><div class="meli-history">${history.length ? history.map((item) => `<article class="meli-history-item"><b>${escapeHtml(formatDate(item.at))}</b><div class="meli-history-metrics"><span>${t('visits')}: ${formatNumber(item.visits)}</span><span>${t('favorites')}: ${formatNumber(item.favorites)}</span><span>${t('sales')}: ${formatNumber(item.sales)}</span><span>${t('revenue')}: ${formatMoney(item.revenue)}</span><span>${t('renewals')}: ${formatNumber(item.renewals)}</span></div></article>`).join('') : `<div class="meli-empty">${escapeHtml(t('noHistory'))}</div>`}${improvements.map((item) => `<article class="meli-history-item"><span class="meli-pill warning">${escapeHtml(item.experiment ? experimentStateLabel(item.experiment) : item.status || 'planned')}</span> <b>${escapeHtml(formatDate(item.at))}</b><div class="meli-meta">${escapeHtml(item.note || item.action || '')}</div></article>`).join('')}</div></section>`;
+            const timeline = `<section class="meli-detail-card"><h3>${escapeHtml(t('historyTitle'))}</h3><div class="meli-history">${history.length ? history.map((item) => `<article class="meli-history-item"><b>${escapeHtml(formatDate(item.at))}</b><div class="meli-history-metrics"><span>${t('visits')}: ${formatNumber(item.visits)}</span><span>${t('favorites')}: ${formatNumber(item.favorites)}</span><span>${t('sales')}: ${formatNumber(item.sales)}</span><span>${t('revenue')}: ${formatMoney(item.revenue, normalizeSpace(item.currency) || currency)}</span><span>${t('renewals')}: ${formatNumber(item.renewals)}</span></div></article>`).join('') : `<div class="meli-empty">${escapeHtml(t('noHistory'))}</div>`}${improvements.map((item) => `<article class="meli-history-item"><span class="meli-pill warning">${escapeHtml(item.experiment ? experimentStateLabel(item.experiment) : item.status || 'planned')}</span> <b>${escapeHtml(formatDate(item.at))}</b><div class="meli-meta">${escapeHtml(item.note || item.action || '')}</div></article>`).join('')}</div></section>`;
             this.openModal(`${t('healthAndHistory')} · ${record.listingId}`, `<div class="meli-health-detail">${summary}${evidenceCard}${confidenceCard}${experimentCard}${safeguardCard}${charts}${experimentTimeline}${timeline}</div>`, { small: true });
             state.modal?.querySelector('[data-show-evidence]')?.addEventListener('click', (event) => {
                 const extra = state.modal?.querySelector('[data-extra-evidence]'); if (!extra) return;
@@ -5548,9 +6021,7 @@
             const writeValues = (values) => fields.forEach((key) => { modal.querySelector(`[data-setting="${key}"]`).value = String(values[key]); });
             const updateImpact = () => {
                 const values = readValues();
-                const latest = state.records.map((record) => record.history?.at(-1)).filter(Boolean);
-                const improve = latest.filter((item) => finiteOrNull(item.sales) === 0 && Number(item.visits) >= values.minVisitsToImprove).length;
-                const protect = latest.filter((item) => Number(item.sales) > 0 && Number(item.visits) >= values.minVisitsToProtect).length;
+                const { improve, protect } = thresholdImpactCounts(null, values);
                 modal.querySelector('[data-threshold-impact]').textContent = t('thresholdImpact', { improve, protect });
             };
             modal.querySelectorAll('[data-setting]').forEach((input) => input.addEventListener('input', updateImpact));
@@ -5582,11 +6053,26 @@
         },
     };
 
+    function evaluationScopeRecords(records, scopeIds) {
+        const allowed = new Set((Array.isArray(scopeIds) ? scopeIds : []).map(String));
+        return (Array.isArray(records) ? records : []).filter((record) => record && !record.unsupportedSchema && allowed.has(String(record.listingId)));
+    }
+
     async function refreshRecords(options = {}) {
         const evaluatedAt = options.evaluatedAt || nowIso();
         state.records = await Store.listRecords();
         state.records.forEach((record) => updateExperimentEvaluations(record, evaluatedAt));
-        const evaluated = evaluateHealthRecords(state.records, state.settings, evaluatedAt);
+        const requestedScopeIds = Array.isArray(options.scopeIds) ? options.scopeIds : null;
+        const completedScopeIds = state.collection?.status === 'completed' && state.collection.schema === COLLECTION_SCHEMA_VERSION
+            ? state.collection.uniqueIds : null;
+        const scopeIds = requestedScopeIds || completedScopeIds || [];
+        const cohort = evaluationScopeRecords(state.records, scopeIds);
+        const evaluated = cohort.length ? evaluateHealthRecords(cohort, state.settings, evaluatedAt) : new Map();
+        const cohortIds = new Set(cohort.map((record) => String(record.listingId)));
+        state.records.filter((record) => record && !record.unsupportedSchema && !cohortIds.has(String(record.listingId))).forEach((record) => {
+            const isolated = evaluateHealthRecords([record], state.settings, evaluatedAt).get(String(record.listingId));
+            if (isolated) evaluated.set(String(record.listingId), isolated);
+        });
         state.records.forEach((record) => {
             const health = evaluated.get(record.listingId);
             if (health) { record.health = health; record.analysis = health.result; }
@@ -5605,7 +6091,8 @@
     async function scanCurrentPage(options = {}) {
         if (routeKind() !== 'listings') return [];
         if (!options.silentStatus) UI.setStatus('pageReady', 'scanning');
-        const listings = ListingPageAdapter.scan();
+        const stable = Array.isArray(options.listings) ? null : await ListingPageAdapter.readStable({ requirePagination: false });
+        const listings = Array.isArray(options.listings) ? options.listings : (stable?.listings || []);
         if (!listings.length) { UI.setStatus('noCards', 'error'); return []; }
         state.pageListings = listings;
         const saved = await Store.saveSnapshots(listings, options.collectionLeaseToken ? async () => {
@@ -6101,13 +6588,13 @@
         await Store.loadQueue();
         const kind = routeKind();
         if (kind === 'listings') {
-            if (state.collection?.status === 'running' && state.collection.scopeKey === collectionScopeKey()) {
-                UI.setStatus('collectionProgress', 'scanning', Collection.progressParams());
+            const stable = await ListingPageAdapter.readStable({ requirePagination: state.collection?.status === 'running' && state.collection.totalPages > 1, timeout: 10000 });
+            state.pageListings = stable?.listings || [];
+            if (state.collection?.status === 'running' && stable && collectionScopeMatches(state.collection)) {
+                UI.setStatus('collectionProgress', 'scanning', Collection.progressParams(stable.pageInfo));
                 void Collection.run();
             } else {
-                const listingsReady = await waitFor(() => ListingPageAdapter.cardLinks().length > 0, 10000, 250);
-                state.pageListings = listingsReady ? ListingPageAdapter.scan() : [];
-                UI.setStatus(state.collection?.status === 'running' ? 'collectionPageChanged' : listingsReady ? 'pageReady' : 'noCards', state.collection?.status === 'running' || !listingsReady ? 'blocked' : 'ready');
+                UI.setStatus(state.collection?.status === 'running' ? 'collectionPageChanged' : stable ? 'pageReady' : 'noCards', state.collection?.status === 'running' || !stable ? 'blocked' : 'ready');
             }
         } else if (kind === 'editor') {
             const editorReady = await waitFor(() => EditorAdapter.ready(), 12000, 250);
@@ -6212,7 +6699,13 @@
 
     if (window.__MAKAYTRON_LISTING_TEST__ === true) {
         window.__MELI_TEST__ = Object.freeze({
-            versions: Object.freeze({ app: APP_VERSION, recordSchema: RECORD_SCHEMA_VERSION, healthSchema: HEALTH_RESULT_SCHEMA_VERSION, engine: HEALTH_ENGINE_VERSION, policy: HEALTH_POLICY_VERSION }),
+            versions: Object.freeze({ app: APP_VERSION, recordSchema: RECORD_SCHEMA_VERSION, healthSchema: HEALTH_RESULT_SCHEMA_VERSION, engine: HEALTH_ENGINE_VERSION, policy: HEALTH_POLICY_VERSION, collectionSchema: COLLECTION_SCHEMA_VERSION }),
+            parseCountValue,
+            parseListingMetrics,
+            currencyMarker,
+            currentShopKey,
+            normalizeListingState,
+            pageListingState,
             recommendationBasisMatches,
             normalizeRecord,
             normalizeSnapshot,
@@ -6222,10 +6715,23 @@
             median,
             percentileRank,
             normalizeAnalysisFilters,
+            recentPerformanceMetrics,
             recordMatchesAnalysisFilters,
             sortAnalysisRecords,
+            thresholdCalibration,
+            thresholdImpactCounts,
             normalizeCollection,
+            collectionManifestIsComplete,
             collectionIsFresh,
+            collectionScopeKey,
+            collectionScopeMatches,
+            collectionPageConflict,
+            collectionPageMatchesManifest,
+            pageIdentityMatchesCollection,
+            evaluationScopeRecords,
+            elementIsUsable,
+            ListingPageAdapter,
+            collectionRuntime: Object.freeze({ state, Store, KEYS, CollectionLease, Collection }),
             currentCollectionIdentity: () => collectionIdentity(),
             syncCollectionState,
             canonicalEditableContent,
@@ -6247,6 +6753,23 @@
             refreshRecords,
             distributionUrlKind,
             installedDistributionSource,
+            updater: Object.freeze({
+                state,
+                Store,
+                UI,
+                Queue,
+                GITHUB_CANONICAL_SCRIPT_URL,
+                GITHUB_API_REF_URL,
+                pinnedUpdateUrl,
+                exactHttpsTarget,
+                metadataValues,
+                normalizeUpdateState,
+                requestExactText,
+                requestCanonicalScript,
+                checkForUpdates,
+                openTampermonkeyUpdate,
+                bindInstallUpdate,
+            }),
             updateExperimentEvaluations,
             evaluateRecord(record, peers = [record], settings = DEFAULT_SETTINGS, evaluatedAt = nowIso()) {
                 const records = Array.isArray(peers) && peers.length ? peers : [record];
@@ -6258,8 +6781,10 @@
         });
     }
 
-    void init().catch((error) => {
-        console.error(`[${APP.name}]`, error);
-        if (state.panel) UI.setStatus('formNotReady', 'error');
-    });
+    if (window.__MAKAYTRON_LISTING_SKIP_INIT__ !== true) {
+        void init().catch((error) => {
+            console.error(`[${APP.name}]`, error);
+            if (state.panel) UI.setStatus('formNotReady', 'error');
+        });
+    }
 })();

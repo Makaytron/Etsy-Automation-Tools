@@ -2,6 +2,19 @@
 
 All notable changes to Makaytron Etsy Keyword & Market Analyzer are documented here.
 
+## [1.0.3] - 2026-08-08
+
+### Changed
+
+- Resolve public GitHub `main` to an exact commit SHA, validate only that immutable userscript, and open the same SHA-pinned file after the user selects **Update**.
+- Show the new-version warning only after exact product, namespace, SemVer, `@updateURL`, and `@downloadURL` identity checks succeed.
+- Ignore the analyzer's own inline result elements while re-reading Marketplace Insights pages and remove duplicate inline panels, preventing prior-page UI output from contaminating keyword or metric capture after pagination.
+
+### Security
+
+- Reject redirect, query, fragment, credential, path, HTTP, JSON, commit-SHA, missing metadata, drifted metadata, and duplicate metadata failures.
+- Keep installation blocked during active research and cover the complete updater decision chain with an automated click-path test suite.
+
 ## [1.0.2] - 2026-08-04
 
 ### Changed

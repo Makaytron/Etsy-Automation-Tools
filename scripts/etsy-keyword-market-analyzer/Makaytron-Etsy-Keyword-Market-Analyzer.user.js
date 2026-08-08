@@ -25,6 +25,7 @@
 // @grant        GM.info
 // @grant        GM_registerMenuCommand
 // @connect      raw.githubusercontent.com
+// @connect      api.github.com
 // @connect      sjwibgcflufmzaorlwqe.supabase.co
 // @noframes
 // @run-at       document-idle
@@ -710,7 +711,9 @@
         storagePrefix: 'ekma:v1',
     });
     const GITHUB_SCRIPT_PATH = 'scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js';
-    const GITHUB_RAW_SCRIPT_URL = `https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/${GITHUB_SCRIPT_PATH}`;
+    const GITHUB_RAW_REPOSITORY_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools';
+    const GITHUB_RAW_SCRIPT_URL = `${GITHUB_RAW_REPOSITORY_URL}/main/${GITHUB_SCRIPT_PATH}`;
+    const GITHUB_API_REF_URL = 'https://api.github.com/repos/Makaytron/Etsy-Automation-Tools/commits/main';
     const MAKAYTRON_LOGO_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/assets/makaytron-logo.png';
     const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
     const UPDATE_CHECK_TIMEOUT_MS = 12 * 1000;
@@ -1503,18 +1506,56 @@
         return 0;
     }
 
+    function pinnedUpdateUrl(commitSha) {
+        return /^[a-f0-9]{40}$/.test(String(commitSha || ''))
+            ? `${GITHUB_RAW_REPOSITORY_URL}/${commitSha}/${GITHUB_SCRIPT_PATH}`
+            : '';
+    }
+
+    function exactHttpsTarget(actualValue, expectedValue) {
+        try {
+            const actual = new URL(actualValue);
+            const expected = new URL(expectedValue);
+            return actual.protocol === 'https:'
+                && actual.protocol === expected.protocol
+                && actual.hostname === expected.hostname
+                && actual.port === expected.port
+                && actual.pathname === expected.pathname
+                && actual.search === expected.search
+                && actual.hash === expected.hash
+                && !actual.username && !actual.password;
+        } catch {
+            return false;
+        }
+    }
+
+    function metadataValues(source, key) {
+        const escapedKey = String(key).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return Array.from(
+            String(source || '').matchAll(new RegExp(`^// @${escapedKey}\\s+(.+?)\\s*$`, 'gm')),
+            (match) => match[1].trim(),
+        );
+    }
+
     function normalizeUpdateState(value) {
         const source = isPlainObject(value) ? value : {};
+        const commitSha = /^[a-f0-9]{40}$/.test(String(source.commitSha || '')) ? String(source.commitSha) : '';
+        const installUrl = commitSha ? pinnedUpdateUrl(commitSha) : '';
+        const hasVerifiedInstall = Boolean(installUrl && source.installUrl === installUrl);
+        const requestedStatus = ['idle', 'checking', 'current', 'available', 'error', 'external'].includes(source.status)
+            ? source.status : 'idle';
         return {
-            status: ['idle', 'checking', 'current', 'available', 'error', 'external'].includes(source.status)
-                ? source.status : 'idle',
+            status: ['current', 'available'].includes(requestedStatus) && !hasVerifiedInstall
+                ? 'idle' : requestedStatus,
             latestVersion: typeof source.latestVersion === 'string' ? source.latestVersion : '',
             checkedAt: Number.isFinite(source.checkedAt) ? source.checkedAt : 0,
             error: typeof source.error === 'string' ? source.error.slice(0, 300) : '',
+            commitSha: hasVerifiedInstall ? commitSha : '',
+            installUrl: hasVerifiedInstall ? installUrl : '',
         };
     }
 
-    function requestCanonicalScript() {
+    function requestExactText(url, accept = 'text/plain') {
         return new Promise((resolve, reject) => {
             let settled = false;
             const finish = (callback, value) => {
@@ -1525,22 +1566,15 @@
             try {
                 GM.xmlHttpRequest({
                     method: 'GET',
-                    url: GITHUB_RAW_SCRIPT_URL,
+                    url,
                     anonymous: true,
                     timeout: UPDATE_CHECK_TIMEOUT_MS,
-                    headers: { Accept: 'text/plain', 'Cache-Control': 'no-cache' },
+                    headers: { Accept: accept, 'Cache-Control': 'no-cache' },
                     onload: (response) => {
                         try {
                             if (Number(response.status) !== 200) throw new Error(`UPDATE_HTTP_${response.status}`);
                             if (!response.finalUrl) throw new Error('UPDATE_FINAL_URL_MISSING');
-                            const expected = new URL(GITHUB_RAW_SCRIPT_URL);
-                            const finalUrl = new URL(response.finalUrl);
-                            const exactTarget = finalUrl.protocol === expected.protocol
-                                && finalUrl.hostname === expected.hostname
-                                && finalUrl.port === expected.port
-                                && finalUrl.pathname === expected.pathname
-                                && !finalUrl.username && !finalUrl.password;
-                            if (!exactTarget) throw new Error('UPDATE_REDIRECT_REJECTED');
+                            if (!exactHttpsTarget(response.finalUrl, url)) throw new Error('UPDATE_REDIRECT_REJECTED');
                             const source = String(response.responseText || '');
                             if (!source || source.length > 2_000_000) throw new Error('UPDATE_SOURCE_SIZE_INVALID');
                             finish(resolve, source);
@@ -1555,6 +1589,36 @@
                 finish(reject, error);
             }
         });
+    }
+
+    async function requestCanonicalScript() {
+        const refText = await requestExactText(GITHUB_API_REF_URL, 'application/vnd.github+json');
+        let ref;
+        try { ref = JSON.parse(refText); }
+        catch { throw new Error('UPDATE_COMMIT_RESPONSE_INVALID'); }
+        const commitSha = /^[a-f0-9]{40}$/.test(String(ref?.sha || '')) ? String(ref.sha) : '';
+        if (!commitSha) throw new Error('UPDATE_COMMIT_INVALID');
+        const installUrl = pinnedUpdateUrl(commitSha);
+        const source = await requestExactText(installUrl, 'text/plain');
+        if (!/^\/\/ ==UserScript==[\r\n]/.test(source)) throw new Error('UPDATE_METADATA_MISSING');
+        const namespaces = metadataValues(source, 'namespace');
+        const names = metadataValues(source, 'name');
+        const updateUrls = metadataValues(source, 'updateURL');
+        const downloadUrls = metadataValues(source, 'downloadURL');
+        const versions = metadataValues(source, 'version');
+        if (namespaces.length !== 1 || namespaces[0] !== 'https://github.com/Makaytron/EtsyScript') {
+            throw new Error('UPDATE_NAMESPACE_INVALID');
+        }
+        if (names.length !== 1 || names[0] !== 'Makaytron Etsy Keyword & Market Analyzer') {
+            throw new Error('UPDATE_PRODUCT_INVALID');
+        }
+        if (updateUrls.length !== 1 || downloadUrls.length !== 1
+            || updateUrls[0] !== GITHUB_RAW_SCRIPT_URL || downloadUrls[0] !== GITHUB_RAW_SCRIPT_URL) {
+            throw new Error('UPDATE_DISTRIBUTION_INVALID');
+        }
+        const version = versions.length === 1 && /^\d+\.\d+\.\d+$/.test(versions[0]) ? versions[0] : '';
+        if (!version || compareSemver(version, APP_VERSION) === null) throw new Error('UPDATE_VERSION_INVALID');
+        return { version, commitSha, installUrl };
     }
 
     async function updateState() {
@@ -1593,18 +1657,19 @@
         await saveUpdateState({ ...current, status: 'checking', checkedAt: Date.now(), error: '' });
         if (manual) UI.status(t('checkingUpdate'));
         try {
-            const sourceText = await requestCanonicalScript();
-            const match = sourceText.match(/^\/\/ @version\s+([^\s]+)$/m);
-            if (!match || compareSemver(match[1], APP_VERSION) === null) throw new Error('UPDATE_VERSION_INVALID');
-            const available = compareSemver(match[1], APP_VERSION) > 0;
+            const remote = await requestCanonicalScript();
+            if (compareSemver(remote.version, APP_VERSION) === null) throw new Error('UPDATE_VERSION_INVALID');
+            const available = compareSemver(remote.version, APP_VERSION) > 0;
             const next = await saveUpdateState({
                 status: available ? 'available' : 'current',
-                latestVersion: match[1],
+                latestVersion: remote.version,
                 checkedAt: Date.now(),
                 error: '',
+                commitSha: remote.commitSha,
+                installUrl: remote.installUrl,
             });
             if (manual) UI.status(available
-                ? tf('updateAvailable', { version: match[1] })
+                ? tf('updateAvailable', { version: remote.version })
                 : tf('updateCurrent', { version: APP_VERSION }));
             return next;
         } catch (error) {
@@ -1613,6 +1678,8 @@
                 latestVersion: '',
                 checkedAt: Date.now(),
                 error: String(error?.message || error).slice(0, 300),
+                commitSha: '',
+                installUrl: '',
             });
             if (manual) UI.status(t('updateError'));
             return next;
@@ -1639,13 +1706,19 @@
             UI.status(t('updateBusy'));
             return false;
         }
+        const current = await updateState();
+        const installUrl = pinnedUpdateUrl(current.commitSha);
+        if (current.status !== 'available' || !installUrl || current.installUrl !== installUrl) {
+            UI.status(t('updateError'));
+            return false;
+        }
         if (!window.confirm(t('installConfirm'))) return false;
         try {
             if (typeof GM.openInTab === 'function') {
-                GM.openInTab(GITHUB_RAW_SCRIPT_URL, { active: true, insert: true, setParent: true });
+                GM.openInTab(installUrl, { active: true, insert: true, setParent: true });
             } else {
                 const anchor = document.createElement('a');
-                anchor.href = GITHUB_RAW_SCRIPT_URL;
+                anchor.href = installUrl;
                 anchor.target = '_blank';
                 anchor.rel = 'noopener noreferrer';
                 document.documentElement.appendChild(anchor);
@@ -1657,6 +1730,12 @@
             UI.status(t('updateError'));
             return false;
         }
+    }
+
+    function bindInstallUpdate(button) {
+        if (!button || typeof button.addEventListener !== 'function') return false;
+        button.addEventListener('click', () => { void openUpdatePage(); });
+        return true;
     }
 
     function parseCompactNumber(value) {
@@ -2765,7 +2844,7 @@
                 await this.refreshCount();
             });
             Runtime.ui.checkUpdate.addEventListener('click', () => { void checkForUpdates({ manual: true, force: true }); });
-            Runtime.ui.installUpdate.addEventListener('click', () => { void openUpdatePage(); });
+            bindInstallUpdate(Runtime.ui.installUpdate);
             void this.refreshCount();
             void updateState().then(renderUpdateState);
         },
@@ -2897,6 +2976,7 @@
             RESULT_SCHEMA,
             CAPABILITIES,
             GITHUB_RAW_SCRIPT_URL,
+            GITHUB_API_REF_URL,
             UPDATE_CHECK_INTERVAL_MS,
             UPDATE_CHECK_STALE_MS,
             KEYS,
@@ -2929,8 +3009,15 @@
             clearLocalData,
             installationSource,
             compareSemver,
+            pinnedUpdateUrl,
+            exactHttpsTarget,
+            metadataValues,
+            normalizeUpdateState,
+            requestExactText,
+            requestCanonicalScript,
             checkForUpdates,
             openUpdatePage,
+            bindInstallUpdate,
             boot,
         };
     } else {

@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.0.2`
+Version: `1.0.3`
 
 A Tampermonkey side panel for reading Etsy messages with Turkish previews, preparing controlled replies, managing templates, and using AI providers configured by the user.
 
