@@ -8,12 +8,12 @@ GitHub is the only source of truth. Every hosted copy must be derived from the e
 
 ## Active channels
 
-| Channel | Role | Update mechanism |
-|---|---|---|
-| GitHub | Canonical source and signed releases | Maintainer-reviewed version change and release |
-| [Greasy Fork](https://greasyfork.org/en/users/1630152-makaytron) | Primary userscript host | Automatic sync from exact nested Raw `main` URLs, plus an immediate refresh request from a GitHub webhook subscribed only to `release` |
-| [Userscript.Zone](https://www.userscript.zone/) | Search index | Crawler discovers public GitHub and Greasy Fork listings; there is no upload account or webhook |
-| [SourceForge](https://sourceforge.net/projects/etsy-automation-tools/) | Active GitHub Release mirror | Official release-only integration mirrors public GitHub Release files; never a userscript update endpoint |
+| Channel | Role | Update mechanism | Hosted validation |
+|---|---|---|---|
+| GitHub | Canonical source and signed releases | Maintainer-reviewed version change and release | Hard gate: verified tag/commit, complete assets, checksums, and local source parity |
+| [Greasy Fork](https://greasyfork.org/en/users/1630152-makaytron) | Primary userscript host | Automatic sync from exact nested Raw `main` URLs, plus an immediate refresh request from a GitHub webhook subscribed only to `release` | Hard gate: all five versions and normalized source parity |
+| [Userscript.Zone](https://www.userscript.zone/) | Search index | Crawler discovers public GitHub and Greasy Fork listings; there is no upload account or webhook | Advisory warning because crawl timing is outside maintainer control |
+| [SourceForge](https://sourceforge.net/projects/etsy-automation-tools/) | Active GitHub Release mirror | Official release-only integration mirrors public GitHub Release files; never a userscript update endpoint | Hard gate: all release assets, byte sizes, and MD5 inventory parity |
 
 Chocolatey and WinGet/WingetUI are not distribution targets for `.user.js` files. They require Windows installer/package formats and must not receive a fake wrapper package.
 
@@ -34,7 +34,12 @@ OpenUserJS is not an active distribution target. Its production publisher curren
 3. Create a signed commit and a scope-matching signed tag from the reviewed commit: `vX.Y.Z` for a suite release or `<package-slug>-vX.Y.Z` for one standalone package.
 4. After pushing canonical `main`, run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online -RemoteParity` to prove that every public Raw file is byte-equivalent to its local source.
 5. Publish the complete GitHub Release once. The release-only webhook requests an immediate Greasy Fork refresh from the configured exact Raw `main` paths; Greasy Fork's own automatic synchronization may also poll those paths.
-6. Verify the affected Greasy Fork listing shows its new package version, confirm unchanged listings kept their versions, and then confirm downstream indexing/mirroring.
+6. Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -HostedChannels`. This one read-only command includes the online and Raw-parity checks, hard-fails incomplete GitHub, Greasy Fork, or SourceForge publication, and reports Userscript.Zone crawler lag as a warning.
+7. Confirm SourceForge's public `latest/download` selection points at the new bundle. If an eventual synchronization is still incomplete, do not rewrite a channel from the validator; wait for the configured integration and rerun the command.
+
+## Hosted validation semantics
+
+`-HostedChannels` never publishes, edits, retries, or authenticates to a distribution service. It validates the public release artifacts and signatures, the five Greasy Fork copies after excluding only host-managed `@updateURL` and `@downloadURL` lines, and SourceForge's RSS file inventory. Userscript.Zone is passive and therefore advisory. The two official OpenUserJS blocker issues are also checked as an advisory signal so that the inactive-channel decision can be revisited after an upstream fix.
 
 ## Security invariants
 
