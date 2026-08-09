@@ -10,7 +10,7 @@ Etsy Shop Manager için Bulk Sales & Discounts Automation aracı. **Sales and di
 
 Script standalone çalışır; başka bir Etsy Automation Tools paketinin kurulması gerekmez.
 
-**Sürüm:** 1.0.4 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.0.5 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 ## Kurulum
 

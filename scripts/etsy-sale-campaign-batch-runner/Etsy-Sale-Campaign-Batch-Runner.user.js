@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Sale Manager
 // @name:tr      Makaytron Etsy Sale Manager
 // @name:en      Makaytron Etsy Sale Manager
-// @version      1.0.4
+// @version      1.0.5
 // @description  Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
 // @description:tr Etsy Sales and Discounts kampanyalarını güvenli toplu seriler hâlinde planlar, doğrular ve raporlar
 // @description:en Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
@@ -37,7 +37,7 @@
 (async function () {
     'use strict';
 
-    const VERSION = '1.0.4';
+    const VERSION = '1.0.5';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -809,6 +809,10 @@
     let lastReport = null;
     let panelEl = null;
     let statusEl = null;
+    let panelActionState = null;
+    let panelActionSequence = 0;
+    let lastRenderedJobSignature = null;
+    let lastRenderedLeaseOwned = null;
     let tickLock = false;
     let timerId = null;
     let leaseOwned = false;
@@ -874,9 +878,16 @@
         #${ROOT_ID} .eda-value{font-size:12.5px;font-weight:650;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         #${ROOT_ID} .eda-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
         #${ROOT_ID} .eda-actions.three{grid-template-columns:1fr 1fr 1fr}
+        #${ROOT_ID} .eda-actions>button{min-width:0;width:100%;overflow:hidden}
+        #${ROOT_ID} .eda-actions>button>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
         #${ROOT_ID} button,.eda-modal button,.eda-report button,.eda-button-link{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;border-radius:6px;padding:0 12px;font-family:inherit;font-size:12.5px;font-weight:650;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;text-decoration:none;white-space:nowrap}
         #${ROOT_ID} button:focus-visible,.eda-modal button:focus-visible,.eda-report button:focus-visible,.eda-button-link:focus-visible{outline:2px solid #525252;outline-offset:2px}
+        #${ROOT_ID} button:not(:disabled):active,.eda-modal button:not(:disabled):active,.eda-report button:not(:disabled):active{transform:translateY(1px);box-shadow:none}
         #${ROOT_ID} button:disabled,.eda-modal button:disabled,.eda-report button:disabled{opacity:.5;cursor:not-allowed}
+        #${ROOT_ID} button[aria-busy="true"]{opacity:1;cursor:progress}
+        #${ROOT_ID} .eda-button-busy-spinner{width:14px;height:14px;flex:0 0 auto;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:eda-button-spin .7s linear infinite}
+        @keyframes eda-button-spin{to{transform:rotate(360deg)}}
+        @media (prefers-reduced-motion:reduce){#${ROOT_ID} .eda-button-busy-spinner{animation-duration:1.4s}}
         .eda-primary{background:var(--eda-primary,#1f1f1f);border:1px solid var(--eda-primary,#1f1f1f);color:var(--eda-primary-fg,#fafafa);box-shadow:0 1px 2px rgba(0,0,0,.08)}
         .eda-primary:hover{background:#303030;border-color:#303030}
         .eda-secondary{background:#fff;border:1px solid var(--eda-input,#dedede);color:var(--eda-fg,#171717);box-shadow:0 1px 2px rgba(0,0,0,.04)}
@@ -2913,9 +2924,25 @@
         renderPanel();
     }
 
+    function samePanelJobState(previous, next) {
+        try { return JSON.stringify(previous ?? null) === JSON.stringify(next ?? null); }
+        catch { return false; }
+    }
+
+    function markPanelRenderedState() {
+        try { lastRenderedJobSignature = JSON.stringify(job ?? null); }
+        catch { lastRenderedJobSignature = null; }
+        lastRenderedLeaseOwned = leaseOwned;
+    }
+
     async function refreshJob() {
-        job = await gmGet(JOB_KEY, null);
-        renderPanel();
+        const fresh = await gmGet(JOB_KEY, null);
+        job = fresh;
+        const panelMissing = !panelEl || !panelEl.isConnected || !panelEl.firstElementChild;
+        let jobChanged = true;
+        try { jobChanged = lastRenderedJobSignature !== JSON.stringify(fresh ?? null); }
+        catch {}
+        if (panelMissing || jobChanged || lastRenderedLeaseOwned !== leaseOwned) renderPanel();
         return job;
     }
 
@@ -3254,28 +3281,66 @@
         processTick();
     }
 
-    function bindPanelAsyncAction(selector, action, pendingMessage) {
+    function waitForPanelActionPaint() {
+        return new Promise(resolve => {
+            if (document.hidden || typeof requestAnimationFrame !== 'function') {
+                setTimeout(resolve, 0);
+                return;
+            }
+            let settled = false;
+            const done = () => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(fallbackTimer);
+                resolve();
+            };
+            const fallbackTimer = setTimeout(done, 80);
+            requestAnimationFrame(() => requestAnimationFrame(done));
+        });
+    }
+
+    function bindPanelAsyncAction(selector, action, pendingMessage, pendingLabel = 'İşleniyor…', actionKey = selector) {
         const button = panelEl?.querySelector?.(selector);
         if (!button) return;
         button.addEventListener('click', event => {
             event.preventDefault();
-            if (button.disabled || button.dataset?.edaBusy === '1') return;
+            if (panelActionState || button.disabled || button.dataset?.edaBusy === '1') return;
+            const actionId = ++panelActionSequence;
+            const originalHtml = button.innerHTML;
+            let failureMessage = '';
+            panelActionState = { id: actionId, key: actionKey, message: pendingMessage, label: pendingLabel, startedAt: Date.now() };
+            const primaryButtons = Array.from(panelEl?.querySelectorAll?.('#eda-start, #eda-retry, #eda-skip, #eda-stop') || []);
+            const primaryDisabledState = new Map(primaryButtons.map(item => [item, !!item.disabled]));
+            primaryButtons.forEach(item => { item.disabled = true; });
             if (button.dataset) button.dataset.edaBusy = '1';
             button.disabled = true;
             button.setAttribute?.('aria-busy', 'true');
+            button.innerHTML = `<span class="eda-button-busy-spinner" aria-hidden="true"></span><span>${html(pendingLabel)}</span>`;
             setStatus(pendingMessage);
             Promise.resolve()
+                .then(waitForPanelActionPaint)
                 .then(action)
                 .catch(error => {
                     console.error(`EDA v${VERSION} panel action failed`, error);
                     const message = error?.message || String(error);
-                    setStatus(`İşlem başlatılamadı: ${message}`);
-                    toast(`İşlem başlatılamadı: ${message}`, 'error', 6200);
+                    failureMessage = `İşlem başlatılamadı: ${message}`;
+                    setStatus(failureMessage);
+                    toast(failureMessage, 'error', 6200);
                 })
                 .finally(() => {
+                    if (panelActionState?.id === actionId) panelActionState = null;
                     if (button.dataset) delete button.dataset.edaBusy;
                     button.removeAttribute?.('aria-busy');
-                    if (button.isConnected) button.disabled = false;
+                    if (button.isConnected) {
+                        button.innerHTML = originalHtml;
+                        button.disabled = false;
+                    }
+                    if (panelEl instanceof Element && panelEl.isConnected) {
+                        renderPanel();
+                        if (failureMessage) setStatus(failureMessage);
+                    } else {
+                        primaryButtons.forEach(item => { item.disabled = primaryDisabledState.get(item) || false; });
+                    }
                 });
         });
     }
@@ -3351,19 +3416,41 @@
         }
     }
 
+    function resolveFreshStepActionButton(actionName, button, options = {}, refsFactory = getCreateSaleRefs) {
+        const kind = options.final || actionName === 'final_submit' ? 'final' : actionName;
+        if (!['continue', 'review', 'final'].includes(kind)) return null;
+        if (button?.isConnected && actionable(button) && !actionBadShell(button, kind)) return button;
+
+        // React can replace Etsy's footer button after the form's final input/change events.
+        // Re-resolve only the expected action through the same fail-closed context filters;
+        // never click a detached reference or fall back to an arbitrary primary button.
+        const refs = refsFactory();
+        if (kind === 'continue') return refs?.continueButton || null;
+        if (kind === 'review') return refs?.reviewButton || null;
+        if (kind === 'final') return refs?.finalButton || null;
+        return null;
+    }
+
     async function performStepAction(plan, actionName, button, nextPhase, options = {}) {
         if (ownBlockingUiOpen()) {
             setStatus('Script penceresi açıkken otomasyon geçici olarak bekletiliyor.');
             return false;
         }
-        if (!button || !actionable(button)) {
+        let actionButton = resolveFreshStepActionButton(actionName, button, options);
+        if (!actionButton) {
             await markError(plan, `${options.label || actionName} düğmesi bulunamadı veya etkin değil.`, 'runtime_error', 'selector_sale_transition');
             return false;
         }
-        assertNoBlockingForeignOverlay(nearestActionContext(button));
+        assertNoBlockingForeignOverlay(nearestActionContext(actionButton));
         const token = makeToken();
         await assertTokenFresh(token);
-        const label = buttonLabel(button) || options.label || actionName;
+        actionButton = resolveFreshStepActionButton(actionName, actionButton, options);
+        if (!actionButton) {
+            await markError(plan, `${options.label || actionName} düğmesi güvenlik kontrolü sırasında yenilendi ancak tekrar bulunamadı.`, 'runtime_error', 'selector_sale_transition');
+            return false;
+        }
+        assertNoBlockingForeignOverlay(nearestActionContext(actionButton));
+        const label = buttonLabel(actionButton) || options.label || actionName;
         const reservationId = randomId('action-');
         const committed = await withStateLock(async () => {
             const fresh = validateFreshForToken(await gmGet(JOB_KEY, null), token);
@@ -3426,13 +3513,14 @@
             return false;
         }
         await assertTokenFresh(token);
-        assertNoBlockingForeignOverlay(nearestActionContext(button));
-        if (!actionable(button)) {
+        actionButton = resolveFreshStepActionButton(actionName, actionButton, options);
+        if (!actionButton) {
             await rollback();
             await markError(plan, `${label} için güvenli rezervasyon yapıldı ancak düğme tıklamadan önce kayboldu. Rezervasyon geri alındı; Yeniden Dene ile aynı adım tekrar edilebilir.`, 'runtime_error', 'selector_sale_transition');
             return false;
         }
-        const clicked = robustClick(button);
+        assertNoBlockingForeignOverlay(nearestActionContext(actionButton));
+        const clicked = robustClick(actionButton);
         if (!clicked) {
             await rollback();
             await markError(plan, `${label} tıklanamadı. Tıklama gerçekleşmediği için rezervasyon geri alındı; Yeniden Dene ile aynı adım tekrar edilebilir.`, 'runtime_error', 'selector_sale_transition');
@@ -5634,6 +5722,7 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
                 renderPanel();
             });
             statusEl = null;
+            markPanelRenderedState();
             return;
         }
         panelEl.classList.remove('eda-collapsed');
@@ -5657,17 +5746,31 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
             stopped: 'Durduruldu',
         };
         const paused = !!(job?.active && job.paused);
-        const statusText = paused
+        const statusText = panelActionState?.message || (paused
             ? `Seri duraklatıldı: ${job.errorReason || 'Kullanıcı devamı gerekli'}
 Aynı günü yeniden deneyebilir veya açıkça atlayabilirsin.`
             : job?.active
                 ? `Seri çalışıyor: ${phaseNames[job.phase] || job.phase}
 Mağaza: ${shopLabel(job.shop)}`
-                : 'Ayarları kontrol et ve toplu kampanya serisini başlat.';
+                : 'Ayarları kontrol et ve toplu kampanya serisini başlat.');
         const retryLabel = ['resume_required', 'legacy_migration', 'legacy_reconcile', 'upgrade_review', 'upgrade_reconcile', 'shop_identity_missing', 'submission_ambiguous', 'shop_identity_timeout', 'action_reservation_recovery', 'action_reservation_ambiguous'].includes(job?.pauseKind) ? 'Devam Et' : 'Yeniden Dene';
+        const panelActionButton = (key, normalContent, normallyDisabled = false) => {
+            const busy = panelActionState?.key === key;
+            const disabled = normallyDisabled || !!panelActionState;
+            return {
+                attrs: `${disabled ? 'disabled' : ''} ${busy ? 'data-eda-busy="1" aria-busy="true"' : ''}`.trim(),
+                content: busy
+                    ? `<span class="eda-button-busy-spinner" aria-hidden="true"></span><span>${html(panelActionState.label)}</span>`
+                    : normalContent,
+            };
+        };
+        const startAction = panelActionButton('start', `${uiIcon('play')}<span>Seriyi Başlat</span>`, !!job?.active);
+        const retryAction = panelActionButton('retry', `${uiIcon('play')}<span>${retryLabel}</span>`);
+        const skipAction = panelActionButton('skip', '<span>Bu Günü Atla</span>');
+        const stopAction = panelActionButton('stop', `${uiIcon('stop')}<span>Durdur</span>`, !job?.active);
         const primaryActions = paused
-            ? `<div class="eda-actions three"><button type="button" class="eda-primary" id="eda-retry">${uiIcon('play')} ${retryLabel}</button><button type="button" class="eda-warning" id="eda-skip">Bu Günü Atla</button><button type="button" class="eda-danger" id="eda-stop">${uiIcon('stop')} Durdur</button></div>`
-            : `<div class="eda-actions"><button type="button" class="eda-primary" id="eda-start" ${job?.active ? 'disabled' : ''}>${uiIcon('play')} Seriyi Başlat</button><button type="button" class="eda-danger" id="eda-stop" ${job?.active ? '' : 'disabled'}>${uiIcon('stop')} Durdur</button></div>`;
+            ? `<div class="eda-actions three"><button type="button" class="eda-primary" id="eda-retry" ${retryAction.attrs}>${retryAction.content}</button><button type="button" class="eda-warning" id="eda-skip" ${skipAction.attrs}>${skipAction.content}</button><button type="button" class="eda-danger" id="eda-stop" ${stopAction.attrs}>${stopAction.content}</button></div>`
+            : `<div class="eda-actions"><button type="button" class="eda-primary" id="eda-start" ${startAction.attrs}>${startAction.content}</button><button type="button" class="eda-danger" id="eda-stop" ${stopAction.attrs}>${stopAction.content}</button></div>`;
         const statusClass = paused ? 'pause' : job?.active ? 'run' : 'ready';
         const statusLabel = paused ? 'Duraklatıldı' : job?.active ? 'Çalışıyor' : 'Hazır';
         const shownProgress = job?.active ? progress.percent : (lastReport?.results?.length ? 100 : 0);
@@ -5679,7 +5782,7 @@ Mağaza: ${shopLabel(job.shop)}`
                     <div class="eda-head-tools"><div class="eda-head-meta"><span class="eda-version">v${VERSION}</span><span class="eda-pill ${statusClass}">${statusLabel}</span></div><button type="button" class="eda-collapse-head" id="eda-collapse-panel" aria-label="Paneli gizle" title="Paneli gizle">${uiIcon('chevronRight')}</button></div>
                 </div>
                 <div class="eda-body">
-                    <div class="eda-status-card"><span class="eda-status-icon">${uiIcon(paused ? 'alert' : 'activity')}</span><div class="eda-status" id="eda-status-text">${html(statusText)}</div></div>
+                    <div class="eda-status-card"><span class="eda-status-icon">${uiIcon(paused ? 'alert' : 'activity')}</span><div class="eda-status" id="eda-status-text" role="status" aria-live="polite">${html(statusText)}</div></div>
                     <div class="eda-progress-wrap"><div class="eda-progress-head"><span>Seri ilerlemesi</span><strong>${html(progressLabel)}</strong></div><div class="eda-progress-track"><div class="eda-progress-bar" style="width:${clamp(Number(shownProgress || 0), 0, 100)}%"></div></div></div>
                     <div class="eda-grid">
                         <div class="eda-chip"><div class="eda-label">Mağaza</div><div class="eda-value">${html(job?.shop ? shopLabel(job.shop) : shopLabel(detectShopIdentity()))}</div></div>
@@ -5697,15 +5800,16 @@ Mağaza: ${shopLabel(job.shop)}`
             </div>`;
         statusEl = panelEl.querySelector('#eda-status-text');
         panelEl.querySelector('#eda-collapse-panel')?.addEventListener('click', () => { writePanelCollapsed(true); renderPanel(); });
-        panelEl.querySelector('#eda-start')?.addEventListener('click', startBatch);
-        bindPanelAsyncAction('#eda-retry', retryCurrent, 'Aynı gün için yeniden deneme başlatılıyor…');
-        panelEl.querySelector('#eda-skip')?.addEventListener('click', skipCurrent);
-        panelEl.querySelector('#eda-stop')?.addEventListener('click', stopBatch);
+        bindPanelAsyncAction('#eda-start', startBatch, 'Seri başlatılıyor; mağaza ve ayarlar doğrulanıyor…', 'Başlıyor…', 'start');
+        bindPanelAsyncAction('#eda-retry', retryCurrent, 'Aynı gün için yeniden deneme başlatılıyor…', retryLabel === 'Devam Et' ? 'Devam…' : 'Deneniyor…', 'retry');
+        bindPanelAsyncAction('#eda-skip', skipCurrent, 'Aktif gün güvenli biçimde atlanıyor…', 'Atlanıyor…', 'skip');
+        bindPanelAsyncAction('#eda-stop', stopBatch, 'Seri durduruluyor ve durum kaydediliyor…', 'Duruyor…', 'stop');
         panelEl.querySelector('#eda-settings')?.addEventListener('click', openSettings);
         panelEl.querySelector('#eda-report')?.addEventListener('click', () => openReport(lastReport, true));
         panelEl.querySelector('#eda-open-sale')?.addEventListener('click', () => go(CREATE_SALE_URL));
         panelEl.querySelector('#eda-check-update')?.addEventListener('click', () => checkForUpdates({ manual: true, force: true }));
         panelEl.querySelector('#eda-install-update')?.addEventListener('click', installAvailableUpdate);
+        markPanelRenderedState();
     }
 
     function mountPanel() {

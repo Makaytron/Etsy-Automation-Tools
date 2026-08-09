@@ -14,7 +14,7 @@ Etsy satıcıları için açık kaynak Etsy automation tools ve Tampermonkey use
 
 | Script | Sürüm | Amaç |
 |---|---:|---|
-| [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/) | 1.0.4 | Bulk Sales & Discounts Automation ile Etsy kampanyalarını kontrollü, doğrulamalı ve fail-closed seriler hâlinde planlar ve raporlar. |
+| [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/) | 1.0.5 | Bulk Sales & Discounts Automation ile Etsy kampanyalarını kontrollü, doğrulamalı ve fail-closed seriler hâlinde planlar ve raporlar. |
 | [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/) | 1.0.3 | Mesaj çevirisi, cevap taslağı, şablon ve kullanıcı tarafından seçilen AI sağlayıcıları için yardımcı panel sunar. |
 | [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/) | 1.0.3 | Form tabanlı filtrelerle mevcut sayfadaki eşleşmeleri açıp kapatır; açık onayla tüm sayfalardaki eşleşmeleri kapatır. |
 | [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/) | 1.0.4 | Tüm sayfaları tek komutla sırayla toplar, ilk sayfaya dönünce analizi açar; yeniden deneme, hata raporu, presetler, grafikler, AI karşılaştırması ve Health Engine sunar. |

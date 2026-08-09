@@ -124,7 +124,10 @@ async function loadManager() {
         bindPanelAsyncAction,
         hasCreateSaleFormSignal,
         hasSaleFlowSignal,
+        samePanelJobState,
+        resolveFreshStepActionButton,
         saleActionContextMatches,
+        getPanelActionState() { return panelActionState ? { ...panelActionState } : null; },
         setPanelState(panel, status) {
             panelEl = panel;
             statusEl = status;
@@ -198,39 +201,116 @@ test('Continue outside a complete sale form remains fail-closed', async () => {
     assert.equal(api.saleActionContextMatches(continueButton(destructive), 'continue'), false);
 });
 
-test('Retry acknowledges immediately and ignores duplicate clicks while pending', async () => {
+test('detached React action reference is re-resolved before the click', async () => {
+    const api = await loadManager();
+    const detached = { isConnected: false };
+    const fresh = { isConnected: true };
+    let resolutions = 0;
+
+    const resolved = api.resolveFreshStepActionButton('continue', detached, {}, () => {
+        resolutions += 1;
+        return { continueButton: fresh };
+    });
+
+    assert.equal(resolved, fresh);
+    assert.equal(resolutions, 1);
+
+    const review = {};
+    const final = {};
+    assert.equal(api.resolveFreshStepActionButton('review', detached, {}, () => ({ reviewButton: review })), review);
+    assert.equal(api.resolveFreshStepActionButton('final_submit', detached, { final: true }, () => ({ finalButton: final })), final);
+    assert.equal(api.resolveFreshStepActionButton('unknown', { isConnected: true }), null);
+    assert.equal(api.resolveFreshStepActionButton('continue', detached, {}, () => ({ primaryButton: fresh })), null);
+});
+
+test('unchanged stored job does not require a destructive panel rerender', async () => {
+    const api = await loadManager();
+    const job = { jobId: 'job-1', active: true, paused: true, phase: 'fill_form', nested: { value: 1 } };
+    assert.equal(api.samePanelJobState(job, structuredClone(job)), true);
+    assert.equal(api.samePanelJobState(job, { ...job, paused: false }), false);
+});
+
+test('Retry acknowledges immediately and ignores duplicate or cross-action clicks while pending', { timeout: 2000 }, async () => {
     const api = await loadManager();
     const listeners = new Map();
     const button = {
         dataset: {},
         disabled: false,
         isConnected: true,
+        innerHTML: '<span>Retry</span>',
         attributes: new Map(),
         addEventListener(type, listener) { listeners.set(type, listener); },
         setAttribute(name, value) { this.attributes.set(name, value); },
         removeAttribute(name) { this.attributes.delete(name); },
     };
+    const stopListeners = new Map();
+    const stopButton = {
+        dataset: {}, disabled: false, isConnected: true, innerHTML: '<span>Stop</span>', attributes: new Map(),
+        addEventListener(type, listener) { stopListeners.set(type, listener); },
+        setAttribute(name, value) { this.attributes.set(name, value); },
+        removeAttribute(name) { this.attributes.delete(name); },
+    };
     const status = { textContent: '' };
-    const panel = { querySelector: selector => selector === '#eda-retry' ? button : null };
+    const panel = {
+        querySelector: selector => selector === '#eda-retry' ? button : selector === '#eda-stop' ? stopButton : null,
+        querySelectorAll: () => [button, stopButton],
+    };
     let calls = 0;
+    let startedResolve;
+    const started = new Promise(resolve => { startedResolve = resolve; });
     let finish;
     const pending = new Promise(resolve => { finish = resolve; });
     api.setPanelState(panel, status);
-    api.bindPanelAsyncAction('#eda-retry', async () => { calls += 1; await pending; }, 'Retry is starting');
+    api.bindPanelAsyncAction('#eda-retry', async () => { calls += 1; startedResolve(); await pending; }, 'Retry is starting', 'Continuing…');
+    api.bindPanelAsyncAction('#eda-stop', async () => { calls += 1; }, 'Stop is starting', 'Stopping…', 'stop');
 
     const event = { preventDefault() {} };
     listeners.get('click')(event);
     listeners.get('click')(event);
-    await Promise.resolve();
 
     assert.equal(status.textContent, 'Retry is starting');
     assert.equal(button.disabled, true);
+    assert.equal(stopButton.disabled, true);
     assert.equal(button.attributes.get('aria-busy'), 'true');
+    assert.match(button.innerHTML, /eda-button-busy-spinner/);
+    assert.match(button.innerHTML, /Continuing/);
+    assert.equal(calls, 0, 'heavy work must wait until the busy state can paint');
+    assert.equal(api.getPanelActionState()?.key, '#eda-retry');
+
+    await started;
     assert.equal(calls, 1);
+
+    const replacementListeners = new Map();
+    const replacement = {
+        dataset: {}, disabled: false, isConnected: true, innerHTML: '<span>Retry replacement</span>', attributes: new Map(),
+        addEventListener(type, listener) { replacementListeners.set(type, listener); },
+        setAttribute(name, value) { this.attributes.set(name, value); },
+        removeAttribute(name) { this.attributes.delete(name); },
+    };
+    api.setPanelState({ querySelector: selector => selector === '#eda-stop' ? replacement : null }, { textContent: '' });
+    api.bindPanelAsyncAction('#eda-stop', async () => { calls += 1; }, 'Stop replacement is starting', 'Stopping…', 'stop');
+    replacementListeners.get('click')(event);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    assert.equal(calls, 1, 'a replacement panel button must share the same global action lock');
 
     finish();
     await pending;
     await new Promise(resolve => setTimeout(resolve, 0));
     assert.equal(button.disabled, false);
+    assert.equal(stopButton.disabled, false);
     assert.equal(button.attributes.has('aria-busy'), false);
+    assert.equal(button.innerHTML, '<span>Retry</span>');
+    assert.equal(api.getPanelActionState(), null);
+});
+
+test('Start, Retry, Skip, and Stop all use the shared panel action lock', () => {
+    const source = fs.readFileSync(scriptPath, 'utf8');
+    for (const [selector, action] of [
+        ['#eda-start', 'startBatch'],
+        ['#eda-retry', 'retryCurrent'],
+        ['#eda-skip', 'skipCurrent'],
+        ['#eda-stop', 'stopBatch'],
+    ]) {
+        assert.match(source, new RegExp(`bindPanelAsyncAction\\('${selector}',\\s*${action},`));
+    }
 });

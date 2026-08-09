@@ -5,6 +5,15 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2026-08-09
+
+### Fixed
+
+- Re-resolve Etsy's expected `Continue`, review, or final action after React replaces a footer button during form validation or userscript storage checks.
+- Repeat the same fail-closed action-kind and sale-context validation immediately before the one permitted click; detached elements and unrelated primary buttons remain rejected.
+- Keep unchanged one-second state polls from replacing panel buttons between pointer-down and pointer-up, which could swallow clicks on high-latency Remote Desktop sessions.
+- Give Start, Retry/Continue, Skip, and Stop immediate busy text, spinner, live status, and a shared duplicate-action lock that survives panel rerenders without overflowing the compact action grid.
+
 ## [1.0.4] - 2026-08-09
 
 ### Fixed
