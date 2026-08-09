@@ -17,7 +17,7 @@ Etsy satıcıları için açık kaynak Etsy automation tools ve Tampermonkey use
 | [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/) | 1.0.5 | Bulk Sales & Discounts Automation ile Etsy kampanyalarını kontrollü, doğrulamalı ve fail-closed seriler hâlinde planlar ve raporlar. |
 | [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/) | 1.0.3 | Mesaj çevirisi, cevap taslağı, şablon ve kullanıcı tarafından seçilen AI sağlayıcıları için yardımcı panel sunar. |
 | [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/) | 1.0.3 | Form tabanlı filtrelerle mevcut sayfadaki eşleşmeleri açıp kapatır; açık onayla tüm sayfalardaki eşleşmeleri kapatır. |
-| [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/) | 1.0.4 | Tüm sayfaları tek komutla sırayla toplar, ilk sayfaya dönünce analizi açar; yeniden deneme, hata raporu, presetler, grafikler, AI karşılaştırması ve Health Engine sunar. |
+| [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/) | 1.0.5 | Tüm sayfaları tek komutla sırayla toplar, ilk sayfaya dönünce analizi açar; yeniden deneme, hata raporu, presetler, grafikler, AI karşılaştırması ve Health Engine sunar. |
 | [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/) | 1.0.3 | Marketplace Insights metriklerini görünür DOM'dan okur, keyword satırlarının altında açıklar ve isteğe bağlı olarak Listing Analyzer'a kanıtlı araştırma sonucu gönderir; Listing Analyzer öneriyi bu kanıttan üretir. |
 
 Listing Analyzer ve Keyword & Market Analyzer ayrı ayrı kurulup kullanılabilir. Listing Analyzer'daki pazar araştırması özelliği kullanıcı tarafından başlatıldığında companion bulunamazsa neden gerekli olduğunu açıklar; yalnız kullanıcının **Yükleme sayfasını aç** onayından sonra canonical userscript adresini açar. Son kurulum onayı her zaman Tampermonkey'e ve kullanıcıya aittir.
@@ -62,6 +62,8 @@ Bu görseller gerçek userscript kaynağının ağ erişimi kapalı sentetik fix
 |---|---|
 | ![Listing Analyzer AI önerileri paneli](./assets/screenshots/listing-analyzer-ai-proposals-panel.png) | ![Listing Analyzer işlem kuyruğu paneli](./assets/screenshots/listing-analyzer-action-queue-panel.png) |
 
+Listing seçimi öneri kaydetmez; yalnız araştırma, AI dışa aktarımı ve kuyruk kapsamını belirler. Önce **İyileştirme planı**ndan manuel öneriyi kaydedin veya doğrulanmış AI JSON’unu içe aktarın; ardından kaydedilmiş önerisi bulunan kartları seçerek kuyruğu oluşturun. Form uygulama ve Etsy Publish onayı listing bazındadır; doğrulanamayan işlem otomatik tekrarlanmaz. [Akışın tamamını okuyun.](./scripts/etsy-listing-analyzer/README.md#kullanım)
+
 | Analiz eşikleri |
 |---|
 | ![Listing Analyzer analiz eşikleri modalı](./assets/screenshots/listing-analyzer-threshold-settings-modal.png) |
@@ -100,7 +102,7 @@ Kanonik kaynak GitHub'dır. Beş Greasy Fork kaydı tam public Raw yollarından 
 - Mesaj asistanındaki taslakları Etsy'ye göndermeden önce okuyun. Otomatik gönderim varsayılan olarak kapalıdır.
 - Ads Keyword Manager'daki **Bu sayfadaki eşleşmeleri kapat/aç** işlemleri görünür Etsy kontrollerini değiştirir. **Tüm sayfalardaki eşleşmeleri kapat** yalnız açık onaydan sonra çalışır; sonucu Etsy Ads ekranında elle doğrulayın.
 - Listing Analyzer Health Engine analizleri yalnız görünür Etsy metrikleri ve tarayıcıdaki yerel geçmişe dayanan karar desteğidir. Yaşam döngüsü, cohort, güven, kanıt ve deney sonuçları nedensellik veya Etsy geneli benchmark iddiası değildir; listing iyileştirme, deaktif etme veya diğer toplu yazma işlemleri yalnız açık kullanıcı seçimi ve onayından sonra çalıştırılmalıdır.
-- Listing Analyzer `v1.0.4` AI ağına bağlanmaz: anonimleştirilebilir istek JSON'u/prompt'u dışa aktarır ve doğrulanmış teklif JSON'u içe alır. Her listing Etsy Publish öncesinde kullanıcı onayı bekler; deaktif etmede script yalnız seçenek menüsünü açıp ilgili öğeye odaklanır, Deactivate ve Etsy final onayını kullanıcı tıklar. Delete otomatikleştirilmez.
+- Listing Analyzer `v1.0.5` AI ağına bağlanmaz: anonimleştirilebilir istek JSON'u/prompt'u dışa aktarır ve doğrulanmış teklif JSON'u içe alır. Her listing Etsy Publish öncesinde kullanıcı onayı bekler; deaktif etmede script yalnız seçenek menüsünü açıp ilgili öğeye odaklanır, Deactivate ve Etsy final onayını kullanıcı tıklar. Delete otomatikleştirilmez.
 - Keyword & Market Analyzer yalnız açık Marketplace Insights sayfasında render edilmiş keyword, arama, arama sonucu ve trend verilerini okur. Kullanıcı araştırmayı başlattığında seed keyword normal Marketplace Insights arama navigasyonunda Etsy'ye `query` olarak gönderilir ve Etsy araştırma kotasını/sorgu maliyetini tüketebilir. “Fırsat” değeri Makaytron'un türetilmiş sinyalidir; Etsy'nin kesin rekabet veya satış tahmini değildir. Araştırma sonucu listing'i otomatik değiştirmez.
 - İki analyzer birlikte kullanıldığında başlık, tag, anonim yerel referans ve içerik hash'i sürümlü/son kullanma süreli bir tarayıcı mesajıyla aktarılır. Süresi dolmuş, yinelenen veya değişmiş içeriğe ait sonuç reddedilir; araştırma kanıtından yerelde üretilen öneri yine kullanıcı incelemesine gider.
 - API anahtarlarını, çerezleri, müşteri/sipariş verilerini, mağaza/listing kimliklerini veya reklam metriklerini issue ve ekran görüntülerinde paylaşmayın.

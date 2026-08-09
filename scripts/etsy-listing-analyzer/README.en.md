@@ -1,6 +1,6 @@
 # Makaytron Etsy Listing Analyzer
 
-Version: `1.0.4`
+Version: `1.0.5`
 
 A Tampermonkey userscript that reads visible performance data from Etsy Shop Manager listing cards without asking for a separate API key or OAuth connection, evaluates local history with Health Engine, and prepares listing-level, user-approved improvement queues.
 
@@ -24,10 +24,11 @@ Every image below is an element-level capture of the userscript itself. No Etsy 
 - Extracts the listing ID from the edit link and reads title, SKU, stock, price, renewal/expiry text, 30-day visits/favorites, and all-time sales/revenue/renewals; it verifies the real active/draft/expired/sold-out/inactive state separately from Etsy's status filter.
 - **Collect all pages** or `Ctrl + Alt + A` walks Etsy listing pages from page 1 to the end, returns to page 1, and shows analysis cards only after that return succeeds. It validates pagination and card counts on every page, reads statistic rows only inside canonical listing cards, and requires three consecutive identical complete reads before saving. Missing metrics, repeated/overlapping pages, or mixed transient DOM state keep analysis locked. Temporary card/read and navigation failures are retried three times with increasing delays; exhaustion produces a safe detailed report with page, phase, attempts, and technical counts. The same control pauses and resumes the persisted run.
 - Once the completed run—or its oldest captured page—reaches 24 hours, **Listing analysis** hides stale cards and does not start collection automatically. The run must also match the verified public shop identity from seller navigation, the current Etsy scope, and page count; collection fails closed when that identity cannot be verified. The centered **Start analysis** control—or the `Ctrl + Alt + A` shortcut shown directly below it—starts a fresh full run only after the user acts; cards unlock when it completes.
-- Search plus scope, lifecycle, issue/opportunity, rolling 30-day performance, change, stock, and confidence filters; context-aware counts on every facet option; six built-in presets; up to eight custom presets; sorting; and 40-card batches keep large shops navigable.
+- Search plus scope, lifecycle, issue/opportunity, recommendation, rolling 30-day performance, change, stock, and confidence filters; context-aware counts on every facet option; six built-in presets; up to eight custom presets; priority/30-day reach-engagement/visit/all-time sales-revenue/confidence sorting; and 40-card batches keep large shops navigable.
 - The Makaytron logo in panel and modal headers opens `makaytron.com` safely in a new tab.
 - Replaces the same-day snapshot without carrying a metric missing from the new capture forward as if it were fresh, and keeps at most 120 snapshots and 400 days per listing in local Tampermonkey storage.
 - Health Engine considers lifecycle, a performance hypothesis, confidence, decision evidence, and the next review time as one evaluation context.
+- On the first complete scan, it evaluates current visits/favorites separately from all-time sales/revenue/renewals. A listing with two or more renewals but no sales, revenue, or favorites becomes a **Renewal waste** improvement priority, while proven sales or revenue protect a listing from risky bulk changes. This current-snapshot assessment is not a growth, decline, or deactivation decision.
 - Builds a within-shop comparison group (cohort) only from fresh listings in the current completed collection; stale, anomalous, and out-of-scope records are not peers. Weak samples leave the result low-confidence or inconclusive.
 - Renders accessible inline SVG history charts for visits, favorites, sales, revenue, and renewals without coercing missing values to zero.
 - Records improvement proposals, their baseline snapshot, and verified publish outcome, then renders a planned/published/observing/evaluation/result experiment timeline.
@@ -54,6 +55,8 @@ Health Engine uses only the title, SKU, stock, price, status, last-30-day visits
 
 Visits and favorites are rolling 30-day values, while sales, revenue, and renewals are all-time totals. The engine therefore does not treat every difference between two scans as the same kind of change. Short intervals are early signals; longer windows with an adequate sample can support higher-confidence assessments.
 
+The card's **30-day reach/engagement** score measures only last-30-day visits and favorite rate, retaining the same meaning on the first and later scans. All-time sales/revenue can protect a listing from risky changes, while renewals can create a waste priority; those historical counters do not artificially raise the current reach/engagement score. **History confidence** separately reports how ready the comparative time series is. Low history confidence on the first scan does not turn complete zero counters into “insufficient data”; growth/decline still requires 30-day evidence, and deactivation review still requires at least 58 days of complete history plus every other safety gate.
+
 Health Engine does not rely on one colored recommendation; its evaluation considers the following explainable contexts together:
 
 - **Lifecycle:** stages such as building a baseline, learning, a stable/growing/declining period, an experiment, inactivity, or deactivation review. The available stage depends on the depth of local history.
@@ -74,9 +77,12 @@ A recorded improvement can be compared in an experiment context using its baseli
 3. Select **Collect all pages** or press `Ctrl + Alt + A`. The script moves from page 1 to the final page, returns to page 1, and then opens the analysis cards; use the same control to pause and resume. **Scan this page** remains available for a one-page refresh.
 4. If the last completed run is 24 hours old, **Listing analysis** hides the cards. Select **Start analysis** or press `Ctrl + Alt + A`; after the full run completes, use search and filters to narrow the product group, then review lifecycle, performance hypothesis, confidence, evidence, and review timing. If evidence is insufficient, wait for another snapshot instead of forcing a decision.
 5. For optional market research, select exactly one listing and press **Research with Marketplace Insights**. After the Insights tab opens, a bounded capability/READY handshake runs; if the companion is available, the research request is delivered and the validated result returns to Listing Analyzer. If it is absent, only this feature shows a Cancel/Open install page modal; all other Listing Analyzer features remain available.
-6. Optionally copy selected records from **AI proposals**, process them with an AI tool, and import the returned JSON.
-7. Select saved proposals and build an action queue.
-8. The script opens listings one at a time. Apply the form, review Etsy’s fields, and give the final publish approval for each listing.
+6. Prepare a proposal in either of two ways. For the manual path, open **Improvement plan** on the listing card and choose an action; for **Update selected fields**, mark the fields to change, enter their replacement values, and press **Save proposal**. For the AI path, select cards, copy the request package from **AI proposals**, and import the validated response JSON; valid AI proposals are saved locally. Review and edit the proposal before queueing if needed.
+7. A card selection is not a saved proposal; it only scopes research, AI export, and queue creation. Select the listing cards that have saved proposals and choose **Build queue from selection**. Cards without proposals and proposals saved as **Do nothing** (`SKIP`) are excluded; the fresh full-collection identity, proposal basis, and changed-field list are revalidated when the queue is built.
+8. The queue opens listings one at a time. **Apply proposal to form** fills only the selected fields and does not publish. Review Etsy’s fields, then give **Reviewed; publish on Etsy** approval separately for each listing.
+9. If publication cannot be verified, the queue stops and never retries the write blindly. For deactivation, the script only opens Etsy’s menu; the user clicks **Deactivate** and Etsy’s final confirmation.
+
+> **What does “Select at least one listing with a saved proposal” mean?** You selected a card, but did not save an actionable proposal for that listing, or saved it as **Do nothing**. Complete **Improvement plan → Save proposal** or import valid AI proposal JSON first; then select the card with that saved proposal and build the queue again.
 
 Toggle the panel: `Ctrl + Alt + L`. Collect/pause/resume all pages: `Ctrl + Alt + A`.
 

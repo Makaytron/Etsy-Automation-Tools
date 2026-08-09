@@ -1,6 +1,6 @@
 # Makaytron Etsy Listing Analyzer
 
-**Sürüm:** 1.0.4 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.0.5 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 Etsy Shop Manager listing kartlarındaki görünür performans verilerini ayrı bir API anahtarı veya OAuth bağlantısı istemeden okuyan; Health Engine ile yerel geçmişi değerlendiren ve listing bazında kullanıcı onaylı iyileştirme kuyruğu hazırlayan Tampermonkey userscriptidir.
 
@@ -24,10 +24,11 @@ Aşağıdaki her görsel yalnız userscript öğesinden alınmıştır. Etsy say
 - Listing bağlantısından ID’yi çıkarır ve karttaki başlık, SKU, stok, fiyat, yenileme/bitiş metni, son 30 gün ziyaret/favori, tüm zamanlar satış/gelir/yenileme değerlerini okur; gerçek aktif/taslak/süresi dolmuş/tükenmiş/pasif durumunu Etsy’nin durum filtresinden ayrı doğrular.
 - **Tüm sayfaları tara** düğmesi veya `Ctrl + Alt + A` ile Etsy listing sayfalarını 1’den son sayfaya kadar sırayla toplar, ardından yeniden 1. sayfaya döner ve analiz kartlarını yalnız bu dönüş tamamlanınca gösterir. Her sayfada numaralandırma ve kart sayısını doğrular; yalnız listing kartının istatistik satırlarını okur ve aynı eksiksiz içeriği art arda üç kez görmeden kaydetmez. Eksik metrik, yinelenen/örtüşen sayfa veya geçici DOM karışımında analiz açılmaz. Geçici kart/yükleme ve sayfa geçişi hatalarını artan bekleme ile üç kez dener; sonuç alamazsa sayfa, aşama, deneme ve teknik sayaçları içeren güvenli bir ayrıntılı rapor üretir. Aynı düğme taramayı durdurur ve kaldığı yerden devam ettirir.
 - Son tamamlanan tüm-sayfa taraması veya taramadaki en eski sayfa 24 saati doldurduğunda **Listing analizleri** eski kartları göstermez ve kendiliğinden tarama başlatmaz. Taramanın seller-nav içindeki doğrulanmış public mağaza kimliği, güncel Etsy kapsamı ve sayfa sayısıyla da eşleşmesi gerekir; mağaza kimliği doğrulanamazsa tarama güvenli biçimde başlamaz. Ortadaki **Analizi başlat** düğmesi veya hemen altında gösterilen `Ctrl + Alt + A` kısayolu yeni tam taramayı kullanıcı kararıyla başlatır; tamamlanınca kartlar açılır.
-- Arama; kayıt kapsamı, yaşam döngüsü, sorun/fırsat, son 30 günlük performans, değişim, stok ve veri güveni filtreleri; her seçenekte bağlama göre sonuç adedi, altı hazır preset, en fazla sekiz özel preset, öncelik/ziyaret/satış/gelir/güven sıralaması ve sonuç sayacı sunar. Büyük mağazalarda kartlar 40’lık gruplarla yüklenir.
+- Arama; kayıt kapsamı, yaşam döngüsü, sorun/fırsat, öneri, son 30 günlük performans, değişim, stok ve veri güveni filtreleri; her seçenekte bağlama göre sonuç adedi, altı hazır preset, en fazla sekiz özel preset, öncelik/30 günlük erişim-ilgi/ziyaret/tüm-zaman satış-gelir/güven sıralaması ve sonuç sayacı sunar. Büyük mağazalarda kartlar 40’lık gruplarla yüklenir.
 - Panel ve modal başlığındaki Makaytron logosu `makaytron.com` adresini güvenli biçimde yeni sekmede açar.
 - Aynı günkü snapshotı günceller; yeni okumada eksik kalan metriği önceki değerden taşıyıp güncelmiş gibi göstermez. Listing başına en fazla 120 snapshotı ve en fazla 400 günlük geçmişi yerel Tampermonkey alanında tutar.
 - Health Engine değerlendirme bağlamında yaşam döngüsünü, performans hipotezini, güven düzeyini, karar kanıtlarını ve sonraki inceleme zamanını birlikte ele alır.
+- İlk eksiksiz taramada güncel ziyaret/favori ile tüm-zaman satış/gelir/yenileme kanıtlarını ayrı zaman ölçeklerinde değerlendirir. İki veya daha fazla yenilemeye rağmen satış, gelir ve favorisi olmayan listingi **Yenileme verimsizliği** olarak iyileştirme önceliğine alır; satış veya gelir kanıtı olan listingi riskli toplu değişikliklerden korur. Bu anlık değerlendirme büyüme, düşüş veya deaktivasyon kararı değildir.
 - Yeterli ve karşılaştırılabilir kayıt bulunduğunda yalnız güncel, tamamlanmış taramadaki listinglerden mağaza içi karşılaştırma grubu (cohort) kurar; eski, anomalili veya tarama dışı kayıtları emsal yapmaz. Örneklem zayıfsa sonuç düşük güvenli veya belirsiz kalır.
 - Geçmiş ayrıntısında ziyaret, favori, satış, gelir ve yenileme için erişilebilir inline SVG değişim grafikleri gösterir; eksik değerleri sıfıra dönüştürmez.
 - İyileştirme önerilerini, başlangıç snapshotını ve doğrulanmış yayınlama sonucunu kaydeder; planlama, yayınlama, gözlem, değerlendirme tarihi ve sonucu ayrı olaylarla gösteren deney zaman çizelgesi oluşturur.
@@ -54,6 +55,8 @@ Health Engine yalnız Etsy Shop Manager listing kartında görünür olan başl�
 
 Ziyaret ve favori değerleri kayan son 30 günlük pencere; satış, gelir ve yenileme değerleri ise tüm zamanlar toplamıdır. Bu nedenle motor, iki tarama arasındaki bütün metrikleri aynı tür fark gibi yorumlamaz. Kısa aralıklı değişimler erken sinyal sayılır; daha uzun ve yeterli örneklem içeren pencereler daha yüksek güvenle değerlendirilir.
 
+Karttaki **30 günlük erişim/ilgi** puanı yalnız son 30 günlük ziyaret ile favori oranını ölçer; aynı anlamı ilk ve sonraki taramalarda korur. Tüm-zaman satış/gelir kanıtı listingi riskli değişikliklerden koruyabilir, yenilemeler ise verimsizlik önceliği oluşturabilir; bu tarihsel sayaçlar güncel erişim/ilgi puanını yapay olarak yükseltmez. **Geçmiş güveni** karşılaştırmalı zaman serisinin ne kadar hazır olduğunu ayrıca gösterir. İlk taramada geçmiş güveninin düşük olması, eksiksiz okunan sıfır değerlerin “veri yetersiz” sayılması değildir; büyüme/düşüş için 30 günlük, deaktivasyon incelemesi için en az 58 günlük tam geçmiş ve diğer güvenlik kanıtları yine zorunludur.
+
 Health Engine değerlendirmesi tek bir renkli öneriye dayanmaz; aşağıdaki açıklanabilir bağlamları birlikte ele alır:
 
 - **Yaşam döngüsü:** başlangıç verisi toplama, öğrenme, dengeli/yükselen/düşen dönem, deney, pasiflik veya kapatmayı inceleme gibi aşamalar. Kullanılabilir aşama, yerel geçmişin kapsamına bağlıdır.
@@ -74,9 +77,12 @@ Kaydedilmiş bir iyileştirme, başlangıç snapshotı ve değiştirilen alanlar
 3. Panelde **Tüm sayfaları tara** düğmesine basın veya `Ctrl + Alt + A` kullanın. Script ilk sayfadan son sayfaya kadar ilerler, sonra ilk sayfaya dönüp analiz kartlarını açar; aynı düğmeyle durdurup kaldığınız yerden devam edebilirsiniz. Yalnız açık sayfayı yenilemek için **Bu sayfayı tara** kullanılabilir.
 4. Son tamamlanan tarama 24 saati doldurduysa **Listing analizleri** kartları gizler. Ekranın ortasındaki **Analizi başlat** düğmesine basın veya `Ctrl + Alt + A` kullanın; tam tarama tamamlanınca arama ve filtrelerle ilgilendiğiniz ürün grubunu daraltın. Yaşam döngüsü, performans hipotezi, güven, kanıt ve inceleme zamanı bağlamını kontrol edin; yeterli veri yoksa karar vermek yerine yeni snapshot bekleyin.
 5. İsteğe bağlı pazar araştırması için tam bir listing seçip **Marketplace Insights ile araştır** düğmesine basın. Insights sekmesi açıldıktan sonra sınırlı capability/READY el sıkışması yapılır; companion bulunursa araştırma teslim edilir ve sonucu Listing Analyzer’da inceleyebilirsiniz. Companion yoksa yalnız bu özellik için İptal/Yükleme sayfasını aç modalı görünür; Listing Analyzer’ın geri kalanı çalışmaya devam eder.
-6. İsterseniz seçili listingleri **AI önerileri** ekranından kopyalayıp bir AI aracında değerlendirin; dönen JSON’u aynı ekrandan içe aktarın.
-7. Kaydedilmiş önerileri seçip işlem kuyruğu hazırlayın.
-8. Script listingleri sırayla açar. Her listingde formu uygulayın, Etsy alanlarını inceleyin ve son yayınlama onayını ayrı ayrı verin.
+6. Öneriyi iki yoldan hazırlayabilirsiniz. Manuel yolda listing kartındaki **İyileştirme planı**nı açın ve işlemi seçin; **Seçili alanları güncelle** işlemi için değişecek alanları işaretleyip yeni değerleri girin, ardından **Öneriyi kaydet** düğmesine basın. AI yolunda kartları seçin, **AI önerileri** ekranından istek paketini kopyalayın ve doğrulanmış yanıt JSON’unu içe aktarın; geçerli AI önerileri yerelde kaydedilir. Kuyruğa almadan önce öneriyi inceleyip gerekirse düzenleyin.
+7. Kartın seçim kutusu önerinin kendisi değildir; yalnız araştırma, AI dışa aktarımı ve kuyruk kapsamını belirler. Kaydedilmiş önerisi bulunan listing kartlarını seçip **Seçilenlerden kuyruk hazırla** düğmesine basın. Önerisi olmayan veya **İşlem yapma** (`SKIP`) olarak kaydedilen kartlar kuyruğa girmez; güncel tam tarama kimliği, öneri temeli ve değişecek alan listesi kuyruk oluşturulurken yeniden doğrulanır.
+8. Kuyruk listingleri sırayla açar. **Öneriyi forma uygula** yalnız seçili alanları doldurur ve henüz yayınlama yapmaz. Etsy alanlarını inceleyip her listing için **İnceledim, Etsy’de yayımla** onayını ayrıca verin.
+9. Yayın sonucu doğrulanamazsa kuyruk durur ve yazmayı otomatik tekrarlamaz. Deaktivasyonda script yalnız Etsy seçenek menüsünü açar; **Deactivate** ve Etsy final onayı kullanıcıya aittir.
+
+> **“Kuyruk için kaydedilmiş önerisi bulunan en az bir listing seçin” ne demek?** Yalnız kartı işaretlediniz, fakat o listing için uygulanabilir bir öneri kaydetmediniz veya öneriyi **İşlem yapma** olarak kaydettiniz. Önce **İyileştirme planı → Öneriyi kaydet** adımını tamamlayın ya da geçerli AI öneri JSON’unu içe aktarın; sonra önerisi bulunan kartı seçerek kuyruğu yeniden hazırlayın.
 
 Paneli aç/kapat: `Ctrl + Alt + L`. Tüm sayfaları tara/durdur/devam et: `Ctrl + Alt + A`.
 

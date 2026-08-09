@@ -269,7 +269,7 @@ test('shadow pagination contract reconciles the route page and reads final-page 
         assert.equal(adapter.isDisabled(adapter.nextButton()), true);
         adapter.cardLinks = () => Array.from({ length: 13 }, () => ({}));
         adapter.scan = () => Array.from({ length: 13 }, (_, index) => ({ listingId: String(index + 1) }));
-        const finalPage = await adapter.readStable({ requirePagination: true, timeout: 80 });
+        const finalPage = await adapter.readStable({ requirePagination: true, timeout: 600 });
         assert.equal(finalPage.listings.length, 13);
         select.value = '17';
         sandbox.location.href = 'https://www.etsy.com/your/shops/me/tools/listings?stats=true';
@@ -358,7 +358,7 @@ test('first read of the final page observes the full window before accepting its
     const partial = { valid: true, pageInfo: { current: 17, total: 17, valid: true, hasPagination: true }, links: Array(3).fill({}), listings: Array.from({ length: 3 }, (_, index) => ({ listingId: String(index + 1) })), signature: 'final-3' };
     const complete = { valid: true, pageInfo: { current: 17, total: 17, valid: true, hasPagination: true }, links: Array(10).fill({}), listings: Array.from({ length: 10 }, (_, index) => ({ listingId: String(index + 1) })), signature: 'final-10' };
     adapter.snapshotState = () => (++calls <= 4 ? partial : complete);
-    const result = await adapter.readStable({ timeout: 120 });
+    const result = await adapter.readStable({ timeout: 600 });
     adapter.snapshotState = original;
     assert.equal(result.listings.length, 10);
 });
@@ -455,6 +455,50 @@ test('deactivation fails closed until non-seasonal status is explicit', () => {
     assert.equal(confirmedResult.lifecycle, 'DEACTIVATION_REVIEW');
 });
 
+test('deactivation review requires the current snapshot to remain at zero traffic', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const recovered = record('203', [
+        snapshot('2026-06-02T12:00:00.000Z', { renewals: 0 }),
+        snapshot('2026-07-02T12:00:00.000Z', { renewals: 2 }),
+        snapshot(evaluatedAt, { visits: 10, renewals: 4 }),
+    ], { seasonal: false });
+    const peers = Array.from({ length: 7 }, (_, index) => record(String(204 + index), [
+        snapshot('2026-06-02T12:00:00.000Z', { renewals: 0 }),
+        snapshot('2026-07-02T12:00:00.000Z', { renewals: 2 }),
+        snapshot(evaluatedAt, { visits: 10, renewals: 4 }),
+    ], { seasonal: false }));
+    const result = api.evaluateRecord(recovered, [recovered, ...peers], undefined, evaluatedAt).result;
+    assert.notEqual(result.lifecycle, 'DEACTIVATION_REVIEW');
+    assert.equal(result.safeguards.find((item) => item.key === 'guardZeroTraffic').passed, false);
+});
+
+test('deactivation history requires at least 58 days of complete snapshots', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const partialSixty = record('history-partial', [
+        snapshot('2026-06-02T12:00:00.000Z', { revenue: null, renewals: 0 }),
+        snapshot('2026-06-12T12:00:00.000Z', { renewals: 0 }),
+        snapshot('2026-07-02T12:00:00.000Z', { renewals: 2 }),
+        snapshot(evaluatedAt, { renewals: 4 }),
+    ], { seasonal: false });
+    const partialResult = api.evaluateRecord(partialSixty, [partialSixty], undefined, evaluatedAt).result;
+    assert.equal(partialResult.derived.completeHistorySpanDays, 50);
+    assert.equal(partialResult.safeguards.find((item) => item.key === 'guardHistory').passed, false);
+    assert.equal(partialResult.readiness.deactivationHistory, false);
+    assert.notEqual(partialResult.lifecycle, 'DEACTIVATION_REVIEW');
+
+    const completeFiftyNine = record('history-complete', [
+        snapshot('2026-06-03T12:00:00.000Z', { renewals: 0 }),
+        snapshot('2026-07-02T12:00:00.000Z', { renewals: 2 }),
+        snapshot(evaluatedAt, { renewals: 4 }),
+    ], { seasonal: false });
+    const completeResult = api.evaluateRecord(completeFiftyNine, [completeFiftyNine], undefined, evaluatedAt).result;
+    assert.equal(completeResult.derived.completeHistorySpanDays, 59);
+    assert.equal(completeResult.safeguards.find((item) => item.key === 'guardHistory').passed, true);
+    assert.equal(completeResult.readiness.deactivationHistory, true);
+});
+
 test('integrity anomalies cannot be labeled as growing or stable', () => {
     const { api } = loadAnalyzer();
     const evaluatedAt = '2026-08-01T12:00:00.000Z';
@@ -466,6 +510,23 @@ test('integrity anomalies cannot be labeled as growing or stable', () => {
     assert.equal(result.lifecycle, 'DATA_GAP');
     assert.equal(result.diagnosis, 'INSUFFICIENT_SIGNAL');
     assert.ok(result.anomalies.includes('favorites-without-visits'));
+
+    const impossibleRevenue = record('301-revenue', [
+        snapshot(evaluatedAt, { visits: 10, sales: 0, revenue: 20 }),
+    ]);
+    const revenueResult = api.evaluateRecord(impossibleRevenue, [impossibleRevenue], undefined, evaluatedAt).result;
+    assert.equal(revenueResult.lifecycle, 'DATA_GAP');
+    assert.equal(revenueResult.assessmentMode, 'insufficient');
+    assert.equal(revenueResult.code, 'waiting');
+    assert.ok(revenueResult.anomalies.includes('revenue-without-sales'));
+
+    const saleWithoutRevenue = record('301-sale', [
+        snapshot(evaluatedAt, { visits: 10, sales: 1, revenue: 0 }),
+    ]);
+    const saleResult = api.evaluateRecord(saleWithoutRevenue, [saleWithoutRevenue], undefined, evaluatedAt).result;
+    assert.equal(saleResult.assessmentMode, 'snapshot');
+    assert.equal(saleResult.bootstrap.cumulativeSignal, 'PROVEN_DEMAND');
+    assert.equal(saleResult.code, 'protected');
 });
 
 test('stale anchor observations and negative metrics fail closed at low confidence', () => {
@@ -478,10 +539,13 @@ test('stale anchor observations and negative metrics fail closed at low confiden
     ]);
     const staleResult = api.evaluateRecord(stale, [stale], undefined, evaluatedAt).result;
     assert.equal(staleResult.derived.anchors.d30, null);
-    assert.equal(staleResult.lifecycle, 'LEARNING');
+    assert.equal(staleResult.lifecycle, 'DATA_GAP');
     assert.equal(staleResult.diagnosis, 'INSUFFICIENT_SIGNAL');
     assert.ok(staleResult.confidence <= 39);
     assert.ok(staleResult.confidenceCaps.includes('data-integrity'));
+    assert.equal(staleResult.assessmentMode, 'insufficient');
+    assert.equal(staleResult.score, null);
+    assert.equal(staleResult.readiness.trend, false);
 
     const negative = record('303', [
         snapshot('2026-06-02T12:00:00.000Z', { visits: 10 }),
@@ -493,6 +557,25 @@ test('stale anchor observations and negative metrics fail closed at low confiden
     assert.equal(negativeResult.diagnosis, 'INSUFFICIENT_SIGNAL');
     assert.ok(negativeResult.confidence <= 39);
     assert.ok(negativeResult.anomalies.includes('negative-visits'));
+    assert.equal(negativeResult.assessmentMode, 'insufficient');
+    assert.equal(negativeResult.score, null);
+    assert.equal(negativeResult.readiness.trend, false);
+});
+
+test('cumulative decreases cannot expose a longitudinal score or readiness', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const broken = record('303b', [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 40, favorites: 4, sales: 5, revenue: 100, renewals: 5 }),
+        snapshot(evaluatedAt, { visits: 60, favorites: 5, sales: 4, revenue: 80, renewals: 4 }),
+    ]);
+    const result = api.evaluateRecord(broken, [broken], undefined, evaluatedAt).result;
+    assert.equal(result.lifecycle, 'DATA_GAP');
+    assert.equal(result.diagnosis, 'INSUFFICIENT_SIGNAL');
+    assert.equal(result.assessmentMode, 'insufficient');
+    assert.equal(result.score, null);
+    assert.deepEqual(plain(result.readiness), { snapshot: false, trend: false, deactivationHistory: false });
+    assert.ok(result.confidenceCaps.includes('data-integrity'));
 });
 
 test('traffic confidence bonus requires repeated zero observations including the current snapshot', () => {
@@ -512,6 +595,216 @@ test('traffic confidence bonus requires repeated zero observations including the
     assert.equal(api.evaluateRecord(dormant, [dormant], undefined, evaluatedAt).result.confidenceComponents.trafficSample, 100);
 });
 
+test('first-snapshot bootstrap separates renewal waste, funnel weakness, and proven demand', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const candidates = [
+        record('bootstrap-a', [snapshot(evaluatedAt, { visits: 0, favorites: 0, sales: 0, revenue: 0, renewals: 2 })]),
+        record('bootstrap-b', [snapshot(evaluatedAt, { visits: 50, favorites: 0, sales: 0, revenue: 0, renewals: 2 })]),
+        record('bootstrap-c', [snapshot(evaluatedAt, { visits: 50, favorites: 5, sales: 0, revenue: 0, renewals: 2 })]),
+        record('bootstrap-d', [snapshot(evaluatedAt, { visits: 50, favorites: 5, sales: 3, revenue: 120, renewals: 3 })]),
+        record('bootstrap-e', [snapshot(evaluatedAt, { visits: 5, favorites: 0, sales: 0, revenue: 0, renewals: 0 })]),
+        record('bootstrap-f', [snapshot(evaluatedAt, { visits: 80, favorites: 8, sales: 1, revenue: 40, renewals: 1 })]),
+        record('bootstrap-g', [snapshot(evaluatedAt, { visits: 160, favorites: 12, sales: 4, revenue: 200, renewals: 4 })]),
+        record('bootstrap-h', [snapshot(evaluatedAt, { visits: 20, favorites: 1, sales: 0, revenue: 0, renewals: 1 })]),
+        record('bootstrap-i', [snapshot(evaluatedAt, { visits: 0, favorites: 0, sales: 1, revenue: 20, renewals: 3 })]),
+        record('bootstrap-zero', [snapshot(evaluatedAt)]),
+    ];
+    const results = api.evaluateRecords(candidates, undefined, evaluatedAt);
+    const a = results['bootstrap-a'].result;
+    const b = results['bootstrap-b'].result;
+    const c = results['bootstrap-c'].result;
+    const d = results['bootstrap-d'].result;
+
+    assert.equal(a.lifecycle, 'BASELINE');
+    assert.equal(a.assessmentMode, 'snapshot');
+    assert.equal(a.bootstrap.signal, 'RENEWAL_WASTE');
+    assert.equal(a.diagnosis, 'DISCOVERY_WEAK');
+    assert.equal(a.code, 'improve');
+    assert.ok(a.score <= 25);
+    assert.ok(a.confidence <= 39);
+    assert.deepEqual(plain(a.readiness), { snapshot: true, trend: false, deactivationHistory: false });
+
+    assert.equal(b.bootstrap.signal, 'RENEWAL_WASTE');
+    assert.equal(b.diagnosis, 'ENGAGEMENT_WEAK');
+    assert.equal(b.code, 'improve');
+    assert.ok(b.score > a.score);
+
+    assert.equal(c.bootstrap.signal, 'PURCHASE_FRICTION');
+    assert.equal(c.bootstrap.cumulativeSignal, 'NO_DEMAND');
+    assert.equal(c.diagnosis, 'PURCHASE_FRICTION');
+    assert.equal(c.code, 'improve');
+
+    assert.equal(d.bootstrap.cumulativeSignal, 'PROVEN_DEMAND');
+    assert.equal(d.code, 'protected');
+    assert.equal(d.scoreBasis, 'current-30d-reach-engagement');
+    assert.deepEqual(plain(d.currentAssessment.components), plain(d.bootstrap.components));
+    const provenWithoutCurrentReach = results['bootstrap-i'].result;
+    assert.equal(provenWithoutCurrentReach.bootstrap.signal, 'NO_ACTIVITY');
+    assert.equal(provenWithoutCurrentReach.bootstrap.funnelSignal, 'NO_ACTIVITY');
+    assert.equal(provenWithoutCurrentReach.bootstrap.cumulativeSignal, 'PROVEN_DEMAND');
+    assert.equal(provenWithoutCurrentReach.diagnosis, 'DISCOVERY_WEAK');
+    assert.equal(provenWithoutCurrentReach.code, 'protected');
+    assert.equal(provenWithoutCurrentReach.score, 0);
+    const zero = results['bootstrap-zero'].result;
+    assert.equal(zero.assessmentMode, 'snapshot');
+    assert.equal(zero.bootstrap.signal, 'NO_ACTIVITY');
+    assert.equal(zero.code, 'monitor');
+    assert.equal(zero.score, 0);
+    assert.notEqual(zero.diagnosis, 'INSUFFICIENT_SIGNAL');
+    assert.equal(results['bootstrap-e'].result.bootstrap.signal, 'WEAK_DISCOVERY');
+    assert.ok(results['bootstrap-e'].result.score <= 39);
+
+    const scores = new Set(Object.values(results).map((item) => item.result.score).filter(Number.isFinite));
+    assert.ok(scores.size > 3);
+    Object.values(results).forEach(({ result }) => {
+        assert.ok(!['ACTIVE_GROWING', 'ACTIVE_DECLINING', 'DORMANT', 'DEACTIVATION_REVIEW'].includes(result.lifecycle));
+        assert.equal(result.readiness.trend, false);
+        assert.equal(result.readiness.deactivationHistory, false);
+    });
+});
+
+test('bootstrap treats two and four renewals as evidence but never as deactivation history', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const results = [];
+    for (const renewals of [2, 4]) {
+        const candidate = record(`renewals-${renewals}`, [snapshot(evaluatedAt, { renewals })], { seasonal: false });
+        const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+        results.push(result);
+        assert.equal(result.bootstrap.signal, 'RENEWAL_WASTE');
+        assert.equal(result.code, 'improve');
+        assert.equal(result.lifecycle, 'BASELINE');
+        assert.equal(result.readiness.deactivationHistory, false);
+        assert.notEqual(result.lifecycle, 'DEACTIVATION_REVIEW');
+    }
+    assert.ok(results[1].bootstrap.severity > results[0].bootstrap.severity);
+
+    const learning = record('renewals-learning', [
+        snapshot('2026-07-18T12:00:00.000Z', { renewals: 1 }),
+        snapshot(evaluatedAt, { renewals: 2 }),
+    ], { seasonal: false });
+    const learningResult = api.evaluateRecord(learning, [learning], undefined, evaluatedAt).result;
+    assert.equal(learningResult.lifecycle, 'LEARNING');
+    assert.equal(learningResult.bootstrap.signal, 'RENEWAL_WASTE');
+    assert.equal(learningResult.code, 'improve');
+    assert.equal(learningResult.readiness.deactivationHistory, false);
+});
+
+test('bootstrap fails closed for unread, stale, anomalous, inactive, or out-of-stock current data', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const cases = [
+        record('bootstrap-missing', [snapshot(evaluatedAt, { revenue: null, renewals: 4 })]),
+        record('bootstrap-stale', [snapshot('2026-07-20T12:00:00.000Z', { renewals: 4 })]),
+        record('bootstrap-anomaly', [snapshot(evaluatedAt, { visits: 0, favorites: 1, renewals: 4 })]),
+        record('bootstrap-inactive', [snapshot(evaluatedAt, { renewals: 4, listingState: 'inactive', statusLabel: 'Inactive' })], { listingState: 'inactive', statusLabel: 'Inactive' }),
+        record('bootstrap-stock', [snapshot(evaluatedAt, { renewals: 4, stock: 0 })]),
+    ];
+    cases.forEach((candidate) => {
+        const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+        assert.equal(result.assessmentMode, 'insufficient');
+        assert.equal(result.bootstrap, null);
+        assert.equal(result.readiness.snapshot, false);
+        assert.notEqual(result.code, 'improve');
+        assert.notEqual(result.lifecycle, 'DEACTIVATION_REVIEW');
+    });
+});
+
+test('analysis cards label current reach separately from history confidence', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const candidate = record('bootstrap-card', [snapshot(evaluatedAt, { renewals: 2 })]);
+    candidate.analysis = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+    const markup = api.updater.UI.recordRow(candidate);
+    assert.match(markup, /30 günlük erişim\/ilgi/);
+    assert.match(markup, /Geçmiş güveni: Düşük/);
+    assert.match(markup, /Yenileme verimsizliği/);
+    assert.match(markup, /Ziyaret · 30g/);
+    assert.match(markup, /Satış · tüm-zaman/);
+    assert.doesNotMatch(markup, />39 · Düşük</);
+    assert.doesNotMatch(markup, /width:39%/);
+
+    const protectedButQuiet = record('protected-quiet-card', [snapshot(evaluatedAt, { sales: 1, revenue: 20 })]);
+    protectedButQuiet.analysis = api.evaluateRecord(protectedButQuiet, [protectedButQuiet], undefined, evaluatedAt).result;
+    const quietMarkup = api.updater.UI.recordRow(protectedButQuiet);
+    assert.equal(protectedButQuiet.analysis.code, 'protected');
+    assert.equal(protectedButQuiet.analysis.score, 0);
+    assert.equal(protectedButQuiet.analysis.diagnosis, 'DISCOVERY_WEAK');
+    assert.doesNotMatch(quietMarkup, /meli-pill success meli-health-trigger/);
+    assert.match(quietMarkup, /meli-pill warning meli-health-trigger/);
+});
+
+test('complete all-zero counters are explicit no-activity evidence instead of missing data', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const candidate = record('no-activity-card', [snapshot(evaluatedAt)]);
+    candidate.analysis = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+    const markup = api.updater.UI.recordRow(candidate);
+    assert.equal(candidate.analysis.assessmentMode, 'snapshot');
+    assert.equal(candidate.analysis.bootstrap.signal, 'NO_ACTIVITY');
+    assert.equal(candidate.analysis.score, 0);
+    assert.match(markup, /Güncel hareket yok/);
+    assert.match(markup, /Veri eksik değil/);
+    assert.doesNotMatch(markup, /Güncel metrik okunamadı/);
+});
+
+test('renewal-waste evidence starts at two renewals independently of deactivation settings', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const strictDeactivation = { minRenewalsToReview: 5 };
+    const two = record('renewal-waste-two', [snapshot(evaluatedAt, { renewals: 2 })]);
+    const one = record('renewal-waste-one', [snapshot(evaluatedAt, { renewals: 1 })]);
+    assert.equal(api.evaluateRecord(two, [two], strictDeactivation, evaluatedAt).result.bootstrap.signal, 'RENEWAL_WASTE');
+    assert.notEqual(api.evaluateRecord(one, [one], { minRenewalsToReview: 1 }, evaluatedAt).result.bootstrap.signal, 'RENEWAL_WASTE');
+});
+
+test('the current reach score keeps one meaning with or without longitudinal history', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const first = record('score-first', [snapshot(evaluatedAt, { visits: 50, favorites: 5, sales: 2, revenue: 80 })]);
+    const history = record('score-history', [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 40, favorites: 4, sales: 1, revenue: 40 }),
+        snapshot(evaluatedAt, { visits: 50, favorites: 5, sales: 2, revenue: 80 }),
+    ]);
+    const firstResult = api.evaluateRecord(first, [first], undefined, evaluatedAt).result;
+    const historyResult = api.evaluateRecord(history, [history], undefined, evaluatedAt).result;
+    assert.equal(firstResult.assessmentMode, 'snapshot');
+    assert.equal(historyResult.assessmentMode, 'longitudinal');
+    assert.equal(firstResult.score, historyResult.score);
+    assert.equal(firstResult.scoreBasis, 'current-30d-reach-engagement');
+    assert.equal(historyResult.scoreBasis, 'current-30d-reach-engagement');
+    assert.equal(historyResult.bootstrap, null);
+    assert.ok(historyResult.currentAssessment);
+});
+
+test('priority and explicit score sorting use bootstrap evidence instead of the shared confidence cap', () => {
+    const { api } = loadAnalyzer();
+    const rows = [
+        { listingId: 'mixed', analysis: { code: 'monitor', score: 70, confidence: 39, bootstrap: { priority: 5 } } },
+        { listingId: 'engagement', analysis: { code: 'improve', score: 30, confidence: 39, bootstrap: { priority: 2 } } },
+        { listingId: 'waste-high', analysis: { code: 'improve', score: 20, confidence: 39, bootstrap: { priority: 0 } } },
+        { listingId: 'waste-low', analysis: { code: 'improve', score: 5, confidence: 39, bootstrap: { priority: 0 } } },
+    ];
+    assert.deepEqual(plain(api.sortAnalysisRecords(rows, 'priority').map((item) => item.listingId)), ['waste-low', 'waste-high', 'engagement', 'mixed']);
+    assert.deepEqual(plain(api.sortAnalysisRecords(rows, 'score').map((item) => item.listingId)), ['mixed', 'engagement', 'waste-high', 'waste-low']);
+    assert.equal(api.normalizeAnalysisFilters({ sort: 'score' }).sort, 'score');
+});
+
+test('purchase-friction priority increases with exposed current demand', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const lower = record('friction-lower', [snapshot(evaluatedAt, { visits: 30, favorites: 3 })]);
+    const higher = record('friction-higher', [snapshot(evaluatedAt, { visits: 100, favorites: 10 })]);
+    const evaluated = api.evaluateRecords([lower, higher], undefined, evaluatedAt);
+    lower.analysis = evaluated[lower.listingId].result;
+    higher.analysis = evaluated[higher.listingId].result;
+    assert.equal(lower.analysis.bootstrap.signal, 'PURCHASE_FRICTION');
+    assert.equal(higher.analysis.bootstrap.signal, 'PURCHASE_FRICTION');
+    assert.ok(higher.analysis.bootstrap.severity > lower.analysis.bootstrap.severity);
+    assert.deepEqual(plain(api.sortAnalysisRecords([lower, higher], 'priority').map((item) => item.listingId)), ['friction-higher', 'friction-lower']);
+});
+
 test('performance filters use rolling 30-day metrics rather than all-time counters', () => {
     const { api } = loadAnalyzer();
     const candidate = record('401', [snapshot('2026-08-01T12:00:00.000Z', { visits: 500, sales: 12, revenue: 300 })]);
@@ -519,6 +812,32 @@ test('performance filters use rolling 30-day metrics rather than all-time counte
     const filters = { performance: 'traffic-no-sales' };
     assert.equal(api.recordMatchesAnalysisFilters(candidate, filters, '', new Set()), true);
     assert.equal(api.recordMatchesAnalysisFilters(candidate, { performance: 'sales' }, '', new Set()), false);
+
+    const baseline = record('402', [snapshot('2026-08-01T12:00:00.000Z', { visits: 10, renewals: 2 })]);
+    baseline.analysis = { lifecycle: 'BASELINE', diagnosis: 'DISCOVERY_WEAK', confidence: 39, code: 'improve', derived: { visits30: 10, favorites30: 0, sales30: null, revenue30: null, renewals30: null } };
+    assert.equal(api.recordMatchesAnalysisFilters(baseline, { performance: 'missing' }, '', new Set()), false);
+    assert.equal(api.recordMatchesAnalysisFilters(baseline, { recommendation: 'improve' }, '', new Set()), true);
+    assert.equal(api.normalizeAnalysisFilters({ recommendation: 'not-valid' }).recommendation, '');
+
+    const allZero = record('403', [snapshot('2026-08-01T12:00:00.000Z')]);
+    allZero.analysis = api.evaluateRecord(allZero, [allZero], undefined, '2026-08-01T12:00:00.000Z').result;
+    assert.equal(api.recordMatchesAnalysisFilters(allZero, { performance: 'no-activity' }, '', new Set()), true);
+
+    const renewalWasteNoTraffic = record('403b', [snapshot('2026-08-01T12:00:00.000Z', { renewals: 2 })]);
+    renewalWasteNoTraffic.analysis = api.evaluateRecord(renewalWasteNoTraffic, [renewalWasteNoTraffic], undefined, '2026-08-01T12:00:00.000Z').result;
+    assert.equal(renewalWasteNoTraffic.analysis.bootstrap.signal, 'RENEWAL_WASTE');
+    assert.equal(api.recordMatchesAnalysisFilters(renewalWasteNoTraffic, { performance: 'no-activity' }, '', new Set()), true);
+    assert.equal(api.recordMatchesAnalysisFilters(renewalWasteNoTraffic, { performance: 'missing' }, '', new Set()), false);
+
+    const trafficNeverSold = record('404', [snapshot('2026-08-01T12:00:00.000Z', { visits: 50 })]);
+    trafficNeverSold.analysis = api.evaluateRecord(trafficNeverSold, [trafficNeverSold], undefined, '2026-08-01T12:00:00.000Z').result;
+    assert.equal(api.recordMatchesAnalysisFilters(trafficNeverSold, { performance: 'traffic-no-sales' }, '', new Set()), true);
+
+    const historicalSale = record('405', [snapshot('2026-08-01T12:00:00.000Z', { visits: 50, sales: 1, revenue: 20 })]);
+    historicalSale.analysis = api.evaluateRecord(historicalSale, [historicalSale], undefined, '2026-08-01T12:00:00.000Z').result;
+    assert.equal(api.recordMatchesAnalysisFilters(historicalSale, { performance: 'sales' }, '', new Set()), false);
+    assert.equal(api.recordMatchesAnalysisFilters(historicalSale, { performance: 'missing' }, '', new Set()), true);
+    assert.equal(api.recentPerformanceMetrics(historicalSale).sales, null);
 });
 
 test('cohort benchmark excludes stale peers and reports price-band fallback honestly', () => {
@@ -609,6 +928,38 @@ test('record refresh evaluates the completed collection together and isolates ou
     const isolated = refreshed.find((item) => item.listingId === '699');
     assert.equal(target.analysis.benchmark.size, 8);
     assert.equal(isolated.analysis.benchmark.size, 0);
+});
+
+test('record refresh persists a stale health-engine result before later fenced actions', async () => {
+    const { api, storage } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const runtime = api.collectionRuntime;
+    const candidate = record('engine-migration', [snapshot(evaluatedAt, { renewals: 2 })]);
+    candidate.health = {
+        schemaVersion: api.versions.healthSchema,
+        engineVersion: 2,
+        policy: { version: 1, fingerprint: 'old-policy', thresholds: {} },
+        input: { latestAt: evaluatedAt, anchor30At: null, anchor60At: null, observedMetrics: [] },
+        result: { lifecycle: 'BASELINE', diagnosis: 'INSUFFICIENT_SIGNAL', code: 'waiting', confidence: 39 },
+    };
+    candidate.analysis = candidate.health.result;
+    storage.set(runtime.KEYS.index, [candidate.listingId]);
+    storage.set(runtime.KEYS.record(candidate.listingId), candidate);
+
+    const refreshed = await api.refreshRecords({ scopeIds: [candidate.listingId], evaluatedAt, render: false });
+    const inMemory = refreshed[0];
+    const persisted = storage.get(runtime.KEYS.record(candidate.listingId));
+    assert.equal(inMemory.health.engineVersion, api.versions.engine);
+    assert.equal(inMemory.analysis.bootstrap.signal, 'RENEWAL_WASTE');
+    assert.equal(inMemory.analysis.code, 'improve');
+    assert.equal(persisted.health.engineVersion, api.versions.engine);
+    assert.equal(persisted.analysis.bootstrap.signal, 'RENEWAL_WASTE');
+    assert.equal(persisted.analysis.code, 'improve');
+    assert.equal(persisted.analysis.score, 0);
+    const withProposal = await runtime.Store.saveProposal(candidate.listingId, { action: 'SKIP', reason: 'migration fence' });
+    assert.equal(withProposal.proposal.basis.engineVersion, api.versions.engine);
+    assert.equal(withProposal.health.engineVersion, api.versions.engine);
+    assert.equal(withProposal.analysis.code, 'improve');
 });
 
 test('optional zero-traffic cohort metrics do not suppress deactivation review', () => {

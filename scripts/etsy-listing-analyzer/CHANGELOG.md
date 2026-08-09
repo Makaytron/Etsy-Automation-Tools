@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.5 - 2026-08-09
+
+- Reworked first-scan analysis so the current 30-day reach/engagement score is distinct from history confidence; complete zero counters, renewal waste, weak discovery, weak engagement, purchase friction, and historical demand now remain explainable instead of collapsing to the same `39` display.
+- Kept current funnel evidence separate from all-time sales, revenue, and renewal evidence, preserved fail-closed data-integrity handling, and retained the full history and current-zero safeguards required before any deactivation review.
+- Persisted Health Engine v3 migrations before proposal, queue, AI-export, or backup actions so the action basis matches the analysis shown in the interface.
+- Clarified that selecting a listing does not save a proposal, documented the manual and AI proposal paths, and made the empty-queue message point directly to **Improvement plan → Save proposal**.
+- Added regression coverage for first-scan decisions, score/confidence separation, rolling versus all-time metric scopes, deactivation rebound guards, stale-engine migration, and proposal-queue safety.
+
 ## 1.0.4 - 2026-08-08
 
 - Tightened final GitHub URL equality to reject fragment and credential drift as well as host, port, path, and query drift.
