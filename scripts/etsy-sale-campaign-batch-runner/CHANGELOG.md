@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-08-09
+
+### Fixed
+
+- Recognize Etsy's current `Sale duration` and `Sale name` form copy so the visible, enabled `Continue` button is no longer rejected by the sale-flow safety context check.
+- Keep the legacy `Start date` / `End date` / `Name your sale` form contract supported and retain fail-closed rejection outside a complete sale form.
+- Make **Retry** acknowledge the click immediately, prevent duplicate clicks, surface async/storage failures, and repaint the running state after a successful resume.
+
 ## [1.0.3] - 2026-08-04
 
 ### Changed

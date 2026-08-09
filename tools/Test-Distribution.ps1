@@ -231,6 +231,11 @@ Assert-True (Test-Path -LiteralPath $listingAnalyzerTestPath -PathType Leaf) 'Li
 & node --test $listingAnalyzerTestPath
 Assert-True ($LASTEXITCODE -eq 0) 'Listing Analyzer behavior tests failed.'
 
+$saleManagerTestPath = Join-Path $repoRoot 'tools/Test-Sale-Manager.mjs'
+Assert-True (Test-Path -LiteralPath $saleManagerTestPath -PathType Leaf) 'Sale Manager behavior test is missing.'
+& node --test $saleManagerTestPath
+Assert-True ($LASTEXITCODE -eq 0) 'Sale Manager behavior tests failed.'
+
 $adsKeywordManagerTestPath = Join-Path $repoRoot 'tools/Test-Ads-Keyword-Manager.mjs'
 Assert-True (Test-Path -LiteralPath $adsKeywordManagerTestPath -PathType Leaf) 'Ads Keyword Manager behavior test is missing.'
 & node --test $adsKeywordManagerTestPath

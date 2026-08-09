@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Sale Manager
 // @name:tr      Makaytron Etsy Sale Manager
 // @name:en      Makaytron Etsy Sale Manager
-// @version      1.0.3
+// @version      1.0.4
 // @description  Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
 // @description:tr Etsy Sales and Discounts kampanyalarını güvenli toplu seriler hâlinde planlar, doğrular ve raporlar
 // @description:en Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
@@ -37,7 +37,7 @@
 (async function () {
     'use strict';
 
-    const VERSION = '1.0.3';
+    const VERSION = '1.0.4';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -1717,12 +1717,19 @@
         return /\bare\s+you\s+sure\s+you\s+want\s+to\s+(?:delete|remove|discard|deactivate|disconnect|unlink|refund|archive)\b|\b(?:delete|remove|discard|deactivate|disconnect|unlink|refund|archive)\s+(?:this\s+|the\s+)?(?:item|listing|order|account|shop|connection|changes?)\s*(?:permanently|now)?\b|\b(?:permanently\s+delete|confirm\s+(?:deletion|removal|refund)|move\s+to\s+trash|close\s+shop|cancel\s+(?:order|account|listing))\b/.test(source);
     }
 
+    function hasCreateSaleFormSignal(value) {
+        const source = saleFlowText(value);
+        const heading = /\b(?:set up a sale|run a sale)\b/.test(source);
+        const discount = /\b(?:what discount|discount amount|amount off|percentage off)\b/.test(source);
+        const duration = /\bsale duration\b/.test(source)
+            || (/\bstart date\b/.test(source) && /\bend date\b/.test(source));
+        const name = /\b(?:sale name|name your (?:sale|coupon)|promo(?:tion)? name)\b/.test(source);
+        return heading && discount && duration && name;
+    }
+
     function hasSaleFlowSignal(value) {
         const source = saleFlowText(value);
-        const formStage = /\b(?:set up a sale|run a sale)\b/.test(source)
-            && /\bstart date\b/.test(source)
-            && /\bend date\b/.test(source)
-            && /\b(?:what discount|percentage off|amount off|name your (?:sale|coupon)|promo(?:tion)? name)\b/.test(source);
+        const formStage = hasCreateSaleFormSignal(source);
         const listingStage = /\bwhich listings are included\b/.test(source)
             && /\b(?:review|all listings|entire shop|specific listings)\b/.test(source);
         const reviewStage = /\breview your sale details\b/.test(source)
@@ -1795,10 +1802,7 @@
         if (!source || hasDestructiveOrUnrelatedActionText(source)) return false;
         if (!hasSaleFlowSignal(source)) return false;
         if (kind === 'continue') {
-            return /set up a sale|run a sale/.test(source)
-                && /start date/.test(source)
-                && /end date/.test(source)
-                && /name your (?:sale|coupon)|promo(?:tion)? name/.test(source);
+            return hasCreateSaleFormSignal(source);
         }
         if (kind === 'review') {
             return /which listings are included|all listings|entire shop|all eligible listings/.test(source)
@@ -1902,9 +1906,9 @@
 
         if (/run a sale/.test(t)) score += 6;
         if (/what discount|discount amount|amount off|percentage off/.test(t)) score += 5;
-        if (/start date/.test(t)) score += 5;
-        if (/end date/.test(t)) score += 5;
-        if (/name your sale|name your coupon|promo name|promotion name/.test(t)) score += 5;
+        if (/start date|sale duration/.test(t)) score += 5;
+        if (/end date|sale duration/.test(t)) score += 5;
+        if (/sale name|name your sale|name your coupon|promo name|promotion name/.test(t)) score += 5;
         if (root.querySelector?.('#what-discount, #reward-percentage, #name-your-coupon, select[name="reward_type"], select[name="reward_type_percent_dropdown"], input[name="promo_name"], input[data-datepicker-input="true"]')) score += 22;
 
         if (isOverlay) score += 30;
@@ -3235,11 +3239,45 @@
         }
         job = updated;
         resetAutomationController();
-        await acquireLease(job);
+        renderPanel();
+        setStatus('Aynı gün için yeniden deneme başlatılıyor; sekme sahipliği doğrulanıyor.');
+        const owner = await acquireLease(job);
+        if (!owner) {
+            setStatus('Seri yeniden açıldı ancak bu sekme iş sahipliğini alamadı. Diğer Etsy sekmelerini kontrol et.');
+            toast('Yeniden deneme başka bir Etsy sekmesindeki aktif sahiplik nedeniyle bu sekmede başlatılamadı.', 'warning', 6200);
+            return;
+        }
+        renderPanel();
         toast(['resume_required', 'legacy_migration', 'legacy_reconcile', 'upgrade_review', 'upgrade_reconcile', 'shop_identity_missing', 'submission_ambiguous', 'shop_identity_timeout'].includes(resumedPauseKind) ? `Seri ${shopLabel(updated.shop)} mağazasında devam ediyor.` : 'Aynı gün güvenli biçimde yeniden deneniyor.', 'info', 3600);
         if (updated.phase === 'verify_created') go(DETAILS_STATS_URL);
         else if (updated.phase === 'open_form') go(CREATE_SALE_URL);
         processTick();
+    }
+
+    function bindPanelAsyncAction(selector, action, pendingMessage) {
+        const button = panelEl?.querySelector?.(selector);
+        if (!button) return;
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            if (button.disabled || button.dataset?.edaBusy === '1') return;
+            if (button.dataset) button.dataset.edaBusy = '1';
+            button.disabled = true;
+            button.setAttribute?.('aria-busy', 'true');
+            setStatus(pendingMessage);
+            Promise.resolve()
+                .then(action)
+                .catch(error => {
+                    console.error(`EDA v${VERSION} panel action failed`, error);
+                    const message = error?.message || String(error);
+                    setStatus(`İşlem başlatılamadı: ${message}`);
+                    toast(`İşlem başlatılamadı: ${message}`, 'error', 6200);
+                })
+                .finally(() => {
+                    if (button.dataset) delete button.dataset.edaBusy;
+                    button.removeAttribute?.('aria-busy');
+                    if (button.isConnected) button.disabled = false;
+                });
+        });
     }
 
     async function skipCurrent() {
@@ -5309,7 +5347,7 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
         } catch (error) {
             if (error instanceof AutomationCancelledError) return;
             if (!(error instanceof SafetyStopError) && error?.telemetryCode !== 'storage_sale_state') void trackTelemetryError('runtime_sale_action');
-            console.error('EDA v1.0.3 tick failed', error);
+            console.error(`EDA v${VERSION} tick failed`, error);
             const active = await gmGet(JOB_KEY, null);
             job = active;
             const plan = active?.currentDate ? buildPlan(active.currentDate, active) : null;
@@ -5660,7 +5698,7 @@ Mağaza: ${shopLabel(job.shop)}`
         statusEl = panelEl.querySelector('#eda-status-text');
         panelEl.querySelector('#eda-collapse-panel')?.addEventListener('click', () => { writePanelCollapsed(true); renderPanel(); });
         panelEl.querySelector('#eda-start')?.addEventListener('click', startBatch);
-        panelEl.querySelector('#eda-retry')?.addEventListener('click', retryCurrent);
+        bindPanelAsyncAction('#eda-retry', retryCurrent, 'Aynı gün için yeniden deneme başlatılıyor…');
         panelEl.querySelector('#eda-skip')?.addEventListener('click', skipCurrent);
         panelEl.querySelector('#eda-stop')?.addEventListener('click', stopBatch);
         panelEl.querySelector('#eda-settings')?.addEventListener('click', openSettings);
@@ -5758,7 +5796,7 @@ Mağaza: ${shopLabel(job.shop)}`
             document.addEventListener('visibilitychange', () => { if (!document.hidden) { syncRouteUi().catch(() => {}); processTick(); } });
             if (job?.active && !job.paused) setTimeout(processTick, 450);
         } catch (error) {
-            console.error('EDA v1.0.3 initialize failed', error);
+            console.error(`EDA v${VERSION} initialize failed`, error);
             if (isSupportedRoute()) { mountPanel(); toast(`Script başlatılamadı: ${error?.message || error}`, 'error', 7000); }
         }
     }

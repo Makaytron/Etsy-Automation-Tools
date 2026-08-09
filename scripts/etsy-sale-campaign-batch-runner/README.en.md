@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.0.3`
+Version: `1.0.4`
 
 Bulk Sales & Discounts Automation for Etsy Shop Manager. This fail-closed Tampermonkey tool schedules, verifies, and reports percentage-off Etsy sale campaigns in controlled batches.
 
