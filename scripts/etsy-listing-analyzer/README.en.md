@@ -1,6 +1,10 @@
 # Makaytron Etsy Listing Analyzer
 
-Version: `1.0.5`
+<p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
+
+Version: `1.0.5` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
+
+**Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
 A Tampermonkey userscript that reads visible performance data from Etsy Shop Manager listing cards without asking for a separate API key or OAuth connection, evaluates local history with Health Engine, and prepares listing-level, user-approved improvement queues.
 

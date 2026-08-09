@@ -12,6 +12,8 @@ Script standalone çalışır; başka bir Etsy Automation Tools paketinin kurulm
 
 **Sürüm:** 1.0.3 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
+**Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
+
 > Bu araç Etsy tarafından geliştirilmiş, desteklenmiş veya onaylanmış değildir.
 
 ## Kurulum

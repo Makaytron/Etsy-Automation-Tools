@@ -211,12 +211,13 @@ foreach ($script in $scripts) {
 foreach ($rootReadmeName in @('README.md', 'README.tr.md')) {
     $rootReadmePath = Join-Path $repoRoot $rootReadmeName
     $rootReadmeSource = [System.IO.File]::ReadAllText($rootReadmePath, [System.Text.Encoding]::UTF8)
+    $packageReadmeName = if ($rootReadmeName -eq 'README.md') { 'README.en.md' } else { 'README.md' }
     foreach ($slug in $scriptVersions.Keys) {
         $scriptVersion = $scriptVersions[$slug]
-        $pathPattern = [regex]::Escape("./scripts/$slug/")
+        $pathPattern = [regex]::Escape("./scripts/$slug/$packageReadmeName")
         $versionPattern = [regex]::Escape($scriptVersion)
         $rowMatches = [regex]::Matches($rootReadmeSource, "(?m)^\|.*\($pathPattern\)\s*\|\s*$versionPattern\s*\|")
-        Assert-True ($rowMatches.Count -eq 1) "$rootReadmeName must list $slug exactly once at version $scriptVersion."
+        Assert-True ($rowMatches.Count -eq 1) "$rootReadmeName must link $slug to $packageReadmeName exactly once at version $scriptVersion."
     }
 }
 

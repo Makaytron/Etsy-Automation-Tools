@@ -12,6 +12,8 @@ Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulma
 
 **Sürüm:** 1.0.3 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
+**Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
+
 ## Kurulum
 
 1. Güncel Chrome, Edge veya Brave ile [Tampermonkey](https://www.tampermonkey.net/) kurun.

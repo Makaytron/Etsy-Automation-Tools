@@ -1,8 +1,12 @@
 # Makaytron Etsy Keyword & Market Analyzer
 
+<p><strong>Türkçe</strong> · <a href="./README.en.md">English</a></p>
+
 **Kısa ad:** Etsy Keyword & Market Analyzer
 
 **Sürüm:** 1.0.3
+
+**Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
 Etsy Marketplace Insights sonuç sayfasındaki ana sorguyu ve en fazla 25 benzer arama terimini okur. Her anahtar kelimenin altında Etsy'nin 30 günlük arama sayısını, arama sonucu göstergesini, varsa 7 günlük değişimi, yakalama zamanını ve açıkça Makaytron tarafından türetilen fırsat puanını gösterir.
 

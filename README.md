@@ -14,11 +14,11 @@ Open-source Etsy automation tools and Tampermonkey userscripts for sellers. The 
 
 | Script | Version | Purpose |
 |---|---:|---|
-| [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/) | 1.0.5 | Bulk Sales & Discounts Automation that schedules, verifies, and reports Etsy sale campaigns in controlled, fail-closed batches. |
-| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/) | 1.0.3 | Provides translation, reply drafts, templates, and user-selected AI provider profiles. |
-| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/) | 1.0.3 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
-| [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/) | 1.0.5 | Collects every page in order, returns to page 1, and adds retries, error reports, presets, charts, AI comparison, and Health Engine workflows. |
-| [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/) | 1.0.3 | Reads visible Marketplace Insights metrics, explains them beneath keyword rows, and can return evidence to Listing Analyzer, which derives the title/tag suggestion locally. |
+| [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/README.en.md) | 1.0.5 | Bulk Sales & Discounts Automation that schedules, verifies, and reports Etsy sale campaigns in controlled, fail-closed batches. |
+| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.0.3 | Provides translation, reply drafts, templates, and user-selected AI provider profiles. |
+| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.0.3 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
+| [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.en.md) | 1.0.5 | Collects every page in order, returns to page 1, and adds retries, error reports, presets, charts, AI comparison, and Health Engine workflows. |
+| [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/README.en.md) | 1.0.3 | Reads visible Marketplace Insights metrics, explains them beneath keyword rows, and can return evidence to Listing Analyzer, which derives the title/tag suggestion locally. |
 
 Listing Analyzer and Keyword & Market Analyzer are independently installable and fully usable on their own. When the user starts the optional market-research action in Listing Analyzer and the companion is missing, the script explains why it is needed and opens the canonical install URL only after the user approves **Open install page**. Tampermonkey and the user always retain final installation control.
 
@@ -88,6 +88,16 @@ Selecting a listing does not save a proposal; it only scopes research, AI export
    - [Install Makaytron Etsy Listing Analyzer](https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js)
    - [Install Makaytron Etsy Keyword & Market Analyzer](https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js)
 3. Review the requested permissions and confirm installation in Tampermonkey.
+
+## Separate usage guides
+
+| Script | Step-by-step usage |
+|---|---|
+| Makaytron Etsy Sale Manager | [English](./scripts/etsy-sale-campaign-batch-runner/USAGE.en.md) · [Türkçe](./scripts/etsy-sale-campaign-batch-runner/USAGE.md) |
+| Makaytron Etsy Message Assistant | [English](./scripts/etsy-message-assistant/USAGE.en.md) · [Türkçe](./scripts/etsy-message-assistant/USAGE.md) |
+| Makaytron Etsy Ads Keyword Manager | [English](./scripts/etsy-ads-keyword-manager/USAGE.en.md) · [Türkçe](./scripts/etsy-ads-keyword-manager/USAGE.md) |
+| Makaytron Etsy Listing Analyzer | [English](./scripts/etsy-listing-analyzer/USAGE.en.md) · [Türkçe](./scripts/etsy-listing-analyzer/USAGE.md) |
+| Makaytron Etsy Keyword & Market Analyzer | [English](./scripts/etsy-keyword-market-analyzer/USAGE.en.md) · [Türkçe](./scripts/etsy-keyword-market-analyzer/USAGE.md) |
 
 ## Distribution and updates
 

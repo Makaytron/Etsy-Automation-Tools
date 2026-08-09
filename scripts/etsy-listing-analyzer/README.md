@@ -1,6 +1,10 @@
 # Makaytron Etsy Listing Analyzer
 
+<p><strong>Türkçe</strong> · <a href="./README.en.md">English</a></p>
+
 **Sürüm:** 1.0.5 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+
+**Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
 Etsy Shop Manager listing kartlarındaki görünür performans verilerini ayrı bir API anahtarı veya OAuth bağlantısı istemeden okuyan; Health Engine ile yerel geçmişi değerlendiren ve listing bazında kullanıcı onaylı iyileştirme kuyruğu hazırlayan Tampermonkey userscriptidir.
 

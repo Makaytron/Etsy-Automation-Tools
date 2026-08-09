@@ -4,6 +4,8 @@
 
 Version: `1.0.3`
 
+**Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
+
 A Tampermonkey control panel for finding, highlighting, and user-authorized enabling or disabling of Etsy Ads keyword rows.
 
 The script is standalone and does not require another Etsy Automation Tools package.

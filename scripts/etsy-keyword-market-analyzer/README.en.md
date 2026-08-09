@@ -1,8 +1,12 @@
 # Makaytron Etsy Keyword & Market Analyzer
 
+<p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
+
 **Short name:** Etsy Keyword & Market Analyzer
 
 **Version:** 1.0.3
+
+**Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
 Reads the primary query and up to 25 similar search terms from an Etsy Marketplace Insights result page. Beneath each keyword, it shows Etsy's 30-day searches, search-result indicator, optional 7-day change, capture time, and an opportunity score explicitly identified as derived by Makaytron.
 

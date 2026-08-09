@@ -4,6 +4,8 @@
 
 Version: `1.0.3`
 
+**Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
+
 A Tampermonkey side panel for reading Etsy messages with Turkish previews, preparing controlled replies, managing templates, and using AI providers configured by the user.
 
 The script is standalone and does not require another Etsy Automation Tools package.
