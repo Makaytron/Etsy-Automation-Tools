@@ -44,14 +44,16 @@ Panelde **Ayarlar** düğmesine basın ve şu alanları kontrol edin:
 4. Script her gün için benzersiz kod ve mağaza kimliğini kontrol eder.
 5. **Run a sale** formunda yüzde indirimi, tarihler, kampanya adı ve `Everywhere` alanlarını doldurur.
 6. Kapsamı **All listings** olarak doğrular; **Continue**, inceleme ve final gönderim adımlarını kontrollü biçimde ilerletir.
-7. Sonucu Etsy **Details & Stats** verisinden kod, yüzde, tarih, durum, tür, bölge ve kapsam kanıtlarıyla doğrular.
-8. Yalnız doğrulanan kampanyadan sonra sıradaki tarihe geçer.
+7. Final gönderimden sonra exact form/gönderim kanıtını önce kalıcı doğrulama kuyruğuna yazar.
+8. Yalnız kampanyayı gönderen sekme güvenilir başarı penceresini en fazla bir kez kapatır. Pencerenin gerçekten kaybolduğu görülmeden sıradaki tarihe geçilmez; kapanmazsa script yeni kampanya açmayan güvenli Sales & Discounts rotasına döner.
+9. Tüm plan günleri oluşturulduktan sonra kuyruktaki kampanyaları Etsy **Details & Stats** verisinden kod, yüzde, tarih, durum, tür, bölge ve kapsam kanıtlarıyla sırayla doğrular.
+10. Seri ancak kalıcı doğrulama kuyruğu boşaldığında tamamlanır. Çözülemeyen kayıt kuyruğu korunarak durur; **Yeniden Dene / Devam Et** yalnız doğrulamayı tekrarlar, kampanyayı yeniden göndermez.
 
 Seri çalışırken **Ayarlar**, **Run Sale** ve güncelleme kurulumu devre dışıdır. İşin açık olduğu sekmeyi kapatmayın ve aynı seriyi başka bir sekmede başlatmayın.
 
 ## Seri durursa
 
-Script hata gördüğünde aynı tarihte durur; final düğmesini körlemesine ikinci kez tıklamaz.
+Script oluşturma sırasında hata gördüğünde ilgili plan tarihinde; toplu doğrulama sırasında ise çözülemeyen kuyruk kaydında durur. Final düğmesini körlemesine ikinci kez tıklamaz.
 
 | Kontrol | Ne zaman kullanılır? |
 |---|---|
@@ -59,7 +61,7 @@ Script hata gördüğünde aynı tarihte durur; final düğmesini körlemesine i
 | **Bu Günü Atla** | O tarihte kampanya oluşturmayıp sonraki plan gününe geçmek için. |
 | **Durdur** | Seriyi tamamen sonlandırmak için. |
 
-CAPTCHA, rate limit, yabancı modal, mağaza uyuşmazlığı, yinelenen kod, belirsiz gönderim veya doğrulanamayan sunucu sonucu otomatik geçilmez. Gönderimin gerçekleşmiş olabileceğinden şüpheleniyorsanız önce Etsy'de kampanyayı arayın; aynı günü hemen yeniden denemeyin.
+**Bu Günü Atla**, oluşturulmuş bir kampanya başarı penceresi onayı veya toplu doğrulama beklerken devre dışıdır. CAPTCHA, rate limit, yabancı modal, mağaza uyuşmazlığı, yinelenen kod, belirsiz gönderim veya doğrulanamayan sunucu sonucu otomatik geçilmez. Gönderimin gerçekleşmiş olabileceğinden şüpheleniyorsanız önce Etsy'de kampanyayı arayın; aynı günü hemen yeniden denemeyin.
 
 ## Rapor ve son kontrol
 

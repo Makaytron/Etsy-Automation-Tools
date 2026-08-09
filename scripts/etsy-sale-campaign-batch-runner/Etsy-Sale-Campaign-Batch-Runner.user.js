@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Sale Manager
 // @name:tr      Makaytron Etsy Sale Manager
 // @name:en      Makaytron Etsy Sale Manager
-// @version      1.0.5
+// @version      1.0.11
 // @description  Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
 // @description:tr Etsy Sales and Discounts kampanyalarını güvenli toplu seriler hâlinde planlar, doğrular ve raporlar
 // @description:en Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
@@ -37,7 +37,7 @@
 (async function () {
     'use strict';
 
-    const VERSION = '1.0.5';
+    const VERSION = '1.0.11';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -751,6 +751,11 @@
     const LEASE_HANDOFF_SESSION_KEY = 'eda-batch-lease-handoff-v4';
     const LEASE_HANDOFF_MAX_AGE_MS = 10000;
     const SHOP_IDENTITY_TIMEOUT_MS = 20000;
+    const TRANSIENT_SALE_LOADING_TIMEOUT_MS = 20000;
+    const TRANSIENT_SALE_LOADING_PHASES = new Set([
+        'open_form', 'fill_form', 'await_listings', 'select_listings',
+        'await_review', 'confirm_sale', 'await_result',
+    ]);
     const FINAL_RESULT_WAIT_MS = 12000;
     const ACTION_GRACE_MS = 14000;
     const NON_FINAL_RESERVATION_TTL_MS = 18000;
@@ -829,6 +834,10 @@
     let routeActive = isSupportedRoute();
     let lastObservedUrl = location.href;
     let routeWatchTimerId = null;
+    let saleFlowObserver = null;
+    let observedSaleFlowRoot = null;
+    let transitionTickTimerId = null;
+    let transientSaleLoadingWait = null;
 
     addStyle(`
         #${ROOT_ID}{
@@ -1194,13 +1203,19 @@
     function promotionIdFromUrl(value) {
         try {
             const parsed = new URL(String(value || ''), location.origin);
-            return parsed.pathname.match(/\/sales-discounts\/promotion\/(\d+)(?:\/|$)/)?.[1] || '';
+            return parsed.pathname.match(/\/sales-discounts\/(?:details-stats\/)?promotion\/(\d+)(?:\/|$)/)?.[1] || '';
         } catch {
-            return String(value || '').match(/\/sales-discounts\/promotion\/(\d+)(?:[/?#]|$)/)?.[1] || '';
+            return String(value || '').match(/\/sales-discounts\/(?:details-stats\/)?promotion\/(\d+)(?:[/?#]|$)/)?.[1] || '';
         }
     }
     function ownBlockingUiOpen() {
         return !!document.querySelector('.eda-report-backdrop, .eda-modal-backdrop');
+    }
+    function tabIsHidden() {
+        return document.hidden === true || document.visibilityState === 'hidden';
+    }
+    function assertForegroundTab() {
+        if (tabIsHidden()) throw new AutomationCancelledError('Sekme arka plana alındı; bu turda hiçbir Etsy işlemi yapılmadı.');
     }
 
     function saleStorageStateError() {
@@ -1619,8 +1634,14 @@
         throw new Error('Sekmeler arası state kilidi alınamadı. İşlem güvenlik için durduruldu.');
     }
 
-    async function acquireLease(activeJob = job) {
-        if (!activeJob?.active || activeJob.paused) return false;
+    async function acquireLease(activeJob = job, options = {}) {
+        if (!activeJob?.active || (activeJob.paused && options.allowPaused !== true)) return false;
+        const acknowledgementTabId = String(activeJob.completionAck?.originTabId || '');
+        if (acknowledgementTabId && acknowledgementTabId !== TAB_ID) {
+            leaseOwned = false;
+            ownedLeaseNonce = '';
+            return false;
+        }
         const now = Date.now();
         const current = await gmGet(LEASE_KEY, null);
         if (current?.owner === INSTANCE_ID && current?.jobId === activeJob.jobId) {
@@ -1745,17 +1766,18 @@
             && /\b(?:review|all listings|entire shop|specific listings)\b/.test(source);
         const reviewStage = /\breview your sale details\b/.test(source)
             && /\b(?:confirm(?: and create)? sale|create sale|run sale|publish sale|sale details)\b/.test(source);
-        const completionStage = /\b(?:your sale is scheduled|sale is scheduled|successfully scheduled|successfully created)\b/.test(source);
+        const completionStage = /\b(?:your sale is (?:scheduled|live)|sale is (?:scheduled|live)|successfully scheduled|successfully created)\b/.test(source);
         return formStage || listingStage || reviewStage || completionStage;
     }
 
     function isTransientDateOverlay(element) {
         if (!element) return false;
+        const structureSignal = !!element.querySelector?.('[role="grid"], [role="gridcell"], table, [data-datepicker], [class*="datepicker" i], [class*="calendar" i]');
+        if (!structureSignal) return false;
         const source = saleFlowText(element);
         const calendarSignal = /\b(?:calendar|date picker|choose a date|select a date|previous month|next month|today)\b/.test(source)
             || /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+20\d{2}\b/.test(source);
-        const structureSignal = !!element.querySelector?.('[role="grid"], [role="gridcell"], table, [data-datepicker], [class*="datepicker" i], [class*="calendar" i]');
-        if (!calendarSignal || !structureSignal) return false;
+        if (!calendarSignal) return false;
         if (hasDestructiveOrUnrelatedActionText(element) || /\b(?:deactivate|delete|remove|archive|listing|order|account|shop)\b/.test(source)) return false;
         if (/\b(?:confirm sale|review your sale details|which listings are included)\b/.test(source)) return false;
         const active = document.activeElement;
@@ -1787,20 +1809,103 @@
         return value || element?.getAttribute?.('aria-label') || element?.id || element?.className || 'etiketsiz Etsy penceresi';
     }
 
-    function detectBlockingForeignOverlay(allowedRoot = null) {
-        const roots = visibleEtsyOverlayRoots();
-        for (const root of roots) {
-            const relatedToAllowed = !!(allowedRoot && (root === allowedRoot || root.contains(allowedRoot) || allowedRoot.contains?.(root)));
-            const trustedSaleFlow = hasSaleFlowSignal(root) && !hasDestructiveOrUnrelatedActionText(root);
-            if (trustedSaleFlow && (!allowedRoot || relatedToAllowed)) continue;
-            return { element: root, summary: overlaySummary(root) };
+    function overlayRootsRelated(left, right) {
+        return !!(left && right && (left === right || left.contains?.(right) || right.contains?.(left)));
+    }
+
+    function normalizedTransientSaleLoadingText(value) {
+        return low(value).replace(/[\s.!,:;…]+$/g, '').trim();
+    }
+
+    function isExactTransientSaleLoadingOverlay(element, refs = null) {
+        if (!element || !job?.active || !isCreateSalePath()) return false;
+        if (!TRANSIENT_SALE_LOADING_PHASES.has(String(job.phase || ''))) return false;
+        const trustedHydration = refs?.hydrating === true;
+        const trustedReadyForm = refs?.ready === true && refs?.structuredForm === true;
+        const trustedStructuredStep = refs?.structuredStep === true
+            && refs?.ambiguous !== true
+            && ['listings', 'review', 'complete'].includes(String(refs?.stage || ''));
+        if (!trustedHydration && !trustedReadyForm && !trustedStructuredStep) return false;
+
+        const shell = currentSaleOverlayShell();
+        const owners = [shell, refs?.root].filter(Boolean);
+        const modalContainer = document.getElementById('wt-modal-container');
+        const directlyRelated = owners.some(owner => overlayRootsRelated(element, owner));
+        const sameModalContainer = !!(modalContainer?.contains?.(element)
+            && owners.some(owner => modalContainer.contains(owner)));
+        if (!directlyRelated && !sameModalContainer) return false;
+
+        const source = saleFlowText(element);
+        const ariaLabels = [
+            element.getAttribute?.('aria-label') || '',
+            ...queryAllDeep(element, '[aria-label], [role="progressbar"]').map(node => node.getAttribute?.('aria-label') || ''),
+        ].filter(Boolean);
+        const allowed = new Set(['loading', 'please wait', 'saving', 'submitting', 'processing']);
+        const candidates = [source, ...ariaLabels]
+            .map(normalizedTransientSaleLoadingText)
+            .filter(Boolean);
+        if (!candidates.some(value => allowed.has(value))) return false;
+
+        const safetyText = `${source} ${ariaLabels.join(' ')}`;
+        if (hasDestructiveOrUnrelatedActionText(safetyText)) return false;
+        const visibleControls = queryAllDeep(element, 'button, [role="button"], a[href], input, select, textarea')
+            .some(evidenceNodeVisible);
+        if (visibleControls) return false;
+
+        // Do not turn a real modal whose body happens to contain "Loading" into a wait.
+        // Every visible text fragment must be one of Etsy's exact transient-only states.
+        return !source || allowed.has(normalizedTransientSaleLoadingText(source));
+    }
+
+    function transientSaleLoadingWaitKey() {
+        return [job?.jobId || '', job?.currentDate || '', job?.phase || '', normalizePathname(location.pathname)].join('|');
+    }
+
+    function evaluateTransientSaleLoadingWait(overlay, now = Date.now()) {
+        if (!overlay || overlay.kind !== 'transient_sale_loading') {
+            transientSaleLoadingWait = null;
+            return { state: 'clear', elapsedMs: 0, remainingMs: TRANSIENT_SALE_LOADING_TIMEOUT_MS };
         }
-        return null;
+        const instant = Number.isFinite(Number(now)) ? Number(now) : Date.now();
+        const key = transientSaleLoadingWaitKey();
+        if (!transientSaleLoadingWait || transientSaleLoadingWait.key !== key) {
+            transientSaleLoadingWait = { key, startedAt: instant };
+        }
+        const elapsedMs = Math.max(0, instant - transientSaleLoadingWait.startedAt);
+        const remainingMs = Math.max(0, TRANSIENT_SALE_LOADING_TIMEOUT_MS - elapsedMs);
+        return {
+            state: elapsedMs >= TRANSIENT_SALE_LOADING_TIMEOUT_MS ? 'timeout' : 'waiting',
+            elapsedMs,
+            remainingMs,
+        };
+    }
+
+    function detectBlockingForeignOverlay(allowedRoot = null, refs = null, suppliedRoots = null) {
+        const roots = suppliedRoots || visibleEtsyOverlayRoots();
+        let transient = null;
+        for (const root of roots) {
+            const relatedToAllowed = !!(allowedRoot && overlayRootsRelated(root, allowedRoot));
+            const trustedStructuredForm = !!getStructuredCreateSaleRefs(root, { includeErrors: false });
+            const trustedSaleFlow = trustedStructuredForm || structuredSaleSuccessRoot(root)
+                || (hasSaleFlowSignal(root) && !hasDestructiveOrUnrelatedActionText(root));
+            if (trustedSaleFlow && (!allowedRoot || relatedToAllowed)) continue;
+            if (isExactTransientSaleLoadingOverlay(root, refs)) {
+                transient ||= { kind: 'transient_sale_loading', element: root, summary: overlaySummary(root) };
+                continue;
+            }
+            // A hard foreign modal always wins, even when a transient loading shell is
+            // visible at the same time. This preserves the original fail-closed gate.
+            return { kind: 'foreign', element: root, summary: overlaySummary(root) };
+        }
+        return transient;
     }
 
     function assertNoBlockingForeignOverlay(allowedRoot = null) {
-        const blocking = detectBlockingForeignOverlay(allowedRoot);
-        if (blocking) {
+        const blocking = detectBlockingForeignOverlay(allowedRoot, getCreateSaleRefs());
+        if (blocking?.kind === 'transient_sale_loading') {
+            throw new AutomationCancelledError('Etsy geçici yükleme penceresi açık; bu turda hiçbir alan değiştirilmedi ve hiçbir düğmeye tıklanmadı.');
+        }
+        if (blocking?.kind === 'foreign') {
             throw new SafetyStopError(`Etsy üzerinde satış akışına ait olmayan açık bir pencere algılandı. Arka plandaki alanlara veya düğmelere basılmadı. Önce bu pencereyi kapat: ${blocking.summary}`);
         }
         return true;
@@ -1808,6 +1913,19 @@
 
     function saleActionContextMatches(button, kind = '') {
         if (!button || isOwnUi(button)) return false;
+        if (kind === 'continue') {
+            const structuredRoot = nearestStructuredSaleSurface(button);
+            const structuredForm = structuredRoot
+                ? getStructuredCreateSaleRefs(structuredRoot, { includeErrors: false })
+                : null;
+            if (structuredForm) return structuredCreateSaleActionMatches(button, structuredForm);
+        }
+        if (['review', 'final', 'done'].includes(kind)) {
+            const structuredStep = getStructuredSaleStepRefs(null, { includeErrors: false });
+            if (structuredStep?.ambiguous) return false;
+            if (structuredStep) return structuredSaleStepActionMatches(button, kind, structuredStep);
+            if (structuredSaleStepRootMatches(nearestStructuredSaleSurface(button), kind)) return false;
+        }
         const context = nearestActionContext(button);
         const source = saleFlowText(context);
         if (!source || hasDestructiveOrUnrelatedActionText(source)) return false;
@@ -1953,6 +2071,297 @@
             .map(el => ({ el, score: fieldScore(el) }))
             .filter(item => item.score > -50)
             .sort((a, b) => b.score - a.score)[0]?.el || document;
+    }
+
+    function nearestStructuredSaleSurface(element) {
+        return element?.closest?.('.wt-overlay__modal, [role="dialog"], .wt-overlay, .wt-modal')
+            || element?.closest?.('form')
+            || null;
+    }
+
+    const STRUCTURED_SALE_FOOTER_SELECTOR = '.wt-overlay__footer__action, .wt-overlay__footer, .wt-overlay__sticky-footer-container';
+
+    function structuredCreateSaleRoots(preferredRoot = null) {
+        if (preferredRoot?.querySelector) return [preferredRoot];
+        const anchors = Array.from(document.querySelectorAll([
+            '#sales-and-coupons--start-date',
+            '#sales-and-coupons--end-date',
+            '#start-date',
+            '#start_date',
+            '#end-date',
+            '#end_date',
+            'input[name*="start" i][name*="date" i]',
+            'input[name*="end" i][name*="date" i]',
+            '#what-discount',
+            'select[name="reward_type"]',
+            '#reward-percentage',
+            'select[name="reward_type_percent_dropdown"]',
+            '#name-your-coupon',
+            'input[name="promo_name"]',
+            '#what-region',
+            'select[name="eligible_region_id"]',
+        ].join(', ')));
+        return uniq(anchors.map(nearestStructuredSaleSurface).filter(Boolean));
+    }
+
+    function directVisibleField(root, selectors) {
+        if (!root?.querySelectorAll) return null;
+        for (const selector of selectors) {
+            const found = Array.from(root.querySelectorAll(selector)).find(visible);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    function structuredText(root) {
+        if (!root) return '';
+        const segments = [];
+        try {
+            const doc = root.ownerDocument || document;
+            const walker = doc.createTreeWalker(root, 4);
+            let node = walker.nextNode();
+            while (node) {
+                const value = String(node.nodeValue || '').replace(/\s+/g, ' ').trim();
+                if (value) segments.push(value);
+                node = walker.nextNode();
+            }
+        } catch {}
+        return low(segments.length ? segments.join(' ') : text(root));
+    }
+
+    function structuredContinueLabel(value) {
+        const label = low(value);
+        return (/\bcontinue\b/.test(label) || /^next(?:\b|$)/.test(label))
+            && !/continue shopping|continue to (?:cart|checkout)|next month|previous month/.test(label);
+    }
+
+    // Etsy's current Run a sale form has stable field IDs/names. Prefer this verified,
+    // tightly-scoped path before the generic semantic crawler. Besides being much faster,
+    // it survives copy changes and avoids losing Continue while React is rebuilding text.
+    function getStructuredCreateSaleRefs(preferredRoot = null, options = {}) {
+        let hydratingRefs = null;
+        for (const root of structuredCreateSaleRoots(preferredRoot)) {
+            if (!root || isOwnUi(root)) continue;
+            const strongAnchor = root.querySelector([
+                '#sales-and-coupons--start-date', '#sales-and-coupons--end-date',
+                '#what-discount', 'select[name="reward_type"]',
+                '#reward-percentage', 'select[name="reward_type_percent_dropdown"]',
+                '#name-your-coupon', 'input[name="promo_name"]',
+                '#what-region', 'select[name="eligible_region_id"]',
+            ].join(', '));
+            if (!strongAnchor) continue;
+            const startDate = directVisibleField(root, [
+                '#sales-and-coupons--start-date', '#start-date', '#start_date',
+                'input[name*="start" i][name*="date" i]', 'input[id*="start" i][id*="date" i]',
+            ]);
+            const endDate = directVisibleField(root, [
+                '#sales-and-coupons--end-date', '#end-date', '#end_date',
+                'input[name*="end" i][name*="date" i]', 'input[id*="end" i][id*="date" i]',
+            ]);
+            const discountType = directVisibleField(root, ['#what-discount', 'select[name="reward_type"]']);
+            const discountSelect = directVisibleField(root, ['#reward-percentage', 'select[name="reward_type_percent_dropdown"]']);
+            const saleNameInput = directVisibleField(root, ['#name-your-coupon', 'input[name="promo_name"]']);
+            const regionSelect = directVisibleField(root, ['#what-region', 'select[name="eligible_region_id"]']);
+            if (hasDestructiveOrUnrelatedActionText(structuredText(root))) continue;
+
+            const complete = !!(startDate && endDate && discountType && discountSelect && saleNameInput && regionSelect);
+            if (!complete) {
+                hydratingRefs ||= {
+                    root,
+                    ready: false,
+                    structuredForm: true,
+                    hydrating: true,
+                    startDate,
+                    endDate,
+                    discountType,
+                    discountSelect,
+                    customDiscountInput: null,
+                    saleNameInput,
+                    regionSelect,
+                    listingAllControl: null,
+                    continueButton: null,
+                    continueCandidate: null,
+                    reviewButton: null,
+                    reviewCandidate: null,
+                    doneButton: null,
+                    finalButton: null,
+                    finalCandidate: null,
+                    errorTexts: [],
+                };
+                continue;
+            }
+
+            const labeledCandidates = Array.from(root.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]'))
+                .filter(button => !isOwnUi(button) && nearestStructuredSaleSurface(button) === root)
+                .filter(button => visible(button) && structuredContinueLabel(buttonLabel(button)));
+            const footerCandidates = labeledCandidates.filter(button => !!button.closest(STRUCTURED_SALE_FOOTER_SELECTOR));
+            const requiredFields = [startDate, endDate, discountType, discountSelect, saleNameInput, regionSelect];
+            const fieldForms = requiredFields.map(field => field.closest('form'));
+            const sharedFieldForm = fieldForms[0] && fieldForms.every(form => form === fieldForms[0])
+                ? fieldForms[0]
+                : null;
+            const formCandidates = sharedFieldForm
+                ? labeledCandidates.filter(button => button.closest('form') === sharedFieldForm)
+                : [];
+            const ownedCandidates = footerCandidates.length ? footerCandidates : formCandidates;
+            // More than one visible exact-label action in the trusted owner is ambiguous.
+            // Do not prefer an actionable impostor over Etsy's temporarily disabled action.
+            const candidates = ownedCandidates.length === 1 ? ownedCandidates : [];
+            const continueButton = candidates.find(actionable) || null;
+            const continueCandidate = continueButton || candidates[0] || null;
+            return {
+                root,
+                ready: true,
+                structuredForm: true,
+                hydrating: false,
+                startDate,
+                endDate,
+                discountType,
+                discountSelect,
+                customDiscountInput: findCustomPercentInput(root, discountSelect, startDate, endDate),
+                saleNameInput,
+                regionSelect,
+                listingAllControl: null,
+                continueButton,
+                continueCandidate,
+                reviewButton: null,
+                reviewCandidate: null,
+                doneButton: null,
+                finalButton: null,
+                finalCandidate: null,
+                errorTexts: options.includeErrors === false ? [] : collectErrors(root),
+            };
+        }
+        return hydratingRefs;
+    }
+
+    function structuredCreateSaleActionMatches(button, refs = null) {
+        if (!button || isOwnUi(button) || !structuredContinueLabel(buttonLabel(button))) return false;
+        const root = nearestStructuredSaleSurface(button);
+        if (!root) return false;
+        const state = refs || getStructuredCreateSaleRefs(root, { includeErrors: false });
+        return !!(state?.ready && (state.continueButton === button || state.continueCandidate === button));
+    }
+
+    function structuredSaleSuccessRoot(root) {
+        const expectedCompletion = !!(job?.active
+            && (job.completionAck || ['submitted', 'reserved'].includes(job.submission?.status)));
+        if (!root || (!isCreateSalePath() && !expectedCompletion)) return false;
+        const ariaLabel = low(root.getAttribute?.('aria-label') || '');
+        return /\bsuccess\b/.test(ariaLabel)
+            || root.matches?.('[data-test-id="success-overlay"]')
+            || !!root.querySelector?.('[data-test-id="success-overlay"]');
+    }
+
+    function structuredSaleStepRootMatches(root, kind = '') {
+        if (!root) return false;
+        const source = structuredText(root);
+        if (hasDestructiveOrUnrelatedActionText(source)) return false;
+        if (kind === 'done' && structuredSaleSuccessRoot(root)) return true;
+        if (!source) return false;
+        if (kind === 'review') return /which listings are included|all listings|entire shop|all eligible listings/.test(source);
+        if (kind === 'final') return /review your sale details|sale details/.test(source);
+        if (kind === 'done') return /your sale is (?:scheduled|live)|sale is (?:scheduled|live)|successfully scheduled|successfully created/.test(source);
+        return false;
+    }
+
+    function getStructuredSaleStepRefs(preferredButton = null, options = {}) {
+        const buttons = preferredButton
+            ? [preferredButton]
+            : Array.from(document.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"]'));
+        const matches = [];
+        for (const button of buttons) {
+            if (!button || isOwnUi(button)) continue;
+            const label = low(buttonLabel(button));
+            const root = nearestStructuredSaleSurface(button);
+            if (!root) continue;
+            const structuralDone = structuredSaleSuccessRoot(root)
+                && (button.matches?.('button[type="submit"], input[type="submit"]') || low(button.getAttribute?.('type')) === 'submit');
+            if (!/^review\s*(?:and|&)\s*confirm$/.test(label)
+                && !/^(?:confirm(?:\s+and\s+create)?\s+sale|create\s+sale|run\s+sale|publish\s+sale|submit\s+sale)$/.test(label)
+                && !/^done$/.test(label)
+                && !structuralDone) continue;
+            if (!visible(button)) continue;
+            if (!button.closest(STRUCTURED_SALE_FOOTER_SELECTOR)) continue;
+            const source = structuredText(root);
+            if (hasDestructiveOrUnrelatedActionText(source)) continue;
+            const reviewMatch = /^review\s*(?:and|&)\s*confirm$/.test(label)
+                && /which listings are included|all listings|entire shop|all eligible listings/.test(source);
+            const finalMatch = /^(?:confirm(?:\s+and\s+create)?\s+sale|create\s+sale|run\s+sale|publish\s+sale|submit\s+sale)$/.test(label)
+                && /review your sale details|sale details/.test(source);
+            const doneMatch = structuralDone || (/^done$/.test(label)
+                && /your sale is (?:scheduled|live)|sale is (?:scheduled|live)|successfully scheduled|successfully created/.test(source));
+            if (!(reviewMatch || finalMatch || doneMatch)) continue;
+            matches.push({ button, root, stage: reviewMatch ? 'listings' : finalMatch ? 'review' : 'complete' });
+        }
+        if (!matches.length) return null;
+
+        const stages = new Set(matches.map(match => match.stage));
+        const roots = new Set(matches.map(match => match.root));
+        if (stages.size !== 1 || roots.size !== 1 || matches.length !== 1) {
+            return {
+                root: matches[0].root,
+                stage: 'unknown',
+                ready: false,
+                structuredStep: true,
+                ambiguous: true,
+                startDate: null,
+                endDate: null,
+                discountType: null,
+                discountSelect: null,
+                customDiscountInput: null,
+                saleNameInput: null,
+                regionSelect: null,
+                listingAllControl: null,
+                continueButton: null,
+                continueCandidate: null,
+                reviewButton: null,
+                reviewCandidate: null,
+                finalButton: null,
+                finalCandidate: null,
+                doneButton: null,
+                errorTexts: [],
+            };
+        }
+
+        const selected = matches.find(match => actionable(match.button)) || matches[0];
+        const { button, root, stage } = selected;
+        const enabled = actionable(button) ? button : null;
+        const reviewMatch = stage === 'listings';
+        const finalMatch = stage === 'review';
+        const doneMatch = stage === 'complete';
+        return {
+            root,
+            stage,
+            ready: false,
+            structuredStep: true,
+            ambiguous: false,
+            startDate: null,
+            endDate: null,
+            discountType: null,
+            discountSelect: null,
+            customDiscountInput: null,
+            saleNameInput: null,
+            regionSelect: null,
+            listingAllControl: reviewMatch ? findListingScopeControl(root) : null,
+            continueButton: null,
+            continueCandidate: null,
+            reviewButton: reviewMatch ? enabled : null,
+            reviewCandidate: reviewMatch ? button : null,
+            finalButton: finalMatch ? enabled : null,
+            finalCandidate: finalMatch ? button : null,
+            doneButton: doneMatch ? enabled : null,
+            errorTexts: options.includeErrors === false ? [] : collectErrors(root),
+        };
+    }
+
+    function structuredSaleStepActionMatches(button, kind = '', refs = null) {
+        const state = refs || getStructuredSaleStepRefs(null, { includeErrors: false });
+        if (!state || state.ambiguous) return false;
+        if (kind === 'review') return state.stage === 'listings' && state.reviewCandidate === button;
+        if (kind === 'final') return state.stage === 'review' && state.finalCandidate === button;
+        if (kind === 'done') return state.stage === 'complete' && state.doneButton === button;
+        return false;
     }
 
     function findOne(root, selectors) {
@@ -2114,7 +2523,69 @@
         return ranked[0]?.score >= 60 ? ranked[0].input : null;
     }
 
+    function emptyCreateSaleRefs(root = null, extras = {}) {
+        return {
+            root,
+            ready: false,
+            structuredForm: false,
+            structuredStep: false,
+            hydrating: false,
+            ambiguous: false,
+            stage: 'unknown',
+            startDate: null,
+            endDate: null,
+            discountType: null,
+            discountSelect: null,
+            customDiscountInput: null,
+            saleNameInput: null,
+            regionSelect: null,
+            listingAllControl: null,
+            continueButton: null,
+            continueCandidate: null,
+            reviewButton: null,
+            reviewCandidate: null,
+            doneButton: null,
+            finalButton: null,
+            finalCandidate: null,
+            errorTexts: [],
+            ...extras,
+        };
+    }
+
+    function currentSaleOverlayShell() {
+        const container = document.getElementById('wt-modal-container');
+        if (!container) return null;
+        return Array.from(container.children || []).find(root => root?.isConnected
+            && root.matches?.('[role="dialog"], .wt-overlay, .wt-modal')
+            && root.getAttribute?.('aria-hidden') !== 'true') || null;
+    }
+
     function getCreateSaleRefs() {
+        const shell = currentSaleOverlayShell();
+        const structuredStep = shell ? getStructuredSaleStepRefs() : null;
+        if (structuredStep) return structuredStep;
+        if (shell && structuredSaleSuccessRoot(shell)) {
+            return emptyCreateSaleRefs(shell, {
+                structuredStep: true,
+                stage: 'complete',
+                errorTexts: collectErrors(shell),
+            });
+        }
+        const structuredForm = getStructuredCreateSaleRefs();
+        if (structuredForm) return structuredForm;
+
+        // Current Etsy sale routes are handled only by the bounded structural adapters above.
+        // During React hydration the modal can briefly contain neither fields nor a footer.
+        // Treat that state as loading instead of invoking the legacy full-page semantic crawler,
+        // which can monopolize the main thread for hundreds or thousands of milliseconds.
+        if (shell || isCreateSalePath()) {
+            return emptyCreateSaleRefs(shell, { structuredForm: true, hydrating: true });
+        }
+        if (isSupportedRoute()) return emptyCreateSaleRefs();
+
+        // Compatibility fallback for non-current/offline integrations only. It is intentionally
+        // unreachable on supported live Etsy sale routes so automation can fail closed without
+        // freezing the page when Etsy changes its DOM.
         const root = getFlowRoot();
         const dateInputs = allVisible(root, 'input[data-datepicker-input="true"], input[type="date"], input[placeholder*="MM"], input[placeholder*="YYYY"], input[aria-label*="date" i], input[id*="date" i], input[name*="date" i]')
             .filter(input => !/search|filter|birthday|birth/i.test(`${input.name || ''} ${input.id || ''} ${input.placeholder || ''} ${input.getAttribute('aria-label') || ''}`));
@@ -2209,6 +2680,19 @@
 
     function actionBadShell(button, kind = '') {
         if (!button || isOwnUi(button)) return true;
+        if (kind === 'continue') {
+            const structuredRoot = nearestStructuredSaleSurface(button);
+            const structuredForm = structuredRoot
+                ? getStructuredCreateSaleRefs(structuredRoot, { includeErrors: false })
+                : null;
+            if (structuredForm) return !structuredCreateSaleActionMatches(button, structuredForm);
+        }
+        if (['review', 'final', 'done'].includes(kind)) {
+            const structuredStep = getStructuredSaleStepRefs(null, { includeErrors: false });
+            if (structuredStep?.ambiguous) return true;
+            if (structuredStep) return !structuredSaleStepActionMatches(button, kind, structuredStep);
+            if (structuredSaleStepRootMatches(nearestStructuredSaleSurface(button), kind)) return true;
+        }
         const shell = button.closest('[role="dialog"], .wt-overlay, .wt-modal, footer, [data-wt-menu-body], .wt-menu__body') || button;
         if (isBadEtsyShell(shell)) return true;
         const label = low(buttonLabel(button));
@@ -2306,11 +2790,12 @@
         ];
         const negative = /\berror\b|failed|failure|could\s+not|couldn['’]?t|can(?:not|'t)|unable|invalid|required|conflict|overlap|already exists|not created|not scheduled|not available|isn['’]?t available|there was a problem|please fix|highlighted fields|try again|something went wrong|too many|rate limit|temporarily blocked|verify (?:you are|that you're) human|captcha|access denied/i;
         const harmless = /characters remaining|this sale applies to all eligible listings|all eligible listings (?:are )?(?:selected|included)|privacy settings|required cookies|personalized advertising|successfully saved|changes saved|sale is scheduled|your sale is scheduled/i;
+        const transient = /^(?:loading|please wait|saving|submitting|processing)(?:[\s.…!]*?)$/i;
         const out = [];
         selectors.forEach(selector => {
             allVisible(root, selector).forEach(node => {
                 const value = semanticVisibleText(node) || text(node);
-                if (!value || harmless.test(value)) return;
+                if (!value || harmless.test(value) || transient.test(value.trim())) return;
                 const explicitError = node.matches?.('.has-error-msg, .wt-alert--error, .wt-validation__message, [data-testid*="error"]');
                 const assertiveAlert = node.matches?.('[role="alert"]') && node.getAttribute?.('aria-live') !== 'polite';
                 if (negative.test(value) || explicitError || assertiveAlert) out.push(value);
@@ -2709,6 +3194,94 @@
         return list;
     }
 
+    function pendingVerificationEntry(plan, activeJob = job, message = '') {
+        if (!plan?.idempotencyKey || !activeJob) return null;
+        const submission = clone(activeJob.submission) || null;
+        const formEvidence = clone(activeJob.formEvidence || submission?.formEvidence) || null;
+        return {
+            idempotencyKey: plan.idempotencyKey,
+            startDate: plan.startDateIso,
+            endDate: plan.endDateIso,
+            saleName: plan.saleName,
+            discount: plan.discount,
+            countryValue: String(activeJob.countryValue ?? '0'),
+            submission,
+            formEvidence,
+            successMessage: String(message || 'Etsy başarı adımı doğrulandı; toplu liste doğrulaması bekleniyor.'),
+            queuedAt: new Date().toISOString(),
+            lastVerificationMessage: '',
+        };
+    }
+
+    function normalizePendingVerification(entry, activeJob) {
+        if (!entry || typeof entry !== 'object' || !entry.startDate) return null;
+        const plan = buildPlan(entry.startDate, activeJob);
+        if (!plan) return null;
+        const idempotencyKey = String(entry.idempotencyKey || plan.idempotencyKey);
+        const saleName = String(entry.saleName || plan.saleName);
+        if (idempotencyKey !== plan.idempotencyKey || saleName !== plan.saleName) return null;
+        return {
+            idempotencyKey,
+            startDate: plan.startDateIso,
+            endDate: plan.endDateIso,
+            saleName,
+            discount: plan.discount,
+            countryValue: String(entry.countryValue ?? activeJob?.countryValue ?? '0'),
+            submission: entry.submission && typeof entry.submission === 'object' ? clone(entry.submission) : null,
+            formEvidence: entry.formEvidence && typeof entry.formEvidence === 'object' ? clone(entry.formEvidence) : null,
+            successMessage: String(entry.successMessage || ''),
+            queuedAt: String(entry.queuedAt || ''),
+            lastVerificationMessage: String(entry.lastVerificationMessage || ''),
+        };
+    }
+
+    function upsertPendingVerification(entries, entry) {
+        const list = Array.isArray(entries) ? [...entries] : [];
+        if (!entry?.idempotencyKey) return list;
+        const index = list.findIndex(item => item?.idempotencyKey === entry.idempotencyKey);
+        if (index >= 0) list[index] = entry;
+        else list.push(entry);
+        return list;
+    }
+
+    function normalizeCompletionAck(value, activeJob) {
+        if (!value || typeof value !== 'object') return null;
+        const idempotencyKey = String(value.idempotencyKey || '');
+        const queued = (activeJob?.pendingVerifications || []).find(entry => entry?.idempotencyKey === idempotencyKey);
+        if (!idempotencyKey || !queued) return null;
+        const saleName = String(value.saleName || queued.saleName || '');
+        const startDate = String(value.startDate || queued.startDate || '');
+        if (saleName !== String(queued.saleName || '') || startDate !== String(queued.startDate || '')) return null;
+        const originTabId = String(value.originTabId
+            || queued.submission?.tabId
+            || activeJob?.submission?.tabId
+            || activeJob?.originTabId
+            || '');
+        if (!originTabId) return null;
+        return {
+            idempotencyKey,
+            saleName,
+            startDate,
+            originTabId,
+            queuedAt: String(value.queuedAt || queued.queuedAt || new Date().toISOString()),
+            attempts: Math.max(0, intVal(value.attempts, 0)),
+            lastAttemptAt: Math.max(0, Number(value.lastAttemptAt || 0)),
+            waitStartedAt: Math.max(0, Number(value.waitStartedAt || 0)),
+            navigationAttempts: Math.max(0, intVal(value.navigationAttempts, 0)),
+            lastNavigationAt: Math.max(0, Number(value.lastNavigationAt || 0)),
+            advanceAfterClose: value.advanceAfterClose !== false,
+            resumePhase: String(value.resumePhase || ''),
+            resumeNeedsPreflight: value.resumeNeedsPreflight === true,
+            resumeNotBefore: Math.max(0, Number(value.resumeNotBefore || 0)),
+        };
+    }
+
+    function planFromPendingVerification(entry, activeJob = job) {
+        const plan = buildPlan(entry?.startDate, activeJob);
+        if (!plan || plan.idempotencyKey !== entry?.idempotencyKey || plan.saleName !== entry?.saleName) return null;
+        return plan;
+    }
+
     function normalizeResult(row, activeJob) {
         if (!row || typeof row !== 'object') return null;
         const plan = row.startDate ? buildPlan(row.startDate, activeJob) : null;
@@ -2765,6 +3338,9 @@
             startedAt: legacyJob.startedAt || new Date().toISOString(),
             configSnapshot: { ...config, shop: null },
             results: [],
+            pendingVerifications: [],
+            batchVerifyState: null,
+            completionAck: null,
             legacyAuditResults: archived,
             legacyReconcileStartDate: startDate,
             migratedFrom: legacyJob.version || '3.x',
@@ -2829,10 +3405,54 @@
             const original = clone(current);
             const next = clone(current);
             const loadedVersion = String(next.version || '');
+            const loadedSchemaVersion = intVal(next.schemaVersion, 0);
+            const compatibleStateUpgrade = ['1.0.8', '1.0.9'].includes(loadedVersion) && loadedSchemaVersion === 5;
             next.schemaVersion = 5;
             next.jobId = next.jobId || randomId('job-');
             next.generation = intVal(next.generation, 1);
             next.results = (next.results || []).map(row => normalizeResult(row, next)).filter(Boolean);
+            next.pendingVerifications = (Array.isArray(next.pendingVerifications) ? next.pendingVerifications : [])
+                .map(entry => normalizePendingVerification(entry, next))
+                .filter(Boolean);
+            next.batchVerifyState = next.batchVerifyState && typeof next.batchVerifyState === 'object'
+                ? next.batchVerifyState
+                : null;
+            next.completionAck = normalizeCompletionAck(next.completionAck, next);
+
+            // v1.0.8/v1.0.9 could persist the completed campaign and advance the active
+            // date while leaving Etsy's success dialog open. Recover that durable queue
+            // without treating the old dialog as proof for the new active date.
+            if (next.active && compatibleStateUpgrade && !next.completionAck && next.pendingVerifications.length && !next.submission) {
+                const orderedPending = [...next.pendingVerifications]
+                    .sort((left, right) => String(left?.queuedAt || '').localeCompare(String(right?.queuedAt || '')));
+                const queued = orderedPending[orderedPending.length - 1];
+                const resumePhase = next.phase === 'batch_verify' ? 'batch_verify' : 'preflight';
+                next.completionAck = normalizeCompletionAck({
+                    idempotencyKey: queued?.idempotencyKey,
+                    saleName: queued?.saleName,
+                    startDate: queued?.startDate,
+                    originTabId: queued?.submission?.tabId || next.originTabId || TAB_ID,
+                    queuedAt: queued?.queuedAt,
+                    advanceAfterClose: false,
+                    resumePhase,
+                    resumeNeedsPreflight: resumePhase === 'preflight',
+                    resumeNotBefore: next.notBefore,
+                }, next);
+                if (next.completionAck) {
+                    next.phase = 'ack_complete';
+                    next.needsPreflight = false;
+                    next.notBefore = 0;
+                    next.verifyState = null;
+                    next.expectedNavigationUntil = 0;
+                    next.expectedNavigationPath = '';
+                }
+            }
+            // Invalidate every in-flight token held by an older userscript instance. The
+            // generation change is visible across tabs even when the recovered job remains
+            // active, preventing v1.0.8/v1.0.9 code from writing over the acknowledgement.
+            if (next.active && compatibleStateUpgrade && loadedVersion !== VERSION) {
+                next.generation = Number(next.generation || 0) + 1;
+            }
             next.actionLedger = next.actionLedger && typeof next.actionLedger === 'object' ? next.actionLedger : {};
             const ambiguousNonFinalReservations = Object.entries(next.actionLedger).filter(([, record]) => record?.status === 'reserved' && (!next.submission?.reservationId || record.reservationId !== next.submission.reservationId) && (record.owner !== INSTANCE_ID || Date.now() - Number(record.at || 0) >= NON_FINAL_RESERVATION_TTL_MS));
             if (next.active && ambiguousNonFinalReservations.length) {
@@ -2848,7 +3468,7 @@
             next.listingScope = 'all';
             next.listingScopeVerified = next.listingScopeVerified && typeof next.listingScopeVerified === 'object' ? next.listingScopeVerified : false;
 
-            if (next.active && loadedVersion !== VERSION) {
+            if (next.active && loadedVersion !== VERSION && !compatibleStateUpgrade) {
                 const archived = Array.isArray(next.results) ? next.results.map(row => ({ ...row })) : [];
                 const reconcileStart = next.batchStartDate || archived.map(row => row?.startDate).filter(Boolean).sort()[0] || next.currentDate || config.batchStartDate;
                 next.legacyAuditResults = [...(Array.isArray(next.legacyAuditResults) ? next.legacyAuditResults : []), ...archived];
@@ -2862,6 +3482,9 @@
                 next.listingScopeVerified = false;
                 next.needsPreflight = true;
                 next.verifyState = null;
+                next.pendingVerifications = [];
+                next.batchVerifyState = null;
+                next.completionAck = null;
                 next.promotionIndex = null;
                 if (['submitted', 'reserved'].includes(next.submission?.status)) {
                     next.phase = 'verify_created';
@@ -3023,8 +3646,10 @@
     }
 
     async function assertTokenFresh(token, options = {}) {
+        assertForegroundTab();
         const fresh = validateFreshForToken(await gmGet(JOB_KEY, null), token, options);
         if (options.requireLease !== false && !(await acquireLease(fresh))) throw new AutomationCancelledError('Bu sekme artık iş sahibi değil.');
+        assertForegroundTab();
         if (options.requireShop !== false) {
             const identity = detectShopIdentity(true);
             if (!identity?.shopId) throw new SafetyStopError('Etsy mağaza kimliği okunamadı; yanlış mağazada işlem riskine karşı durduruldu.');
@@ -3051,18 +3676,21 @@
 
     async function setPhase(phase, extras = {}, token = makeToken()) {
         if (!token) return null;
-        return await mutateJob(token, next => {
+        const updated = await mutateJob(token, next => {
             next.phase = phase;
             next.phaseStartedAt = Date.now();
             Object.assign(next, extras);
         });
+        scheduleTransitionTick(35);
+        return updated;
     }
 
     function actionKey(plan, actionName) { return `${plan.idempotencyKey}:${actionName}`; }
     function actionRecord(activeJob, plan, actionName) { return activeJob?.actionLedger?.[actionKey(plan, actionName)] || null; }
     function actionIsRecent(activeJob, plan, actionName, grace = ACTION_GRACE_MS) {
         const record = actionRecord(activeJob, plan, actionName);
-        return !!(record?.at && Date.now() - Number(record.at) < grace);
+        const lastAttemptAt = Number(record?.clickedAt || record?.at || 0);
+        return !!(lastAttemptAt && Date.now() - lastAttemptAt < grace);
     }
 
     async function markError(plan, reason, pauseKind = 'runtime_error', telemetryCode = '') {
@@ -3171,12 +3799,13 @@
             next.pauseKind = '';
             next.paused = false;
             next.generation = Number(next.generation || 0) + 1;
+            const completedDate = next.currentDate;
             const scheduledNextDate = nextScheduleDate(next, next.currentDate);
             const nextDate = next.reconcileAfterSubmitted && next.legacyReconcileStartDate ? next.legacyReconcileStartDate : scheduledNextDate;
-            next.currentDate = nextDate;
             next.reconcileAfterSubmitted = false;
             next.actionLedger = {};
             next.listingScopeVerified = false;
+            next.completionAck = null;
             next.submission = null;
             next.formEvidence = null;
             next.verifyState = null;
@@ -3186,13 +3815,24 @@
             next.phaseStartedAt = Date.now();
             next.notBefore = Date.now() + randomCooldown(next);
             if (batchCompleteAt(next, nextDate)) {
-                next.active = false;
-                next.terminalStatus = 'completed';
-                next.finishedAt = new Date().toISOString();
-                next.phase = 'completed';
+                if (Array.isArray(next.pendingVerifications) && next.pendingVerifications.length) {
+                    next.currentDate = completedDate;
+                    next.active = true;
+                    next.phase = 'batch_verify';
+                    next.needsPreflight = false;
+                    next.batchVerifyState = next.batchVerifyState || { startedAt: Date.now(), attempts: 0, nextFetchAt: Date.now() + 700 };
+                    next.notBefore = Date.now() + 700;
+                } else {
+                    next.currentDate = completedDate;
+                    next.active = false;
+                    next.terminalStatus = 'completed';
+                    next.finishedAt = new Date().toISOString();
+                    next.phase = 'completed';
+                }
                 next.expectedNavigationUntil = 0;
                 next.expectedNavigationPath = '';
             } else {
+                next.currentDate = nextDate;
                 next.active = true;
                 next.phase = 'preflight';
                 next.expectedNavigationUntil = 0;
@@ -3210,7 +3850,367 @@
         }
         resetAutomationController();
         toast(`${row.status === 'SUCCESS' ? 'Tamamlandı' : 'Atlandı'}: ${row.saleName}`, row.status === 'SUCCESS' ? 'success' : 'warning', 3000);
+        if (committed.phase === 'batch_verify') {
+            go(DETAILS_STATS_URL);
+            return;
+        }
         setTimeout(() => processTick(), 80);
+    }
+
+    function completionAckQueueEntry(activeJob, ack = activeJob?.completionAck) {
+        if (!ack?.idempotencyKey) return null;
+        return (activeJob?.pendingVerifications || []).find(entry => entry?.idempotencyKey === ack.idempotencyKey) || null;
+    }
+
+    function validCompletionDoneButton(button, refs = null) {
+        if (!(button?.isConnected && actionable(button))) return false;
+        if (refs?.ambiguous || detectFlowStage(refs) !== 'complete' || refs?.doneButton !== button) return false;
+        if (refs?.structuredStep) return structuredSaleStepActionMatches(button, 'done', refs);
+        return /^done$/i.test(buttonLabel(button)) && !actionBadShell(button, 'done');
+    }
+
+    function completionModalGone(refs, previousRoot = null) {
+        if (!refs || refs.hydrating || refs.ambiguous) return false;
+        if (detectFlowStage(refs) === 'complete') return false;
+        const liveStep = getStructuredSaleStepRefs(null, { includeErrors: false });
+        if (liveStep?.stage === 'complete' || liveStep?.ambiguous) return false;
+        const liveShell = currentSaleOverlayShell();
+        // During acknowledgement, any still-visible Etsy sale overlay means the old success
+        // surface has not safely yielded yet. This also covers localized/experiment variants
+        // whose copy and success attributes are unknown to the adapter.
+        if (liveShell && visible(liveShell)) return false;
+        if (previousRoot && previousRoot.isConnected === false) return true;
+        return ['form', 'listings', 'review', 'verification', 'home'].includes(detectFlowStage(refs));
+    }
+
+    function completionAckNavigationTarget(activeJob, ack) {
+        if (ack?.advanceAfterClose === false) {
+            return ack.resumePhase === 'batch_verify' ? DETAILS_STATS_URL : PROMOTIONS_URL;
+        }
+        const nextDate = nextScheduleDate(activeJob, ack?.startDate || activeJob?.currentDate);
+        return batchCompleteAt(activeJob, nextDate) ? DETAILS_STATS_URL : PROMOTIONS_URL;
+    }
+
+    async function pauseCompletionAck(reason) {
+        const currentJobId = job?.jobId;
+        const stopped = await withStateLock(async () => {
+            const fresh = await gmGet(JOB_KEY, null);
+            if (!fresh?.active || fresh.jobId !== currentJobId) return null;
+            if (!completionAckQueueEntry(fresh) && fresh.phase !== 'ack_complete') return null;
+            const next = clone(fresh);
+            next.paused = true;
+            next.pauseKind = 'completion_ack_failed';
+            next.errorReason = String(reason || 'Etsy başarı penceresi güvenli biçimde kapatılamadı.');
+            next.errorAt = new Date().toISOString();
+            next.pendingError = null;
+            next.generation = Number(next.generation || 0) + 1;
+            next.expectedNavigationUntil = 0;
+            next.expectedNavigationPath = '';
+            next.updatedAt = new Date().toISOString();
+            await gmSet(JOB_KEY, next);
+            return next;
+        });
+        if (!stopped) return false;
+        job = stopped;
+        abortAutomation('completion-ack-failed');
+        await releaseLease();
+        renderPanel();
+        setStatus(`Seri duraklatıldı\n${stopped.errorReason}\nKampanya yeniden gönderilmeyecek. Başarı penceresini kapatıp Yeniden Dene seçeneğini kullan.`);
+        toast('Etsy başarı penceresi kapatılamadı; yeni güne geçilmedi.', 'error', 7000);
+        return true;
+    }
+
+    async function finishCompletionAck() {
+        const token = makeToken();
+        if (!token) return null;
+        const committed = await withStateLock(async () => {
+            const fresh = validateFreshForToken(await gmGet(JOB_KEY, null), token);
+            const ack = normalizeCompletionAck(fresh.completionAck, fresh);
+            const queued = completionAckQueueEntry(fresh, ack);
+            if (!ack || !queued) throw new SafetyStopError('Başarı penceresi onay kaydı doğrulama kuyruğuyla eşleşmiyor. Yeni güne geçilmedi.');
+            if (ack.originTabId !== TAB_ID) throw new AutomationCancelledError('Başarı penceresi yalnız onu oluşturan Etsy sekmesinde kapatılabilir.');
+            const next = clone(fresh);
+            next.completionAck = null;
+            next.expectedNavigationUntil = 0;
+            next.expectedNavigationPath = '';
+
+            if (ack.advanceAfterClose === false) {
+                next.phase = ack.resumePhase === 'batch_verify' ? 'batch_verify' : 'preflight';
+                next.needsPreflight = next.phase === 'preflight' ? true : ack.resumeNeedsPreflight;
+                next.notBefore = Math.max(0, Number(ack.resumeNotBefore || 0));
+                if (next.phase === 'preflight') {
+                    next.submission = null;
+                    next.formEvidence = null;
+                    next.verifyState = null;
+                    next.actionLedger = {};
+                    next.listingScopeVerified = false;
+                }
+            } else {
+                if (fresh.currentDate !== ack.startDate
+                    || !['submitted', 'reserved'].includes(fresh.submission?.status)
+                    || fresh.submission?.idempotencyKey !== ack.idempotencyKey) {
+                    throw new SafetyStopError('Kapatılan başarı penceresi aktif gönderim kaydıyla eşleşmiyor. Tarih ilerletilmedi.');
+                }
+                const completedDate = ack.startDate;
+                const nextDate = nextScheduleDate(next, completedDate);
+                const creationComplete = batchCompleteAt(next, nextDate);
+                next.actionLedger = {};
+                next.listingScopeVerified = false;
+                next.submission = null;
+                next.formEvidence = null;
+                next.verifyState = null;
+                next.legacyPreflightDate = null;
+                next.openFormAttempts = 0;
+                next.phaseStartedAt = Date.now();
+                if (creationComplete) {
+                    next.currentDate = completedDate;
+                    next.phase = 'batch_verify';
+                    next.needsPreflight = false;
+                    next.batchVerifyState = { startedAt: Date.now(), attempts: 0, nextFetchAt: Date.now() + 700 };
+                    next.notBefore = Date.now() + 700;
+                } else {
+                    next.currentDate = nextDate;
+                    next.phase = 'preflight';
+                    next.needsPreflight = true;
+                    next.notBefore = Date.now() + randomCooldown(next);
+                }
+            }
+
+            next.generation = Number(next.generation || 0) + 1;
+            if (next.phase === 'batch_verify') {
+                next.expectedNavigationUntil = Date.now() + 18000;
+                next.expectedNavigationPath = '/sales-discounts/details-stats';
+            } else if (next.phase === 'preflight' && !isPromotionsHomePath()) {
+                next.expectedNavigationUntil = Date.now() + 18000;
+                next.expectedNavigationPath = '/your/shops/me/sales-discounts';
+            }
+            next.updatedAt = new Date().toISOString();
+            await gmSet(JOB_KEY, next);
+            return next;
+        });
+        job = committed;
+        abortAutomation('completion-acknowledged');
+        resetAutomationController();
+        renderPanel();
+        if (committed.phase === 'batch_verify') {
+            if (!isDetailsStatsPath()) go(DETAILS_STATS_URL);
+            else scheduleTransitionTick(0);
+        } else if (committed.phase === 'preflight' && !isPromotionsHomePath()) {
+            go(PROMOTIONS_URL);
+        } else {
+            scheduleTransitionTick(0);
+        }
+        return committed;
+    }
+
+    async function navigateAwayFromCompletionAck(reason = '') {
+        const token = makeToken();
+        if (!token) return false;
+        const updated = await mutateJob(token, next => {
+            const ack = normalizeCompletionAck(next.completionAck, next);
+            if (!ack || !completionAckQueueEntry(next, ack)) throw new SafetyStopError('Başarı penceresi onay kaydı doğrulama kuyruğuyla eşleşmiyor.');
+            if (ack.originTabId !== TAB_ID) throw new AutomationCancelledError('Başarı penceresi yalnız onu oluşturan Etsy sekmesinde kapatılabilir.');
+            ack.navigationAttempts += 1;
+            ack.lastNavigationAt = Date.now();
+            next.completionAck = ack;
+            const target = completionAckNavigationTarget(next, ack);
+            next.expectedNavigationUntil = Date.now() + 18000;
+            next.expectedNavigationPath = new URL(target, location.href).pathname;
+        });
+        const ack = updated.completionAck;
+        if (ack.navigationAttempts > 3) {
+            await pauseCompletionAck(`${reason || 'Done düğmesi veya modal kapanışı doğrulanamadı.'} Güvenli sayfa geçişi de ${ack.navigationAttempts} kez tamamlanamadı.`);
+            return false;
+        }
+        const target = completionAckNavigationTarget(updated, ack);
+        setStatus(`${ack.saleName || 'Oluşturulan kampanya'} kaydedildi; başarı penceresi kapanmadığı için güvenli Etsy sayfasına geçiliyor. Yeni kampanya başlatılmayacak.`);
+        const targetPath = new URL(target, location.href).pathname;
+        if (normalizePathname(location.pathname) === normalizePathname(targetPath)) {
+            markLeaseHandoff(updated.jobId || '', targetPath);
+            try { location.reload(); }
+            catch { location.assign(`${target}${target.includes('?') ? '&' : '?'}makaytron_ack=${Date.now()}`); }
+        } else {
+            go(target);
+        }
+        return true;
+    }
+
+    async function handleCompletionAck(initialRefs = null, refsFactory = getCreateSaleRefs, options = {}) {
+        const active = await gmGet(JOB_KEY, null);
+        if (!active?.active) return false;
+        job = active;
+        const ack = normalizeCompletionAck(active.completionAck, active);
+        if (!ack || !completionAckQueueEntry(active, ack)) {
+            await pauseCompletionAck('Başarı penceresi bekleme aşaması var ancak buna ait kalıcı doğrulama kuyruğu bulunamadı.');
+            return true;
+        }
+        if (ack.originTabId !== TAB_ID) {
+            setStatus(`Başarı penceresi başka Etsy sekmesinde bekleniyor: ${ack.saleName}\nBu sekme modalı kapatmayacak ve tarihi ilerletmeyecek.`);
+            if (leaseOwned) await releaseLease(active.jobId);
+            return true;
+        }
+
+        let refs = initialRefs || refsFactory();
+        if (completionModalGone(refs)) {
+            await finishCompletionAck();
+            return true;
+        }
+        // A recorded acknowledgement attempt is a durable exactly-once boundary. If Etsy
+        // kept or recreated the modal after that attempt, do not click Done again; leave via
+        // the non-creating Sales & Discounts route while retaining the acknowledgement.
+        if (ack.attempts > 0) {
+            await navigateAwayFromCompletionAck('Done düğmesine daha önce tıklandı ancak başarı penceresi hâlâ açık görünüyor. Düğme tekrar tıklanmayacak.');
+            return true;
+        }
+        const buttonTimeout = Math.max(100, Number(options.buttonTimeout || 2400));
+        const closeTimeout = Math.max(100, Number(options.closeTimeout || 3200));
+        if (detectFlowStage(refs) !== 'complete') {
+            const waitStartedAt = Math.max(0, Number(ack.waitStartedAt || 0));
+            if (!waitStartedAt) {
+                const token = makeToken();
+                await mutateJob(token, next => {
+                    const current = normalizeCompletionAck(next.completionAck, next);
+                    if (!current || !completionAckQueueEntry(next, current)) throw new SafetyStopError('Başarı penceresi beklenirken kalıcı onay kaydı değişti.');
+                    current.waitStartedAt = Date.now();
+                    next.completionAck = current;
+                });
+            } else if (Date.now() - waitStartedAt >= buttonTimeout) {
+                await navigateAwayFromCompletionAck('Etsy başarı penceresi yapısal olarak tanınamadı veya tamamen yüklenmedi.');
+                return true;
+            }
+            setStatus(`Etsy başarı penceresinin yüklenmesi bekleniyor: ${ack.saleName}`);
+            scheduleTransitionTick(120);
+            return true;
+        }
+
+        setStatus(`Oluşturuldu: ${ack.saleName}\nDone düğmesi bekleniyor; pencere kapanmadan sonraki güne geçilmeyecek.`);
+        let observed = await waitFor(() => {
+            const freshRefs = refsFactory();
+            if (completionModalGone(freshRefs, refs?.root)) return { type: 'closed', refs: freshRefs };
+            refs = freshRefs;
+            return validCompletionDoneButton(freshRefs?.doneButton, freshRefs)
+                ? { type: 'button', refs: freshRefs, button: freshRefs.doneButton }
+                : null;
+        }, buttonTimeout, 75);
+        if (observed?.type === 'closed') {
+            await finishCompletionAck();
+            return true;
+        }
+        if (!observed?.button) {
+            await navigateAwayFromCompletionAck('Etsy başarı penceresinde güvenilir Done düğmesi bulunamadı.');
+            return true;
+        }
+
+        const token = makeToken();
+        let doneAttemptReserved = false;
+        await mutateJob(token, next => {
+            const current = normalizeCompletionAck(next.completionAck, next);
+            if (!current || !completionAckQueueEntry(next, current)) throw new SafetyStopError('Done tıklamasından önce başarı kaydı değişti.');
+            if (current.attempts > 0) return;
+            current.attempts += 1;
+            current.lastAttemptAt = Date.now();
+            next.completionAck = current;
+            doneAttemptReserved = true;
+            // Done can perform a full navigation. Mark the whole Sales & Discounts route
+            // as expected before clicking so auto-resume=false cannot pause mid-transition.
+            next.expectedNavigationUntil = Date.now() + 18000;
+            next.expectedNavigationPath = '/sales-discounts';
+        });
+        if (!doneAttemptReserved) {
+            await navigateAwayFromCompletionAck('Done düğmesi başka bir işlem tarafından zaten ele alındı. Düğme tekrar tıklanmayacak.');
+            return true;
+        }
+        refs = refsFactory();
+        if (completionModalGone(refs, observed.refs?.root)) {
+            await finishCompletionAck();
+            return true;
+        }
+        const doneButton = validCompletionDoneButton(refs?.doneButton, refs) ? refs.doneButton : null;
+        if (!doneButton) {
+            await navigateAwayFromCompletionAck('Done düğmesi tıklamadan hemen önce Etsy tarafından yenilendi ve güvenli biçimde tekrar bulunamadı.');
+            return true;
+        }
+        assertForegroundTab();
+        assertNoBlockingForeignOverlay(refs.root || nearestActionContext(doneButton));
+        // The acknowledgement may perform a full-page navigation to a locale- or
+        // experiment-dependent Sales & Discounts route. Preserve same-tab ownership
+        // without assuming the exact destination path.
+        markLeaseHandoff(job?.jobId || '', '');
+        if (!robustClick(doneButton)) {
+            await navigateAwayFromCompletionAck('Done düğmesine tıklama uygulanamadı.');
+            return true;
+        }
+
+        const previousRoot = refs.root;
+        observed = await waitFor(() => {
+            const freshRefs = refsFactory();
+            return completionModalGone(freshRefs, previousRoot) ? { type: 'closed', refs: freshRefs } : null;
+        }, closeTimeout, 75);
+        if (observed?.type === 'closed') {
+            await finishCompletionAck();
+            return true;
+        }
+        await navigateAwayFromCompletionAck('Done tıklandı ancak Etsy başarı penceresinin kapandığı doğrulanamadı.');
+        return true;
+    }
+
+    async function queueSubmittedForBatchVerification(plan, message = '', completionRefs = null, refsFactory = getCreateSaleRefs) {
+        const token = makeToken();
+        if (!token || !plan) return false;
+        const committed = await withStateLock(async () => {
+            const fresh = validateFreshForToken(await gmGet(JOB_KEY, null), token);
+            const submission = clone(fresh.submission) || null;
+            if (!['submitted', 'reserved'].includes(submission?.status)) throw new SafetyStopError('Etsy başarı adımı görüldü ancak bu güne bağlı final gönderim kaydı bulunamadı. Kampanya yeniden gönderilmeyecek.');
+            submission.status = 'submitted';
+            submission.idempotencyKey = submission.idempotencyKey || plan.idempotencyKey;
+            submission.formEvidence = submission.formEvidence || clone(fresh.formEvidence) || null;
+            if (submission.idempotencyKey !== plan.idempotencyKey) throw new SafetyStopError('Etsy başarı adımı ile kilitli final gönderim kaydı aynı kampanyaya ait değil. Kampanya yeniden gönderilmeyecek.');
+
+            const next = clone(fresh);
+            next.submission = submission;
+            const entry = pendingVerificationEntry(plan, next, message);
+            if (!entry?.formEvidence) throw new SafetyStopError('Toplu doğrulama için gerekli kilitli form kanıtı bulunamadı. Kampanya yeniden gönderilmeyecek.');
+            next.pendingVerifications = upsertPendingVerification(next.pendingVerifications, entry);
+            next.results = upsertResult(next.results, resultRow(plan, 'PENDING_VERIFICATION', entry.successMessage, { verified: false }, next));
+            next.pendingError = null;
+            next.errorReason = '';
+            next.errorAt = '';
+            next.pauseKind = '';
+            next.paused = false;
+            next.generation = Number(next.generation || 0) + 1;
+            next.completionAck = {
+                idempotencyKey: entry.idempotencyKey,
+                saleName: entry.saleName,
+                startDate: entry.startDate,
+                originTabId: String(submission.tabId || TAB_ID),
+                queuedAt: entry.queuedAt,
+                attempts: 0,
+                lastAttemptAt: 0,
+                waitStartedAt: Date.now(),
+                navigationAttempts: 0,
+                lastNavigationAt: 0,
+                advanceAfterClose: true,
+                resumePhase: '',
+                resumeNeedsPreflight: false,
+                resumeNotBefore: 0,
+            };
+            next.phase = 'ack_complete';
+            next.needsPreflight = false;
+            next.notBefore = 0;
+            next.phaseStartedAt = Date.now();
+            next.expectedNavigationUntil = 0;
+            next.expectedNavigationPath = '';
+            next.updatedAt = new Date().toISOString();
+            await gmSet(JOB_KEY, next);
+            return next;
+        });
+        job = committed;
+        abortAutomation('sale-queued-for-batch-verification');
+        resetAutomationController();
+        renderPanel();
+        toast(`Oluşturuldu; seri sonunda doğrulanacak: ${plan.saleName}`, 'success', 3200);
+        await handleCompletionAck(completionRefs, refsFactory);
+        return true;
     }
 
     async function markSuccess(plan, message, extras = {}) {
@@ -3223,44 +4223,75 @@
     async function retryCurrent() {
         const observed = detectFlowStage(getCreateSaleRefs());
         const currentIdentity = detectShopIdentity(true);
+        const pausedJob = await gmGet(JOB_KEY, null);
+        if (!pausedJob?.active || !pausedJob.paused) return;
+        const leaseCandidate = clone(pausedJob);
+        if (!leaseCandidate.shop?.shopId) {
+            if (!currentIdentity?.shopId) {
+                toast('Mağaza kimliği okunamadı. Doğru Etsy mağazasını açıp sayfayı yeniledikten sonra tekrar Devam Et düğmesine bas.', 'error', 6200);
+                return;
+            }
+            leaseCandidate.shop = currentIdentity;
+        }
+        setStatus('Devam etme isteği alındı; bu sekmenin iş sahipliği doğrulanıyor.');
+        const owner = await acquireLease(leaseCandidate, { allowPaused: true });
+        if (!owner) {
+            setStatus('Seri duraklatılmış durumda kaldı; bu sekme iş sahipliğini alamadı. Diğer Etsy sekmelerini kontrol et.');
+            toast('Başka bir Etsy sekmesindeki aktif sahiplik nedeniyle bu sekmede devam edilmedi.', 'warning', 6200);
+            return;
+        }
         let resumedPauseKind = '';
-        const updated = await withStateLock(async () => {
-            const fresh = await gmGet(JOB_KEY, null);
-            if (!fresh?.active || !fresh.paused) return null;
-            const next = clone(fresh);
-            resumedPauseKind = String(fresh.pauseKind || '');
-            if (!next.shop?.shopId) {
-                if (!currentIdentity?.shopId) return null;
-                next.shop = currentIdentity;
-                next.configSnapshot = { ...(next.configSnapshot || {}), shop: currentIdentity };
-            }
-            next.paused = false;
-            next.pauseKind = '';
-            next.errorReason = '';
-            next.errorAt = '';
-            next.pendingError = null;
-            next.generation = Number(next.generation || 0) + 1;
-            next.phaseStartedAt = Date.now();
-            next.notBefore = 0;
-            next.expectedNavigationUntil = 0;
-            next.expectedNavigationPath = '';
-            if (['submitted', 'reserved'].includes(next.submission?.status)) {
-                next.phase = 'verify_created';
-            } else if (next.needsPreflight) {
-                next.phase = 'preflight';
-                next.actionLedger = {};
-                next.listingScopeVerified = false;
-            } else {
-                const map = { form: 'fill_form', listings: 'select_listings', review: 'confirm_sale', complete: 'verify_created', verification: 'verify_created' };
-                next.phase = map[observed] || 'open_form';
-                next.actionLedger = {};
-                if (observed === 'form' || observed === 'listings' || observed === 'unknown') next.listingScopeVerified = false;
-                next.submission = null;
-            }
-            await gmSet(JOB_KEY, next);
-            return next;
-        });
+        let updated = null;
+        try {
+            updated = await withStateLock(async () => {
+                const fresh = await gmGet(JOB_KEY, null);
+                if (!fresh?.active || !fresh.paused
+                    || fresh.jobId !== pausedJob.jobId
+                    || Number(fresh.generation || 0) !== Number(pausedJob.generation || 0)) return null;
+                const next = clone(fresh);
+                resumedPauseKind = String(fresh.pauseKind || '');
+                if (!next.shop?.shopId) {
+                    next.shop = currentIdentity;
+                    next.configSnapshot = { ...(next.configSnapshot || {}), shop: currentIdentity };
+                }
+                next.paused = false;
+                next.pauseKind = '';
+                next.errorReason = '';
+                next.errorAt = '';
+                next.pendingError = null;
+                next.generation = Number(next.generation || 0) + 1;
+                next.phaseStartedAt = Date.now();
+                next.notBefore = 0;
+                next.expectedNavigationUntil = 0;
+                next.expectedNavigationPath = '';
+                if (next.completionAck || next.phase === 'ack_complete' || resumedPauseKind === 'completion_ack_failed') {
+                    next.phase = 'ack_complete';
+                    next.needsPreflight = false;
+                } else if (resumedPauseKind === 'batch_verification_incomplete' || next.phase === 'batch_verify') {
+                    next.phase = 'batch_verify';
+                    next.batchVerifyState = { startedAt: Date.now(), attempts: 0, nextFetchAt: Date.now() };
+                } else if (['submitted', 'reserved'].includes(next.submission?.status)) {
+                    next.phase = 'verify_created';
+                } else if (next.needsPreflight) {
+                    next.phase = 'preflight';
+                    next.actionLedger = {};
+                    next.listingScopeVerified = false;
+                } else {
+                    const map = { form: 'fill_form', listings: 'select_listings', review: 'confirm_sale', complete: 'verify_created', verification: 'verify_created' };
+                    next.phase = map[observed] || 'open_form';
+                    next.actionLedger = {};
+                    if (observed === 'form' || observed === 'listings' || observed === 'unknown') next.listingScopeVerified = false;
+                    next.submission = null;
+                }
+                await gmSet(JOB_KEY, next);
+                return next;
+            });
+        } catch (error) {
+            await releaseLease(pausedJob.jobId);
+            throw error;
+        }
         if (!updated) {
+            await releaseLease(pausedJob.jobId);
             toast('Mağaza kimliği okunamadı. Doğru Etsy mağazasını açıp sayfayı yeniledikten sonra tekrar Devam Et düğmesine bas.', 'error', 6200);
             return;
         }
@@ -3268,17 +4299,38 @@
         resetAutomationController();
         renderPanel();
         setStatus('Aynı gün için yeniden deneme başlatılıyor; sekme sahipliği doğrulanıyor.');
-        const owner = await acquireLease(job);
-        if (!owner) {
-            setStatus('Seri yeniden açıldı ancak bu sekme iş sahipliğini alamadı. Diğer Etsy sekmelerini kontrol et.');
-            toast('Yeniden deneme başka bir Etsy sekmesindeki aktif sahiplik nedeniyle bu sekmede başlatılamadı.', 'warning', 6200);
+        if (!(await verifyLease(updated))) {
+            const repaused = await withStateLock(async () => {
+                const fresh = await gmGet(JOB_KEY, null);
+                if (!fresh?.active || fresh.jobId !== updated.jobId
+                    || Number(fresh.generation || 0) !== Number(updated.generation || 0)) return null;
+                const next = clone(fresh);
+                next.paused = true;
+                next.pauseKind = 'lease_conflict';
+                next.errorReason = 'Devam etme sırasında sekme sahipliği kaybedildi; hiçbir Etsy işlemi yapılmadı.';
+                next.errorAt = new Date().toISOString();
+                next.generation = Number(next.generation || 0) + 1;
+                next.updatedAt = new Date().toISOString();
+                await gmSet(JOB_KEY, next);
+                return next;
+            });
+            if (repaused) job = repaused;
+            renderPanel();
+            setStatus('Seri duraklatılmış durumda kaldı; bu sekme iş sahipliğini kaybetti. Diğer Etsy sekmelerini kontrol et.');
+            toast('Sekme sahipliği doğrulanamadığı için devam edilmedi.', 'warning', 6200);
             return;
         }
         renderPanel();
-        toast(['resume_required', 'legacy_migration', 'legacy_reconcile', 'upgrade_review', 'upgrade_reconcile', 'shop_identity_missing', 'submission_ambiguous', 'shop_identity_timeout'].includes(resumedPauseKind) ? `Seri ${shopLabel(updated.shop)} mağazasında devam ediyor.` : 'Aynı gün güvenli biçimde yeniden deneniyor.', 'info', 3600);
-        if (updated.phase === 'verify_created') go(DETAILS_STATS_URL);
-        else if (updated.phase === 'open_form') go(CREATE_SALE_URL);
-        processTick();
+        toast(['resume_required', 'legacy_migration', 'legacy_reconcile', 'upgrade_review', 'upgrade_reconcile', 'shop_identity_missing', 'submission_ambiguous', 'shop_identity_timeout', 'batch_verification_incomplete'].includes(resumedPauseKind) ? `Seri ${shopLabel(updated.shop)} mağazasında devam ediyor.` : 'Aynı gün güvenli biçimde yeniden deneniyor.', 'info', 3600);
+        if (['verify_created', 'batch_verify'].includes(updated.phase) && !isDetailsStatsPath()) {
+            go(DETAILS_STATS_URL);
+            return;
+        }
+        if (updated.phase === 'open_form' && !isCreateSalePath()) {
+            go(CREATE_SALE_URL);
+            return;
+        }
+        scheduleTransitionTick(0);
     }
 
     function waitForPanelActionPaint() {
@@ -3348,6 +4400,16 @@
     async function skipCurrent() {
         const active = await gmGet(JOB_KEY, null);
         if (!active?.active || !active.paused) return;
+        if (active.completionAck || active.phase === 'ack_complete' || active.pauseKind === 'completion_ack_failed') {
+            setStatus('Oluşturulan kampanyanın başarı penceresi henüz güvenli biçimde kapatılmadı. Bu gün atlanamaz; kampanya tekrar gönderilmeden yalnız Done kapanışı yeniden denenecek.');
+            toast('Başarı penceresi beklerken gün atlama kapalıdır. Yeniden Dene veya Durdur seçeneğini kullan.', 'warning', 6200);
+            return;
+        }
+        if (active.phase === 'batch_verify' || active.pauseKind === 'batch_verification_incomplete') {
+            setStatus('Toplu doğrulama sırasında tek bir gün atlanamaz. Devam Et yalnız doğrulamayı tekrarlar; Durdur ise doğrulanamayan kampanyaları yeniden göndermeden rapora işler.');
+            toast('Toplu doğrulamada gün atlama kapalıdır; hiçbir kampanya yeniden gönderilmeyecek.', 'warning', 6200);
+            return;
+        }
         job = active;
         const plan = currentPlan();
         if (!plan) return;
@@ -3356,13 +4418,34 @@
         await commitDayResult(plan, row);
     }
 
+    function settlePendingVerificationsAsStopped(activeJob) {
+        const entries = Array.isArray(activeJob?.pendingVerifications) ? activeJob.pendingVerifications : [];
+        for (const entry of entries) {
+            const plan = planFromPendingVerification(entry, activeJob);
+            if (!plan) continue;
+            activeJob.results = upsertResult(activeJob.results, resultRow(
+                plan,
+                'STOPPED',
+                'Kampanya Etsy başarı adımına ulaştı ancak kullanıcı toplu doğrulamayı durdurdu. Kesin liste doğrulaması yapılmadı ve kampanya otomatik olarak yeniden gönderilmedi.',
+                { verified: false },
+                activeJob,
+            ));
+        }
+        activeJob.pendingVerifications = [];
+        activeJob.batchVerifyState = null;
+        return entries.length;
+    }
+
     async function stopBatch() {
         const terminal = await withStateLock(async () => {
             const fresh = await gmGet(JOB_KEY, null);
             if (!fresh?.active) return null;
             const next = clone(fresh);
-            const plan = buildPlan(next.currentDate, next);
-            if (plan) next.results = upsertResult(next.results, resultRow(plan, 'STOPPED', 'Kullanıcı tarafından durduruldu.', {}, next));
+            const pendingStopped = settlePendingVerificationsAsStopped(next);
+            if (!pendingStopped) {
+                const plan = buildPlan(next.currentDate, next);
+                if (plan) next.results = upsertResult(next.results, resultRow(plan, 'STOPPED', 'Kullanıcı tarafından durduruldu.', {}, next));
+            }
             next.active = false;
             next.paused = false;
             next.terminalStatus = 'stopped';
@@ -3416,19 +4499,182 @@
         }
     }
 
+    function stepActionLabelMatches(button, kind = '') {
+        const label = low(buttonLabel(button));
+        if (kind === 'continue') {
+            return structuredContinueLabel(label)
+                || /select\s+(?:all\s+)?listings?|choose\s+(?:the\s+)?listings?/.test(label);
+        }
+        if (kind === 'review') return /^review\s*(?:and|&)\s*confirm$/.test(label) || /^review(?:\b|$)/.test(label);
+        if (kind === 'final') return /^(?:confirm(?:\s+and\s+create)?\s+sale|create\s+sale|run\s+sale|publish\s+sale|submit\s+sale|confirm)$/.test(label);
+        return false;
+    }
+
+    function validFreshStepActionButton(button, kind = '', refs = null) {
+        if (!(button?.isConnected && actionable(button) && stepActionLabelMatches(button, kind))) return false;
+        if (refs?.structuredForm) return kind === 'continue' && structuredCreateSaleActionMatches(button, refs);
+        if (refs?.structuredStep) return structuredSaleStepActionMatches(button, kind, refs);
+        return !actionBadShell(button, kind);
+    }
+
     function resolveFreshStepActionButton(actionName, button, options = {}, refsFactory = getCreateSaleRefs) {
         const kind = options.final || actionName === 'final_submit' ? 'final' : actionName;
         if (!['continue', 'review', 'final'].includes(kind)) return null;
-        if (button?.isConnected && actionable(button) && !actionBadShell(button, kind)) return button;
+        if (validFreshStepActionButton(button, kind)) return button;
 
         // React can replace Etsy's footer button after the form's final input/change events.
         // Re-resolve only the expected action through the same fail-closed context filters;
         // never click a detached reference or fall back to an arbitrary primary button.
         const refs = refsFactory();
-        if (kind === 'continue') return refs?.continueButton || null;
-        if (kind === 'review') return refs?.reviewButton || null;
-        if (kind === 'final') return refs?.finalButton || null;
+        const resolved = kind === 'continue'
+            ? refs?.continueButton
+            : kind === 'review'
+                ? refs?.reviewButton
+                : refs?.finalButton;
+        return validFreshStepActionButton(resolved, kind, refs) ? resolved : null;
+    }
+
+    async function waitForFreshStepActionButton(actionName, button, options = {}, refsFactory = getCreateSaleRefs, timeout = 1200) {
+        const startedAt = Date.now();
+        let candidate = button;
+        do {
+            const resolved = resolveFreshStepActionButton(actionName, candidate, options, refsFactory);
+            if (resolved) return resolved;
+            candidate = null;
+            if (Date.now() - startedAt >= timeout) break;
+            await sleep(55);
+        } while (Date.now() - startedAt <= timeout);
         return null;
+    }
+
+    function stepActionSourceStage(actionName, options = {}) {
+        if (options.final || actionName === 'final_submit') return 'review';
+        if (actionName === 'continue') return 'form';
+        if (actionName === 'review') return 'listings';
+        return 'unknown';
+    }
+
+    function stepActionReachedExpectedStage(actionName, stage, options = {}) {
+        if (options.final || actionName === 'final_submit') return ['complete', 'verification', 'home'].includes(stage);
+        if (actionName === 'continue') return ['listings', 'review', 'complete', 'verification', 'home'].includes(stage);
+        if (actionName === 'review') return ['review', 'complete', 'verification', 'home'].includes(stage);
+        return false;
+    }
+
+    async function waitForStepActionTransition(actionName, options = {}, timeout = 1100, refsFactory = getCreateSaleRefs) {
+        let latest = { stage: 'unknown', refs: null, error: '' };
+        const observed = await waitFor(() => {
+            const refs = refsFactory();
+            const error = Array.isArray(refs?.errorTexts) && refs.errorTexts.length ? refs.errorTexts.join(' | ') : '';
+            const stage = detectFlowStage(refs);
+            latest = { stage, refs, error };
+            if (error) return { type: 'error', ...latest };
+            if (stepActionReachedExpectedStage(actionName, stage, options)) return { type: 'advanced', ...latest };
+            return null;
+        }, timeout, 55);
+        return observed || { type: 'timeout', ...latest };
+    }
+
+    function saleStepActionButton(refs, actionName, options = {}) {
+        if (options.final || actionName === 'final_submit') return refs?.finalButton || null;
+        if (actionName === 'continue') return refs?.continueButton || null;
+        if (actionName === 'review') return refs?.reviewButton || null;
+        return null;
+    }
+
+    function stableNodeSetMatches(left, right) {
+        return Array.isArray(left)
+            && Array.isArray(right)
+            && left.length === right.length
+            && left.every((node, index) => node === right[index]);
+    }
+
+    function saleStepFingerprint(refs, stage, actionName = '', options = {}) {
+        const button = saleStepActionButton(refs, actionName, options);
+        const fields = actionName === 'continue' || options.mode === 'form'
+            ? [refs?.startDate, refs?.endDate, refs?.discountType, refs?.discountSelect, refs?.customDiscountInput, refs?.saleNameInput, refs?.regionSelect]
+            : [];
+        const values = fields.filter(Boolean).map(field => String(field.value ?? '')).join('\u241f');
+        const scope = refs?.listingAllControl
+            ? `${controlChecked(refs.listingAllControl)}:${refs.listingAllControl.getAttribute?.('aria-checked') || ''}`
+            : '';
+        return [
+            document.readyState,
+            stage,
+            buttonLabel(button),
+            button?.disabled === true,
+            button?.getAttribute?.('aria-disabled') || '',
+            scope,
+            values,
+        ].join('|');
+    }
+
+    async function waitForStableSaleStep(expectedStage, options = {}, timeout = 12000, refsFactory = getCreateSaleRefs) {
+        const stableMs = Math.max(250, Number(options.stableMs || 420));
+        let stableSince = 0;
+        let stableNodes = null;
+        let stableFingerprint = '';
+        let latest = { stage: 'unknown', refs: null, button: null, error: '' };
+        const observed = await waitFor(() => {
+            const refs = refsFactory();
+            const stage = detectFlowStage(refs);
+            const button = saleStepActionButton(refs, options.actionName || '', options);
+            const error = Array.isArray(refs?.errorTexts) && refs.errorTexts.length ? refs.errorTexts.join(' | ') : '';
+            latest = { stage, refs, button, error };
+            if (error) return { type: 'error', ...latest };
+            if (options.actionName && stepActionReachedExpectedStage(options.actionName, stage, options)) {
+                return { type: 'advanced', ...latest };
+            }
+            if (!refs || refs.hydrating || refs.ambiguous || stage === 'unknown' || document.readyState !== 'complete') {
+                stableSince = 0;
+                stableNodes = null;
+                stableFingerprint = '';
+                return null;
+            }
+            if (stage !== expectedStage) return { type: 'changed', ...latest };
+
+            let ready = false;
+            let nodes = [];
+            if (options.mode === 'form') {
+                nodes = [refs.root, refs.startDate, refs.endDate, refs.discountType, refs.discountSelect, refs.saleNameInput, refs.regionSelect];
+                ready = !!(refs.ready && nodes.every(node => node?.isConnected !== false));
+            } else if (options.mode === 'listings') {
+                nodes = [refs.root, refs.listingAllControl, refs.reviewCandidate];
+                ready = !!(refs.listingAllControl && refs.reviewCandidate && nodes.every(node => node?.isConnected !== false));
+            } else if (options.mode === 'complete') {
+                nodes = [refs.root, refs.doneButton].filter(Boolean);
+                ready = !!(refs.root && refs.root.isConnected !== false && stage === 'complete');
+            } else if (options.actionName) {
+                const kind = options.final || options.actionName === 'final_submit' ? 'final' : options.actionName;
+                nodes = [refs.root, button];
+                if (options.actionName === 'review') nodes.push(refs.listingAllControl);
+                ready = validFreshStepActionButton(button, kind, refs)
+                    && (options.actionName !== 'review' || controlChecked(refs.listingAllControl));
+            }
+            if (!ready) {
+                stableSince = 0;
+                stableNodes = null;
+                stableFingerprint = '';
+                return null;
+            }
+
+            const fingerprint = saleStepFingerprint(refs, stage, options.actionName || '', options);
+            if (!stableNodeSetMatches(stableNodes, nodes) || stableFingerprint !== fingerprint) {
+                stableNodes = nodes;
+                stableFingerprint = fingerprint;
+                stableSince = Date.now();
+                return null;
+            }
+            if (Date.now() - stableSince < stableMs) return null;
+            return { type: 'ready', ...latest, stableForMs: Date.now() - stableSince };
+        }, timeout, 75);
+        return observed || { type: 'timeout', ...latest };
+    }
+
+    function safeNonFinalStepRetry(actionName, stage, activeJob, plan) {
+        if (stage !== stepActionSourceStage(actionName)) return false;
+        if (actionName === 'continue') return true;
+        return actionName === 'review' && listingScopeIsVerified(activeJob, plan);
     }
 
     async function performStepAction(plan, actionName, button, nextPhase, options = {}) {
@@ -3436,21 +4682,33 @@
             setStatus('Script penceresi açıkken otomasyon geçici olarak bekletiliyor.');
             return false;
         }
-        let actionButton = resolveFreshStepActionButton(actionName, button, options);
-        if (!actionButton) {
-            await markError(plan, `${options.label || actionName} düğmesi bulunamadı veya etkin değil.`, 'runtime_error', 'selector_sale_transition');
+        const sourceStage = stepActionSourceStage(actionName, options);
+        const actionLabel = options.label || actionName;
+        setStatus(`${actionLabel} için Etsy ${sourceStage} adımının tamamen yüklenmesi ve sabitlenmesi bekleniyor.`);
+        const stableStep = await waitForStableSaleStep(sourceStage, { ...options, actionName }, 12000);
+        if (stableStep.type === 'error') {
+            await markError(plan, stableStep.error, 'runtime_error', 'selector_sale_transition');
             return false;
         }
+        if (stableStep.type === 'advanced' || stableStep.type === 'changed') {
+            scheduleTransitionTick(0);
+            return true;
+        }
+        if (stableStep.type !== 'ready' || !stableStep.button) {
+            await markError(plan, `${actionLabel} adımı 12 saniye içinde tamamen yüklenip sabitlenmedi. Tıklama yapılmadı.`, 'runtime_error', 'selector_sale_transition');
+            return false;
+        }
+        let actionButton = stableStep.button;
         assertNoBlockingForeignOverlay(nearestActionContext(actionButton));
         const token = makeToken();
         await assertTokenFresh(token);
-        actionButton = resolveFreshStepActionButton(actionName, actionButton, options);
+        actionButton = await waitForFreshStepActionButton(actionName, actionButton, options);
         if (!actionButton) {
             await markError(plan, `${options.label || actionName} düğmesi güvenlik kontrolü sırasında yenilendi ancak tekrar bulunamadı.`, 'runtime_error', 'selector_sale_transition');
             return false;
         }
         assertNoBlockingForeignOverlay(nearestActionContext(actionButton));
-        const label = buttonLabel(actionButton) || options.label || actionName;
+        const label = buttonLabel(actionButton) || actionLabel;
         const reservationId = randomId('action-');
         const committed = await withStateLock(async () => {
             const fresh = validateFreshForToken(await gmGet(JOB_KEY, null), token);
@@ -3513,7 +4771,7 @@
             return false;
         }
         await assertTokenFresh(token);
-        actionButton = resolveFreshStepActionButton(actionName, actionButton, options);
+        actionButton = await waitForFreshStepActionButton(actionName, actionButton, options);
         if (!actionButton) {
             await rollback();
             await markError(plan, `${label} için güvenli rezervasyon yapıldı ancak düğme tıklamadan önce kayboldu. Rezervasyon geri alındı; Yeniden Dene ile aynı adım tekrar edilebilir.`, 'runtime_error', 'selector_sale_transition');
@@ -3527,12 +4785,60 @@
             return false;
         }
 
+        let attempts = 1;
+        let transition = null;
+        if (!options.final) {
+            transition = await waitForStepActionTransition(actionName, options, 1100);
+            if (transition.type === 'error') {
+                await rollback();
+                await markError(plan, transition.error, 'runtime_error', 'selector_sale_transition');
+                return false;
+            }
+
+            // Continue and Review are reversible navigation actions. Etsy can occasionally
+            // consume focus without advancing the React step. Retry at most once, and only
+            // while the exact source step, token, ownership and scope evidence are intact.
+            // The final sale submission never enters this branch and remains exactly-once.
+            if (transition.type === 'timeout') {
+                await assertTokenFresh(token);
+                const retryRefs = getCreateSaleRefs();
+                const retryStage = detectFlowStage(retryRefs);
+                if (stepActionReachedExpectedStage(actionName, retryStage, options)) {
+                    transition = { type: 'advanced', stage: retryStage, refs: retryRefs, error: '' };
+                } else if (safeNonFinalStepRetry(actionName, retryStage, job, plan)) {
+                    const stableRetry = await waitForStableSaleStep(retryStage, { ...options, actionName, stableMs: 300 }, 1800);
+                    const retryButton = stableRetry.type === 'ready' ? stableRetry.button : null;
+                    if (retryButton && validFreshStepActionButton(retryButton, actionName, stableRetry.refs)) {
+                        assertNoBlockingForeignOverlay(nearestActionContext(retryButton));
+                        assertForegroundTab();
+                        setStatus(`${label} ilk tıklamadan sonra aynı Etsy adımında kaldı; doğrulanmış düğmeye güvenli son tekrar uygulanıyor.`);
+                        if (robustClick(retryButton)) {
+                            attempts = 2;
+                            transition = await waitForStepActionTransition(actionName, options, 1800);
+                            if (transition.type === 'error') {
+                                await rollback();
+                                await markError(plan, transition.error, 'runtime_error', 'selector_sale_transition');
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         const finalized = await withStateLock(async () => {
             const fresh = validateFreshForToken(await gmGet(JOB_KEY, null), token);
             const record = fresh.actionLedger?.[committed.key];
             if (record?.reservationId !== reservationId) return fresh;
             const next = clone(fresh);
-            next.actionLedger[committed.key] = { ...record, status: 'clicked', clickedAt: Date.now() };
+            next.actionLedger[committed.key] = {
+                ...record,
+                status: 'clicked',
+                clickedAt: Date.now(),
+                attempts,
+                transitionObserved: transition?.type === 'advanced',
+                transitionStage: transition?.stage || '',
+            };
             next.phase = nextPhase;
             next.phaseStartedAt = Date.now();
             next.lastActionLabel = `${actionName}:${label}:clicked`;
@@ -3550,24 +4856,58 @@
         });
         job = finalized;
         renderPanel();
+        scheduleTransitionTick(35);
         return true;
     }
     function detectFlowStage(refs = getCreateSaleRefs()) {
+        if (refs?.hydrating || refs?.ambiguous) return 'unknown';
+        if (['listings', 'review', 'complete'].includes(refs?.stage)) return refs.stage;
+        const saleOverlay = currentSaleOverlayShell();
+        if (isDetailsStatsPath() && !saleOverlay) return 'verification';
+        if (isPromotionsHomePath() && !saleOverlay) return 'home';
         const rootText = saleFlowText(refs.root || getFlowRoot());
         const negative = /could\s+not|couldn['’]?t|failed|failure|unable|invalid|not created|not scheduled|conflict|error/.test(rootText);
-        if (!negative && /your sale is scheduled|sale is scheduled|successfully (created|scheduled)|your sale has been created/.test(rootText)) return 'complete';
+        if (!negative && /your sale is (?:scheduled|live)|sale is (?:scheduled|live)|successfully (created|scheduled)|your sale has been created/.test(rootText)) return 'complete';
         if (/which listings are included|select (the )?listings|choose (the )?listings/.test(rootText) && !refs.ready) return 'listings';
         if (/review your sale details/.test(rootText) && !refs.ready) return 'review';
         if (refs.ready) return 'form';
-        if (isDetailsStatsPath() && !document.querySelector('[role="dialog"], .wt-overlay__modal, .wt-overlay, .wt-modal')) return 'verification';
-        if (isPromotionsHomePath() && !document.querySelector('[role="dialog"], .wt-overlay__modal, .wt-overlay, .wt-modal')) return 'home';
         return 'unknown';
     }
-    async function reconcileStage(plan, refs = getCreateSaleRefs()) {
+    async function reconcileStage(plan, refs = getCreateSaleRefs(), refsFactory = getCreateSaleRefs) {
         const stage = detectFlowStage(refs);
         const active = job;
+        if (active.completionAck || active.phase === 'ack_complete') {
+            await handleCompletionAck(refs, refsFactory);
+            return true;
+        }
+        // Batch verification is read-only and must never be remapped to a creation
+        // phase because an old or cached sale-step DOM is still disappearing.
+        if (active.phase === 'batch_verify') return false;
         if (active.phase === 'preflight' || active.needsPreflight) return false;
         if (stage === 'complete') {
+            setStatus(`Etsy başarı adımının tamamen yüklenmesi ve sabitlenmesi bekleniyor: ${plan.saleName}`);
+            const stableComplete = await waitForStableSaleStep('complete', { mode: 'complete' }, 12000, refsFactory);
+            if (stableComplete.type === 'error') {
+                await markError(plan, stableComplete.error, 'runtime_error', 'selector_sale_transition');
+                return true;
+            }
+            if (stableComplete.type === 'timeout') {
+                await markError(plan, 'Etsy başarı adımı 12 saniye içinde tamamen yüklenip sabitlenmedi; doğrulama sayfasına geçilmedi.', 'runtime_error', 'selector_sale_transition');
+                return true;
+            }
+            if (stableComplete.type === 'changed' && !['verification', 'home'].includes(stableComplete.stage)) {
+                scheduleTransitionTick(0);
+                return true;
+            }
+            if (['submitted', 'reserved'].includes(active.submission?.status)) {
+                await queueSubmittedForBatchVerification(
+                    plan,
+                    `Etsy başarı adımı doğrulandı: ${plan.saleName}. Kesin liste doğrulaması seri sonunda yapılacak.`,
+                    stableComplete.refs,
+                    refsFactory,
+                );
+                return true;
+            }
             if (active.phase !== 'verify_created') {
                 await setPhase('verify_created', { verifyState: active.verifyState || { startedAt: Date.now(), attempts: 0, nextFetchAt: Date.now() + 1000 } });
                 return true;
@@ -3594,7 +4934,8 @@
             if (active.phase === 'fill_form') return false;
             if (active.phase === 'await_listings' && actionIsRecent(active, plan, 'continue')) return false;
             if (active.phase === 'await_listings') {
-                await markError(plan, 'Continue bir kez tıklandı ancak Etsy form ekranından ilerlemedi. Otomatik ikinci tıklama yapılmadı.');
+                const attempts = Number(actionRecord(active, plan, 'continue')?.attempts || 1);
+                await markError(plan, `Continue ${attempts > 1 ? 'iki güvenli denemeye' : 'bir denemeye'} rağmen Etsy form ekranından ilerlemedi.`);
                 return true;
             }
             await markError(plan, `Etsy ekranı geriye form aşamasına döndü; kayıtlı aşama ${active.phase}. Yanlış adımı otomatik tekrarlamamak için durduruldu.`);
@@ -3603,7 +4944,8 @@
         if (stage === 'listings') {
             if (active.phase === 'await_review' && actionIsRecent(active, plan, 'review')) return false;
             if (active.phase === 'await_review') {
-                await markError(plan, 'Review and confirm bir kez tıklandı ancak Etsy listing seçim ekranından ilerlemedi. Otomatik ikinci tıklama yapılmadı.');
+                const attempts = Number(actionRecord(active, plan, 'review')?.attempts || 1);
+                await markError(plan, `Review and confirm ${attempts > 1 ? 'iki güvenli denemeye' : 'bir denemeye'} rağmen Etsy listing seçim ekranından ilerlemedi.`);
                 return true;
             }
             if (active.phase !== 'select_listings') { await setPhase('select_listings'); return true; }
@@ -3702,12 +5044,21 @@
 
     async function handleFillForm(plan) {
         const token = makeToken();
-        let refs = getCreateSaleRefs();
-        if (!refs.ready) {
-            const elapsed = Date.now() - Number(job.phaseStartedAt || Date.now());
-            if (elapsed > 18000) await markError(plan, 'Form alanları bulunamadı: start/end/name/discount eksik.', 'runtime_error', 'selector_sale_form');
+        setStatus(`Etsy form adımının tamamen yüklenmesi ve alanların sabitlenmesi bekleniyor: ${plan.saleName}`);
+        const stableForm = await waitForStableSaleStep('form', { mode: 'form' }, 15000);
+        if (stableForm.type === 'error') {
+            await markError(plan, stableForm.error, 'runtime_error', 'selector_sale_form');
             return;
         }
+        if (stableForm.type === 'changed' || stableForm.type === 'advanced') {
+            scheduleTransitionTick(0);
+            return;
+        }
+        if (stableForm.type !== 'ready') {
+            await markError(plan, 'Etsy form adımı 15 saniye içinde tamamen yüklenip sabitlenmedi; hiçbir alan değiştirilmedi.', 'runtime_error', 'selector_sale_form');
+            return;
+        }
+        let refs = stableForm.refs;
         setStatus(`Form dolduruluyor\n${plan.saleName} · ${plan.startDateInput} → ${plan.endDateInput} · %${plan.discount}`);
         const percentOk = await ensureDiscountPercent(refs);
         await assertTokenFresh(token);
@@ -3749,7 +5100,7 @@
         await assertTokenFresh(token);
         if (action.type === 'error') { await markError(plan, action.message); return; }
         if (action.type === 'continue') {
-            setStatus(`Continue tek kez tıklanıyor: ${plan.saleName}`);
+            setStatus(`Continue tıklanıyor ve Etsy adım geçişi doğrulanıyor: ${plan.saleName}`);
             await performStepAction(plan, 'continue', action.button, 'await_listings', { label: 'Continue' });
             return;
         }
@@ -3774,9 +5125,10 @@
         if (stage === 'complete' || stage === 'verification') { await setPhase('verify_created'); return; }
         const elapsed = Date.now() - Number(job.phaseStartedAt || Date.now());
         if (elapsed > ACTION_GRACE_MS) {
-            await markError(plan, `Continue tek kez tıklandı ancak listing seçim ekranı gelmedi. Görünen düğmeler: ${visibleButtonSummary(10, true) || 'yok'}.`, 'runtime_error', 'selector_sale_transition');
+            const attempts = Number(actionRecord(job, plan, 'continue')?.attempts || 1);
+            await markError(plan, `Continue ${attempts > 1 ? 'iki güvenli denemeye' : 'bir denemeye'} rağmen listing seçim ekranına geçmedi. Görünen düğmeler: ${visibleButtonSummary(10, true) || 'yok'}.`, 'runtime_error', 'selector_sale_transition');
         } else {
-            setStatus(`Continue sonrası Etsy geçişi bekleniyor: ${plan.saleName}\nOtomatik ikinci tıklama yapılmayacak.`);
+            setStatus(`Continue sonrası Etsy geçişi bekleniyor: ${plan.saleName}\nYalnız aynı form adımında kaldığı doğrulanırsa güvenli tek tekrar uygulanır.`);
         }
     }
 
@@ -3890,6 +5242,7 @@
             setStatus('Rapor/ayar penceresi açıldığı için All listings rezervasyonu geri alındı; arka planda tıklama yapılmadı.');
             return { ok: false, found: true, blocked: true, message: 'Script penceresi açıkken All listings seçimi bekletildi.' };
         }
+        assertForegroundTab();
         if (!robustClick(clickTarget)) {
             await rollback();
             return { ok: false, found: true, message: 'All listings seçeneğinin görünür etiketi tıklanamadı.' };
@@ -3914,8 +5267,18 @@
         return { ok: true, found: true, message: 'All listings kontrolü seçildi.' };
     }
     async function handleSelectListings(plan) {
-        let refs = getCreateSaleRefs();
-        if (refs.errorTexts.length) { await markError(plan, refs.errorTexts.join(' | ')); return; }
+        setStatus(`Etsy listing seçim adımının tamamen yüklenmesi ve sabitlenmesi bekleniyor: ${plan.saleName}`);
+        const stableListings = await waitForStableSaleStep('listings', { mode: 'listings' }, 12000);
+        if (stableListings.type === 'error') { await markError(plan, stableListings.error); return; }
+        if (stableListings.type === 'changed' || stableListings.type === 'advanced') {
+            scheduleTransitionTick(0);
+            return;
+        }
+        if (stableListings.type !== 'ready') {
+            await markError(plan, 'Etsy listing seçim adımı 12 saniye içinde tamamen yüklenip sabitlenmedi; hiçbir seçim veya tıklama yapılmadı.', 'runtime_error', 'selector_sale_scope');
+            return;
+        }
+        let refs = stableListings.refs;
         const selection = await ensureAllListingsSelected(plan, refs);
         if (!selection.ok) {
             if (selection.blocked) {
@@ -3930,7 +5293,7 @@
         await persistAllListingsEvidence(plan, selection.message);
         refs = getCreateSaleRefs();
         if (refs.reviewButton) {
-            setStatus(`Review and confirm tek kez tıklanıyor: ${plan.saleName}`);
+            setStatus(`Review and confirm tıklanıyor ve Etsy adım geçişi doğrulanıyor: ${plan.saleName}`);
             await performStepAction(plan, 'review', refs.reviewButton, 'await_review', { label: 'Review and confirm' });
             return;
         }
@@ -3952,9 +5315,10 @@
         if (stage === 'complete' || stage === 'verification') { await setPhase('verify_created'); return; }
         const elapsed = Date.now() - Number(job.phaseStartedAt || Date.now());
         if (elapsed > ACTION_GRACE_MS) {
-            await markError(plan, `Review and confirm tek kez tıklandı ancak final inceleme ekranı gelmedi. Görünen düğmeler: ${visibleButtonSummary(10, true) || 'yok'}.`, 'runtime_error', 'selector_sale_transition');
+            const attempts = Number(actionRecord(job, plan, 'review')?.attempts || 1);
+            await markError(plan, `Review and confirm ${attempts > 1 ? 'iki güvenli denemeye' : 'bir denemeye'} rağmen final inceleme ekranına geçmedi. Görünen düğmeler: ${visibleButtonSummary(10, true) || 'yok'}.`, 'runtime_error', 'selector_sale_transition');
         } else {
-            setStatus(`Review sonrası Etsy geçişi bekleniyor: ${plan.saleName}\nOtomatik ikinci tıklama yapılmayacak.`);
+            setStatus(`Review sonrası Etsy geçişi bekleniyor: ${plan.saleName}\nYalnız aynı listing adımında kaldığı doğrulanırsa güvenli tek tekrar uygulanır.`);
         }
     }
 
@@ -3967,12 +5331,12 @@
         }
         if (job.submission?.status === 'submitted') { await setPhase('await_result'); return; }
         if (job.submission?.status === 'reserved') { await setPhase('verify_created'); return; }
-        if (refs.finalButton) {
+        const stage = detectFlowStage(refs);
+        if (refs.finalButton || refs.finalCandidate || stage === 'review') {
             setStatus(`Final onay yalnızca bir kez gönderiliyor: ${plan.saleName}`);
             await performStepAction(plan, 'final_submit', refs.finalButton, 'await_result', { label: 'Confirm sale', final: true });
             return;
         }
-        const stage = detectFlowStage(refs);
         if (stage === 'complete' || stage === 'verification') { await setPhase('verify_created'); return; }
         const elapsed = Date.now() - Number(job.phaseStartedAt || Date.now());
         if (elapsed > 18000) {
@@ -4224,7 +5588,8 @@
         const raw = normalizePolicyRaw(rawInput || {});
         const keys = [
             'status','state','promotion_status','is_cancelled','is_canceled','is_stopped','is_deleted','is_active','is_scheduled',
-            'sale_type','type','promotion_kind','offer_type','listing_scope','scope','all_listings','applies_to_all_listings',
+            'promotion_type','discoverability_type','promotion_subtype','grants_buyer_targeted_offers','is_buyer_targeted_offer_campaign_stopped',
+            'start_date','start_date_ms','end_date','end_date_ms','sale_type','type','promotion_kind','offer_type','listing_scope','scope','all_listings','applies_to_all_listings',
             'reward_set_listing_ids','listing_ids','eligible_listing_ids','included_listing_ids','eligible_region_id','region_id','region','eligible_region','country_scope','is_everywhere',
             'discount_value','reward_percent_discount_on_order','reward_percent_discount_on_items_in_set','reward_fixed_discount_on_order','reward_fixed_discount_on_items_in_set','reward_value','discount','reward_type','discount_type','discount_kind','value_type'
         ];
@@ -4255,7 +5620,7 @@
                     raw: compactPolicyRaw(normalized),
                     name: String(name),
                     promotionId: String(promotionId),
-                    href: `/your/shops/me/sales-discounts/promotion/${encodeURIComponent(String(promotionId))}`,
+                    href: `/your/shops/me/sales-discounts/details-stats/promotion/${encodeURIComponent(String(promotionId))}`,
                     discount: discountEvidence.value,
                     discountKind: discountEvidence.kind,
                     startDates: uniq([
@@ -4279,8 +5644,8 @@
         return records;
     }
     function promotionCandidates(root = document) {
-        const selector = 'a[href*="/sales-discounts/promotion/"]';
-        const isNumericLink = link => /\/sales-discounts\/promotion\/\d+(?:[/?#]|$)/.test(link?.getAttribute?.('href') || link?.href || '');
+        const selector = 'a[href*="/sales-discounts/promotion/"], a[href*="/sales-discounts/details-stats/promotion/"]';
+        const isNumericLink = link => /\/sales-discounts\/(?:details-stats\/)?promotion\/\d+(?:[/?#]|$)/.test(link?.getAttribute?.('href') || link?.href || '');
         const linksWithin = node => {
             const links = [];
             if (node?.matches?.(selector) && isNumericLink(node)) links.push(node);
@@ -4343,31 +5708,70 @@
         const startMatch = Array.isArray(candidate.startDates)
             ? candidate.startDates.includes(plan.startDateIso)
             : containsDateText(source, plan.startDate);
+        const planEnd = plan.endDate instanceof Date ? plan.endDate : parseIso(plan.endDateIso);
+        const exclusiveEndIso = planEnd ? isoDate(addDays(planEnd, 1)) : '';
         const endMatch = Array.isArray(candidate.endDates)
-            ? candidate.endDates.includes(plan.endDateIso)
+            ? candidate.endDates.some(value => value === plan.endDateIso || (isCanonicalDetailsStatsRecord(candidate) && !!exclusiveEndIso && value === exclusiveEndIso))
             : endDateEvidence(source, plan);
         return { matchedName, name: true, discount: discountMatch, start: startMatch, end: endMatch };
+    }
+    function rawEpochMillis(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric) || numeric <= 0) return null;
+        return numeric < 1e12 ? numeric * 1000 : numeric;
+    }
+    function isCanonicalDetailsStatsRecord(candidate) {
+        return candidate?.source === 'structured'
+            && /^\d+$/.test(String(candidate?.promotionId || ''))
+            && /detailsAndStatsPageData\.promotions\[\d+\]/.test(String(candidate?.path || ''));
+    }
+    function submittedFormEvidenceMatches(plan, expectedRegion, options = {}) {
+        const submission = options.submission || job?.submission;
+        const evidence = options.formEvidence || job?.formEvidence || submission?.formEvidence;
+        if (!options.postSubmit || !submission || submission.status !== 'submitted') return false;
+        if (!evidence || !plan?.idempotencyKey) return false;
+        return submission.idempotencyKey === plan.idempotencyKey
+            && evidence.idempotencyKey === plan.idempotencyKey
+            && evidence.saleName === plan.saleName
+            && Number(evidence.discount) === Number(plan.discount)
+            && evidence.startDate === plan.startDateIso
+            && evidence.endDate === plan.endDateIso
+            && evidence.flowType === 'run_sale'
+            && String(evidence.regionValue ?? '') === String(expectedRegion)
+            && String(submission.regionValue ?? '') === String(expectedRegion)
+            && submission.listingScope === 'all';
     }
     function policyEvidence(candidate, plan, options = {}) {
         const raw = normalizePolicyRaw(candidate.raw || {});
         const display = low(candidate.text || '');
         const expectedRegion = String(options.countryValue ?? job?.countryValue ?? '0');
+        const canonicalDetailsRecord = isCanonicalDetailsStatsRecord(candidate);
+
+        const rawType = low(raw.sale_type ?? raw.type ?? raw.promotion_kind ?? raw.offer_type);
+        const normalizedType = rawType.replace(/[^a-z0-9]+/g, '');
+        const positiveTypes = ['sale', 'runsale', 'shopwide', 'shopwidesale'];
+        const negativeTypes = ['promocode', 'coupon', 'targetedoffer', 'abandonedcart', 'thankyou', 'favorites', 'favoriteditem', 'makeanoffer'];
+        const structuredRunSale = positiveTypes.includes(normalizedType);
 
         const rawStatus = low(raw.status ?? raw.state ?? raw.promotion_status);
+        const rawStartMs = rawEpochMillis(raw.start_date_ms ?? raw.start_date);
+        const rawEndMs = rawEpochMillis(raw.end_date_ms ?? raw.end_date);
+        const explicitlyStopped = boolish(raw.is_buyer_targeted_offer_campaign_stopped) === true;
+        const temporalStatusKnown = canonicalDetailsRecord && structuredRunSale && rawStartMs != null && rawEndMs != null;
+        const temporalStatusPositive = temporalStatusKnown && !explicitlyStopped && rawEndMs >= Date.now();
         const statusNegative = [raw.is_cancelled, raw.is_canceled, raw.is_stopped, raw.is_deleted].some(value => boolish(value) === true)
+            || (temporalStatusKnown && (explicitlyStopped || rawEndMs < Date.now()))
             || ['canceled', 'cancelled', 'stopped', 'expired', 'ended', 'inactive', 'draft', 'deleted'].includes(rawStatus)
             || /\bstatus\s*:\s*(?:cancell?ed|stopped|expired|ended|inactive|draft|deleted)\b/.test(display);
         const statusPositive = [raw.is_scheduled, raw.is_active].some(value => boolish(value) === true)
+            || temporalStatusPositive
             || ['active', 'scheduled', 'running', 'upcoming', 'live'].includes(rawStatus)
             || /\bstatus\s*:\s*(?:active|scheduled|running|upcoming|live)\b|\b(?:active sale|scheduled sale|currently active|upcoming sale)\b/.test(display);
 
-        const rawType = low(raw.sale_type ?? raw.type ?? raw.promotion_kind ?? raw.offer_type);
-        const positiveTypes = ['sale', 'run_sale', 'runsale', 'run-a-sale'];
-        const negativeTypes = ['promocode', 'promo_code', 'coupon', 'targetedoffer', 'targeted_offer', 'abandonedcart', 'abandoned_cart', 'thankyou', 'thank_you', 'favorites', 'favorited_item', 'make_an_offer'];
         let typeValue = null;
         if (rawType) {
-            if (positiveTypes.includes(rawType)) typeValue = true;
-            else if (negativeTypes.includes(rawType)) typeValue = false;
+            if (structuredRunSale) typeValue = true;
+            else if (negativeTypes.includes(normalizedType)) typeValue = false;
         } else if (/\b(?:sale|promotion)\s*type\s*:\s*(?:run a sale|sale)\b|\btype\s*:\s*sale\b|\brun a sale\b/.test(display)) {
             typeValue = true;
         } else if (/\b(?:sale|promotion)\s*type\s*:\s*(?:coupon|promo code|targeted offer|abandoned cart|thank you)\b|\btargeted offer\b|\babandoned cart\b/.test(display)) {
@@ -4379,7 +5783,8 @@
         const scopeNegated = hasAllListingsNegation(display);
         const finiteSelection = /\b(?:selected|included|chosen)\s*[:\-]?\s*[1-9]\d*\s+(?:of\s+\d+\s+)?listings?\b/.test(display)
             || /\b[1-9]\d*\s+(?:of\s+\d+\s+)?listings?\s+(?:selected|included|chosen)\b/.test(display);
-        const structuredAll = boolish(raw.all_listings) === true || boolish(raw.applies_to_all_listings) === true || ['all', 'entire_shop'].includes(rawScope);
+        const structuredAll = boolish(raw.all_listings) === true || boolish(raw.applies_to_all_listings) === true || ['all', 'entire_shop'].includes(rawScope)
+            || (normalizedType === 'shopwide' && Array.isArray(explicitListingIds) && explicitListingIds.length === 0);
         const structuredSpecific = ['specific', 'selected', 'individual'].includes(rawScope)
             || (Array.isArray(explicitListingIds) && explicitListingIds.length > 0);
         let scopeValue = null;
@@ -4391,6 +5796,8 @@
             ? (rawRegionSource.id ?? rawRegionSource.value ?? rawRegionSource.region_id ?? rawRegionSource.name ?? rawRegionSource.label)
             : rawRegionSource;
         const rawRegionText = low(rawRegion ?? '');
+        const hasExplicitRegion = ['eligible_region_id', 'region_id', 'region', 'eligible_region', 'country_scope', 'is_everywhere']
+            .some(key => Object.prototype.hasOwnProperty.call(raw, key));
         let regionValue = null;
         if (rawRegion != null && rawRegionText !== '') {
             if (expectedRegion === '0') regionValue = rawRegionText === '0' || /^(?:everywhere|worldwide|all(?: countries| regions)?)$/.test(rawRegionText);
@@ -4402,6 +5809,16 @@
             regionValue = true;
         }
         if (boolish(raw.is_everywhere) === true && expectedRegion === '0') regionValue = true;
+        // Details & Stats omits the default worldwide region. Post-submit verification
+        // may bridge only that omitted field with the exact locked form/submission proof;
+        // preflight and any explicit conflicting region remain fail-closed.
+        const regionFromSubmittedForm = regionValue == null
+            && expectedRegion === '0'
+            && !hasExplicitRegion
+            && canonicalDetailsRecord
+            && normalizedType === 'shopwide'
+            && submittedFormEvidenceMatches(plan, expectedRegion, options);
+        if (regionFromSubmittedForm) regionValue = true;
 
         const fields = {
             status: statusNegative ? false : (statusPositive ? true : null),
@@ -4411,7 +5828,7 @@
         };
         const mismatches = Object.entries(fields).filter(([, value]) => value === false).map(([key]) => key);
         const unknown = Object.entries(fields).filter(([, value]) => value == null).map(([key]) => key);
-        return { ok: mismatches.length === 0 && unknown.length === 0, fields, mismatches, unknown, serverOnly: true };
+        return { ok: mismatches.length === 0 && unknown.length === 0, fields, mismatches, unknown, serverOnly: !regionFromSubmittedForm };
     }
     function activePromotionFilterEvidence(root, source = '') {
         const normalized = low(source);
@@ -4540,8 +5957,8 @@
             if (!candidateText || negative.test(candidateText)) continue;
             const core = exactCoreMatch(plan, candidate, aliases);
             if (!core.name) continue;
-            const href = candidate.href || (candidate.promotionId ? `/your/shops/me/sales-discounts/promotion/${candidate.promotionId}` : '');
-            const numericLink = /\/sales-discounts\/promotion\/\d+(?:[/?#]|$)/.test(href || '');
+            const href = candidate.href || (candidate.promotionId ? `/your/shops/me/sales-discounts/details-stats/promotion/${candidate.promotionId}` : '');
+            const numericLink = /\/sales-discounts\/(?:details-stats\/)?promotion\/\d+(?:[/?#]|$)/.test(href || '');
             const policy = policyEvidence(candidate, plan, options);
             const score = 50 + (core.discount ? 15 : 0) + (core.start ? 15 : 0) + (core.end ? 10 : 0) + (numericLink ? 5 : 0);
             const current = { score, candidate, core, policy, href, numericLink };
@@ -4567,6 +5984,9 @@
 
         const verified = exactMatches.find(item => item.numericLink && item.policy.ok);
         if (verified) {
+            const proofText = verified.policy.serverOnly
+                ? 'yalnızca Etsy sunucu verisinden'
+                : 'Etsy sunucu kaydı ve aynı gönderime bağlı kilitli form kanıtından';
             return {
                 ok: true,
                 readComplete: true,
@@ -4574,7 +5994,7 @@
                 matchedName: verified.core.matchedName,
                 source: verified.candidate.source || 'list',
                 cacheRecord: serializePromotionCandidate(verified.candidate),
-                message: `Promosyon kodu, yüzde indirim, tarihler, durum, tür, bölge ve All listings kapsamıyla yalnızca Etsy sunucu verisinden doğrulandı: ${verified.core.matchedName}.`,
+                message: `Promosyon kodu, yüzde indirim, tarihler, durum, tür, bölge ve All listings kapsamıyla ${proofText} doğrulandı: ${verified.core.matchedName}.`,
             };
         }
 
@@ -4766,12 +6186,15 @@
         const verified = exact.filter(item => item.policy.ok);
         if (verified.length === 1) {
             const item = verified[0];
+            const proofText = item.policy.serverOnly
+                ? 'sunucu kaydından'
+                : 'sunucu kaydı ve aynı gönderime bağlı kilitli form kanıtından';
             return {
                 ok: true,
                 matchedName: item.core.matchedName,
                 source: item.candidate.source || 'detail',
                 cacheRecord: serializePromotionCandidate(item.candidate),
-                message: `Promosyon detayında tek promotion kaydına bağlı kod, yüzde indirim, tarihler, durum, tür, bölge ve kapsam doğrulandı: ${item.core.matchedName}.`,
+                message: `Promosyon detayında tek promotion kaydına bağlı kod, yüzde indirim, tarihler, durum, tür, bölge ve kapsam ${proofText} doğrulandı: ${item.core.matchedName}.`,
             };
         }
         if (verified.length > 1) {
@@ -5282,7 +6705,78 @@
         return delays[Math.min(Math.max(0, attempt - 1), delays.length - 1)];
     }
 
+    function currentSubmissionMatchesPlan(activeJob, plan) {
+        const submission = activeJob?.submission;
+        return !!(plan?.idempotencyKey
+            && ['submitted', 'reserved'].includes(submission?.status)
+            && submission.idempotencyKey === plan.idempotencyKey);
+    }
+
+    function submissionAlreadyAccountedFor(activeJob, submission) {
+        const key = submission?.idempotencyKey;
+        if (!key) return false;
+        return (activeJob?.pendingVerifications || []).some(entry => entry?.idempotencyKey === key)
+            || (activeJob?.results || []).some(row => row?.idempotencyKey === key);
+    }
+
+    async function ensureCurrentSubmissionForVerification(plan) {
+        const token = makeToken();
+        if (!token || !plan) return false;
+        let outcome = 'ambiguous';
+        let reason = '';
+        const checked = await withStateLock(async () => {
+            const fresh = validateFreshForToken(await gmGet(JOB_KEY, null), token);
+            if (currentSubmissionMatchesPlan(fresh, plan)) {
+                outcome = 'exact';
+                return fresh;
+            }
+
+            const submission = fresh.submission;
+            const staleAccounted = !!submission && submissionAlreadyAccountedFor(fresh, submission);
+            const finalRecord = actionRecord(fresh, plan, 'final_submit');
+            const currentFinalEvidence = ['reserved', 'clicked'].includes(finalRecord?.status)
+                || fresh.formEvidence?.idempotencyKey === plan.idempotencyKey;
+            if ((!submission || staleAccounted) && !currentFinalEvidence) {
+                const next = clone(fresh);
+                next.phase = 'preflight';
+                next.phaseStartedAt = Date.now();
+                next.needsPreflight = true;
+                next.verifyState = null;
+                next.notBefore = 0;
+                next.expectedNavigationUntil = 0;
+                next.expectedNavigationPath = '';
+                if (staleAccounted) {
+                    next.submission = null;
+                    next.formEvidence = null;
+                }
+                next.updatedAt = new Date().toISOString();
+                await gmSet(JOB_KEY, next);
+                outcome = 'repaired';
+                return next;
+            }
+
+            if (submission) {
+                reason = `Doğrulama kaydı ${submission.idempotencyKey || 'kimliksiz'} kampanyasına ait; aktif gün ${plan.idempotencyKey}. Yanlış güne ait kayıt doğrulanmadı ve hiçbir kampanya yeniden gönderilmedi.`;
+            } else {
+                reason = `Aktif ${plan.saleName} günü için final gönderim kanıtı bulunamadı. Yarım kalmış final işlemini tekrar gönderme riski nedeniyle doğrulama veya oluşturma yapılmadı.`;
+            }
+            return fresh;
+        });
+        job = checked;
+        renderPanel();
+        if (outcome === 'exact') return true;
+        if (outcome === 'repaired') {
+            setStatus(`Yanlış güne ait doğrulama aşaması düzeltildi: ${plan.saleName}\nÖnce salt okunur duplicate kontrolü yapılacak; kampanya yalnız kesin olarak bulunamazsa oluşturma akışına geçecek.`);
+            toast(`${plan.saleName} için hatalı doğrulama geçişi düzeltildi; önce güvenli ön kontrol yapılacak.`, 'warning', 6200);
+            scheduleTransitionTick(0);
+            return false;
+        }
+        await markError(plan, reason, 'submission_ambiguous');
+        return false;
+    }
+
     async function handleVerifyCreated(plan) {
+        if (!(await ensureCurrentSubmissionForVerification(plan))) return;
         const token = makeToken();
         if (!isVerificationPath()) {
             const state = job.verifyState || {};
@@ -5304,6 +6798,14 @@
         if (challenge) { await markError(plan, challenge, 'rate_limit_or_challenge'); return; }
         const pageErrors = collectErrors(document);
         if (pageErrors.length) { await markError(plan, pageErrors.join(' | '), 'verification_error'); return; }
+        if (!Number(job.verifyState?.pageReadyAt || 0)) {
+            await updateVerifyState(token, verify => {
+                const now = Date.now();
+                verify.pageReadyAt = now;
+                verify.startedAt = now;
+                verify.nextFetchAt = now + 600;
+            });
+        }
         const verifyOptions = { postSubmit: true, strict: false, countryValue: job?.countryValue, token, allowCache: false };
         let result = verifyInDocument(plan, document, verifyOptions);
         if (result.policyMismatch) { await markError(plan, result.message, 'created_policy_mismatch'); return; }
@@ -5346,6 +6848,176 @@
         }
     }
 
+    function batchVerificationOptions(entry, token) {
+        return {
+            postSubmit: true,
+            strict: false,
+            allowCache: false,
+            countryValue: entry.countryValue,
+            submission: entry.submission,
+            formEvidence: entry.formEvidence,
+            token,
+        };
+    }
+
+    async function verifyPendingBatchEntry(entry, candidates, readability, token, allowListFetch = false) {
+        const plan = planFromPendingVerification(entry, job);
+        if (!plan) return { ok: false, fatal: true, message: `Bekleyen doğrulama kaydı iş planıyla uyuşmuyor: ${entry?.saleName || 'bilinmeyen'}.` };
+        const options = batchVerificationOptions(entry, token);
+        let result = assessPromotionCandidates(plan, candidates, readability, options);
+        if (result.detailRequired && result.url) {
+            const detailPage = await fetchVerifiedDocument(result.url, 'toplu promosyon detay doğrulama', { strict: false, token, expectedRouteUrl: result.url });
+            if (!detailPage.loaded) return { ...result, ok: false, readComplete: false, retryable: true, message: `${result.message} Detay kontrolü başarısız: ${detailPage.message}` };
+            const detailResult = verifyPromotionDetail(plan, detailPage.doc, { ...options, expectedUrl: result.url, finalUrl: detailPage.url });
+            if (detailResult.ok) return { ...detailResult, ok: true, readComplete: true, url: detailPage.url, matchedName: detailResult.matchedName || result.matchedName };
+            result = { ...result, ...detailResult, ok: false, ambiguousExisting: true, readComplete: true, message: `${result.message} ${detailResult.message}` };
+        }
+        if (!result.ok && allowListFetch && !result.policyMismatch) {
+            const fetched = await verifyByFetch(plan, options);
+            if (fetched.ok || fetched.fatal || fetched.policyMismatch || fetched.ambiguousExisting) return fetched;
+            result = fetched;
+        }
+        return result;
+    }
+
+    async function pauseBatchVerification(message) {
+        const currentJobId = job?.jobId;
+        const changed = await withStateLock(async () => {
+            const fresh = await gmGet(JOB_KEY, null);
+            if (!fresh?.active || fresh.jobId !== currentJobId || fresh.phase !== 'batch_verify') return null;
+            const next = clone(fresh);
+            next.paused = true;
+            next.pauseKind = 'batch_verification_incomplete';
+            next.errorReason = String(message || 'Toplu doğrulama tamamlanamadı.');
+            next.errorAt = new Date().toISOString();
+            next.pendingError = null;
+            next.generation = Number(next.generation || 0) + 1;
+            next.expectedNavigationUntil = 0;
+            next.expectedNavigationPath = '';
+            next.updatedAt = new Date().toISOString();
+            await gmSet(JOB_KEY, next);
+            return next;
+        });
+        if (!changed) return;
+        job = changed;
+        abortAutomation('batch-verification-paused');
+        await releaseLease();
+        renderPanel();
+        setStatus(`Toplu doğrulama duraklatıldı. Hiçbir kampanya yeniden gönderilmeyecek.\n${changed.errorReason}\nYeniden Dene yalnız doğrulamayı tekrarlar.`);
+        toast('Toplu doğrulama tamamlanamadı; oluşturma tekrarlanmayacak.', 'warning', 7000);
+    }
+
+    async function completeBatchVerification() {
+        const currentJobId = job?.jobId;
+        const completed = await withStateLock(async () => {
+            const fresh = await gmGet(JOB_KEY, null);
+            if (!fresh?.active || fresh.jobId !== currentJobId || fresh.phase !== 'batch_verify') return null;
+            if (Array.isArray(fresh.pendingVerifications) && fresh.pendingVerifications.length) return null;
+            const next = clone(fresh);
+            next.active = false;
+            next.paused = false;
+            next.pauseKind = '';
+            next.errorReason = '';
+            next.pendingError = null;
+            next.terminalStatus = 'completed';
+            next.finishedAt = new Date().toISOString();
+            next.phase = 'completed';
+            next.batchVerifyState = null;
+            next.expectedNavigationUntil = 0;
+            next.expectedNavigationPath = '';
+            next.updatedAt = new Date().toISOString();
+            await gmSet(JOB_KEY, next);
+            return next;
+        });
+        if (!completed) return false;
+        job = completed;
+        await finalizeTerminalJob(completed.jobId, true);
+        return true;
+    }
+
+    async function handleBatchVerify() {
+        const token = makeToken();
+        const pending = Array.isArray(job.pendingVerifications) ? job.pendingVerifications : [];
+        if (!pending.length) {
+            await completeBatchVerification();
+            return;
+        }
+        if (!isVerificationPath()) {
+            setStatus(`Seri oluşturma tamamlandı. ${pending.length} kampanya için tek toplu doğrulama sayfası açılıyor.`);
+            await mutateJob(token, next => {
+                next.expectedNavigationUntil = Date.now() + 18000;
+                next.expectedNavigationPath = '/sales-discounts/details-stats';
+            });
+            go(DETAILS_STATS_URL);
+            return;
+        }
+
+        const challenge = detectChallenge();
+        if (challenge) { await pauseBatchVerification(challenge); return; }
+        const pageErrors = collectErrors(document);
+        if (pageErrors.length) { await pauseBatchVerification(pageErrors.join(' | ')); return; }
+        const state = job.batchVerifyState || { startedAt: Date.now(), attempts: 0, nextFetchAt: Date.now() };
+        if (Date.now() < Number(state.nextFetchAt || 0)) {
+            setStatus(`Toplu doğrulama hazırlanıyor: ${pending.length} kampanya bekliyor.`);
+            return;
+        }
+
+        const attempt = Math.max(0, intVal(state.attempts, 0)) + 1;
+        const readability = assessPromotionListReadability(document);
+        const candidates = [...readability.structured, ...readability.rows];
+        const resolved = [];
+        const unresolved = [];
+        setStatus(`Toplu doğrulama yapılıyor: ${pending.length} kampanya · deneme ${attempt}/${MAX_VERIFY_FETCH_ATTEMPTS}`);
+        for (const entry of pending) {
+            await maintainLeaseForToken(token);
+            const result = await verifyPendingBatchEntry(entry, candidates, readability, token, attempt > 1);
+            if (result.ok) resolved.push({ entry, result });
+            else unresolved.push({ entry, result });
+        }
+
+        const updated = await mutateJob(token, next => {
+            resolved.forEach(({ entry, result }) => {
+                const plan = planFromPendingVerification(entry, next);
+                if (!plan) return;
+                next.results = upsertResult(next.results, resultRow(plan, 'SUCCESS', result.message, {
+                    verified: true,
+                    url: result.url || '',
+                    saleName: result.matchedName || plan.saleName,
+                }, next));
+            });
+            const unresolvedById = new Map(unresolved.map(item => [item.entry.idempotencyKey, item.result]));
+            next.pendingVerifications = (next.pendingVerifications || [])
+                .filter(entry => !resolved.some(item => item.entry.idempotencyKey === entry.idempotencyKey))
+                .map(entry => ({
+                    ...entry,
+                    lastVerificationMessage: String(unresolvedById.get(entry.idempotencyKey)?.message || entry.lastVerificationMessage || ''),
+                }));
+            next.batchVerifyState = {
+                startedAt: Number(state.startedAt || Date.now()),
+                attempts: attempt,
+                nextFetchAt: Date.now() + verifyRetryDelay(attempt),
+                lastAttemptAt: Date.now(),
+            };
+        });
+        if (!updated.pendingVerifications.length) {
+            await completeBatchVerification();
+            return;
+        }
+
+        const elapsed = Date.now() - Number(updated.batchVerifyState?.startedAt || Date.now());
+        const timeout = Number(updated.verifyTimeoutMs || config.verifyTimeoutMs);
+        if (attempt >= MAX_VERIFY_FETCH_ATTEMPTS || elapsed > timeout || unresolved.some(item => item.result.fatal || item.result.policyMismatch)) {
+            const summary = updated.pendingVerifications
+                .slice(0, 6)
+                .map(entry => `${entry.saleName}: ${entry.lastVerificationMessage || 'kesin doğrulama yok'}`)
+                .join(' | ');
+            await pauseBatchVerification(`${updated.pendingVerifications.length} kampanya kesin doğrulanamadı. ${summary}`);
+            return;
+        }
+        setStatus(`${resolved.length} kampanya bu turda doğrulandı; ${updated.pendingVerifications.length} kampanya Etsy liste senkronu için bekliyor. Oluşturma tekrarlanmayacak.`);
+        scheduleTransitionTick(verifyRetryDelay(attempt));
+    }
+
     async function ensureShopMatch(plan) {
         const identity = detectShopIdentity(true);
         if (!identity?.shopId) {
@@ -5374,14 +7046,57 @@
         }
         return true;
     }
+    function scheduleTransitionTick(delay = 35) {
+        if (transitionTickTimerId) return;
+        const run = () => {
+            transitionTickTimerId = null;
+            if (tabIsHidden() || !job?.active || job.paused || !isSupportedRoute()) return;
+            if (tickLock) {
+                transitionTickTimerId = setTimeout(run, 35);
+                return;
+            }
+            void processTick();
+        };
+        transitionTickTimerId = setTimeout(run, Math.max(0, Number(delay) || 0));
+    }
+
+    function installSaleFlowTransitionObserver() {
+        const target = document.getElementById('wt-modal-container');
+        if (target === observedSaleFlowRoot && saleFlowObserver) return;
+        try { saleFlowObserver?.disconnect(); } catch {}
+        saleFlowObserver = null;
+        observedSaleFlowRoot = target || null;
+        if (!target || typeof MutationObserver !== 'function') return;
+        saleFlowObserver = new MutationObserver(records => {
+            if (tabIsHidden() || !job?.active || job.paused) return;
+            const relevant = records.some(record => {
+                const element = record.target?.nodeType === 1 ? record.target : record.target?.parentElement;
+                return !isOwnUi(element);
+            });
+            if (relevant) scheduleTransitionTick(35);
+        });
+        saleFlowObserver.observe(target, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['aria-hidden', 'aria-disabled', 'disabled', 'class'],
+        });
+    }
+
     async function processTick() {
-        if (!isSupportedRoute() || tickLock || document.hidden) return;
+        if (!isSupportedRoute() || tickLock || tabIsHidden()) return;
+        installSaleFlowTransitionObserver();
         tickLock = true;
         try {
             await refreshJob();
+            assertForegroundTab();
             if (!job) return;
             if (!job.active) { await finalizeTerminalJob(job.jobId, true); return; }
             if (job.paused) { await releaseLease(); return; }
+            if (document.readyState !== 'complete') {
+                setStatus('Etsy sayfasının tüm kaynaklarıyla yüklenmesi bekleniyor. Bu sırada hiçbir alan değiştirilmeyecek ve hiçbir düğmeye tıklanmayacak.');
+                return;
+            }
             const plan = buildPlan(job.currentDate, job);
             if (!plan) { await markError(null, 'Aktif tarih planı oluşturulamadı.'); return; }
             const earlyIdentity = detectShopIdentity(true);
@@ -5407,16 +7122,39 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
                 return;
             }
             if (!(await ensureShopMatch(plan))) return;
-            const blocking = detectBlockingForeignOverlay();
-            if (blocking) {
+            assertForegroundTab();
+            const challenge = detectChallenge();
+            if (challenge) { await markError(plan, challenge, 'rate_limit_or_challenge'); return; }
+            const refs = getCreateSaleRefs();
+            // An acknowledgement phase exists specifically because the previous Etsy success
+            // overlay is still open. Handle that overlay before the generic foreign-modal gate;
+            // otherwise a localized success copy could be paused as unrelated UI.
+            if (job.completionAck || job.phase === 'ack_complete') {
+                await handleCompletionAck(refs);
+                return;
+            }
+            const blocking = detectBlockingForeignOverlay(null, refs);
+            if (blocking?.kind === 'transient_sale_loading') {
+                const wait = evaluateTransientSaleLoadingWait(blocking);
+                if (wait.state === 'timeout') {
+                    await markError(plan, `Etsy geçici yükleme penceresi ${Math.ceil(TRANSIENT_SALE_LOADING_TIMEOUT_MS / 1000)} saniye içinde kapanmadı. Arka planda hiçbir alan değiştirilmedi ve hiçbir düğmeye tıklanmadı: ${blocking.summary}`, 'transient_loading_timeout');
+                    return;
+                }
+                setStatus(`Etsy geçici yükleme penceresinin kapanması bekleniyor: ${blocking.summary}\nBu sırada hiçbir alan değiştirilmeyecek ve hiçbir düğmeye tıklanmayacak. Güvenli bekleme sınırı: ${Math.max(1, Math.ceil(wait.remainingMs / 1000))} sn.`);
+                scheduleTransitionTick(Math.min(250, wait.remainingMs));
+                return;
+            }
+            evaluateTransientSaleLoadingWait(null);
+            if (blocking?.kind === 'foreign') {
                 await markError(plan, `Satış akışına ait olmayan açık Etsy penceresi algılandı. Arka planda hiçbir işlem yapılmadı. Önce pencereyi kapat: ${blocking.summary}`, 'foreign_modal_blocking');
                 return;
             }
-            const challenge = detectChallenge();
-            if (challenge) { await markError(plan, challenge, 'rate_limit_or_challenge'); return; }
             const progress = getProgressInfo(job);
-            setStatus(`Seri çalışıyor · ${shopLabel(job.shop)}\n${progress.completed}/${progress.total} tamamlandı\nSıradaki: ${plan.dayName} · ${plan.saleName}`);
-            const refs = getCreateSaleRefs();
+            if (job.phase === 'batch_verify') {
+                setStatus(`Oluşturma serisi tamamlandı · ${shopLabel(job.shop)}\n${job.pendingVerifications?.length || 0} kampanya topluca doğrulanacak.`);
+            } else {
+                setStatus(`Seri çalışıyor · ${shopLabel(job.shop)}\n${progress.completed}/${progress.total} tamamlandı\nSıradaki: ${plan.dayName} · ${plan.saleName}`);
+            }
             if (await reconcileStage(plan, refs)) return;
             await refreshJob();
             if (!job?.active || job.paused) return;
@@ -5429,7 +7167,9 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
                 case 'await_review': await handleAwaitReview(plan); break;
                 case 'confirm_sale': await handleConfirmSale(plan); break;
                 case 'await_result': await handleAwaitResult(plan); break;
+                case 'ack_complete': await handleCompletionAck(refs); break;
                 case 'verify_created': await handleVerifyCreated(plan); break;
+                case 'batch_verify': await handleBatchVerify(); break;
                 default: await setPhase('open_form'); break;
             }
         } catch (error) {
@@ -5488,6 +7228,9 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
                 startedAt: new Date().toISOString(),
                 configSnapshot: { ...config, shop: identity },
                 results: [],
+                pendingVerifications: [],
+                batchVerifyState: null,
+                completionAck: null,
                 promotionIndex: null,
                 actionLedger: {},
                 submission: null,
@@ -5741,19 +7484,25 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
             await_review: 'Review ekranı bekleniyor',
             confirm_sale: 'Final onay hazırlanıyor',
             await_result: 'Etsy sonucu bekleniyor',
+            ack_complete: 'Başarı penceresi kapatılıyor',
             verify_created: 'Kesin liste doğrulaması',
+            batch_verify: 'Toplu seri doğrulaması',
             completed: 'Tamamlandı',
             stopped: 'Durduruldu',
         };
         const paused = !!(job?.active && job.paused);
+        const batchVerificationPaused = !!(paused && (job?.phase === 'batch_verify' || job?.pauseKind === 'batch_verification_incomplete'));
         const statusText = panelActionState?.message || (paused
-            ? `Seri duraklatıldı: ${job.errorReason || 'Kullanıcı devamı gerekli'}
+            ? batchVerificationPaused
+                ? `Toplu doğrulama duraklatıldı: ${job.errorReason || 'Etsy kayıtları henüz kesin doğrulanamadı'}
+Devam Et yalnız doğrulamayı tekrarlar; hiçbir kampanya yeniden oluşturulmaz.`
+                : `Seri duraklatıldı: ${job.errorReason || 'Kullanıcı devamı gerekli'}
 Aynı günü yeniden deneyebilir veya açıkça atlayabilirsin.`
             : job?.active
                 ? `Seri çalışıyor: ${phaseNames[job.phase] || job.phase}
 Mağaza: ${shopLabel(job.shop)}`
                 : 'Ayarları kontrol et ve toplu kampanya serisini başlat.');
-        const retryLabel = ['resume_required', 'legacy_migration', 'legacy_reconcile', 'upgrade_review', 'upgrade_reconcile', 'shop_identity_missing', 'submission_ambiguous', 'shop_identity_timeout', 'action_reservation_recovery', 'action_reservation_ambiguous'].includes(job?.pauseKind) ? 'Devam Et' : 'Yeniden Dene';
+        const retryLabel = ['resume_required', 'legacy_migration', 'legacy_reconcile', 'upgrade_review', 'upgrade_reconcile', 'shop_identity_missing', 'submission_ambiguous', 'shop_identity_timeout', 'action_reservation_recovery', 'action_reservation_ambiguous', 'batch_verification_incomplete'].includes(job?.pauseKind) ? 'Devam Et' : 'Yeniden Dene';
         const panelActionButton = (key, normalContent, normallyDisabled = false) => {
             const busy = panelActionState?.key === key;
             const disabled = normallyDisabled || !!panelActionState;
@@ -5769,7 +7518,9 @@ Mağaza: ${shopLabel(job.shop)}`
         const skipAction = panelActionButton('skip', '<span>Bu Günü Atla</span>');
         const stopAction = panelActionButton('stop', `${uiIcon('stop')}<span>Durdur</span>`, !job?.active);
         const primaryActions = paused
-            ? `<div class="eda-actions three"><button type="button" class="eda-primary" id="eda-retry" ${retryAction.attrs}>${retryAction.content}</button><button type="button" class="eda-warning" id="eda-skip" ${skipAction.attrs}>${skipAction.content}</button><button type="button" class="eda-danger" id="eda-stop" ${stopAction.attrs}>${stopAction.content}</button></div>`
+            ? batchVerificationPaused
+                ? `<div class="eda-actions"><button type="button" class="eda-primary" id="eda-retry" ${retryAction.attrs}>${retryAction.content}</button><button type="button" class="eda-danger" id="eda-stop" ${stopAction.attrs}>${stopAction.content}</button></div>`
+                : `<div class="eda-actions three"><button type="button" class="eda-primary" id="eda-retry" ${retryAction.attrs}>${retryAction.content}</button><button type="button" class="eda-warning" id="eda-skip" ${skipAction.attrs}>${skipAction.content}</button><button type="button" class="eda-danger" id="eda-stop" ${stopAction.attrs}>${stopAction.content}</button></div>`
             : `<div class="eda-actions"><button type="button" class="eda-primary" id="eda-start" ${startAction.attrs}>${startAction.content}</button><button type="button" class="eda-danger" id="eda-stop" ${stopAction.attrs}>${stopAction.content}</button></div>`;
         const statusClass = paused ? 'pause' : job?.active ? 'run' : 'ready';
         const statusLabel = paused ? 'Duraklatıldı' : job?.active ? 'Çalışıyor' : 'Hazır';
@@ -5897,7 +7648,20 @@ Mağaza: ${shopLabel(job.shop)}`
             }
             timerId = setInterval(processTick, 1000);
             setTimeout(() => { checkForUpdates({ manual: false, force: false }).catch(error => console.warn('Update check failed', error)); }, 1400);
-            document.addEventListener('visibilitychange', () => { if (!document.hidden) { syncRouteUi().catch(() => {}); processTick(); } });
+            document.addEventListener('visibilitychange', () => {
+                if (tabIsHidden()) {
+                    abortAutomation('tab-hidden');
+                    if (transitionTickTimerId) {
+                        clearTimeout(transitionTickTimerId);
+                        transitionTickTimerId = null;
+                    }
+                    if (leaseOwned) void releaseLease(job?.jobId || null);
+                    return;
+                }
+                resetAutomationController();
+                syncRouteUi().catch(() => {});
+                scheduleTransitionTick(0);
+            });
             if (job?.active && !job.paused) setTimeout(processTick, 450);
         } catch (error) {
             console.error(`EDA v${VERSION} initialize failed`, error);

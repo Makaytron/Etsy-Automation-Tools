@@ -1,4 +1,4 @@
-# Makaytron Etsy Sale Manager — Tek Günlük Dry-Run Kontrol Listesi
+# Makaytron Etsy Sale Manager — Tek Günlük Canlı Doğrulama Kontrol Listesi
 
 Bu kontrol listesi kullanıcı tarafından kendi mağazasında uygulanır. Kimlik bilgisi, çerez veya oturum paylaşmayın. **Seriyi Başlat** düğmesi canlı yazma yetkisidir: düğmeye basıldıktan sonra script, uygun Etsy adımlarını ve her kampanyanın final gönderim düğmesini otomatik tıklar. Ayrı bir kampanya başına manuel son onay yoktur.
 
@@ -24,6 +24,7 @@ Bu kontrol listesi kullanıcı tarafından kendi mağazasında uygulanır. Kimli
 
 ## Sonra
 
+- Scriptin başarı penceresini yalnız bir kez kapattığını, toplu doğrulama aşamasına geçtiğini ve doğrulama kuyruğunu boşaltmadan seriyi tamamlamadığını kontrol edin.
 - Kampanyayı Etsy kampanya listesinde ad, oran, tarih, bölge ve kapsamla doğrulayın.
 - Script raporunu dışa aktarın ve formül enjeksiyonu uyarısı olmadığını kontrol edin.
 - Beklenmeyen sonuçta yeni kampanya başlatmayın; raporla birlikte public olmayan güvenlik/destek kanalını kullanın.

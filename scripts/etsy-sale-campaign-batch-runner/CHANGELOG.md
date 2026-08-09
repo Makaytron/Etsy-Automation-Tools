@@ -5,6 +5,88 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.11] - 2026-08-10
+
+### Fixed
+
+- Treat an exact transient-only `Loading`, `Please wait`, `Saving`, `Submitting`, or `Processing` shell tied to the current hydrating or structurally verified Etsy sale step as a bounded wait instead of immediately pausing it as a foreign modal.
+- Keep the same 20-second deadline across React root replacements, then pause with a distinct timeout reason if the transient shell never disappears.
+
+### Safety
+
+- Change no field and click no action while the transient shell is present; resume the same date and phase only after it disappears.
+- Keep hard foreign or destructive modals fail-closed and give them priority even if a transient loading shell is visible at the same time.
+
+## [1.0.10] - 2026-08-10
+
+### Fixed
+
+- Persist an explicit completion-acknowledgement phase so the next campaign cannot start while the previous Etsy success modal is still open.
+- Bind completion acknowledgement to the tab that submitted the campaign, so another Etsy tab cannot infer that the modal closed or advance the active date.
+- Click the trusted structural success action at most once, wait for the modal to disappear, and fall back to a safe non-creating Sales & Discounts navigation when Etsy does not close it.
+- Recover already-stuck v1.0.8/v1.0.9 jobs from their persistent verification queue without treating the previous day's success modal as proof for the new date.
+- Keep batch verification isolated from stale sale-step DOM and prevent Retry from processing a pre-navigation document.
+- Block single-day skipping while an already-created campaign is awaiting success-modal acknowledgement.
+
+### Compatibility
+
+- Completion detection and acknowledgement use Etsy's success-overlay/footer structure; localized or changed success copy is not required.
+
+## [1.0.9] - 2026-08-09
+
+### Fixed
+
+- Require an exact current-day final-submission record before the legacy `verify_created` recovery path can read or fetch promotion data.
+- Repair a stray next-day verification phase back to the read-only duplicate preflight when the current day has no final-action evidence, preventing an uncreated next-day code from exhausting five verification fetches.
+- Keep mismatched or uncertain submission evidence fail-closed; it is never discarded unless its original campaign is already present in the persistent result or batch-verification queue.
+- Preserve compatible v1.0.8 schema-v5 active jobs and their pending-verification queue during this patch upgrade, so the interrupted series can resume without discarding its evidence.
+
+## [1.0.8] - 2026-08-09
+
+### Changed
+
+- Queue successfully submitted campaigns for one batch verification pass after the creation series, instead of navigating to Details & Stats after every campaign.
+- Persist each queued campaign together with its exact locked submission/form evidence so a reload can safely resume final verification without recreating anything.
+
+### Safety
+
+- Keep the success dialog as the per-campaign acknowledgement, then verify every queued code, discount, date, status, type, region, and All listings scope at batch end.
+- Pause with the unresolved queue intact when batch verification is incomplete; retry performs verification only and never resubmits a campaign.
+- Disable single-day skipping while batch verification is paused; stopping the batch marks every unresolved campaign as unverified without resubmitting it.
+
+## [1.0.7] - 2026-08-09
+
+### Fixed
+
+- Treat exact transient completion-state notices such as `Loading`, `Saving`, and `Processing` as hydration signals instead of pausing a successfully submitted series as an Etsy error.
+- Keep current Etsy sale routes in a bounded structural hydration state when fields or the modal footer are temporarily absent, rather than falling into the legacy whole-page semantic crawler and freezing the tab.
+- Cover the completion-to-verification-to-next-date state transition with a regression test so a successful day cannot silently stall before the following scheduled date.
+
+### Performance
+
+- Resolve an empty or partially hydrated current Etsy sale modal in milliseconds without blocking the browser's main thread.
+
+## [1.0.6] - 2026-08-09
+
+### Fixed
+
+- Resolve the current Etsy sale form and its `Continue` action from the verified field structure instead of repeatedly rescanning every visible text node in the page.
+- Resolve `Review and confirm`, `Confirm and create sale`, and the completion `Done` action from their verified sale-stage dialog, while preserving destructive-action and unrelated-modal rejection.
+- Poll briefly for the expected action when React replaces or temporarily disables the footer button, then click only the freshly revalidated action.
+- Confirm `Continue` and `Review and confirm` step transitions from fresh DOM state; if Etsy remains on the exact verified source step, retry that reversible navigation once without ever repeating the final sale submission.
+- Wait for the document to finish loading and require each sale form, listing, review, and completion step to remain structurally stable before editing fields, selecting listings, clicking an action, or starting verification.
+- Recognize Etsy completion dialogs from the verified success-overlay structure and footer submit action, so localized or changed success copy is not paused as an unrelated modal.
+- Cancel the active automation turn and release its lease when the owning tab moves to the background, so an inactive Etsy tab cannot pause or click for the shared job.
+- Read current `Details & Stats` promotion records from Etsy's `detailsAndStatsPageData.promotions` schema, including `shopWide` type/scope, scheduled/active time window, and the current `/details-stats/promotion/` detail route; bridge Etsy's omitted default-worldwide field only with the exact locked form/submission evidence from the same job.
+- Accept Etsy's exclusive-midnight server end timestamp as evidence for the configured final sale day, while keeping mismatched region, selected-listing, stopped, discount, code, and date records fail-closed.
+- Start the post-submit verification timeout only after the `Details & Stats` page is ready, preventing a slow navigation from ending with zero fetch attempts.
+- Keep the generic semantic selectors as a compatibility fallback when Etsy's structured form or stage markers are unavailable.
+
+### Performance
+
+- Avoid repeated full-page action searches while filling the sale form; a focused synthetic Step 1 fixture based on Etsy's current copy resolves the form and `Continue` in milliseconds instead of several seconds per scan.
+- Wake the runner from sale-modal DOM changes and immediately after phase updates, leaving the one-second timer as a fallback instead of paying it between every Etsy step.
+
 ## [1.0.5] - 2026-08-09
 
 ### Fixed

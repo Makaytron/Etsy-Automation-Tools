@@ -14,7 +14,7 @@ Open-source Etsy automation tools and Tampermonkey userscripts for sellers. The 
 
 | Script | Version | Purpose |
 |---|---:|---|
-| [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/README.en.md) | 1.0.5 | Bulk Sales & Discounts Automation that schedules, verifies, and reports Etsy sale campaigns in controlled, fail-closed batches. |
+| [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/README.en.md) | 1.0.11 | Bulk Sales & Discounts Automation that schedules, verifies, and reports Etsy sale campaigns in controlled, fail-closed batches. |
 | [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.0.3 | Provides translation, reply drafts, templates, and user-selected AI provider profiles. |
 | [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.0.3 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
 | [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.en.md) | 1.0.5 | Collects every page in order, returns to page 1, and adds retries, error reports, presets, charts, AI comparison, and Health Engine workflows. |

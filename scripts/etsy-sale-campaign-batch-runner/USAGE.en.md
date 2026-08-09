@@ -44,14 +44,16 @@ Select **Kaydet (Save)**. For the first live run, use the same day for the first
 4. The script checks the shop identity and duplicate code for each date.
 5. It fills percentage off, dates, campaign name, and `Everywhere` in **Run a sale**.
 6. It verifies **All listings**, then advances the **Continue**, review, and final-submit stages.
-7. It verifies the Etsy server result in **Details & Stats** using code, percentage, dates, status, type, region, and scope evidence.
-8. It moves to the next date only after a verified result.
+7. After final submission, it first persists the exact form/submission evidence in the durable verification queue.
+8. Only the tab that submitted the campaign may acknowledge the trusted success dialog, at most once. The next date cannot start until the dialog is visibly gone; if it will not close, the script navigates to a safe non-creating Sales & Discounts route.
+9. After all planned dates have been submitted, it checks every queued campaign in **Details & Stats** using code, percentage, dates, status, type, region, and scope evidence.
+10. The series completes only when the durable verification queue is empty. An unresolved record pauses with its queue intact; **Yeniden Dene / Devam Et (Retry / Continue)** retries verification only and never resubmits the campaign.
 
 While a batch is active, Settings, manual **Run Sale**, and update installation are disabled. Keep the owning tab open and do not start the same series in another tab.
 
 ## If the series pauses
 
-The script stays on the current date and never blindly clicks the final action twice.
+During creation, the script stops on the affected planned date; during batch verification, it stops on the unresolved queue record. It never blindly clicks the final action twice.
 
 | Control | Use it when… |
 |---|---|
@@ -59,7 +61,7 @@ The script stays on the current date and never blindly clicks the final action t
 | **Bu Günü Atla (Skip This Day)** | You intentionally want no campaign for the current date. |
 | **Durdur (Stop)** | You want to end the entire series. |
 
-CAPTCHA, rate limiting, a foreign modal, shop mismatch, duplicate code, ambiguous submission, or unverifiable server evidence is never skipped automatically. If Etsy may already have accepted a submission, search for that campaign before retrying the same date.
+**Bu Günü Atla (Skip This Day)** is disabled while an already-created campaign is awaiting success acknowledgement or batch verification. CAPTCHA, rate limiting, a foreign modal, shop mismatch, duplicate code, ambiguous submission, or unverifiable server evidence is never skipped automatically. If Etsy may already have accepted a submission, search for that campaign before retrying the same date.
 
 ## Report and final verification
 
