@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Sale Manager
 // @name:tr      Makaytron Etsy Sale Manager
 // @name:en      Makaytron Etsy Sale Manager
-// @version      1.0.11
+// @version      1.0.12
 // @description  Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
 // @description:tr Etsy Sales and Discounts kampanyalarını güvenli toplu seriler hâlinde planlar, doğrular ve raporlar
 // @description:en Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
@@ -37,7 +37,7 @@
 (async function () {
     'use strict';
 
-    const VERSION = '1.0.11';
+    const VERSION = '1.0.12';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -3406,7 +3406,10 @@
             const next = clone(current);
             const loadedVersion = String(next.version || '');
             const loadedSchemaVersion = intVal(next.schemaVersion, 0);
-            const compatibleStateUpgrade = ['1.0.8', '1.0.9'].includes(loadedVersion) && loadedSchemaVersion === 5;
+            const compatibleStateUpgrade = ['1.0.8', '1.0.9', '1.0.10', '1.0.11'].includes(loadedVersion)
+                && loadedSchemaVersion === 5;
+            const legacyCompletionAckRecovery = ['1.0.8', '1.0.9'].includes(loadedVersion)
+                && loadedSchemaVersion === 5;
             next.schemaVersion = 5;
             next.jobId = next.jobId || randomId('job-');
             next.generation = intVal(next.generation, 1);
@@ -3422,7 +3425,7 @@
             // v1.0.8/v1.0.9 could persist the completed campaign and advance the active
             // date while leaving Etsy's success dialog open. Recover that durable queue
             // without treating the old dialog as proof for the new active date.
-            if (next.active && compatibleStateUpgrade && !next.completionAck && next.pendingVerifications.length && !next.submission) {
+            if (next.active && legacyCompletionAckRecovery && !next.completionAck && next.pendingVerifications.length && !next.submission) {
                 const orderedPending = [...next.pendingVerifications]
                     .sort((left, right) => String(left?.queuedAt || '').localeCompare(String(right?.queuedAt || '')));
                 const queued = orderedPending[orderedPending.length - 1];
@@ -3448,8 +3451,8 @@
                 }
             }
             // Invalidate every in-flight token held by an older userscript instance. The
-            // generation change is visible across tabs even when the recovered job remains
-            // active, preventing v1.0.8/v1.0.9 code from writing over the acknowledgement.
+            // generation change is visible across tabs even when the compatible job
+            // remains active, preventing an older script instance from writing stale state.
             if (next.active && compatibleStateUpgrade && loadedVersion !== VERSION) {
                 next.generation = Number(next.generation || 0) + 1;
             }

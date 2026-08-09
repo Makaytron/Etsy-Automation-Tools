@@ -872,7 +872,7 @@ test('mismatched unaccounted final submission remains fail-closed', async () => 
     assert.match(blocked.errorReason, /Yanlış güne ait kayıt doğrulanmadı/);
 });
 
-test('v1.0.8 active verification queue survives the v1.0.11 patch migration', async () => {
+test('v1.0.8 active verification queue survives the v1.0.12 patch migration', async () => {
     const api = await loadManager();
     api.setLocationPath('/your/shops/me/sales-discounts/details-stats');
     const oldJob = {
@@ -904,7 +904,7 @@ test('v1.0.8 active verification queue survives the v1.0.11 patch migration', as
 
     await api.loadState();
     const migrated = await api.getStoredTestJob();
-    assert.equal(migrated.version, '1.0.11');
+    assert.equal(migrated.version, '1.0.12');
     assert.equal(migrated.jobId, oldJob.jobId);
     assert.equal(migrated.generation, oldJob.generation + 1);
     assert.equal(migrated.currentDate, '2026-08-11');
@@ -917,6 +917,108 @@ test('v1.0.8 active verification queue survives the v1.0.11 patch migration', as
     assert.equal(migrated.completionAck.originTabId, api.getTabId());
     assert.equal(migrated.completionAck.advanceAfterClose, false);
     assert.equal(migrated.results.length, 1);
+    assert.equal(migrated.legacyAuditResults, undefined);
+});
+
+test('a paused v1.0.10 job at 18 of 20 preserves its date, phase, results, and verification queue', async () => {
+    const api = await loadManager();
+    const oldJob = {
+        schemaVersion: 5, version: '1.0.10', jobId: 'paused-v110-18-of-20', generation: 18,
+        active: true, paused: true, pauseKind: 'foreign_modal_blocking', phase: 'fill_form',
+        currentDate: '2026-08-30', batchStartDate: '2026-08-12', batchEndDate: '2026-08-31',
+        saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
+        shop: { shopId: '62669927', shopName: 'PakayUS' }, originTabId: api.getTabId(),
+        results: [], pendingVerifications: [], batchVerifyState: null, completionAck: null,
+        actionLedger: {}, submission: null, formEvidence: null, needsPreflight: false,
+        verifyState: null, verifyTimeoutMs: 20_000, cooldownMinMs: 2_200, cooldownMaxMs: 4_200,
+        listingScopeVerified: false, notBefore: 0, expectedNavigationUntil: 0,
+        expectedNavigationPath: '', promotionIndex: null,
+        errorReason: 'Satış akışına ait olmayan açık Etsy penceresi algılandı: loading',
+        updatedAt: '2026-08-10T00:00:00.000Z',
+    };
+    for (let day = 12; day <= 29; day += 1) {
+        const date = `2026-08-${String(day).padStart(2, '0')}`;
+        const plan = api.buildPlan(date, oldJob);
+        const queuedAt = `2026-08-${String(day).padStart(2, '0')}T01:00:00.000Z`;
+        oldJob.pendingVerifications.push({
+            idempotencyKey: plan.idempotencyKey, startDate: plan.startDateIso, endDate: plan.endDateIso,
+            saleName: plan.saleName, discount: plan.discount, countryValue: '0', submission: null,
+            formEvidence: null, successMessage: 'queued', queuedAt, lastVerificationMessage: '',
+        });
+        oldJob.results.push({
+            idempotencyKey: plan.idempotencyKey, status: 'PENDING_VERIFICATION', message: 'queued',
+            saleName: plan.saleName, discount: plan.discount, startDate: plan.startDateIso,
+            endDate: plan.endDateIso, shopId: oldJob.shop.shopId, shopName: oldJob.shop.shopName,
+        });
+    }
+    const preservedResults = JSON.parse(JSON.stringify(oldJob.results));
+    const preservedPending = JSON.parse(JSON.stringify(oldJob.pendingVerifications));
+    await api.setStoredTestJob(oldJob);
+
+    await api.loadState();
+    const migrated = await api.getStoredTestJob();
+    assert.equal(migrated.version, '1.0.12');
+    assert.equal(migrated.generation, oldJob.generation + 1);
+    assert.equal(migrated.currentDate, '2026-08-30');
+    assert.equal(migrated.phase, 'fill_form');
+    assert.equal(migrated.paused, true);
+    assert.equal(migrated.pauseKind, 'foreign_modal_blocking');
+    assert.equal(migrated.errorReason, oldJob.errorReason);
+    assert.deepEqual(JSON.parse(JSON.stringify(migrated.results)), preservedResults);
+    assert.deepEqual(JSON.parse(JSON.stringify(migrated.pendingVerifications)), preservedPending);
+    assert.equal(migrated.completionAck, null);
+    assert.equal(migrated.legacyAuditResults, undefined);
+    assert.equal(migrated.legacyReconcileStartDate, undefined);
+});
+
+test('an active v1.0.11 transient-loading step survives the v1.0.12 patch migration', async () => {
+    const api = await loadManager();
+    const oldJob = {
+        schemaVersion: 5, version: '1.0.11', jobId: 'active-v111-transient-loading', generation: 23,
+        active: true, paused: false, pauseKind: '', phase: 'select_listings',
+        currentDate: '2026-08-30', batchStartDate: '2026-08-12', batchEndDate: '2026-08-31',
+        saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
+        shop: { shopId: '62669927', shopName: 'PakayUS' }, originTabId: api.getTabId(),
+        results: [], pendingVerifications: [], batchVerifyState: null, completionAck: null,
+        actionLedger: { keep: { status: 'clicked', at: 1234 } }, submission: null,
+        formEvidence: { saleName: '260830USA45' }, needsPreflight: false, verifyState: null,
+        verifyTimeoutMs: 20_000, cooldownMinMs: 2_200, cooldownMaxMs: 4_200,
+        listingScopeVerified: false, notBefore: 0, expectedNavigationUntil: 0,
+        expectedNavigationPath: '', promotionIndex: null, errorReason: '',
+        updatedAt: '2026-08-10T00:01:00.000Z',
+    };
+    const completedPlan = api.buildPlan('2026-08-29', oldJob);
+    oldJob.pendingVerifications.push({
+        idempotencyKey: completedPlan.idempotencyKey, startDate: completedPlan.startDateIso,
+        endDate: completedPlan.endDateIso, saleName: completedPlan.saleName,
+        discount: completedPlan.discount, countryValue: '0', submission: null,
+        formEvidence: null, successMessage: 'queued', queuedAt: '2026-08-29T01:00:00.000Z',
+        lastVerificationMessage: '',
+    });
+    oldJob.results.push({
+        idempotencyKey: completedPlan.idempotencyKey, status: 'PENDING_VERIFICATION',
+        message: 'queued', saleName: completedPlan.saleName, discount: completedPlan.discount,
+        startDate: completedPlan.startDateIso, endDate: completedPlan.endDateIso,
+        shopId: oldJob.shop.shopId, shopName: oldJob.shop.shopName,
+    });
+    const preservedResults = JSON.parse(JSON.stringify(oldJob.results));
+    const preservedPending = JSON.parse(JSON.stringify(oldJob.pendingVerifications));
+    const preservedLedger = JSON.parse(JSON.stringify(oldJob.actionLedger));
+    await api.setStoredTestJob(oldJob);
+
+    await api.loadState();
+    const migrated = await api.getStoredTestJob();
+    assert.equal(migrated.version, '1.0.12');
+    assert.equal(migrated.generation, oldJob.generation + 1);
+    assert.equal(migrated.currentDate, oldJob.currentDate);
+    assert.equal(migrated.phase, 'select_listings');
+    assert.equal(migrated.paused, false);
+    assert.equal(migrated.pauseKind, '');
+    assert.deepEqual(JSON.parse(JSON.stringify(migrated.results)), preservedResults);
+    assert.deepEqual(JSON.parse(JSON.stringify(migrated.pendingVerifications)), preservedPending);
+    assert.deepEqual(JSON.parse(JSON.stringify(migrated.actionLedger)), preservedLedger);
+    assert.deepEqual(JSON.parse(JSON.stringify(migrated.formEvidence)), oldJob.formEvidence);
+    assert.equal(migrated.completionAck, null);
     assert.equal(migrated.legacyAuditResults, undefined);
 });
 

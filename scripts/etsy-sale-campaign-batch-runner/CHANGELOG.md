@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.12] - 2026-08-10
+
+### Fixed
+
+- Preserve active schema-v5 jobs created by v1.0.10 or v1.0.11 during the patch upgrade, including their current date, phase, paused reason, completed results, pending verification queue, submission evidence, and action ledger.
+- Limit legacy success-dialog acknowledgement synthesis to v1.0.8/v1.0.9 recovery, so a paused v1.0.10/v1.0.11 job is not remapped or cleared during startup.
+
+### Safety
+
+- Invalidate stale in-flight tokens by incrementing the compatible active job generation while retaining its durable campaign evidence.
+
 ## [1.0.11] - 2026-08-10
 
 ### Fixed
