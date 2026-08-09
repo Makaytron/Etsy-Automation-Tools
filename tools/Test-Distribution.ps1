@@ -377,9 +377,7 @@ if ($HostedChannels) {
             $releaseAssetMd5[$assetName] = $md5
         }
         $unexpectedReleaseAssets = @($releaseAssets | Where-Object { $expectedReleaseAssetNames -notcontains [string]$_.name })
-        if ($unexpectedReleaseAssets.Count -gt 0) {
-            Write-Warning -WarningAction Continue -Message "GitHub Release has additional assets: $((@($unexpectedReleaseAssets | ForEach-Object { $_.name }) -join ', '))"
-        }
+        Assert-True ($unexpectedReleaseAssets.Count -eq 0) "GitHub Release has unexpected assets: $((@($unexpectedReleaseAssets | ForEach-Object { $_.name }) -join ', '))"
 
         $manifestText = ([System.Text.UTF8Encoding]::new($false)).GetString([byte[]]$releaseAssetBytes['SHA256SUMS.txt'])
         $manifestEntries = @{}
@@ -400,6 +398,10 @@ if ($HostedChannels) {
         foreach ($script in $releaseScripts) {
             $localHash = Get-Sha256Hex -Bytes ([System.IO.File]::ReadAllBytes($script.FullName))
             Assert-True ($localHash -eq $releaseAssetSha256[$script.Name]) "GitHub Release userscript differs from local source: $($script.Name)"
+            $relativePath = $script.FullName.Substring($repoRoot.Length + 1).Replace('\', '/')
+            $taggedSourceUrl = "https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/$releaseCommitSha/$relativePath"
+            $taggedHash = Get-Sha256Hex -Bytes (Get-HttpBytes -Client $hostedClient -Url $taggedSourceUrl)
+            Assert-True ($taggedHash -eq $releaseAssetSha256[$script.Name]) "GitHub Release userscript differs from the signed tag source: $($script.Name)"
         }
         Write-Host "HOSTED MATCH GitHub Release $releaseTag assets=$($expectedReleaseAssetNames.Count) commit=$releaseCommitSha"
 
