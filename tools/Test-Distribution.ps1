@@ -2,7 +2,8 @@
 param(
     [switch]$Online,
     [switch]$RemoteParity,
-    [switch]$HostedChannels
+    [switch]$HostedChannels,
+    [string]$PackageSlug = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,6 +20,10 @@ if ($HostedChannels) {
 
 if ($RemoteParity -and -not $Online) {
     throw '-RemoteParity requires -Online.'
+}
+
+if (-not [string]::IsNullOrWhiteSpace($PackageSlug) -and -not $HostedChannels) {
+    throw '-PackageSlug requires -HostedChannels.'
 }
 
 function Assert-True {
@@ -298,7 +303,21 @@ if ($HostedChannels) {
     $hostedClient.DefaultRequestHeaders.UserAgent.ParseAdd('Makaytron-distribution-validator')
     try {
         $apiBase = 'https://api.github.com/repos/Makaytron/Etsy-Automation-Tools'
-        $releaseTag = "v$version"
+        $standaloneRelease = -not [string]::IsNullOrWhiteSpace($PackageSlug)
+        if ($standaloneRelease) {
+            Assert-True ($scriptFilesBySlug.ContainsKey($PackageSlug)) "Unknown standalone package slug: $PackageSlug"
+            $releaseVersion = [string]$scriptVersions[$PackageSlug]
+            $releaseScripts = @($scripts | Where-Object { $_.Directory.Name -eq $PackageSlug })
+            Assert-True ($releaseScripts.Count -eq 1) "Standalone package $PackageSlug must resolve to exactly one userscript."
+            $releaseTag = "$PackageSlug-v$releaseVersion"
+            $sourceForgeFolder = $releaseTag
+        }
+        else {
+            $releaseVersion = $version
+            $releaseScripts = $scripts
+            $releaseTag = "v$version"
+            $sourceForgeFolder = $releaseTag
+        }
         $release = ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $hostedClient -Url "$apiBase/releases/tags/$releaseTag")
         Assert-True ([string]$release.tag_name -eq $releaseTag) "GitHub Release tag mismatch: $($release.tag_name)"
         Assert-True (-not [bool]$release.draft) "GitHub Release $releaseTag is still a draft."
@@ -322,9 +341,19 @@ if ($HostedChannels) {
         & git -C $repoRoot merge-base --is-ancestor $localReleaseCommit HEAD
         Assert-True ($LASTEXITCODE -eq 0) "Release commit $localReleaseCommit is not an ancestor of local HEAD."
 
-        $expectedReleaseAssetNames = @("Etsy-Automation-Tools-v$version.zip") +
-            @($scripts | ForEach-Object { $_.Name }) +
-            @('SHA256SUMS.txt')
+        if ($standaloneRelease) {
+            $latestRelease = ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $hostedClient -Url "$apiBase/releases/latest")
+            Assert-True ([string]$latestRelease.tag_name -eq "v$version") "Standalone release $releaseTag replaced the suite Latest release; expected v$version, found $($latestRelease.tag_name)."
+        }
+
+        if ($standaloneRelease) {
+            $expectedReleaseAssetNames = @($releaseScripts[0].Name, 'SHA256SUMS.txt')
+        }
+        else {
+            $expectedReleaseAssetNames = @("Etsy-Automation-Tools-v$version.zip") +
+                @($releaseScripts | ForEach-Object { $_.Name }) +
+                @('SHA256SUMS.txt')
+        }
         $releaseAssets = @($release.assets)
         $releaseAssetsByName = @{}
         $releaseAssetBytes = @{}
@@ -368,7 +397,7 @@ if ($HostedChannels) {
             Assert-True ($manifestEntries.ContainsKey($assetName)) "SHA256SUMS.txt is missing $assetName."
             Assert-True ($manifestEntries[$assetName] -eq $releaseAssetSha256[$assetName]) "SHA256SUMS.txt mismatch for $assetName."
         }
-        foreach ($script in $scripts) {
+        foreach ($script in $releaseScripts) {
             $localHash = Get-Sha256Hex -Bytes ([System.IO.File]::ReadAllBytes($script.FullName))
             Assert-True ($localHash -eq $releaseAssetSha256[$script.Name]) "GitHub Release userscript differs from local source: $($script.Name)"
         }
@@ -411,7 +440,8 @@ if ($HostedChannels) {
             Write-Host "HOSTED MATCH Greasy Fork $($listing.Id) $($listing.Slug) $($scriptVersions[$listing.Slug])"
         }
 
-        $sourceForgeUrl = "https://sourceforge.net/projects/etsy-automation-tools/rss?path=%2Fv$version&verify=$([DateTime]::UtcNow.Ticks)"
+        $sourceForgePath = [uri]::EscapeDataString("/$sourceForgeFolder")
+        $sourceForgeUrl = "https://sourceforge.net/projects/etsy-automation-tools/rss?path=$sourceForgePath&verify=$([DateTime]::UtcNow.Ticks)"
         $sourceForgeResponse = Invoke-WebRequest -Uri $sourceForgeUrl -UseBasicParsing -TimeoutSec 45 -Headers @{
             'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/127.0 Safari/537.36'
             'Accept' = 'application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8'
@@ -441,14 +471,14 @@ if ($HostedChannels) {
         )
         foreach ($assetName in $expectedReleaseAssetNames) {
             $sourceForgeMatches = @($sourceForgeAssets | Where-Object { $_.Name -eq $assetName })
-            Assert-True ($sourceForgeMatches.Count -eq 1) "SourceForge v$version must contain $assetName exactly once; sync incomplete, rerun the hosted validation."
+            Assert-True ($sourceForgeMatches.Count -eq 1) "SourceForge $sourceForgeFolder must contain $assetName exactly once; sync incomplete, rerun the hosted validation."
             $sourceForgeAsset = $sourceForgeMatches[0]
             Assert-True ($sourceForgeAsset.Size -eq [int64]$releaseAssetsByName[$assetName].size) "SourceForge size mismatch for $assetName."
             Assert-True (-not [string]::IsNullOrWhiteSpace($sourceForgeAsset.Md5)) "SourceForge RSS has no MD5 for $assetName."
             Assert-True ($sourceForgeAsset.Md5.ToLowerInvariant() -eq $releaseAssetMd5[$assetName]) "SourceForge content digest mismatch for $assetName."
         }
         $sourceForgeExtras = @($sourceForgeAssets | Where-Object { $expectedReleaseAssetNames -notcontains $_.Name })
-        Write-Host "HOSTED MATCH SourceForge v$version assets=$($expectedReleaseAssetNames.Count) extras=$($sourceForgeExtras.Count)"
+        Write-Host "HOSTED MATCH SourceForge $sourceForgeFolder assets=$($expectedReleaseAssetNames.Count) extras=$($sourceForgeExtras.Count)"
 
         try {
             $zoneUrl = 'https://www.userscript.zone/search?q=Makaytron&source=search&start=0'
