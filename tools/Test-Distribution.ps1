@@ -3,7 +3,8 @@ param(
     [switch]$Online,
     [switch]$RemoteParity,
     [switch]$HostedChannels,
-    [string]$PackageSlug = ''
+    [string]$PackageSlug = '',
+    [switch]$StandaloneLatest
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,6 +25,10 @@ if ($RemoteParity -and -not $Online) {
 
 if (-not [string]::IsNullOrWhiteSpace($PackageSlug) -and -not $HostedChannels) {
     throw '-PackageSlug requires -HostedChannels.'
+}
+
+if ($StandaloneLatest -and (-not $HostedChannels -or [string]::IsNullOrWhiteSpace($PackageSlug))) {
+    throw '-StandaloneLatest requires -HostedChannels and -PackageSlug.'
 }
 
 function Assert-True {
@@ -344,7 +349,8 @@ if ($HostedChannels) {
 
         if ($standaloneRelease) {
             $latestRelease = ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $hostedClient -Url "$apiBase/releases/latest")
-            Assert-True ([string]$latestRelease.tag_name -eq "v$version") "Standalone release $releaseTag replaced the suite Latest release; expected v$version, found $($latestRelease.tag_name)."
+            $expectedLatestTag = if ($StandaloneLatest) { $releaseTag } else { "v$version" }
+            Assert-True ([string]$latestRelease.tag_name -eq $expectedLatestTag) "Unexpected GitHub Latest release; expected $expectedLatestTag, found $($latestRelease.tag_name)."
         }
 
         if ($standaloneRelease) {
