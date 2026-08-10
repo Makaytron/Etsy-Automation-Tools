@@ -252,6 +252,11 @@ Assert-True (Test-Path -LiteralPath $adsKeywordManagerTestPath -PathType Leaf) '
 & node --test $adsKeywordManagerTestPath
 Assert-True ($LASTEXITCODE -eq 0) 'Ads Keyword Manager behavior tests failed.'
 
+$messageAssistantTestPath = Join-Path $repoRoot 'tools/Test-Message-Assistant.mjs'
+Assert-True (Test-Path -LiteralPath $messageAssistantTestPath -PathType Leaf) 'Message Assistant behavior test is missing.'
+& node --test $messageAssistantTestPath
+Assert-True ($LASTEXITCODE -eq 0) 'Message Assistant behavior tests failed.'
+
 $secretPatterns = @(
     ('-----BEGIN ' + '(?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
     ('github_' + 'pat_[A-Za-z0-9_]{20,}'),

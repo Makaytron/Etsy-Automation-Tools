@@ -22,7 +22,7 @@ The script waits safely in an unverified dashboard context and does not send any
 4. Choose a translation engine. If needed, save and test your DeepL or AI provider, model, and API key.
 5. Configure templates, signature, and reply preferences.
 
-> **Privacy warning:** Google Translate is the default provider and automatic Turkish preview is enabled by default. Opening a conversation may send the latest customer message to Google Translate. If DeepL fails while **Ücretsiz fallback (Free fallback)** is enabled, translation may fall back to Google. The delivered-order queue may also send the latest message to the selected translation provider to determine the target language even when automatic preview is off. Review the provider, automatic-preview, and fallback settings in **Makaytron Ayarları (Makaytron Settings)** before opening messages or a queue if you do not want these transfers.
+> **Privacy warning:** Google Translate is the default provider and automatic Turkish preview is enabled by default. Opening a conversation may send the latest customer message to Google Translate. If DeepL fails while **Ücretsiz fallback (Free fallback)** is enabled, translation may fall back to Google. Other, non-review delivered-order templates may also send the latest message to the selected translation provider to determine the target language even when automatic preview is off. The dedicated review-request template skips that language-detection transfer; choosing AI drafting can still send the context described below. Review the provider, automatic-preview, and fallback settings in **Makaytron Ayarları (Makaytron Settings)** before opening messages or a queue if you do not want these transfers.
 
 An AI drafting or polishing request may send the customer name, conversation and order IDs, item title, shop name/signature, up to the last 10 messages, and the draft, template, or instruction to the selected AI provider. Review that provider's privacy and retention terms.
 
@@ -44,13 +44,19 @@ In the normal individual workflow, **Insert into Etsy** fills the composer only;
 ## Delivered-order message queue
 
 1. Open **Completed Orders → Teslim Edilenler (Delivered Orders)**.
-2. Select only eligible cards that Etsy actually marks as `Delivered`.
-3. Choose the template and method, then review the preview.
-4. Select **Seçilenlere Mesaj Hazırla (Prepare Messages for Selected)**.
-5. With **Otomatik Gönderim (Automatic Sending)** off—the default—the script opens the next conversation and inserts one message. Review it and click Etsy **Send** yourself.
-6. After the sent bubble is verified, the default-on **Doğrulama Sonrası Sıradaki (Next After Verification)** setting advances automatically. If you turned it off, use **Sırayı Devam Ettir (Resume Queue)** on the orders page. Use **Atla ve Sonraki (Skip and Next)** or **Durdur (Stop)** when needed.
+2. Set **Yorum Kontrolü (Review Check)** for each order. **Yorum yok — kuyruğa uygun (No review — queue eligible)** selects that order and remains valid for two hours. **Review exists**, **Defer**, and **Do not contact / order issue** block review outreach.
+3. Choose the default English-language **Yorum rica — küçük işletme (EN)** preset and inspect the preview. It requests an honest review without asking for a particular rating, a positive review, or an incentive. **Onaylıları Seç (Select Confirmed)** selects only fresh, confirmed eligible orders.
+4. Select **Seçilenlere Mesaj Hazırla (Prepare Messages for Selected)**. A second `review_request` cannot be queued while that order and purpose is already queued, prepared, pending verification, ambiguous, or verified sent.
+5. The script opens the next conversation and completely fills the Etsy composer. Review or edit the text in Etsy, then click the panel's **Gönder ve Sonrakine Geç (Send and Go to Next)** button once.
+6. That explicit user click triggers Etsy **Send**. The queue advances only after a new outgoing bubble is verified. An uncertain result stays in place and requires **Gönderildi / Gönderilmedi (Sent / Not Sent)** reconciliation. **Not Sent** safely returns the draft for a fresh attempt while preserving any newer eligibility decision. Use **Atla ve Sonraki (Skip and Next)** or **Durdur (Stop)** when needed.
 
-> **Live-send warning:** If you explicitly enable **Otomatik Gönderim (Automatic Sending)**, the script may click Etsy **Send** automatically. This option is live-send authority. An unverified send stays pending; it is never resent blindly and requires **Gönderildi (Sent) / Gönderilmedi (Not Sent)** reconciliation.
+> **Live-send warning:** Global **Otomatik Gönderim (Automatic Sending)** remains live-send authority for other delivery templates. It is ignored for `review_request`; each review request starts only from your **Send and Go to Next** click.
+
+> **Unofficial-integration warning:** This userscript is not approved by Etsy. Etsy's [API Terms](https://www.etsy.com/legal/api/) require express written authorization for automated systems or browser extensions that access, analyse, or scrape Etsy data. The manual per-recipient click is a safety boundary, not proof of Etsy authorization.
+
+> **Review-status limitation:** The Etsy Completed Orders card does not expose an order-to-review identifier that this script can match reliably. You make the **No review** decision; **Select Confirmed** uses only fresh local decisions. The script does not guess by buyer name or item title.
+
+> **Upgrade safeguard:** If an older `sent` record cannot prove whether the previous message was a review request, the control shows an ambiguous state and keeps the order blocked. Inspect the Etsy conversation and choose **Önceki mesaj yorum talebi değildi — onayla (The previous message was not a review request — confirm)** only when that is true; leave the order blocked if you cannot verify it.
 
 ## Review reply draft
 
@@ -65,7 +71,7 @@ Review replies are never published automatically.
 ## Templates, API keys, and backup
 
 - Manage templates in **Şablonlar (Templates)** and insert them through **Insert Saved Template**.
-- Values such as `/tesekkur` and `/teslim` are template metadata; typed slash commands are not executed automatically.
+- Values such as `/tesekkur`, `/teslim`, and `/yorumrica` are template metadata; typed slash commands are not executed automatically.
 - API keys stay in Tampermonkey local storage. Use a dedicated provider key and a spending limit.
 - Treat configuration backups as sensitive and inspect them before sharing. Depending on provider settings and script version, a backup may contain API keys, including a DeepL key; remove them before sharing.
 - Message Assistant has no global keyboard shortcut. Open assistant, settings, config backup, and update check are available in the Tampermonkey menu.

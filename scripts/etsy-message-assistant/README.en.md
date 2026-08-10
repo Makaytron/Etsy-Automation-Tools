@@ -2,11 +2,15 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.0.3`
+Version: `1.0.4`
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
 A Tampermonkey side panel for reading Etsy messages with Turkish previews, preparing controlled replies, managing templates, and using AI providers configured by the user.
+
+It includes an English-language, pressure-free, incentive-free honest-review request preset for delivered orders whose buyers the seller has confirmed have not yet reviewed, written in a new/small-business voice.
+
+Review outreach uses a persistent per-order eligibility decision and purpose-based deduplication. The script prepares the composer; **Send and Go to Next** sends only after the user's click, verifies the outgoing bubble, and advances only after verification.
 
 The script is standalone and does not require another Etsy Automation Tools package.
 
@@ -18,7 +22,10 @@ The script is standalone and does not require another Etsy Automation Tools pack
 
 ## Safety and privacy
 
-- Automatic sending is off by default. Review every draft before clicking Etsy's send button.
+- Automatic sending is off by default. Review requests ignore the global auto-send option and always require a per-recipient **Send and Go to Next** click.
+- This is an unofficial userscript, not an Etsy-approved integration. Etsy's [API Terms](https://www.etsy.com/legal/api/) state that automated systems or browser extensions accessing, analysing, or scraping Etsy data require Etsy's express written authorization; keeping the final click manual does not by itself grant that authorization.
+- Etsy's completed-order card does not provide the script with a reliable order-to-review match. Confirm that the buyer has not already reviewed before selecting a review-request recipient; that local confirmation expires after two hours.
+- When an older generic `sent` record cannot prove whether the prior message was a review request, the order remains blocked as ambiguous. Check the Etsy conversation before selecting **Önceki mesaj yorum talebi değildi — onayla (The previous message was not a review request — confirm)**; leave it blocked if you cannot verify that statement.
 - Google Translate is the default provider and automatic Turkish preview is enabled by default. Opening a message page may automatically send the latest customer message to Google Translate; disable this option from Makaytron settings in the Tampermonkey menu before visiting messages if you do not want that transfer.
 - Other translation and AI actions send relevant message context to DeepL, OpenAI, Anthropic, Gemini, DeepSeek, or OpenRouter when the user invokes those configured features.
 - API keys and history are stored locally in Tampermonkey. History defaults to 90 days and at most 500 records.

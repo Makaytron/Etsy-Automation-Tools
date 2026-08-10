@@ -22,7 +22,7 @@ Script doğrulanamayan bir dashboard bağlamında gönderim yapmaz; uygun sayfa 
 4. Varsayılan çeviri motorunu seçin; kullanacaksanız DeepL veya AI sağlayıcısı, model ve API anahtarını kaydedip test edin.
 5. Gerekirse şablonları, imzayı ve cevap tercihlerini düzenleyin.
 
-> **Gizlilik uyarısı:** Google Translate varsayılan sağlayıcıdır ve otomatik Türkçe önizleme varsayılan olarak açıktır. Bir konuşma açıldığında son müşteri mesajı Google Translate'e gönderilebilir. DeepL hatasında, **Ücretsiz fallback** açıkken çeviri Google'a düşebilir. Teslimat sırası da otomatik önizleme kapalı olsa bile hedef dili belirlemek için son mesajı seçili çeviri sağlayıcısına gönderebilir. Bu aktarımları istemiyorsanız mesaj sayfasını veya sırayı açmadan önce **Makaytron Ayarları**ndaki sağlayıcı, otomatik önizleme ve fallback tercihlerini kontrol edin.
+> **Gizlilik uyarısı:** Google Translate varsayılan sağlayıcıdır ve otomatik Türkçe önizleme varsayılan olarak açıktır. Bir konuşma açıldığında son müşteri mesajı Google Translate'e gönderilebilir. DeepL hatasında, **Ücretsiz fallback** açıkken çeviri Google'a düşebilir. Yorum talebi dışındaki teslimat şablonları da otomatik önizleme kapalı olsa bile hedef dili belirlemek için son mesajı seçili çeviri sağlayıcısına gönderebilir. Özel yorum-talebi şablonu bu dil algılama aktarımını atlar; AI yöntemi ayrıca seçilirse aşağıda açıklanan bağlam yine AI sağlayıcısına gidebilir. Bu aktarımları istemiyorsanız mesaj sayfasını veya sırayı açmadan önce **Makaytron Ayarları**ndaki sağlayıcı, otomatik önizleme ve fallback tercihlerini kontrol edin.
 
 AI taslak/düzenleme isteği; müşteri adı, konuşma ve sipariş kimlikleri, ürün başlığı, mağaza adı/imzası, son 10 mesaja kadar konuşma bağlamı ile taslak, şablon veya talimatı seçtiğiniz AI sağlayıcısına gönderebilir. Sağlayıcının gizlilik ve saklama koşullarını inceleyin.
 
@@ -44,13 +44,19 @@ AI taslak/düzenleme isteği; müşteri adı, konuşma ve sipariş kimlikleri, �
 ## Teslim edilen siparişler için mesaj sırası
 
 1. Etsy **Completed Orders** sayfasında **Teslim Edilenler** görünümünü açın.
-2. Yalnız gerçekten `Delivered` olarak işaretlenen uygun siparişleri seçin.
-3. Kullanılacak şablonu ve yöntemi seçip önizlemeyi inceleyin.
-4. **Seçilenlere Mesaj Hazırla** ile kontrollü sırayı oluşturun.
-5. Varsayılan **Otomatik Gönderim** kapalıyken script sıradaki konuşmayı açar ve mesajı Etsy alanına yerleştirir; gönderimden önce siz inceler ve Etsy **Gönder** düğmesine basarsınız.
-6. Gönderim balonu doğrulanırsa varsayılan açık **Doğrulama Sonrası Sıradaki** ayarı sıradaki kayda otomatik geçer. Bu ayarı kapattıysanız siparişler sayfasında **Sırayı Devam Ettir** kullanın. Gerektiğinde **Atla ve Sonraki** ya da **Durdur** kullanın.
+2. Her siparişin **Yorum Kontrolü** alanında durumu seçin. **Yorum yok — kuyruğa uygun** seçimi siparişi uygun olarak işaretleyip seçer; bu manuel doğrulama iki saat geçerlidir. Gerçek kalıcı sıra 4. adımda oluşturulur. **Yorum var**, **Ertele** veya **İletişim istemiyor / sorun var** seçenekleri yorum talebini engeller.
+3. Yorum istemek için varsayılan **Yorum rica — küçük işletme (EN)** şablonunu seçip önizlemeyi inceleyin. Müşteriye İngilizce giden metin dürüst bir yorum rica eder; belirli bir puan, olumlu yorum veya teşvik istemez. Daha önce doğruladığınız uygun siparişleri **Onaylıları Seç** ile birlikte seçebilirsiniz.
+4. **Seçilenlere Mesaj Hazırla** ile kontrollü sırayı oluşturun. Aynı sipariş için kuyrukta, hazırlanmış, doğrulama bekleyen veya gönderilmiş bir `review_request` kaydı varsa ikinci talep oluşturulmaz.
+5. Script sıradaki konuşmayı açar ve mesajı Etsy alanına eksiksiz yerleştirir. Metni kontrol edin veya Etsy kutusunda düzenleyin; ardından paneldeki **Gönder ve Sonrakine Geç** düğmesine bir kez basın.
+6. Script bu kullanıcı tıklamasından sonra Etsy **Gönder** düğmesini tetikler. Yeni outgoing mesaj balonu doğrulanırsa kayıt `gönderildi` olur ve sıradaki konuşma açılır. Doğrulama başarısız veya belirsizse ilerlemez; **Gönderildi / Gönderilmedi** uzlaştırması ister. **Gönderilmedi**, daha yeni uygunluk kararlarını koruyarak taslağı güvenli bir yeniden deneme için hazırlar. Gerektiğinde **Atla ve Sonraki** ya da **Durdur** kullanın.
 
-> **Canlı gönderim uyarısı:** **Otomatik Gönderim** seçeneğini açıkça açarsanız script Etsy **Gönder** düğmesini otomatik tıklayabilir. Bu ayar canlı gönderim yetkisidir. Sonuç doğrulanamazsa kayıt beklemede kalır; script körlemesine tekrar göndermez ve **Gönderildi / Gönderilmedi** uzlaştırması ister.
+> **Canlı gönderim uyarısı:** Global **Otomatik Gönderim** seçeneği başka teslimat şablonlarında canlı gönderim yetkisidir. `review_request` akışında bu ayar uygulanmaz; her alıcının gönderimi yalnız sizin **Gönder ve Sonrakine Geç** tıklamanızla başlar.
+
+> **Resmî olmayan entegrasyon uyarısı:** Bu userscript Etsy tarafından onaylanmış değildir. Etsy [API Koşulları](https://www.etsy.com/legal/api/), Etsy verisine erişen, veriyi analiz eden veya tarayan otomatik sistemler ve tarayıcı uzantıları için açık yazılı yetki arar. Her alıcı için kullanıcı tıklaması bir güvenlik sınırıdır; Etsy yetkisinin kanıtı değildir.
+
+> **Yorum durumu sınırı:** Etsy Completed Orders kartı, scriptin sipariş ile yorumu güvenilir biçimde eşleştirebileceği bir kimlik sunmuyor. Bu nedenle **Yorum yok** kararını siz verirsiniz; **Onaylıları Seç** yalnız bu yerel, süresi dolmamış kararları seçer. Script isim veya ürün başlığıyla tahmin yürütmez.
+
+> **Güncelleme koruması:** Eski bir `gönderildi` kaydı önceki mesajın yorum talebi olup olmadığını kanıtlayamıyorsa alan belirsiz görünür ve sipariş kilitli kalır. Etsy konuşmasını inceleyin; yalnız gerçekten doğruysa **Önceki mesaj yorum talebi değildi — onayla** seçeneğini seçin. Doğrulayamıyorsanız siparişi kilitli bırakın.
 
 ## Yorum cevabı taslağı
 
@@ -65,7 +71,7 @@ Yorum cevabı otomatik yayımlanmaz.
 ## Şablonlar, API anahtarları ve yedek
 
 - Şablonları paneldeki **Şablonlar** bölümünden ekleyin/düzenleyin; hazır metinleri **Hazır mesaj ekle…** listesinden kullanın.
-- `/tesekkur` veya `/teslim` benzeri değerler şablon metadata'sıdır; mesaj alanına yazılan slash komutlarını otomatik çalıştırmaz.
+- `/tesekkur`, `/teslim` veya `/yorumrica` benzeri değerler şablon metadata'sıdır; mesaj alanına yazılan slash komutlarını otomatik çalıştırmaz.
 - API anahtarları Tampermonkey yerel depolamasında tutulur. Ayrı bir sağlayıcı anahtarı ve harcama limiti kullanın.
 - Config yedeklerini hassas veri kabul edin ve paylaşmadan önce içeriğini denetleyin. Sağlayıcı ayarlarına ve script sürümüne bağlı olarak yedek, DeepL anahtarı dahil API anahtarları içerebilir; paylaşmadan önce bunları çıkarın.
 - Message Assistant'ın global klavye kısayolu yoktur. Panel, ayarlar, config yedeği ve güncelleme kontrolü Tampermonkey menüsündedir.

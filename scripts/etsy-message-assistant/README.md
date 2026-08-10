@@ -10,7 +10,7 @@ Etsy mesajlarını Türkçe önizlemek, Türkçe cevabı müşterinin diline çe
 
 Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulması gerekmez.
 
-**Sürüm:** 1.0.3 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.0.4 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
@@ -28,7 +28,12 @@ Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulma
 - Türkçe cevabı müşterinin diline çevirir.
 - OpenAI, Anthropic Claude, Google Gemini, DeepSeek ve OpenRouter için kullanıcıya ait API profillerini destekler.
 - Şablonlar, değişkenler, geçmiş ve teslim edilmiş siparişler için kontrollü mesaj sırası sunar.
-- Mesaj Etsy alanına aktarıldıktan sonra gönderimi varsayılan olarak kullanıcıya bırakır.
+- Satıcının, alıcının henüz yorum bırakmadığını doğruladığı teslim edilmiş siparişler için yeni/küçük işletme tonunda, İngilizce, baskısız ve teşviksiz dürüst yorum talebi şablonu sunar.
+- Yorum durumunu `Kontrol edilmedi / Yorum yok / Yorum var / Ertele / İletişim istemiyor veya sorun var` kararlarıyla sipariş bazında yerel olarak saklar; **Yorum yok** uygunluk onayı iki saat sonra sona erer ve aynı siparişe ikinci yorum talebi engellenir.
+- Eski bir `gönderildi` kaydının önceki mesaj amacını kanıtlayamadığı siparişi belirsiz olarak kilitler; yalnız Etsy konuşmasını kontrol edip **Önceki mesaj yorum talebi değildi — onayla** seçeneğini seçtikten sonra serbest bırakır. Doğrulayamıyorsanız siparişi kilitli bırakın.
+- Mesajı Etsy alanında hazırlar; kullanıcı **Gönder ve Sonrakine Geç** düğmesine bastığında Etsy gönderimini başlatır, çıkan mesaj balonunu doğrular ve ancak bundan sonra sıradaki konuşmaya geçer.
+- Yorum taleplerinde global otomatik gönderim ayarını uygulamaz; son gönderim tıklaması her alıcı için kullanıcıya aittir.
+- Bu, Etsy tarafından onaylanmış bir entegrasyon değil, resmî olmayan bir userscripttir. Etsy [API Koşulları](https://www.etsy.com/legal/api/), Etsy verisine erişen, veriyi analiz eden veya tarayan otomatik sistemler ve tarayıcı uzantıları için Etsy'nin açık yazılı yetkisini arar; son tıklamanın kullanıcıda olması tek başına bu yetkiyi sağlamaz.
 - Ayarları ve sağlayıcı profillerini script güncellemesinde korur.
 - Canonical GitHub kurulumunda yeni sürümü `@version` satırından en fazla 24 saatte bir kontrol eder; farklı dağıtım kaynağının güncelleme mekanizmasını zorlamaz.
 - Güncelleme ekranını yalnız kullanıcı eylemiyle ve aktif mesaj kampanyası yokken açar; son onay Tampermonkey'dedir.

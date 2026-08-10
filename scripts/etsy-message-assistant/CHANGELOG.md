@@ -5,6 +5,32 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.0.4] - 2026-08-10
+
+### Added
+
+- Added an English-language, pressure-free honest-review request preset for delivered orders, using a new/small-business voice without rating requests or incentives.
+- Added dedicated Message Assistant behavior tests for preset safety, rendering, migration, persistence, AI instructions, guided sending, recovery, and cross-tab safety.
+- Added a persistent per-order review eligibility decision: unchecked, confirmed no review, review exists, deferred, or blocked because contact is unwanted/an order issue remains.
+- Added a purpose-based `review_request` outreach ledger with template/message hashes and queued, prepared, pending-verification, and verified-sent states.
+- Added a user-triggered **Gönder ve Sonrakine Geç** action that reuses the coordinated send-attempt and outgoing-bubble verification path.
+
+### Changed
+
+- Made the review-request preset the default delivered-order template while retaining the original delivery-check template.
+- Migrated existing saved template collections idempotently so the new preset appears without overwriting custom edits or archive state.
+- Specialized the AI campaign instruction so only the dedicated preset may request an honest review; other delivery templates continue to prohibit review requests.
+- Added an in-panel warning and replaced unrestricted bulk Select All with **Onaylıları Seç** because Etsy order cards cannot be reliably joined to dashboard review cards; recipients must be verified individually.
+- Review-request confirmations now expire after two hours and fail closed until reconfirmed.
+- Review requests always remain user-triggered even when the global automatic-send setting is enabled.
+- The next conversation opens only after the current outgoing message is verified; an uncertain result remains blocked for manual reconciliation.
+- Bumped the operational status envelope to schema 2 and the configuration schema to 5. Exact legacy review-send evidence is backfilled as sent; an older generic sent record with unknown purpose remains blocked until the seller explicitly confirms it was not a review request.
+- Bound the final user-triggered send to the originally claimed conversation, current template tuple, enabled Etsy Send control, and user-edited composer hash immediately before dispatch.
+- Suppressed a concurrent native Etsy Send click while the guided action is claiming the draft, while allowing the single programmatic click initiated by that explicit panel action.
+- Made campaign queue binding and order/review-outreach send transitions atomic within the shared status envelope, and made cancel/skip restore the exact prior non-review order state before terminalizing the campaign.
+- Made early claim release and `Not Sent` recovery resumable without overwriting newer cross-tab eligibility or terminal send decisions.
+- Documented that the userscript is unofficial and that manual sending does not replace any written authorization required by Etsy's API Terms for browser-extension access.
+
 ## [1.0.3] - 2026-08-04
 
 ### Changed

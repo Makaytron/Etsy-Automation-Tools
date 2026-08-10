@@ -15,7 +15,7 @@ Etsy satıcıları için açık kaynak Etsy automation tools ve Tampermonkey use
 | Script | Sürüm | Amaç |
 |---|---:|---|
 | [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/README.md) | 1.0.12 | Bulk Sales & Discounts Automation ile Etsy kampanyalarını kontrollü, doğrulamalı ve fail-closed seriler hâlinde planlar ve raporlar. |
-| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.md) | 1.0.3 | Mesaj çevirisi, cevap taslağı, şablon ve kullanıcı tarafından seçilen AI sağlayıcıları için yardımcı panel sunar. |
+| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.md) | 1.0.4 | Mesaj çevirisi, cevap taslağı, yorum talebi uygunluk kontrolü, rehberli gönder-ve-sonrakine-geç akışı, şablon ve kullanıcı tarafından seçilen AI sağlayıcıları sunar. |
 | [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.md) | 1.0.3 | Form tabanlı filtrelerle mevcut sayfadaki eşleşmeleri açıp kapatır; açık onayla tüm sayfalardaki eşleşmeleri kapatır. |
 | [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.md) | 1.0.5 | Tüm sayfaları tek komutla sırayla toplar, ilk sayfaya dönünce analizi açar; yeniden deneme, hata raporu, presetler, grafikler, AI karşılaştırması ve Health Engine sunar. |
 | [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/README.md) | 1.0.3 | Marketplace Insights metriklerini görünür DOM'dan okur, keyword satırlarının altında açıklar ve isteğe bağlı olarak Listing Analyzer'a kanıtlı araştırma sonucu gönderir; Listing Analyzer öneriyi bu kanıttan üretir. |
@@ -109,7 +109,7 @@ Kanonik kaynak GitHub'dır. Beş Greasy Fork kaydı tam public Raw yollarından 
 
 - İlk canlı kampanya çalıştırmasını tek gün ve düşük riskli ayarlarla yapın; sonucu Etsy ekranında elle doğrulayın.
 - Etsy Sale Manager'daki **Seriyi Başlat** düğmesi canlı yazma yetkisidir; ardından script her kampanyanın Etsy final gönderim düğmesini otomatik tıklar.
-- Mesaj asistanındaki taslakları Etsy'ye göndermeden önce okuyun. Otomatik gönderim varsayılan olarak kapalıdır.
+- Mesaj asistanındaki taslakları Etsy'ye göndermeden önce okuyun. Otomatik gönderim varsayılan olarak kapalıdır; yorum talepleri bu global ayarı kullanmaz ve her alıcı için ayrı bir **Gönder ve Sonrakine Geç** tıklaması ister.
 - Ads Keyword Manager'daki **Bu sayfadaki eşleşmeleri kapat/aç** işlemleri görünür Etsy kontrollerini değiştirir. **Tüm sayfalardaki eşleşmeleri kapat** yalnız açık onaydan sonra çalışır; sonucu Etsy Ads ekranında elle doğrulayın.
 - Listing Analyzer Health Engine analizleri yalnız görünür Etsy metrikleri ve tarayıcıdaki yerel geçmişe dayanan karar desteğidir. Yaşam döngüsü, cohort, güven, kanıt ve deney sonuçları nedensellik veya Etsy geneli benchmark iddiası değildir; listing iyileştirme, deaktif etme veya diğer toplu yazma işlemleri yalnız açık kullanıcı seçimi ve onayından sonra çalıştırılmalıdır.
 - Listing Analyzer `v1.0.5` AI ağına bağlanmaz: anonimleştirilebilir istek JSON'u/prompt'u dışa aktarır ve doğrulanmış teklif JSON'u içe alır. Her listing Etsy Publish öncesinde kullanıcı onayı bekler; deaktif etmede script yalnız seçenek menüsünü açıp ilgili öğeye odaklanır, Deactivate ve Etsy final onayını kullanıcı tıklar. Delete otomatikleştirilmez.
