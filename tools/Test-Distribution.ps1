@@ -154,6 +154,8 @@ Assert-True ($scripts.Count -eq 5) "Expected exactly five standalone userscripts
 $onlineUrls = [System.Collections.Generic.List[string]]::new()
 $onlineUrls.Add($canonicalRepo)
 $onlineUrls.Add("$canonicalRepo/issues")
+$onlineUrls.Add("$canonicalRepo/discussions/categories/q-a")
+$onlineUrls.Add('https://makaytron.com/contact')
 $onlineUrls.Add('https://api.github.com/repos/Makaytron/Etsy-Automation-Tools/commits/main')
 $remoteParityFiles = [System.Collections.Generic.List[object]]::new()
 $scriptVersions = @{}
@@ -232,6 +234,43 @@ Assert-True ([regex]::IsMatch($distributionSource, ('(?m)^Suite version:\s+`{0}`
 $releaseNotesPath = Join-Path $repoRoot "docs/releases/v$version.md"
 Assert-True (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf) "Release notes are missing: docs/releases/v$version.md"
 
+$communityHealthPaths = [ordered]@{
+    CodeOfConduct = Join-Path $repoRoot '.github/CODE_OF_CONDUCT.md'
+    Contributing = Join-Path $repoRoot '.github/CONTRIBUTING.md'
+    PullRequestTemplate = Join-Path $repoRoot '.github/PULL_REQUEST_TEMPLATE.md'
+}
+foreach ($entry in $communityHealthPaths.GetEnumerator()) {
+    Assert-True (Test-Path -LiteralPath $entry.Value -PathType Leaf) "Community health file is missing: $($entry.Value.Substring($repoRoot.Length + 1))"
+}
+$codeOfConductSource = [System.IO.File]::ReadAllText($communityHealthPaths.CodeOfConduct, [System.Text.Encoding]::UTF8)
+Assert-True ($codeOfConductSource.Contains('# Contributor Covenant Code of Conduct')) 'CODE_OF_CONDUCT.md must use the GitHub-recognized Contributor Covenant template.'
+Assert-True ($codeOfConductSource.Contains('version 2.0')) 'CODE_OF_CONDUCT.md must retain the GitHub Contributor Covenant template attribution.'
+Assert-True (-not $codeOfConductSource.Contains('[INSERT CONTACT METHOD]')) 'CODE_OF_CONDUCT.md still contains an unresolved contact placeholder.'
+Assert-True ($codeOfConductSource.Contains('https://makaytron.com/contact')) 'CODE_OF_CONDUCT.md must provide the project conduct reporting path.'
+Assert-True ($codeOfConductSource.Contains('https://support.github.com/contact/report-abuse')) 'CODE_OF_CONDUCT.md must retain the platform abuse escalation path.'
+
+$contributingSource = [System.IO.File]::ReadAllText($communityHealthPaths.Contributing, [System.Text.Encoding]::UTF8)
+Assert-True ($contributingSource.Contains("$canonicalRepo/issues/new/choose")) 'CONTRIBUTING.md must link the repository issue chooser.'
+Assert-True ($contributingSource.Contains("$canonicalRepo/discussions/categories/q-a")) 'CONTRIBUTING.md must link the Q&A Discussions category.'
+Assert-True ($contributingSource.Contains('tools/Test-Distribution.ps1')) 'CONTRIBUTING.md must document the full local distribution gate.'
+Assert-True ($contributingSource.Contains('../SECURITY.md') -and $contributingSource.Contains('../SECURITY.en.md')) 'CONTRIBUTING.md must link both security policies.'
+
+$pullRequestTemplateSource = [System.IO.File]::ReadAllText($communityHealthPaths.PullRequestTemplate, [System.Text.Encoding]::UTF8)
+Assert-True ($pullRequestTemplateSource.Contains('## Summary /')) 'PULL_REQUEST_TEMPLATE.md must request a bilingual summary.'
+Assert-True ($pullRequestTemplateSource.Contains('## Safety and privacy /')) 'PULL_REQUEST_TEMPLATE.md must include the safety and privacy review.'
+Assert-True ($pullRequestTemplateSource.Contains('tools/Test-Distribution.ps1')) 'PULL_REQUEST_TEMPLATE.md must request the full distribution result.'
+
+$issueConfigSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot '.github/ISSUE_TEMPLATE/config.yml'), [System.Text.Encoding]::UTF8)
+$supportSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'SUPPORT.md'), [System.Text.Encoding]::UTF8)
+$supportEnSource = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'SUPPORT.en.md'), [System.Text.Encoding]::UTF8)
+$qAndAUrl = "$canonicalRepo/discussions/categories/q-a"
+$issueChooserUrl = "$canonicalRepo/issues/new/choose"
+Assert-True ($issueConfigSource.Contains($qAndAUrl)) 'Issue chooser must route general usage questions to Q&A Discussions.'
+Assert-True (-not $issueConfigSource.Contains("$canonicalRepo/blob/main/SUPPORT.md")) 'Issue chooser must not route general usage questions back to the support guide.'
+Assert-True ($supportSource.Contains($qAndAUrl) -and $supportEnSource.Contains($qAndAUrl)) 'Both support guides must route general usage questions to Q&A Discussions.'
+Assert-True ($supportSource.Contains($issueChooserUrl) -and $supportEnSource.Contains($issueChooserUrl)) 'Both support guides must route reproducible bugs to the issue chooser.'
+Write-Host 'PASS community health files=3'
+
 $updaterTestPath = Join-Path $repoRoot 'tools/Test-Updaters.mjs'
 Assert-True (Test-Path -LiteralPath $updaterTestPath -PathType Leaf) 'Updater behavior test is missing.'
 & node --test $updaterTestPath
@@ -302,6 +341,13 @@ if ($RemoteParity) {
             Assert-True ($remoteHash -eq $localHash) "Remote Raw content mismatch for $($check.RelativePath): local $localHash, remote $remoteHash"
             Write-Host "REMOTE MATCH $($check.RelativePath) $remoteHash"
         }
+        $communityProfileUrl = 'https://api.github.com/repos/Makaytron/Etsy-Automation-Tools/community/profile'
+        $communityProfile = ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $httpClient -Url $communityProfileUrl)
+        Assert-True ([int]$communityProfile.health_percentage -eq 100) "GitHub community health is not complete: $($communityProfile.health_percentage)%"
+        Assert-True ($null -ne $communityProfile.files.code_of_conduct_file) 'GitHub did not recognize CODE_OF_CONDUCT.md.'
+        Assert-True ($null -ne $communityProfile.files.contributing) 'GitHub did not recognize CONTRIBUTING.md.'
+        Assert-True ($null -ne $communityProfile.files.pull_request_template) 'GitHub did not recognize PULL_REQUEST_TEMPLATE.md.'
+        Write-Host 'REMOTE MATCH GitHub community health 100%'
     }
     finally {
         $httpClient.Dispose()

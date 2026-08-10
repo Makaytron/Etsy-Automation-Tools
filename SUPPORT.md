@@ -2,7 +2,7 @@
 
 <p><strong>Türkçe</strong> · <a href="./SUPPORT.en.md">English</a></p>
 
-Genel kullanım ve hata bildirimleri için [GitHub Issues](https://github.com/Makaytron/Etsy-Automation-Tools/issues) kullanılır.
+Genel kurulum ve kullanım soruları için [GitHub Discussions Q&A](https://github.com/Makaytron/Etsy-Automation-Tools/discussions/categories/q-a), tekrarlanabilir hatalar için [GitHub issue formları](https://github.com/Makaytron/Etsy-Automation-Tools/issues/new/choose) kullanılır.
 
 Yeni bir bildirimde şunları ekleyin:
 

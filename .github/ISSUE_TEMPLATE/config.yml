@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Kullanım desteği / Usage support
-    url: https://github.com/Makaytron/Etsy-Automation-Tools/blob/main/SUPPORT.md
-    about: Kurulum ve kullanım soruları için destek yönergelerini okuyun. Read the support guidance for installation and usage questions.
+  - name: Kullanım sorusu / Usage question
+    url: https://github.com/Makaytron/Etsy-Automation-Tools/discussions/categories/q-a
+    about: Kurulum ve kullanım sorularını Q&A kategorisinde sorun. Ask installation and usage questions in Q&A.
   - name: Güvenlik açığı bildir
     url: https://github.com/Makaytron/Etsy-Automation-Tools/security/advisories/new
     about: Hassas güvenlik sorunlarını public issue yerine özel olarak bildirin. Report sensitive security issues privately.

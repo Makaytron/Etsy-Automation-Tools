@@ -2,7 +2,7 @@
 
 <p><a href="./SUPPORT.md">Türkçe</a> · <strong>English</strong></p>
 
-Use [GitHub Issues](https://github.com/Makaytron/Etsy-Automation-Tools/issues) for general questions and reproducible bugs.
+Use [GitHub Discussions Q&A](https://github.com/Makaytron/Etsy-Automation-Tools/discussions/categories/q-a) for installation and usage questions, and the [GitHub issue forms](https://github.com/Makaytron/Etsy-Automation-Tools/issues/new/choose) for reproducible bugs.
 
 Include:
 
