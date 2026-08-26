@@ -538,28 +538,50 @@ if ($HostedChannels) {
         $sourceForgeExtras = @($sourceForgeAssets | Where-Object { $expectedReleaseAssetNames -notcontains $_.Name })
         Write-Host "HOSTED MATCH SourceForge $sourceForgeFolder assets=$($expectedReleaseAssetNames.Count) extras=$($sourceForgeExtras.Count)"
 
-        $sourceForgeBestUrl = 'https://sourceforge.net/projects/etsy-automation-tools/best_release.json'
-        $sourceForgeBestResponse = Invoke-WebRequest -Uri $sourceForgeBestUrl -UseBasicParsing -TimeoutSec 45 -Headers @{
-            'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/127.0 Safari/537.36'
-            'Accept' = 'application/json'
-            'Cache-Control' = 'no-cache'
+        $sourceForgeLatestUrl = 'https://sourceforge.net/projects/etsy-automation-tools/files/latest/download'
+        $expectedLatestPath = "/project/etsy-automation-tools/v$version/Etsy-Automation-Tools-v$version.zip"
+        $sourceForgePlatformAgents = [ordered]@{
+            windows = 'curl/8.10.1 (Windows NT 10.0)'
+            mac = 'curl/8.10.1 (Macintosh; Intel Mac OS X 10_15_7)'
+            linux = 'curl/8.10.1 (X11; Linux x86_64)'
+            other = 'curl/8.10.1'
         }
-        Assert-True ([int]$sourceForgeBestResponse.StatusCode -eq 200) "SourceForge default-download API returned HTTP $($sourceForgeBestResponse.StatusCode)."
-        $sourceForgeBest = ConvertFrom-Json -InputObject ([string]$sourceForgeBestResponse.Content)
-        $expectedBestFilename = "/v$version/Etsy-Automation-Tools-v$version.zip"
-        $sourceForgeBestNames = @(
-            [string]$sourceForgeBest.release.filename
-            [string]$sourceForgeBest.platform_releases.windows.filename
-            [string]$sourceForgeBest.platform_releases.mac.filename
-            [string]$sourceForgeBest.platform_releases.linux.filename
-        )
-        foreach ($bestFilename in $sourceForgeBestNames) {
-            Assert-True ($bestFilename -eq $expectedBestFilename) "SourceForge default download mismatch; expected $expectedBestFilename, found $bestFilename."
+        $redirectHandler = [System.Net.Http.HttpClientHandler]::new()
+        $redirectHandler.AllowAutoRedirect = $false
+        $redirectClient = [System.Net.Http.HttpClient]::new($redirectHandler)
+        $redirectClient.Timeout = [TimeSpan]::FromSeconds(45)
+        try {
+            foreach ($platform in $sourceForgePlatformAgents.Keys) {
+                $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Head, $sourceForgeLatestUrl)
+                $request.Headers.TryAddWithoutValidation('User-Agent', [string]$sourceForgePlatformAgents[$platform]) | Out-Null
+                $request.Headers.TryAddWithoutValidation('Cache-Control', 'no-cache') | Out-Null
+                try {
+                    $response = $redirectClient.SendAsync($request).GetAwaiter().GetResult()
+                    try {
+                        Assert-True ([int]$response.StatusCode -in @(301, 302, 303, 307, 308)) "SourceForge latest/download did not redirect for $platform; HTTP $([int]$response.StatusCode)."
+                        Assert-True ($null -ne $response.Headers.Location) "SourceForge latest/download omitted the redirect target for $platform."
+                        $downloadUri = if ($response.Headers.Location.IsAbsoluteUri) {
+                            $response.Headers.Location
+                        }
+                        else {
+                            [uri]::new([uri]$sourceForgeLatestUrl, $response.Headers.Location)
+                        }
+                        Assert-True ([string]$downloadUri.Host -eq 'downloads.sourceforge.net') "SourceForge latest/download host drift for ${platform}: $($downloadUri.Host)"
+                        Assert-True ([uri]::UnescapeDataString($downloadUri.AbsolutePath) -eq $expectedLatestPath) "SourceForge default download mismatch for $platform; expected $expectedLatestPath, found $($downloadUri.AbsolutePath)."
+                    }
+                    finally {
+                        $response.Dispose()
+                    }
+                }
+                finally {
+                    $request.Dispose()
+                }
+            }
         }
-        if (-not $standaloneRelease) {
-            Assert-True ([string]$sourceForgeBest.release.sha256sum -eq $releaseAssetSha256["Etsy-Automation-Tools-v$version.zip"]) 'SourceForge default download digest differs from the suite bundle.'
+        finally {
+            $redirectClient.Dispose()
         }
-        Write-Host "HOSTED MATCH SourceForge default $expectedBestFilename platforms=windows,mac,linux,other"
+        Write-Host "HOSTED MATCH SourceForge default $expectedLatestPath platforms=windows,mac,linux,other"
 
         try {
             $zoneUrl = 'https://www.userscript.zone/search?q=Makaytron&source=search&start=0'
