@@ -1,6 +1,6 @@
 # Distribution and update policy
 
-Suite version: `1.0.3`
+Suite version: `1.0.4`
 
 GitHub repository: <https://github.com/Makaytron/Etsy-Automation-Tools>
 
@@ -13,7 +13,7 @@ GitHub is the only source of truth. Every hosted copy must be derived from the e
 | GitHub | Canonical source and signed releases | Maintainer-reviewed version change and release | Hard gate: verified tag/commit, complete assets, checksums, and local source parity |
 | [Greasy Fork](https://greasyfork.org/en/users/1630152-makaytron) | Primary userscript host | Automatic sync from exact nested Raw `main` URLs, plus an immediate refresh request from a GitHub webhook subscribed only to `release` | Hard gate: all five versions and normalized source parity |
 | [Userscript.Zone](https://www.userscript.zone/) | Search index | Crawler discovers public GitHub and Greasy Fork listings; there is no upload account or webhook | Advisory warning because crawl timing is outside maintainer control |
-| [SourceForge](https://sourceforge.net/projects/etsy-automation-tools/) | Active GitHub Release mirror | Official release-only integration mirrors public GitHub Release files; never a userscript update endpoint | Hard gate: all release assets, byte sizes, and MD5 inventory parity |
+| [SourceForge](https://sourceforge.net/projects/etsy-automation-tools/) | Active GitHub Release mirror | Official release-only integration mirrors public GitHub Release files; never a userscript update endpoint | Hard gate: all release assets, byte sizes, MD5 inventory parity, and suite default-download parity |
 
 Chocolatey and WinGet/WingetUI are not distribution targets for `.user.js` files. They require Windows installer/package formats and must not receive a fake wrapper package.
 
@@ -34,12 +34,12 @@ OpenUserJS is not an active distribution target. Its production publisher curren
 3. Create a signed commit and a scope-matching signed tag from the reviewed commit: `vX.Y.Z` for a suite release or `<package-slug>-vX.Y.Z` for one standalone package.
 4. After pushing canonical `main`, run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online -RemoteParity` to prove that every public Raw file is byte-equivalent to its local source.
 5. Publish the complete GitHub Release once. The release-only webhook requests an immediate Greasy Fork refresh from the configured exact Raw `main` paths; Greasy Fork's own automatic synchronization may also poll those paths.
-6. Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -HostedChannels` for a suite release, or add `-PackageSlug <package-slug>` for a standalone package release. If an explicitly approved standalone release is also GitHub `Latest`, add `-StandaloneLatest`. This read-only command includes the online and Raw-parity checks, hard-fails incomplete GitHub, Greasy Fork, or SourceForge publication, and reports Userscript.Zone crawler lag as a warning.
-7. For a suite release, confirm SourceForge's public `latest/download` selection points at the new bundle. A standalone package release leaves the suite GitHub `Latest` selection unchanged by default; promote it only after an explicit release decision and validate that state with `-StandaloneLatest`. If an eventual synchronization is still incomplete, do not rewrite a channel from the validator; wait for the configured integration and rerun the command.
+6. Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -HostedChannels` for a suite release, or add `-PackageSlug <package-slug>` for a standalone package release. If an explicitly approved standalone release is also GitHub `Latest`, add `-StandaloneLatest`. This read-only command includes the online and Raw-parity checks, hard-fails incomplete GitHub, Greasy Fork, or SourceForge publication, requires the suite release to remain GitHub `Latest`, verifies the SourceForge suite default download, and reports Userscript.Zone crawler lag as a warning.
+7. For a suite release, explicitly mark the suite bundle as SourceForge's default download for every platform if the mirror's automatic selection chooses a generated source archive or a standalone package. A standalone package release leaves the suite GitHub `Latest` selection unchanged by default; promote it only after an explicit release decision and validate that state with `-StandaloneLatest`. If synchronization or default-download cache propagation is still incomplete, wait and rerun the validator instead of duplicating the release.
 
 ## Hosted validation semantics
 
-`-HostedChannels` never publishes, edits, retries, or authenticates to a distribution service. It validates the public release artifacts and signatures, the five Greasy Fork copies after excluding only host-managed `@updateURL` and `@downloadURL` lines, and SourceForge's RSS file inventory. With `-PackageSlug`, GitHub Release and SourceForge asset checks are scoped to that standalone package while Raw parity and all Greasy Fork listings remain comprehensive. `-StandaloneLatest` changes only the expected GitHub `Latest` tag from the suite release to the selected standalone release; it performs no write. Userscript.Zone is passive and therefore advisory. The two official OpenUserJS blocker issues are also checked as an advisory signal so that the inactive-channel decision can be revisited after an upstream fix.
+`-HostedChannels` never publishes, edits, retries, or authenticates to a distribution service. It validates the public release artifacts and signatures, the five Greasy Fork copies after excluding only host-managed `@updateURL` and `@downloadURL` lines, SourceForge's RSS file inventory, and the suite bundle selected by SourceForge's public `best_release.json`. With `-PackageSlug`, GitHub Release and SourceForge asset checks are scoped to that standalone package while Raw parity and all Greasy Fork listings remain comprehensive. `-StandaloneLatest` changes only the expected GitHub `Latest` tag from the suite release to the selected standalone release; it performs no write. Userscript.Zone is passive and therefore advisory. The two official OpenUserJS blocker issues are also checked as an advisory signal so that the inactive-channel decision can be revisited after an upstream fix.
 
 ## Security invariants
 

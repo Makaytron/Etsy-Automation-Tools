@@ -398,11 +398,9 @@ if ($HostedChannels) {
         & git -C $repoRoot merge-base --is-ancestor $localReleaseCommit HEAD
         Assert-True ($LASTEXITCODE -eq 0) "Release commit $localReleaseCommit is not an ancestor of local HEAD."
 
-        if ($standaloneRelease) {
-            $latestRelease = ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $hostedClient -Url "$apiBase/releases/latest")
-            $expectedLatestTag = if ($StandaloneLatest) { $releaseTag } else { "v$version" }
-            Assert-True ([string]$latestRelease.tag_name -eq $expectedLatestTag) "Unexpected GitHub Latest release; expected $expectedLatestTag, found $($latestRelease.tag_name)."
-        }
+        $latestRelease = ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $hostedClient -Url "$apiBase/releases/latest")
+        $expectedLatestTag = if ($standaloneRelease -and $StandaloneLatest) { $releaseTag } else { "v$version" }
+        Assert-True ([string]$latestRelease.tag_name -eq $expectedLatestTag) "Unexpected GitHub Latest release; expected $expectedLatestTag, found $($latestRelease.tag_name)."
 
         if ($standaloneRelease) {
             $expectedReleaseAssetNames = @($releaseScripts[0].Name, 'SHA256SUMS.txt')
@@ -539,6 +537,29 @@ if ($HostedChannels) {
         }
         $sourceForgeExtras = @($sourceForgeAssets | Where-Object { $expectedReleaseAssetNames -notcontains $_.Name })
         Write-Host "HOSTED MATCH SourceForge $sourceForgeFolder assets=$($expectedReleaseAssetNames.Count) extras=$($sourceForgeExtras.Count)"
+
+        $sourceForgeBestUrl = 'https://sourceforge.net/projects/etsy-automation-tools/best_release.json'
+        $sourceForgeBestResponse = Invoke-WebRequest -Uri $sourceForgeBestUrl -UseBasicParsing -TimeoutSec 45 -Headers @{
+            'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/127.0 Safari/537.36'
+            'Accept' = 'application/json'
+            'Cache-Control' = 'no-cache'
+        }
+        Assert-True ([int]$sourceForgeBestResponse.StatusCode -eq 200) "SourceForge default-download API returned HTTP $($sourceForgeBestResponse.StatusCode)."
+        $sourceForgeBest = ConvertFrom-Json -InputObject ([string]$sourceForgeBestResponse.Content)
+        $expectedBestFilename = "/v$version/Etsy-Automation-Tools-v$version.zip"
+        $sourceForgeBestNames = @(
+            [string]$sourceForgeBest.release.filename
+            [string]$sourceForgeBest.platform_releases.windows.filename
+            [string]$sourceForgeBest.platform_releases.mac.filename
+            [string]$sourceForgeBest.platform_releases.linux.filename
+        )
+        foreach ($bestFilename in $sourceForgeBestNames) {
+            Assert-True ($bestFilename -eq $expectedBestFilename) "SourceForge default download mismatch; expected $expectedBestFilename, found $bestFilename."
+        }
+        if (-not $standaloneRelease) {
+            Assert-True ([string]$sourceForgeBest.release.sha256sum -eq $releaseAssetSha256["Etsy-Automation-Tools-v$version.zip"]) 'SourceForge default download digest differs from the suite bundle.'
+        }
+        Write-Host "HOSTED MATCH SourceForge default $expectedBestFilename platforms=windows,mac,linux,other"
 
         try {
             $zoneUrl = 'https://www.userscript.zone/search?q=Makaytron&source=search&start=0'
