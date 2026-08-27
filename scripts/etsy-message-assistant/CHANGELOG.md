@@ -5,6 +5,22 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.1.1] - 2026-08-27
+
+### Changed
+
+- Panel artık mesaj sayfasında varsayılan olarak kapalı kalır; sağ üstteki kompakt **Mesaj Asistanı · Aç** kontrolü ve panel başlığındaki belirgin **Kapat** kontrolü açık/kapalı durumunu gösterir.
+- Otomatik Türkçe önizleme, yalnız kullanıcı paneli açtığında veya **Mesaj Sayfasında Otomatik Aç** seçeneğini açıkça etkinleştirdiğinde devreye girer.
+
+### Fixed
+
+- Eski ayar şemalarının içe aktarılması veya yükseltilmesi sırasında panelin istemeden yeniden otomatik açılması engellendi.
+- Gizli bilgiler dahil edilmeden dışa aktarılan yapılandırmalardan DeepL, AI sağlayıcısı ve merkezi mesaj paneli kimlik bilgilerinin sızması engellendi; bu yedekler içe aktarılırken mevcut yerel anahtarlar korunur.
+- Şablon kimlikleri ve ayrılmış yorum-talebi şablonu güvenli biçimde doğrulanarak HTML öznitelik enjeksiyonu ile yanlış amaç metadata'sının korumaları aşması engellendi.
+- Müşteri dilinde yanıt tercihi uygulanır ve çeviri isteklerinde paragraf/satır sonları korunur.
+- Geçmiş kayıtlarının eş zamanlı sekme yazımlarında kaybolması önlendi.
+- Mesaj bağlamı ve yorum cevap alanı etkin konuşma/kart kapsamına bağlandı; belirsiz DOM eşleşmeleri artık güvenli biçimde reddedilir.
+
 ## [1.0.4] - 2026-08-10
 
 ### Added

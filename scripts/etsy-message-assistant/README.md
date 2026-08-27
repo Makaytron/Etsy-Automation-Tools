@@ -10,7 +10,7 @@ Etsy mesajlarını Türkçe önizlemek, Türkçe cevabı müşterinin diline çe
 
 Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulması gerekmez.
 
-**Sürüm:** 1.0.4 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.1.1 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
@@ -20,11 +20,13 @@ Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulma
 2. [Userscript dosyasını açın](https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js).
 3. Tampermonkey kurulum ekranında izinleri inceleyip **Yükle** düğmesine basın.
 4. Etsy Mesajlar veya desteklenen Shop Manager sayfasını açıp yenileyin.
-5. Makaytron panelindeki **Ayarlar** bölümünden kullanacağınız çeviri veya AI sağlayıcısını yapılandırın.
+5. Sağ üstteki **Mesaj Asistanı · Aç** kontrolüyle paneli açın.
+6. Makaytron panelindeki **Ayarlar** bölümünden kullanacağınız çeviri veya AI sağlayıcısını yapılandırın.
 
 ## Özellikler
 
 - Etsy müşteri mesajını Türkçe önizler.
+- Mesaj sayfasında varsayılan olarak kapalı kalır; panel yalnız **Aç** kontrolüyle veya kullanıcının ayrıca etkinleştirdiği otomatik-açma tercihiyle görünür.
 - Türkçe cevabı müşterinin diline çevirir.
 - OpenAI, Anthropic Claude, Google Gemini, DeepSeek ve OpenRouter için kullanıcıya ait API profillerini destekler.
 - Şablonlar, değişkenler, geçmiş ve teslim edilmiş siparişler için kontrollü mesaj sırası sunar.
@@ -46,7 +48,7 @@ Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulma
 4. Oluşan metni okuyup gerekiyorsa düzenleyin.
 5. **Etsy'ye Aktar** düğmesinden sonra Etsy'nin kendi **Gönder** düğmesiyle son onayı verin.
 
-Google Translate varsayılan sağlayıcıdır; otomatik Türkçe önizleme de varsayılan olarak açıktır. Bu nedenle mesaj sayfası açıldığında son müşteri mesajı Google Translate'e otomatik gönderilebilir. İstemiyorsanız mesaj sayfasına gitmeden önce Tampermonkey menüsündeki Makaytron ayarlarından bu seçeneği kapatın. Diğer AI ve çeviri özellikleri kullanıldığında ilgili metin seçilen üçüncü taraf sağlayıcıya gönderilir. API anahtarları Tampermonkey depolamasında tutulur; ayrı anahtar ve sağlayıcı tarafında harcama limiti kullanılması önerilir.
+Panel mesaj sayfasında varsayılan olarak kapalıdır. Google Translate varsayılan sağlayıcıdır ve otomatik Türkçe önizleme açıktır; ancak önizleme yalnız paneli **Mesaj Asistanı · Aç** kontrolüyle açtığınızda veya **Mesaj Sayfasında Otomatik Aç** tercihini ayrıca etkinleştirdiğinizde son müşteri mesajını Google Translate'e gönderebilir. Bu aktarımı istemiyorsanız paneli kapalı tutun ya da açmadan önce Tampermonkey menüsündeki Makaytron ayarlarından otomatik önizlemeyi kapatın. Diğer AI ve çeviri özellikleri kullanıldığında ilgili metin seçilen üçüncü taraf sağlayıcıya gönderilir. API anahtarları Tampermonkey depolamasında tutulur; ayrı anahtar ve sağlayıcı tarafında harcama limiti kullanılması önerilir.
 
 ## Psödonimleştirilmiş kullanım telemetrisi
 

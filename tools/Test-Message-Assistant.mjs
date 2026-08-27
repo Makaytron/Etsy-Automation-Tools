@@ -11,11 +11,19 @@ const scriptPath = path.join(
     'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js',
 );
 
-async function loadAssistant() {
-    const storage = new Map();
+async function loadAssistant(options = {}) {
+    const storage = options.storage || new Map();
     const noop = () => {};
     const documentListeners = new Map();
-    const lockTails = new Map();
+    const lockTails = options.lockTails || new Map();
+    const valueListeners = options.valueListeners || new Map();
+    const environmentId = Symbol('message-assistant-test-environment');
+    const cloneStored = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+    const notifyValueListeners = (key, oldValue, newValue) => {
+        for (const listener of valueListeners.get(key) || []) {
+            listener.handler(key, cloneStored(oldValue), cloneStored(newValue), listener.environmentId !== environmentId);
+        }
+    };
     const document = {
         readyState: 'loading',
         documentElement: { appendChild: noop },
@@ -38,10 +46,26 @@ async function loadAssistant() {
     };
     const GM = {
         info: { script: {} },
-        getValue: async (key, fallback) => storage.has(key) ? storage.get(key) : JSON.parse(JSON.stringify(fallback)),
-        setValue: async (key, value) => { storage.set(key, JSON.parse(JSON.stringify(value))); },
-        deleteValue: async (key) => storage.delete(key),
-        addValueChangeListener: noop,
+        getValue: async (key, fallback) => cloneStored(storage.has(key) ? storage.get(key) : fallback),
+        setValue: async (key, value) => {
+            const oldValue = cloneStored(storage.get(key));
+            const nextValue = cloneStored(value);
+            storage.set(key, nextValue);
+            notifyValueListeners(key, oldValue, nextValue);
+        },
+        deleteValue: async (key) => {
+            const oldValue = cloneStored(storage.get(key));
+            const deleted = storage.delete(key);
+            if (deleted) notifyValueListeners(key, oldValue, undefined);
+            return deleted;
+        },
+        addValueChangeListener(key, handler) {
+            const listeners = valueListeners.get(key) || [];
+            const listener = { environmentId, handler };
+            listeners.push(listener);
+            valueListeners.set(key, listeners);
+            return listener;
+        },
         registerMenuCommand: noop,
         getResourceURL: async () => '',
         openInTab: noop,
@@ -50,6 +74,7 @@ async function loadAssistant() {
     const sandbox = {
         console,
         URL,
+        URLSearchParams,
         Date,
         Math,
         JSON,
@@ -76,6 +101,7 @@ async function loadAssistant() {
         navigator: {
             locks: {
                 request: async (name, _options, operation) => {
+                    options.requestedLocks?.push(name);
                     const previous = lockTails.get(name) || Promise.resolve();
                     let release = null;
                     const turn = new Promise(resolve => { release = resolve; });
@@ -102,7 +128,7 @@ async function loadAssistant() {
         MutationObserver: class { observe() {} disconnect() {} },
         GM,
         GM_info: GM.info,
-        GM_addValueChangeListener: noop,
+        GM_addValueChangeListener: (key, handler) => GM.addValueChangeListener(key, handler),
         confirm: () => true,
         setTimeout,
         clearTimeout,
@@ -133,8 +159,15 @@ async function loadAssistant() {
         Outreach,
         Verification,
         MessageAdapter,
+        ReviewsAdapter,
+        GMX,
+        Translator,
+        Prompt,
+        AI,
         Router,
+        Updates,
         UI,
+        App,
         mergeDefaultTemplates,
         campaignInstructionForTemplate,
         campaignAutoSendAllowed,
@@ -150,6 +183,701 @@ async function loadAssistant() {
 }
 
 const copy = (value) => JSON.parse(JSON.stringify(value));
+
+test('message context reads only the active composer panel and fails closed when the composer is ambiguous', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/active-conversation';
+    sandbox.location.href = 'https://www.etsy.com/messages/active-conversation';
+
+    const buyerHeader = {
+        textContent: 'Active Buyer',
+        closest: () => ({ querySelector: selector => selector === 'img' ? { src: 'https://img.example/active.jpg' } : null }),
+    };
+    const customerBubble = {
+        id: 'active-customer-message',
+        innerText: 'Active customer message',
+        textContent: 'Active customer message',
+        className: 'message-bubble',
+        closest: () => ({ className: 'wt-grid' }),
+    };
+    const sellerBubble = {
+        id: 'active-seller-message',
+        innerText: 'Active seller reply',
+        textContent: 'Active seller reply',
+        className: 'message-bubble surface-informational-subtle',
+        closest: () => ({ className: 'wt-grid justify-content-flex-end' }),
+    };
+    const sidebarBubble = {
+        id: 'sidebar-message',
+        innerText: 'Wrong sidebar preview',
+        textContent: 'Wrong sidebar preview',
+        className: 'message-bubble',
+        closest: () => ({ className: 'wt-grid' }),
+    };
+    const orderLink = { href: 'https://www.etsy.com/your/orders/sold?order_id=22222222' };
+    const listingLink = {
+        textContent: 'Active Item Title',
+        getAttribute: name => name === 'title' ? 'Active Item Title' : '',
+        querySelector: () => null,
+    };
+    const activePanel = {
+        parentElement: null,
+        contains: element => element === activeTextarea || [customerBubble, sellerBubble].includes(element),
+        querySelector(selector) {
+            if (selector === 'h3.buyer-name a' || selector === 'h3.buyer-name') return buyerHeader;
+            if (selector === 'a[href*="order_id="]') return orderLink;
+            return null;
+        },
+        querySelectorAll(selector) {
+            if (selector === api.MessageAdapter.bubbleSelector) return [customerBubble, sellerBubble];
+            if (selector.includes('textarea')) return [activeTextarea];
+            if (selector === 'a[href*="/listing/"], a[href*="/transaction/"]') return [listingLink];
+            return [];
+        },
+    };
+    const activeTextarea = {
+        offsetParent: {},
+        parentElement: activePanel,
+        closest: selector => selector.includes('[role="tabpanel"]') ? broadMessagesRoot : null,
+    };
+    const broadMessagesRoot = {
+        parentElement: null,
+        contains: () => true,
+        querySelector(selector) {
+            if (selector.includes('buyer-name')) return {
+                textContent: 'Wrong Sidebar Buyer',
+                closest: () => ({ querySelector: () => ({ src: 'https://img.example/wrong-sidebar.jpg' }) }),
+            };
+            if (selector.includes('order_id=')) return { href: 'https://www.etsy.com/?order_id=99999999' };
+            return null;
+        },
+        querySelectorAll(selector) {
+            if (selector === api.MessageAdapter.bubbleSelector) return [sidebarBubble, customerBubble, sellerBubble];
+            if (selector.includes('textarea')) return [activeTextarea];
+            if (selector.includes('/messages/') || selector.includes('/conversations/')) {
+                return [{ href: 'https://www.etsy.com/messages/sidebar-conversation' }];
+            }
+            return [];
+        },
+    };
+    activePanel.parentElement = broadMessagesRoot;
+
+    sandbox.document.querySelectorAll = (selector) => {
+        if (selector === api.MessageAdapter.bubbleSelector) return [sidebarBubble, customerBubble, sellerBubble];
+        if (selector.includes('textarea')) return [activeTextarea];
+        if (selector.includes('/listing/') || selector.includes('/transaction/')) return [{
+            textContent: 'Wrong sidebar item', getAttribute: () => 'Wrong sidebar item', querySelector: () => null,
+        }];
+        return [];
+    };
+    sandbox.document.querySelector = (selector) => {
+        if (selector.includes('buyer-name') || selector.includes('scrolling-message-list')) return {
+            textContent: 'Wrong Sidebar Buyer',
+            closest: () => ({ querySelector: () => ({ src: 'https://img.example/wrong-sidebar.jpg' }) }),
+        };
+        if (selector.includes('order_id=')) return { href: 'https://www.etsy.com/?order_id=99999999' };
+        return null;
+    };
+    sandbox.document.body.innerText = 'Wrong sidebar order #99999999';
+
+    const context = api.MessageAdapter.context();
+    assert.equal(context.customerName, 'Active Buyer');
+    assert.equal(context.customerAvatar, 'https://img.example/active.jpg');
+    assert.equal(context.orderId, '22222222');
+    assert.equal(context.itemTitle, 'Active Item Title');
+    assert.deepEqual(copy(context.messages.map(message => message.text)), ['Active customer message', 'Active seller reply']);
+    assert.equal(context.lastCustomerMessage, 'Active customer message');
+
+    const secondTextarea = { offsetParent: {}, parentElement: activePanel, closest: activeTextarea.closest };
+    sandbox.document.querySelectorAll = selector => selector.includes('textarea')
+        ? [activeTextarea, secondTextarea]
+        : [sidebarBubble];
+    const ambiguous = api.MessageAdapter.context();
+    assert.equal(api.MessageAdapter.getTextarea(), null);
+    assert.equal(ambiguous.conversationId, '');
+    assert.equal(ambiguous.customerName, '');
+    assert.equal(ambiguous.customerAvatar, '');
+    assert.equal(ambiguous.orderId, '');
+    assert.equal(ambiguous.itemTitle, '');
+    assert.deepEqual(copy(ambiguous.messages), []);
+    assert.equal(ambiguous.lastCustomerMessage, '');
+});
+
+test('message composer resolution rejects a unique unrelated textarea outside an active conversation', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const unrelatedTextarea = Object.assign(new sandbox.HTMLTextAreaElement(), {
+        offsetParent: {},
+        value: 'Keep this text',
+        dispatchEvent() {},
+        focus() {},
+        closest: () => null,
+        parentElement: null,
+    });
+    sandbox.document.querySelectorAll = selector => selector.includes('textarea') ? [unrelatedTextarea] : [];
+
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.href = 'https://www.etsy.com/your/orders/sold/completed';
+    assert.equal(api.MessageAdapter.getTextarea(), null);
+    assert.throws(() => api.MessageAdapter.insert('Must not be inserted'), /cevap alanı bulunamadı/i);
+    await assert.rejects(api.MessageAdapter.insertWhenReady('Must not be inserted', 0), /cevap alanı bulunamadı/i);
+    assert.equal(unrelatedTextarea.value, 'Keep this text');
+
+    sandbox.location.pathname = '/messages';
+    sandbox.location.href = 'https://www.etsy.com/messages';
+    assert.equal(api.MessageAdapter.getTextarea(), null);
+    assert.equal(unrelatedTextarea.value, 'Keep this text');
+});
+
+test('public review reply writes only to the newly opened selected-review surface', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const makeTextarea = () => Object.assign(new sandbox.HTMLTextAreaElement(), {
+        offsetParent: {},
+        value: '',
+        dispatchEvent() {},
+        focus() { this.focused = true; },
+    });
+    const existingTextarea = makeTextarea();
+    const unrelatedNewTextarea = makeTextarea();
+    const targetTextarea = makeTextarea();
+    let textareas = [existingTextarea];
+    let dialogs = [];
+    const dialog = {
+        offsetParent: {},
+        contains: element => element === targetTextarea,
+        querySelectorAll: selector => selector === 'textarea' ? [targetTextarea] : [],
+    };
+    targetTextarea.closest = selector => selector.includes('[role="dialog"]') ? dialog : null;
+    unrelatedNewTextarea.closest = () => null;
+    existingTextarea.closest = () => null;
+    const card = {
+        contains: () => false,
+        querySelectorAll: selector => selector === 'textarea' ? [] : [],
+    };
+    const publicButton = {
+        getAttribute: () => '',
+        click() {
+            textareas = [existingTextarea, unrelatedNewTextarea, targetTextarea];
+            dialogs = [dialog];
+        },
+    };
+    sandbox.document.querySelectorAll = selector => {
+        if (selector === 'textarea') return textareas;
+        if (selector.includes('[role="dialog"]')) return dialogs;
+        return [];
+    };
+    sandbox.document.getElementById = () => null;
+
+    assert.equal(await api.ReviewsAdapter.insertPublic({ card, publicButton }, 'Safe public reply'), true);
+    assert.equal(targetTextarea.value, 'Safe public reply');
+    assert.equal(targetTextarea.focused, true);
+    assert.equal(existingTextarea.value, '');
+    assert.equal(unrelatedNewTextarea.value, '');
+});
+
+test('public review reply fails closed when the selected-review surface exposes multiple textareas', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const makeTextarea = () => Object.assign(new sandbox.HTMLTextAreaElement(), {
+        offsetParent: {}, value: '', dispatchEvent() {}, focus() {},
+    });
+    const first = makeTextarea();
+    const second = makeTextarea();
+    const dialog = {
+        offsetParent: {},
+        contains: element => element === first || element === second,
+        querySelectorAll: selector => selector === 'textarea' ? [first, second] : [],
+    };
+    first.closest = second.closest = selector => selector.includes('[role="dialog"]') ? dialog : null;
+    let opened = false;
+    sandbox.document.querySelectorAll = selector => {
+        if (selector === 'textarea') return opened ? [first, second] : [];
+        if (selector.includes('[role="dialog"]')) return opened ? [dialog] : [];
+        return [];
+    };
+    sandbox.document.getElementById = () => null;
+    const review = {
+        card: { contains: () => false, querySelectorAll: () => [] },
+        publicButton: { getAttribute: () => '', click: () => { opened = true; } },
+    };
+
+    await assert.rejects(api.ReviewsAdapter.insertPublic(review, 'Must not be inserted'), /belirsiz|birden fazla|güvenli/i);
+    assert.equal(first.value, '');
+    assert.equal(second.value, '');
+});
+
+test('history writes from concurrent tabs merge and idempotent events remain unique', async () => {
+    const shared = {
+        storage: new Map(),
+        lockTails: new Map(),
+        valueListeners: new Map(),
+        requestedLocks: [],
+    };
+    const [firstTab, secondTab] = await Promise.all([
+        loadAssistant(shared),
+        loadAssistant(shared),
+    ]);
+    await Promise.all([
+        firstTab.api.Store.ensureCoordinationListeners(),
+        secondTab.api.Store.ensureCoordinationListeners(),
+    ]);
+
+    await Promise.all([
+        firstTab.api.Store.addHistory({ type: 'first_tab_event' }),
+        secondTab.api.Store.addHistory({ type: 'second_tab_event' }),
+    ]);
+
+    const historyKey = firstTab.api.KEYS.history;
+    assert.deepEqual(
+        new Set(shared.storage.get(historyKey).map(item => item.type)),
+        new Set(['first_tab_event', 'second_tab_event']),
+    );
+    assert.equal(firstTab.api.Store.history.length, 2);
+    assert.equal(secondTab.api.Store.history.length, 2);
+
+    const [firstResult, secondResult] = await Promise.all([
+        firstTab.api.Store.addHistoryOnce({ type: 'once_event' }, 'shared-once-key'),
+        secondTab.api.Store.addHistoryOnce({ type: 'once_event' }, 'shared-once-key'),
+    ]);
+
+    const finalHistory = shared.storage.get(historyKey);
+    assert.equal(finalHistory.filter(item => item.idempotencyKey === 'shared-once-key').length, 1);
+    assert.equal(firstResult.id, secondResult.id);
+    assert.equal(firstTab.api.Store.history.length, 3);
+    assert.equal(secondTab.api.Store.history.length, 3);
+    assert.ok(shared.requestedLocks.includes('mema:history-coordination:v1'));
+    assert.equal(shared.requestedLocks.includes('mema:campaign-status-coordination:v1'), false);
+});
+
+test('history keeps its same-tab write chain fallback when Web Locks are unavailable', async () => {
+    const { api, sandbox, storage } = await loadAssistant();
+    delete sandbox.navigator.locks;
+
+    await Promise.all([
+        api.Store.addHistory({ type: 'fallback_first' }),
+        api.Store.addHistory({ type: 'fallback_second' }),
+    ]);
+
+    assert.deepEqual(
+        new Set(storage.get(api.KEYS.history).map(item => item.type)),
+        new Set(['fallback_first', 'fallback_second']),
+    );
+});
+
+test('history pruning reads the fresh shared value and preserves a remote tab event', async () => {
+    const shared = {
+        storage: new Map(),
+        lockTails: new Map(),
+        valueListeners: new Map(),
+        requestedLocks: [],
+    };
+    const [staleTab, remoteTab] = await Promise.all([
+        loadAssistant(shared),
+        loadAssistant(shared),
+    ]);
+    const historyKey = staleTab.api.KEYS.history;
+    const expired = { id: 'expired-event', type: 'expired', createdAt: '2020-01-01T00:00:00.000Z' };
+    shared.storage.set(historyKey, copy([expired]));
+    staleTab.api.Store.history = copy([expired]);
+    remoteTab.api.Store.history = copy([expired]);
+
+    await remoteTab.api.Store.addHistory({ type: 'fresh_remote_event' });
+    shared.requestedLocks.length = 0;
+    await staleTab.api.Store.pruneHistory();
+
+    const finalHistory = shared.storage.get(historyKey);
+    assert.deepEqual(finalHistory.map(item => item.type), ['fresh_remote_event']);
+    assert.deepEqual(copy(staleTab.api.Store.history), copy(finalHistory));
+    assert.deepEqual(shared.requestedLocks, ['mema:history-coordination:v1']);
+});
+
+test('history clear is ordered between queued writes and uses the history coordinator', async () => {
+    const requestedLocks = [];
+    const { api, storage } = await loadAssistant({ requestedLocks });
+
+    const beforeClear = api.Store.addHistory({ type: 'before_clear' });
+    const clear = api.Store.clearHistory();
+    const afterClear = api.Store.addHistory({ type: 'after_clear' });
+    await Promise.all([beforeClear, clear, afterClear]);
+
+    assert.deepEqual(storage.get(api.KEYS.history).map(item => item.type), ['after_clear']);
+    assert.deepEqual(copy(api.Store.history), copy(storage.get(api.KEYS.history)));
+    assert.deepEqual(requestedLocks, [
+        'mema:history-coordination:v1',
+        'mema:history-coordination:v1',
+        'mema:history-coordination:v1',
+    ]);
+});
+
+test('assistant stays closed by default until the user explicitly opens it', async () => {
+    const { api, storage } = await loadAssistant();
+    const openedPages = [];
+
+    assert.equal(api.DEFAULT_SETTINGS.openOnMessagePage, false);
+    api.Store.settings = { ...api.DEFAULT_SETTINGS, openOnMessagePage: true };
+    api.Store.configMeta = { schemaVersion: 5, updatedAt: '2026-08-26T00:00:00.000Z' };
+    await api.Store.migrate();
+    assert.equal(api.Store.settings.openOnMessagePage, false);
+    assert.equal(storage.get(api.KEYS.settings).openOnMessagePage, false);
+
+    api.Store.load = async () => {
+        api.Store.onboarding = { completed: false, completedAt: '', githubStepSeen: false };
+    };
+    api.Store.ensureCoordinationListeners = async () => {};
+    api.Router.start = () => {};
+    api.App.onRoute = async () => {};
+    api.Updates.check = async () => api.Store.update;
+    api.UI.mount = () => {};
+    api.UI.open = (page) => {
+        openedPages.push(page);
+        api.UI.state.open = true;
+    };
+    api.UI.state.open = false;
+
+    await api.App.init();
+
+    assert.equal(api.UI.state.open, false);
+    assert.deepEqual(openedPages, []);
+});
+
+test('translator preserves formatting and separates cache entries by exact text and preferred provider', async () => {
+    const environment = await loadAssistant();
+    const requests = [];
+    const formattedText = '\n  First paragraph.\n\n    Second paragraph stays indented.  \n';
+    const trimmedText = 'First paragraph.\n\n    Second paragraph stays indented.';
+    const singleLineText = 'First paragraph. Second paragraph stays indented.';
+
+    environment.api.GMX.request = async (request) => {
+        requests.push(request);
+        if (request.url.includes('deepl.com')) {
+            return {
+                status: 200,
+                responseText: JSON.stringify({ translations: [{ text: 'DeepL çevirisi', detected_source_language: 'EN' }] }),
+            };
+        }
+        return {
+            status: 200,
+            responseText: JSON.stringify([[['Çeviri', trimmedText]], null, 'en']),
+        };
+    };
+    environment.api.Store.settings = {
+        ...environment.api.Store.settings,
+        translator: 'google',
+        deeplApiKey: 'test-key',
+        freeFallback: false,
+    };
+
+    await environment.api.Translator.translate(formattedText, 'tr');
+    await environment.api.Translator.translate(singleLineText, 'tr');
+    await environment.api.Translator.translate(formattedText, 'tr');
+    await environment.api.Translator.translate(formattedText, 'tr', { provider: 'deepl' });
+    environment.api.Store.settings.preferUsEnglish = true;
+    await environment.api.Translator.translate('English locale probe', 'en', { provider: 'deepl' });
+    environment.api.Store.settings.preferUsEnglish = false;
+    await environment.api.Translator.translate('English locale probe', 'en', { provider: 'deepl' });
+
+    const googleRequests = requests.filter(request => request.url.includes('translate.googleapis.com'));
+    const deepLRequests = requests.filter(request => request.url.includes('deepl.com'));
+    assert.equal(googleRequests.length, 2, 'paragraph formatting must be part of the translation cache identity');
+    assert.equal(deepLRequests.length, 3, 'provider and effective English variant must be part of the cache identity');
+    assert.equal(new URL(googleRequests[0].url).searchParams.get('q'), trimmedText);
+    assert.equal(new URL(googleRequests[1].url).searchParams.get('q'), singleLineText);
+    assert.equal(new URLSearchParams(deepLRequests[0].data).get('text'), trimmedText);
+    assert.deepEqual(
+        deepLRequests.slice(1).map(request => new URLSearchParams(request.data).get('target_lang')),
+        ['EN-US', 'EN'],
+    );
+});
+
+test('message adapter and UI translation paths preserve trimmed multiline customer text', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/multiline-conversation';
+    sandbox.location.href = 'https://www.etsy.com/messages/multiline-conversation';
+    const expected = 'First paragraph.\n\n    Second paragraph with  two spaces.';
+    const row = { className: 'wt-grid' };
+    const bubble = {
+        id: 'multiline-message',
+        innerText: '\n  Message: First paragraph.\n\n    Second paragraph with  two spaces.  \n',
+        textContent: '',
+        className: 'message-bubble',
+        parentElement: null,
+        closest: selector => selector === '.wt-grid' ? row : null,
+    };
+    const scope = {
+        innerText: '',
+        textContent: '',
+        querySelector: () => null,
+        querySelectorAll: selector => selector === api.MessageAdapter.bubbleSelector ? [bubble] : [],
+    };
+    api.MessageAdapter.getConversationScope = () => scope;
+
+    const context = api.MessageAdapter.context();
+    assert.equal(context.lastCustomerMessage, expected);
+    assert.equal(context.messages[0].text, expected);
+
+    const translatedTexts = [];
+    api.Translator.translate = async (text) => {
+        translatedTexts.push(text);
+        return { text: 'Çeviri', detectedLanguage: 'en', provider: 'google' };
+    };
+    api.UI.setBusy = () => {};
+    api.UI.toast = () => {};
+    api.Store.settings.autoTurkishPreview = true;
+    api.Store.settings.replyInCustomerLanguage = true;
+    api.UI.state.context = null;
+
+    await api.UI.refreshMessages();
+    await api.UI.translateLast();
+
+    assert.deepEqual(copy(translatedTexts), [expected, expected]);
+});
+
+test('manual target language survives detection when automatic customer-language replies are disabled', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/conversation-1';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-1';
+    const context = {
+        conversationId: api.Router.conversationId(),
+        routeFingerprint: api.Router.routeFingerprint(),
+        lastCustomerMessage: 'Hola, necesito ayuda.',
+        messages: [],
+    };
+    api.MessageAdapter.context = () => context;
+    api.Translator.translate = async () => ({ text: 'Merhaba, yardıma ihtiyacım var.', detectedLanguage: 'es', provider: 'google' });
+    api.Verification.invalidate = () => {};
+    api.Campaign.current = () => null;
+    api.Store.settings.autoTurkishPreview = true;
+    api.UI.state.context = null;
+    api.UI.state.targetLanguage = 'de';
+
+    api.Store.settings.replyInCustomerLanguage = false;
+    await api.UI.refreshMessages();
+    assert.equal(api.UI.state.targetLanguage, 'de');
+    assert.match(api.Prompt.system('reply', { preferences: { target_language: 'de' } }), /hedef dil.*de/i);
+    assert.doesNotMatch(api.Prompt.system('reply', { preferences: { target_language: 'de' } }), /son anlamlı mesajıyla aynı dilde/i);
+
+    api.Store.settings.replyInCustomerLanguage = true;
+    api.UI.state.context = null;
+    api.UI.state.targetLanguage = 'de';
+    await api.UI.refreshMessages();
+    assert.equal(api.UI.state.targetLanguage, 'es');
+    assert.match(api.Prompt.system('reply', { preferences: { target_language: 'de' } }), /son anlamlı mesajıyla aynı dilde/i);
+});
+
+test('automatic customer-language mode resolves each conversation without reusing a stale target', async () => {
+    const { api, sandbox } = await loadAssistant();
+    let currentContext;
+    const setConversation = (id, lastCustomerMessage) => {
+        sandbox.location.pathname = `/messages/${id}`;
+        sandbox.location.href = `https://www.etsy.com/messages/${id}`;
+        currentContext = {
+            conversationId: api.Router.conversationId(),
+            routeFingerprint: api.Router.routeFingerprint(),
+            customerName: 'Buyer',
+            orderId: '',
+            itemTitle: '',
+            lastCustomerMessage,
+            messages: [{ role: 'customer', text: lastCustomerMessage }],
+        };
+    };
+    const calls = [];
+    api.MessageAdapter.context = () => currentContext;
+    api.Translator.translate = async (text, target) => {
+        calls.push({ text, target });
+        if (text.includes('Hallo') && target === 'tr') throw new Error('language detection failed');
+        const detectedLanguage = text.includes('Hola') ? 'es' : text.includes('Bonjour') ? 'fr' : 'tr';
+        return { text: `translated:${target}`, detectedLanguage, provider: 'google' };
+    };
+    api.Verification.invalidate = () => {};
+    api.Campaign.current = () => null;
+    api.UI.setBusy = () => {};
+    api.UI.toast = () => {};
+    api.Store.settings.replyInCustomerLanguage = true;
+    api.Store.settings.autoTurkishPreview = true;
+    api.UI.state.context = null;
+
+    setConversation('spanish', 'Hola, necesito ayuda.');
+    await api.UI.refreshMessages();
+    assert.equal(api.UI.state.targetLanguage, 'es');
+
+    api.Store.settings.autoTurkishPreview = false;
+    setConversation('french', 'Bonjour, je voudrais de l’aide.');
+    await api.UI.refreshMessages();
+    assert.equal(api.UI.state.targetLanguage, '', 'a new conversation must clear the previous detected language');
+
+    api.UI.state.draftTr = 'Yardımcı olabilirim.';
+    await api.UI.generateReply({ method: 'free', replyMode: 'free' });
+
+    assert.equal(api.UI.state.targetLanguage, 'fr');
+    assert.ok(calls.some(call => call.text.includes('Bonjour') && call.target === 'tr'));
+    assert.ok(calls.some(call => call.text === 'Yardımcı olabilirim.' && call.target === 'fr'));
+
+    api.Store.settings.autoTurkishPreview = true;
+    setConversation('german', 'Hallo, ich brauche Hilfe.');
+    await api.UI.refreshMessages();
+    assert.equal(api.UI.state.targetLanguage, '', 'failed detection must leave no previous-conversation target');
+
+    api.UI.state.draftTr = 'Elbette yardımcı olurum.';
+    await api.UI.generateReply({ method: 'free', replyMode: 'free' });
+    assert.equal(api.UI.state.targetLanguage, 'en');
+    assert.ok(calls.some(call => call.text === 'Elbette yardımcı olurum.' && call.target === 'en'));
+});
+
+test('English prompt preference switches between US and neutral English without stale US instructions', async () => {
+    const { api } = await loadAssistant();
+    api.Store.settings.replyInCustomerLanguage = true;
+
+    api.Store.settings.preferUsEnglish = true;
+    const usPrompt = api.Prompt.system('reply', { preferences: { target_language: 'en' } });
+    assert.match(usPrompt, /Amerikan İngilizcesi|en-US/i);
+
+    api.Store.settings.preferUsEnglish = false;
+    const neutralPrompt = api.Prompt.system('reply', { preferences: { target_language: 'en' } });
+    assert.match(neutralPrompt, /nötr|genel İngilizce/i);
+    assert.doesNotMatch(neutralPrompt, /Amerikan İngilizcesi|en-US/i);
+});
+
+test('secret-free config export omits every API key and import preserves existing keys', async () => {
+    const { api } = await loadAssistant();
+    const exportedDeepLKey = 'deepl-export-secret';
+    const exportedMessageCenterToken = 'message-center-export-secret';
+    const exportedProviderKeys = {};
+
+    api.Store.settings = {
+        ...api.Store.settings,
+        deeplApiKey: exportedDeepLKey,
+        messageCenterAgentToken: exportedMessageCenterToken,
+    };
+    for (const [id, profile] of Object.entries(api.Store.providers)) {
+        exportedProviderKeys[id] = `${id}-export-secret`;
+        api.Store.providers[id] = { ...profile, apiKey: exportedProviderKeys[id] };
+    }
+
+    const safeSnapshot = api.ConfigManager.snapshot(false);
+    assert.equal(safeSnapshot.includesApiKeys, false);
+    assert.equal(safeSnapshot.settings.deeplApiKey, '');
+    assert.equal(safeSnapshot.settings.messageCenterAgentToken, '');
+    for (const profile of Object.values(safeSnapshot.providers)) assert.equal(profile.apiKey, '');
+    const serializedSnapshot = JSON.stringify(safeSnapshot);
+    assert.equal(serializedSnapshot.includes(exportedDeepLKey), false);
+    assert.equal(serializedSnapshot.includes(exportedMessageCenterToken), false);
+    for (const apiKey of Object.values(exportedProviderKeys)) assert.equal(serializedSnapshot.includes(apiKey), false);
+
+    const currentDeepLKey = 'deepl-current-secret';
+    const currentMessageCenterToken = 'message-center-current-secret';
+    const currentProviderKeys = {};
+    api.Store.settings = {
+        ...api.Store.settings,
+        deeplApiKey: currentDeepLKey,
+        messageCenterAgentToken: currentMessageCenterToken,
+    };
+    for (const [id, profile] of Object.entries(api.Store.providers)) {
+        currentProviderKeys[id] = `${id}-current-secret`;
+        api.Store.providers[id] = { ...profile, apiKey: currentProviderKeys[id] };
+    }
+    safeSnapshot.settings.defaultTone = 'formal';
+
+    await api.ConfigManager.importText(JSON.stringify(safeSnapshot));
+
+    assert.equal(api.Store.settings.defaultTone, 'formal');
+    assert.equal(api.Store.settings.deeplApiKey, currentDeepLKey);
+    assert.equal(api.Store.settings.messageCenterAgentToken, currentMessageCenterToken);
+    for (const [id, apiKey] of Object.entries(currentProviderKeys)) {
+        assert.equal(api.Store.providers[id].apiKey, apiKey);
+    }
+});
+
+test('config import rejects malformed settings and provider types before changing any state', async () => {
+    const malformedPayloads = [
+        { settings: [], providers: {} },
+        { settings: { openOnMessagePage: 'false' }, providers: {} },
+        { settings: { retainHistoryDays: '90' }, providers: {} },
+        { settings: {}, providers: [] },
+        { settings: {}, providers: { openai: 'not-a-provider-profile' } },
+        { settings: {}, providers: { openai: { apiKey: 123 } } },
+        { settings: {}, providers: { openai: { models: ['gpt-5.6-luna', 42] } } },
+        { settings: { shopName: 'Must not be saved' }, providers: {}, onboarding: [] },
+    ];
+
+    for (const malformed of malformedPayloads) {
+        const { api, storage } = await loadAssistant();
+        api.Store.settings = { ...api.Store.settings, shopName: 'Before import' };
+        api.Store.providers.openai = {
+            ...api.Store.providers.openai,
+            apiKey: 'keep-this-key',
+            model: 'gpt-5.6-luna',
+        };
+        const beforeSettings = copy(api.Store.settings);
+        const beforeProviders = copy(api.Store.providers);
+        const beforeStorage = copy(Object.fromEntries(storage));
+
+        await assert.rejects(
+            api.ConfigManager.importText(JSON.stringify({
+                app: api.APP.id,
+                schemaVersion: api.APP.configSchema,
+                ...malformed,
+            })),
+            /config/i,
+        );
+
+        assert.deepEqual(copy(api.Store.settings), beforeSettings);
+        assert.deepEqual(copy(api.Store.providers), beforeProviders);
+        assert.deepEqual(copy(Object.fromEntries(storage)), beforeStorage);
+    }
+});
+
+test('config import rejects prototype-pollution keys before changing any state', async () => {
+    const { api, storage } = await loadAssistant();
+    const base = `"app":${JSON.stringify(api.APP.id)},"schemaVersion":${api.APP.configSchema}`;
+    const maliciousPayloads = [
+        `{${base},"settings":{},"providers":{},"__proto__":{"polluted":true}}`,
+        `{${base},"settings":{"constructor":"polluted"},"providers":{}}`,
+        `{${base},"settings":{},"providers":{"prototype":{"polluted":true}}}`,
+        `{${base},"settings":{},"providers":{"openai":{"__proto__":{"polluted":true}}}}`,
+    ];
+    const beforeSettings = copy(api.Store.settings);
+    const beforeProviders = copy(api.Store.providers);
+
+    for (const text of maliciousPayloads) {
+        await assert.rejects(api.ConfigManager.importText(text), /config/i);
+        assert.deepEqual(copy(api.Store.settings), beforeSettings);
+        assert.deepEqual(copy(api.Store.providers), beforeProviders);
+        assert.equal(storage.size, 0);
+        assert.equal({}.polluted, undefined);
+    }
+});
+
+test('config import ignores retired and unknown fields while accepting valid legacy profiles', async () => {
+    const { api } = await loadAssistant();
+
+    await api.ConfigManager.importText(JSON.stringify({
+        app: api.APP.id,
+        schemaVersion: 2,
+        settings: {
+            shopName: 'Legacy Shop',
+            gatewayUrl: 'https://retired.example.invalid',
+            deviceToken: 'retired-token',
+            futureSetting: { nested: 'ignored' },
+        },
+        providers: {
+            openai: {
+                apiKey: '',
+                model: 'gpt-4o-mini',
+                models: ['gpt-4o-mini'],
+                modelsFetchedAt: '2026-08-01T00:00:00.000Z',
+                futureProviderField: { nested: 'ignored' },
+            },
+            futureProvider: { model: { nested: 'ignored' } },
+        },
+    }));
+
+    assert.equal(api.Store.settings.shopName, 'Legacy Shop');
+    assert.equal('gatewayUrl' in api.Store.settings, false);
+    assert.equal('deviceToken' in api.Store.settings, false);
+    assert.equal('futureSetting' in api.Store.settings, false);
+    assert.equal(api.Store.providers.openai.model, 'gpt-4o-mini');
+    assert.deepEqual(copy(api.Store.providers.openai.models), ['gpt-4o-mini']);
+    assert.equal('futureProviderField' in api.Store.providers.openai, false);
+    assert.equal('futureProvider' in api.Store.providers, false);
+});
 
 async function waitUntil(predicate, message, attempts = 200) {
     for (let index = 0; index < attempts; index += 1) {
@@ -376,7 +1104,7 @@ test('schema migration adds the new preset once and preserves existing template 
         JSON.parse(JSON.stringify(migrated.find((item) => item.id === 'tpl-custom'))),
         legacyTemplates[1],
     );
-    assert.equal(api.Store.configMeta.schemaVersion, 5);
+    assert.equal(api.Store.configMeta.schemaVersion, 6);
     assert.equal(storage.get(api.KEYS.templates).filter((item) => item.id === 'tpl-review-request').length, 1);
 });
 
@@ -393,6 +1121,131 @@ test('importing a schema-2 config cannot remove newly required presets', async (
     assert.equal(api.Store.templates.filter((item) => item.id === 'tpl-review-request').length, 1);
     assert.equal(storage.get(api.KEYS.templates).filter((item) => item.id === 'tpl-review-request').length, 1);
     assert.equal(api.Store.templates.find((item) => item.id === 'tpl-custom').text, 'Korunacak');
+});
+
+test('config import keeps legacy auto-open settings fail-closed but honors current-schema opt-in', async () => {
+    const legacy = await loadAssistant();
+    await legacy.api.ConfigManager.importText(JSON.stringify({
+        app: legacy.api.APP.id,
+        schemaVersion: 5,
+        settings: { openOnMessagePage: true },
+        providers: {},
+    }));
+
+    assert.equal(legacy.api.Store.settings.openOnMessagePage, false);
+    assert.equal(legacy.storage.get(legacy.api.KEYS.settings).openOnMessagePage, false);
+
+    const current = await loadAssistant();
+    await current.api.ConfigManager.importText(JSON.stringify({
+        app: current.api.APP.id,
+        schemaVersion: current.api.APP.configSchema,
+        settings: { openOnMessagePage: true },
+        providers: {},
+    }));
+
+    assert.equal(current.api.Store.settings.openOnMessagePage, true);
+    assert.equal(current.storage.get(current.api.KEYS.settings).openOnMessagePage, true);
+});
+
+test('reserved review-request template imports stay fail-closed without losing user content', async () => {
+    for (const importedPurpose of [undefined, 'delivery_followup']) {
+        const { api, storage } = await loadAssistant();
+        const importedTemplate = {
+            id: 'tpl-review-request',
+            name: `My protected review template ${importedPurpose || 'missing'}`,
+            category: 'My category',
+            tone: 'short',
+            language: 'en',
+            shortcut: '/my-review',
+            text: `Keep this user-authored text (${importedPurpose || 'missing'}).`,
+            archived: true,
+        };
+        if (importedPurpose) importedTemplate.purpose = importedPurpose;
+
+        await api.ConfigManager.importText(JSON.stringify({
+            app: api.APP.id,
+            schemaVersion: api.APP.configSchema,
+            settings: {},
+            providers: {},
+            templates: [importedTemplate],
+        }));
+
+        const protectedTemplate = api.Store.templates.find((item) => item.id === 'tpl-review-request');
+        assert.equal(protectedTemplate.purpose, 'review_request');
+        assert.equal(protectedTemplate.name, importedTemplate.name);
+        assert.equal(protectedTemplate.category, importedTemplate.category);
+        assert.equal(protectedTemplate.tone, importedTemplate.tone);
+        assert.equal(protectedTemplate.language, importedTemplate.language);
+        assert.equal(protectedTemplate.shortcut, importedTemplate.shortcut);
+        assert.equal(protectedTemplate.text, importedTemplate.text);
+        assert.equal(protectedTemplate.archived, importedTemplate.archived);
+        assert.equal(api.Outreach.purposeForTemplate(protectedTemplate), 'review_request');
+        assert.equal(api.campaignAutoSendAllowed(protectedTemplate, { autoSendCampaign: true }), false);
+        assert.equal(
+            storage.get(api.KEYS.templates).find((item) => item.id === 'tpl-review-request').purpose,
+            'review_request',
+        );
+    }
+});
+
+test('config import replaces unsafe or duplicate template IDs without losing templates', async () => {
+    const { api, storage } = await loadAssistant();
+    const importedTemplates = [
+        { id: 'tpl-safe', name: 'Safe first', text: 'One' },
+        { id: 'tpl-safe', name: 'Safe duplicate', text: 'Two' },
+        { id: 'tpl-breakout\"><img data-template-injection src=x>', name: 'Unsafe', text: 'Three' },
+        { name: 'Missing ID', text: 'Four' },
+    ];
+
+    await api.ConfigManager.importText(JSON.stringify({
+        app: api.APP.id,
+        schemaVersion: api.APP.configSchema,
+        settings: {},
+        providers: {},
+        templates: importedTemplates,
+    }));
+
+    const names = new Set(importedTemplates.map((template) => template.name));
+    const normalized = api.Store.templates.filter((template) => names.has(template.name));
+    const ids = normalized.map((template) => template.id);
+    assert.equal(normalized.length, importedTemplates.length);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.equal(normalized.find((template) => template.name === 'Safe first').id, 'tpl-safe');
+    assert.ok(ids.every((id) => /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)));
+    assert.ok(ids.every((id) => !id.includes('data-template-injection')));
+    assert.deepEqual(
+        storage.get(api.KEYS.templates).filter((template) => names.has(template.name)),
+        copy(normalized),
+    );
+});
+
+test('template IDs are escaped in every template attribute rendering context', async () => {
+    const { api } = await loadAssistant();
+    const maliciousId = 'tpl-breakout\"><img data-template-injection src=x>';
+    const maliciousTemplate = {
+        id: maliciousId,
+        name: 'Unsafe template',
+        category: 'Test',
+        tone: 'friendly',
+        language: 'en',
+        shortcut: '',
+        text: 'Hello',
+        archived: false,
+    };
+    api.Store.templates = [maliciousTemplate];
+    api.UI.state.templateEditId = maliciousId;
+    api.UI.state.selectedTemplateId = maliciousId;
+    api.UI.state.orders = [];
+    api.UI.state.selectedOrders = new Set();
+
+    const markup = [
+        api.UI.renderTemplates(),
+        api.UI.renderOrders(),
+        api.UI.renderMessages(),
+    ].join('\n');
+
+    assert.ok(markup.includes('tpl-breakout&amp;quot;') || markup.includes('tpl-breakout&quot;'));
+    assert.ok(!markup.includes('<img data-template-injection'));
 });
 
 test('schema-3 Turkish review preset is corrected to English without losing user state', async () => {
@@ -421,7 +1274,7 @@ test('schema-3 Turkish review preset is corrected to English without losing user
     assert.equal(migrated.tone, 'short');
     assert.equal(migrated.shortcut, '/benim-review');
     assert.equal(migrated.archived, true);
-    assert.equal(api.Store.configMeta.schemaVersion, 5);
+    assert.equal(api.Store.configMeta.schemaVersion, 6);
 });
 
 test('review request rendering resolves order variables without changing the stored preset', async () => {
