@@ -898,14 +898,17 @@
         ['history', 'history', 'Geçmiş'],
         ['settings', 'settings', 'Ayarlar'],
     ]);
+    const CONTEXT_PAGES = new Set(['messages', 'orders', 'reviews', 'unknown']);
 
     const ICON_SPRITE = `<svg class="ma-sprite" aria-hidden="true"><symbol id="ma-i-message" viewBox="0 0 24 24"><path d="M4 4h16v12H8l-4 4V4Zm3 5h10M7 12h7"/></symbol><symbol id="ma-i-send" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-7-8-3Zm8 3 4-4"/></symbol><symbol id="ma-i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></symbol><symbol id="ma-i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Zm8 0v5h5M9 12h6M9 16h6"/></symbol><symbol id="ma-i-history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6M12 8v5l3 2"/></symbol><symbol id="ma-i-settings" viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-5 1.2 2.2 2.5.6 2-1.3 2.1 2.1-1.3 2 .6 2.5 2.2 1.2v3l-2.2 1.2-.6 2.5 1.3 2-2.1 2.1-2-1.3-2.5.6-1.2 2.2h-3l-1.2-2.2-2.5-.6-2 1.3L2.9 19l1.3-2-.6-2.5L1.4 13v-3l2.2-1.2.6-2.5-1.3-2L5 2.2l2 1.3 2.5-.6L10.7.7h2.6Z"/></symbol><symbol id="ma-i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol><symbol id="ma-i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></symbol><symbol id="ma-i-copy" viewBox="0 0 24 24"><path d="M9 9h11v11H9V9ZM4 4h11v3M4 4v11h3"/></symbol><symbol id="ma-i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6.1 8A7 7 0 0 1 18 7l2 5M17.9 16A7 7 0 0 1 6 17l-2-5"/></symbol><symbol id="ma-i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol><symbol id="ma-i-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19L12 3Zm0 6v5M12 17h.01"/></symbol><symbol id="ma-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol><symbol id="ma-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="ma-i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></symbol><symbol id="ma-i-edit" viewBox="0 0 24 24"><path d="m4 16-1 5 5-1L19 9l-4-4L4 16Zm9-9 4 4"/></symbol><symbol id="ma-i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></symbol></svg>`;
 
     const CSS = `:host{--ma-primary:#1f1f1f;--ma-primary-strong:#0f0f0f;--ma-primary-soft:#f3f3f3;--ma-ink:#171717;--ma-muted:#737373;--ma-line:#e7e7e7;--ma-bg:#f7f7f7;--ma-surface:#ffffff;--ma-success:#178847;--ma-success-soft:#eaf8ef;--ma-warning:#c35b12;--ma-warning-soft:#fff1e7;--ma-danger:#c23b3b;--ma-danger-soft:#ffeded;--ma-info:#525252;--ma-info-soft:#f1f1f1;--ma-pink:#525252;--ma-pink-soft:#f1f1f1;--ma-shadow:0 20px 45px rgba(15,23,42,.16);--ma-shadow-soft:0 8px 24px rgba(15,23,42,.12);--ma-r1:7.2px;--ma-r2:12px;--ma-r3:16px;--ma-s1:4px;--ma-s2:8px;--ma-s3:12px;--ma-s4:16px;--ma-s5:20px;--ma-s6:24px;--ma-font:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;all:initial}*,*::before,*::after{box-sizing:border-box}button,input,textarea,select{font:inherit}button{color:inherit}.ma-root{font:14px/1.45 var(--ma-font);color:var(--ma-ink)}.ma-hidden,.ma-sprite{display:none !important}.ma-launcher{position:fixed;right:var(--ma-s5);bottom:var(--ma-s5);z-index:2147483646;width:62px;height:52px;padding:8px;border:1px solid var(--ma-line);border-radius:var(--ma-r2);display:grid;place-items:center;cursor:pointer;color:var(--ma-ink);background:#fff;box-shadow:var(--ma-shadow);transition:transform .18s ease,box-shadow .18s ease}.ma-launcher:hover{transform:translateY(-2px);box-shadow:0 18px 42px rgba(15,23,42,.20)}.ma-logo-img{width:46px;height:30px;object-fit:contain;display:block}.ma-app{position:fixed;top:var(--ma-s3);right:var(--ma-s3);bottom:var(--ma-s3);z-index:2147483647;width:min(620px,calc(100vw - 24px));overflow:hidden;display:grid;grid-template-columns:60px minmax(0,1fr);grid-template-rows:auto 1fr;background:var(--ma-surface);border:1px solid rgba(224,226,236,.95);border-radius:var(--ma-r3);box-shadow:var(--ma-shadow);transition:width .2s ease,inset .2s ease}.ma-app--wide{width:min(1200px,calc(100vw - 24px));grid-template-columns:184px minmax(0,1fr)}.ma-app--fullscreen{inset:var(--ma-s2);width:auto;border-radius:var(--ma-r2)}.ma-header{grid-column:1 / -1;height:60px;padding:0 var(--ma-s4);display:flex;align-items:center;gap:var(--ma-s3);border-bottom:1px solid var(--ma-line);background:rgba(255,255,255,.98)}.ma-brand{min-width:0;display:flex;align-items:center;gap:var(--ma-s2)}.ma-brand__logo{width:44px;height:28px;object-fit:contain;display:block}.ma-brand__mark{width:44px;height:28px;display:grid;place-items:center;flex:0 0 auto}.ma-brand__text{min-width:0}.ma-brand__title{font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ma-brand__version{color:var(--ma-muted);font-size:12px}.ma-header__spacer{flex:1}.ma-nav{grid-row:2;min-height:0;padding:var(--ma-s3) var(--ma-s2);display:flex;flex-direction:column;gap:var(--ma-s1);border-right:1px solid var(--ma-line);background:#fafafa}.ma-nav__item{width:100%;min-height:42.4px;padding:0 var(--ma-s2);border:0;border-radius:var(--ma-r2);display:flex;align-items:center;gap:var(--ma-s2);cursor:pointer;background:transparent;color:#404040;transition:background .16s ease,color .16s ease}.ma-nav__item:hover{background:#f2f2f2}.ma-nav__item.is-active{color:var(--ma-primary-strong);background:var(--ma-primary-soft);font-weight:700}.ma-nav__label{display:none;white-space:nowrap}.ma-app--wide .ma-nav__label,.ma-app--fullscreen .ma-nav__label{display:inline}.ma-nav__foot{margin-top:auto;color:var(--ma-muted);font-size:11.52px;text-align:center}.ma-main{grid-row:2;min-width:0;min-height:0;overflow:auto;background:var(--ma-bg)}.ma-view{min-height:100%;padding:var(--ma-s4)}.ma-page-head{margin-bottom:var(--ma-s4);display:flex;align-items:flex-start;gap:var(--ma-s3)}.ma-page-head__copy{min-width:0}.ma-page-head h2{margin:0;font-size:20px;line-height:1.25}.ma-page-head p{margin:var(--ma-s1) 0 0;color:var(--ma-muted);font-size:13.76px}.ma-page-head__actions{margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--ma-s2)}.ma-icon{width:18.4px;height:18.4px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}.ma-icon--sm{width:15.2px;height:15.2px}.ma-icon-btn{width:37.6px;height:37.6px;padding:0;border:1px solid transparent;border-radius:var(--ma-r2);display:grid;place-items:center;cursor:pointer;background:transparent;color:var(--ma-muted)}.ma-icon-btn:hover{color:var(--ma-primary);background:var(--ma-primary-soft)}.ma-btn{min-height:39.2px;padding:8.8px 13.6px;border:1px solid var(--ma-line);border-radius:var(--ma-r2);display:inline-flex;align-items:center;justify-content:center;gap:var(--ma-s2);cursor:pointer;background:var(--ma-surface);color:var(--ma-ink);font-weight:650;transition:.16s ease}.ma-btn:hover{border-color:#c9c9c9;background:#fafafa}.ma-btn:disabled{opacity:.48;cursor:not-allowed}.ma-btn--primary{color:#fff;border-color:var(--ma-primary);background:var(--ma-primary)}.ma-btn--primary:hover{border-color:var(--ma-primary-strong);background:var(--ma-primary-strong)}.ma-btn--danger{color:var(--ma-danger);border-color:#f1c7c7;background:var(--ma-danger-soft)}.ma-btn--small{min-height:32px;padding:5.6px 10.4px;font-size:12.48px}.ma-btn--block{width:100%}.ma-card{border:1px solid var(--ma-line);border-radius:var(--ma-r3);background:var(--ma-surface);box-shadow:0 1px 1px rgba(30,35,50,.02)}.ma-card+.ma-card{margin-top:var(--ma-s3)}.ma-card__head{padding:var(--ma-s3) var(--ma-s4);display:flex;align-items:center;gap:var(--ma-s2);border-bottom:1px solid var(--ma-line)}.ma-card__head h3{margin:0;font-size:14.72px}.ma-card__head .ma-spacer{flex:1}.ma-card__body{padding:var(--ma-s4)}.ma-card__foot{padding:var(--ma-s3) var(--ma-s4);display:flex;align-items:center;gap:var(--ma-s2);border-top:1px solid var(--ma-line)}.ma-kv{display:flex;align-items:center;gap:var(--ma-s2);min-width:0}.ma-kv__label{color:var(--ma-muted)}.ma-kv__value{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ma-customer{display:flex;align-items:center;gap:var(--ma-s2)}.ma-avatar{width:36.8px;height:36.8px;border-radius:50%;display:grid;place-items:center;overflow:hidden;background:var(--ma-primary-soft);color:var(--ma-primary);font-weight:800}.ma-avatar img{width:100%;height:100%;object-fit:cover}.ma-spacer{flex:1}.ma-stack{display:grid;gap:var(--ma-s3)}.ma-grid{display:grid;gap:var(--ma-s3)}.ma-grid--2{grid-template-columns:repeat(2,minmax(0,1fr))}.ma-grid--3{grid-template-columns:repeat(3,minmax(0,1fr))}.ma-split{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,.8fr);gap:var(--ma-s4);align-items:start}.ma-field{display:grid;gap:var(--ma-s1)}.ma-field>label{font-size:12.48px;font-weight:700;color:#404040}.ma-input,.ma-select,.ma-textarea{width:100%;border:1px solid #d9d9d9;border-radius:var(--ma-r2);color:var(--ma-ink);background:#fff;outline:none;transition:border .16s ease,box-shadow .16s ease}.ma-input,.ma-select{min-height:40px;padding:0 12px}.ma-textarea{min-height:112px;padding:11.2px 12px;resize:vertical;line-height:1.5}.ma-textarea--large{min-height:208px}.ma-input:focus,.ma-select:focus,.ma-textarea:focus{border-color:var(--ma-primary);box-shadow:0 0 0 3px rgba(23,23,23,.12)}.ma-label-row{display:flex;align-items:center;gap:var(--ma-s2);margin-bottom:var(--ma-s1)}.ma-label-row strong{font-size:12.8px}.ma-label-row .ma-spacer{flex:1}.ma-message-box{padding:var(--ma-s3);border:1px solid var(--ma-line);border-radius:var(--ma-r2);background:#fafafa;white-space:pre-wrap;overflow-wrap:anywhere}.ma-message-box--accent{border-color:#d8d8d8;background:#f7f7f7}.ma-muted{color:var(--ma-muted)}.ma-small{font-size:12.32px}.ma-pill-row{display:flex;flex-wrap:wrap;gap:var(--ma-s2)}.ma-pill{padding:4.32px 8.8px;border-radius:999px;display:inline-flex;align-items:center;gap:var(--ma-s1);font-size:11.52px;font-weight:700;background:#f0f1f5;color:#606060}.ma-pill--success{color:var(--ma-success);background:var(--ma-success-soft)}.ma-pill--warning{color:var(--ma-warning);background:var(--ma-warning-soft)}.ma-pill--danger{color:var(--ma-danger);background:var(--ma-danger-soft)}.ma-pill--info{color:var(--ma-info);background:var(--ma-info-soft)}.ma-pill--pink{color:var(--ma-pink);background:var(--ma-pink-soft)}.ma-pill--primary{color:var(--ma-primary);background:var(--ma-primary-soft)}.ma-actions{display:flex;flex-wrap:wrap;align-items:center;gap:var(--ma-s2)}.ma-actions--end{justify-content:flex-end}.ma-message-workspace{display:grid;gap:var(--ma-s3)}.ma-message-contact{padding:var(--ma-s3);border:1px solid var(--ma-line);border-radius:var(--ma-r3);display:flex;align-items:center;gap:var(--ma-s3);background:var(--ma-surface)}.ma-message-contact__copy{min-width:0}.ma-message-contact__name{font-size:15px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ma-message-contact__meta{color:var(--ma-muted);font-size:12px}.ma-message-text{font-size:15px;line-height:1.58}.ma-insight-row{display:flex;align-items:flex-start;gap:var(--ma-s2);flex-wrap:wrap}.ma-insight-row__summary{min-width:0;flex:1;color:var(--ma-muted);font-size:12.5px;line-height:1.45}.ma-disclosure{border-top:1px solid var(--ma-line)}.ma-disclosure>summary{min-height:42px;display:flex;align-items:center;gap:var(--ma-s2);cursor:pointer;color:var(--ma-muted);font-size:12.5px;font-weight:700;list-style:none;user-select:none}.ma-disclosure>summary::-webkit-details-marker{display:none}.ma-disclosure>summary::after{content:"⌄";margin-left:auto;font-size:15px;transition:transform .16s ease}.ma-disclosure[open]>summary::after{transform:rotate(180deg)}.ma-disclosure__body{padding:0 0 var(--ma-s3);display:grid;gap:var(--ma-s3)}.ma-reply-input{min-height:150px;padding:13px 14px;font-size:15px;line-height:1.55}.ma-main-actions{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:var(--ma-s2)}.ma-main-actions .ma-btn{min-height:46px}.ma-secondary-tools{display:flex;align-items:center;gap:var(--ma-s2);flex-wrap:wrap}.ma-secondary-tools .ma-select{min-width:180px;flex:1}.ma-link-btn{min-height:36px;padding:6px 2px;border:0;display:inline-flex;align-items:center;gap:var(--ma-s2);color:var(--ma-primary);background:transparent;cursor:pointer;font-weight:700}.ma-link-btn:hover{color:var(--ma-primary-strong);text-decoration:underline}.ma-options-grid{display:grid;gap:var(--ma-s3)}.ma-output-card{border-color:#d4d4d4;box-shadow:var(--ma-shadow-card,0 1px 3px rgba(15,23,42,.08))}.ma-output-card .ma-textarea{min-height:132px;font-size:14.5px;line-height:1.55}.ma-editor-disclosure{overflow:hidden}.ma-editor-disclosure>summary{min-height:54px;padding:0 var(--ma-s4);display:flex;align-items:center;gap:var(--ma-s2);cursor:pointer;list-style:none;color:var(--ma-primary);font-weight:800}.ma-editor-disclosure>summary::-webkit-details-marker{display:none}.ma-editor-disclosure>summary::after{content:"Düzenle";margin-left:auto;color:var(--ma-muted);font-size:12px;font-weight:700}.ma-editor-disclosure[open]>summary{border-bottom:1px solid var(--ma-line)}.ma-output-actions{display:flex;align-items:center;gap:var(--ma-s2);flex-wrap:wrap}.ma-output-actions .ma-btn--primary{margin-left:auto}.ma-risk-only{margin-top:calc(var(--ma-s1) * -1)}.ma-tone-row{display:flex;flex-wrap:wrap;gap:var(--ma-s2)}.ma-tone{padding:6.72px 11.2px;border:1px solid var(--ma-line);border-radius:var(--ma-r2);cursor:pointer;background:#fff;color:var(--ma-muted)}.ma-tone.is-active{color:var(--ma-primary);border-color:var(--ma-primary);background:var(--ma-primary-soft);font-weight:700}.ma-notice{padding:var(--ma-s3);border:1px solid #e7d5bb;border-radius:var(--ma-r2);display:flex;align-items:flex-start;gap:var(--ma-s2);color:#7b4a17;background:#fff8ed}.ma-notice--info{color:#404040;border-color:#d6d6d6;background:#f7f7f7}.ma-notice--danger{color:#8f3030;border-color:#f0caca;background:#fff1f1}.ma-list{display:grid;gap:var(--ma-s2)}.ma-list-item{padding:var(--ma-s3);border:1px solid var(--ma-line);border-radius:var(--ma-r2);display:flex;align-items:center;gap:var(--ma-s3);cursor:pointer;background:#fff}.ma-list-item:hover{border-color:#c9c9c9}.ma-list-item.is-active{border-color:var(--ma-primary);background:var(--ma-primary-soft)}.ma-list-item__body{min-width:0;flex:1}.ma-list-item__title{font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ma-list-item__desc{margin-top:2.4px;color:var(--ma-muted);font-size:12.16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ma-toolbar{margin-bottom:var(--ma-s3);display:flex;align-items:center;flex-wrap:wrap;gap:var(--ma-s2)}.ma-toolbar .ma-input{width:min(352px,100%)}.ma-table-wrap{overflow:auto;border:1px solid var(--ma-line);border-radius:var(--ma-r3);background:#fff}.ma-table{width:100%;border-collapse:collapse;min-width:768px}.ma-table th,.ma-table td{padding:11.52px 12px;border-bottom:1px solid var(--ma-line);text-align:left;vertical-align:middle}.ma-table th{position:sticky;top:0;z-index:1;color:var(--ma-muted);background:#fafafa;font-size:11.52px;text-transform:uppercase;letter-spacing:.03em}.ma-table tr:last-child td{border-bottom:0}.ma-table tr.is-selected td{background:#f5f5f5}.ma-table__product{max-width:272px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ma-check{width:16px;height:16px;accent-color:var(--ma-primary)}.ma-product{display:flex;align-items:center;gap:var(--ma-s2);min-width:0}.ma-product__image{width:40px;height:40px;border-radius:var(--ma-r1);object-fit:cover;background:#eeeeee;flex:0 0 auto}.ma-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:var(--ma-s3);margin-bottom:var(--ma-s4)}.ma-stat{padding:var(--ma-s3);border:1px solid var(--ma-line);border-radius:var(--ma-r2);background:#fff}.ma-stat__label{color:var(--ma-muted);font-size:11.52px}.ma-stat__value{margin-top:3.2px;font-size:21.6px;font-weight:800}.ma-switch-row{min-height:54.4px;display:flex;align-items:center;gap:var(--ma-s3);border-bottom:1px solid var(--ma-line)}.ma-switch-row:last-child{border-bottom:0}.ma-switch-row__copy{min-width:0;flex:1}.ma-switch-row__title{font-weight:700}.ma-switch-row__desc{color:var(--ma-muted);font-size:11.84px}.ma-switch{position:relative;width:40.8px;height:23.2px;flex:0 0 auto}.ma-switch input{position:absolute;opacity:0}.ma-switch span{position:absolute;inset:0;border-radius:999px;cursor:pointer;background:#cfd3de;transition:.18s ease}.ma-switch span::after{content:"";position:absolute;width:16.8px;height:16.8px;top:3.2px;left:3.2px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.22);transition:.18s ease}.ma-switch input:checked+span{background:var(--ma-primary)}.ma-switch input:checked+span::after{transform:translateX(17.6px)}.ma-empty{min-height:256px;padding:var(--ma-s6);display:grid;place-items:center;text-align:center;color:var(--ma-muted)}.ma-empty__inner{max-width:432px}.ma-empty h3{margin:0 0 var(--ma-s2);color:var(--ma-ink)}.ma-code{padding:10.4px 12px;border:1px solid var(--ma-line);border-radius:var(--ma-r2);color:#404040;background:#f5f5f5;font:12.16px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}.ma-review-card{padding:var(--ma-s3);border:1px solid var(--ma-line);border-radius:var(--ma-r3);display:grid;gap:var(--ma-s2);cursor:pointer;background:#fff}.ma-review-card.is-active{border-color:var(--ma-primary);box-shadow:0 0 0 2px rgba(23,23,23,.07)}.ma-stars{color:#e09620;letter-spacing:.08em}.ma-busy{position:relative;pointer-events:none;opacity:.72}.ma-busy::after{content:"";position:absolute;inset:0;cursor:wait}.ma-version-chip{min-height:30px;padding:5px 9px;border:1px solid var(--ma-line);border-radius:var(--ma-radius-pill,999px);background:#fff;color:var(--ma-muted);font-size:11.5px;font-weight:750;cursor:pointer}.ma-version-chip:hover{color:var(--ma-ink);border-color:#bdbdbd}.ma-version-chip.is-update{color:#fff;border-color:var(--ma-primary);background:var(--ma-primary)}.ma-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ma-s3);align-items:start}.ma-settings-span-2{grid-column:1 / -1}.ma-setup-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--ma-s2)}.ma-setup-step{min-height:92px;padding:var(--ma-s3);border:1px solid var(--ma-line);border-radius:var(--ma-r2);background:#fafafa}.ma-setup-step.is-done{background:#fff;border-color:#bdbdbd}.ma-setup-step__top{display:flex;align-items:center;gap:var(--ma-s2);margin-bottom:var(--ma-s1)}.ma-setup-step__number{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;color:#fff;background:var(--ma-primary);font-size:11px;font-weight:800;flex:0 0 auto}.ma-setup-step__title{font-size:12.5px;font-weight:750}.ma-setup-step__desc{color:var(--ma-muted);font-size:11.5px;line-height:1.4}.ma-provider-grid{display:grid;grid-template-columns:minmax(180px,.7fr) minmax(220px,1fr) minmax(220px,1fr);gap:var(--ma-s3);align-items:end}.ma-provider-status{display:flex;align-items:center;flex-wrap:wrap;gap:var(--ma-s2);padding-top:var(--ma-s2)}.ma-repo-box{padding:var(--ma-s3);border:1px solid var(--ma-line);border-radius:var(--ma-r2);background:#fafafa}.ma-repo-name{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700}.ma-step-list{margin:0;padding-left:20px;display:grid;gap:7px;color:var(--ma-muted);font-size:12.5px}.ma-step-list strong{color:var(--ma-ink)}.ma-secret-warning{border-color:#efcaca;color:#8f3030;background:#fff4f4}.ma-config-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--ma-s2)}.ma-inline-code{padding:2px 6px;border:1px solid var(--ma-line);border-radius:5px;background:#f3f3f3;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}.ma-field__hint{color:var(--ma-muted);font-size:11.5px;line-height:1.4}@media (max-width:860px){.ma-app--wide{grid-template-columns:60px minmax(0,1fr)}.ma-app--wide .ma-nav__label{display:none}.ma-split,.ma-grid--2,.ma-grid--3,.ma-settings-grid,.ma-provider-grid{grid-template-columns:1fr}.ma-settings-span-2{grid-column:auto}.ma-setup-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ma-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media (max-width:560px){.ma-app{inset:var(--ma-s1);width:auto;grid-template-columns:54.4px minmax(0,1fr);border-radius:var(--ma-r2)}.ma-header{padding:0 var(--ma-s2)}.ma-brand__version{display:none}.ma-view{padding:var(--ma-s3)}.ma-stats{grid-template-columns:1fr 1fr}.ma-setup-grid,.ma-config-actions{grid-template-columns:1fr}}`;
 
-    const LAUNCHER_CSS = `.ma-launcher{top:78px;right:var(--ma-s3);bottom:auto;min-width:0;width:176px;height:44px;padding:5px 6px;border:1px solid rgba(23,23,23,.14);border-radius:999px;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.98);box-shadow:0 8px 22px rgba(15,23,42,.15);backdrop-filter:blur(10px);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.ma-launcher:hover{transform:translateY(-1px);border-color:rgba(23,23,23,.28);box-shadow:0 12px 28px rgba(15,23,42,.2)}.ma-launcher:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-launcher__mark{width:32px;height:32px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;background:#f5f5f5}.ma-launcher .ma-logo-img{width:28px;height:19px}.ma-launcher__copy{min-width:0;display:grid;gap:0;text-align:left;line-height:1.12}.ma-launcher__title{font-size:12px;font-weight:800;white-space:nowrap}.ma-launcher__state{color:var(--ma-muted);font-size:9.8px;font-weight:650}.ma-launcher__action{min-width:40px;height:30px;margin-left:auto;padding:0 9px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:11px;font-weight:800}.ma-launcher:hover .ma-launcher__action{background:var(--ma-primary-strong)}.ma-panel-close{min-height:34px;padding:0 10px;border:1px solid var(--ma-line);border-radius:999px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ma-ink);background:#fff;font-size:12px;font-weight:750}.ma-panel-close:hover{border-color:#c9c9c9;background:#f7f7f7}.ma-panel-close:focus-visible{outline:3px solid rgba(23,23,23,.14);outline-offset:2px}@media (max-width:560px){.ma-launcher{top:68px;right:var(--ma-s2);width:168px;height:42px}.ma-launcher__title{font-size:11.5px}}`;
+    const LAUNCHER_CSS = `.ma-launcher{top:78px;right:var(--ma-s3);bottom:auto;min-width:0;width:120px;height:36px;padding:3px 4px;border:1px solid rgba(23,23,23,.14);border-radius:999px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.98);box-shadow:0 6px 18px rgba(15,23,42,.14);backdrop-filter:blur(10px);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.ma-launcher:hover{transform:translateY(-1px);border-color:rgba(23,23,23,.28);box-shadow:0 9px 22px rgba(15,23,42,.18)}.ma-launcher:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-launcher__mark{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;background:#f5f5f5}.ma-launcher .ma-logo-img{width:24px;height:16px}.ma-launcher__copy{min-width:0;display:block;text-align:left;line-height:1.1}.ma-launcher__title{font-size:11px;font-weight:800;white-space:nowrap}.ma-launcher__state{display:none}.ma-launcher__action{min-width:31px;height:26px;margin-left:auto;padding:0 7px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:10px;font-weight:800}.ma-launcher:hover .ma-launcher__action{background:var(--ma-primary-strong)}.ma-panel-close{min-height:34px;padding:0 10px;border:1px solid var(--ma-line);border-radius:999px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ma-ink);background:#fff;font-size:12px;font-weight:750}.ma-panel-close:hover{border-color:#c9c9c9;background:#f7f7f7}.ma-panel-close:focus-visible{outline:3px solid rgba(23,23,23,.14);outline-offset:2px}@media (max-width:560px){.ma-launcher{top:68px;right:var(--ma-s2);width:112px;height:34px}.ma-launcher__mark{width:26px;height:26px}.ma-launcher__title{font-size:10.5px}.ma-launcher__action{height:24px}}`;
 
-    const GLOBAL_CSS = `.mema-order-badge{margin-inline-start:8px;padding:3.2px 7.2px;border-radius:999px;display:inline-flex;align-items:center;font:700 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;vertical-align:middle}.mema-order-badge[data-status="draft"]{color:#2467d8;background:#eaf2ff}.mema-order-badge[data-status="inserted"]{color:#c35b12;background:#fff1e7}.mema-order-badge[data-status="sent"]{color:#178847;background:#eaf8ef}.mema-order-badge[data-status="error"]{color:#c23b3b;background:#ffeded}.mema-order-badge[data-status="skipped"]{color:#697386;background:#eeeeee}.mema-notify{position:fixed;top:16px;left:50%;z-index:2147483647;transform:translateX(-50%);width:min(360px,calc(100vw - 32px));display:grid;gap:8px;pointer-events:none;font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mema-note{--mema-note:#343a4a;min-height:44px;padding:10px 10px 10px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;color:#fff;background:var(--mema-note);box-shadow:0 8px 24px rgba(24,28,45,.18);opacity:0;transform:translateY(8px);transition:.18s ease;pointer-events:auto}.mema-note.is-on{opacity:1;transform:none}.mema-note[data-type="success"]{--mema-note:#178847}.mema-note[data-type="error"]{--mema-note:#c23b3b}.mema-note[data-type="warning"]{--mema-note:#a85710}.mema-note__mark{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;font-size:11px}.mema-note__text{min-width:0;flex:1;overflow-wrap:anywhere}.mema-note__close{width:28px;height:28px;border:0;border-radius:7px;display:grid;place-items:center;color:inherit;background:transparent;cursor:pointer;opacity:.72}.mema-note__close:hover{opacity:1;background:rgba(255,255,255,.14)}.mema-copy-buffer{position:fixed!important;inset:auto auto 0 -9999px!important;width:1px!important;height:1px!important;opacity:0!important}`;
+    const UX_CSS = `[hidden]{display:none!important}.ma-list-item,.ma-review-card{width:100%;font:inherit;color:inherit;text-align:left}.ma-switch input:focus-visible+span{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-table tr[data-history-id]{cursor:pointer}.ma-table tr[data-history-id]:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:-3px}.ma-busy{pointer-events:auto;opacity:1}.ma-busy .ma-nav,.ma-busy .ma-view{pointer-events:none}.ma-busy .ma-view{opacity:.58}.ma-busy-status{position:sticky;top:0;z-index:4;min-height:36px;padding:8px 12px;display:none;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:12px;font-weight:750}.ma-busy .ma-busy-status{display:flex}.ma-busy::after{display:none}`;
+
+    const GLOBAL_CSS = `.mema-order-badge{margin-inline-start:8px;padding:3.2px 7.2px;border-radius:999px;display:inline-flex;align-items:center;font:700 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;vertical-align:middle}.mema-order-badge[data-status="draft"]{color:#2467d8;background:#eaf2ff}.mema-order-badge[data-status="inserted"]{color:#c35b12;background:#fff1e7}.mema-order-badge[data-status="sent_pending_verification"]{color:#8a4b08;background:#fff4d6}.mema-order-badge[data-status="sent"]{color:#178847;background:#eaf8ef}.mema-order-badge[data-status="error"]{color:#c23b3b;background:#ffeded}.mema-order-badge[data-status="skipped"]{color:#697386;background:#eeeeee}.mema-notify{position:fixed;top:16px;left:50%;z-index:2147483647;transform:translateX(-50%);width:min(360px,calc(100vw - 32px));display:grid;gap:8px;pointer-events:none;font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mema-note{--mema-note:#343a4a;min-height:44px;padding:10px 10px 10px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;color:#fff;background:var(--mema-note);box-shadow:0 8px 24px rgba(24,28,45,.18);opacity:0;transform:translateY(8px);transition:.18s ease;pointer-events:auto}.mema-note.is-on{opacity:1;transform:none}.mema-note[data-type="success"]{--mema-note:#178847}.mema-note[data-type="error"]{--mema-note:#c23b3b}.mema-note[data-type="warning"]{--mema-note:#a85710}.mema-note__mark{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;font-size:11px}.mema-note__text{min-width:0;flex:1;overflow-wrap:anywhere}.mema-note__close{width:28px;height:28px;border:0;border-radius:7px;display:grid;place-items:center;color:inherit;background:transparent;cursor:pointer;opacity:.72}.mema-note__close:hover{opacity:1;background:rgba(255,255,255,.14)}.mema-copy-buffer{position:fixed!important;inset:auto auto 0 -9999px!important;width:1px!important;height:1px!important;opacity:0!important}`;
 
     const html = (value = '') => String(value)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -928,6 +931,63 @@
         if (typeof value !== 'string' && typeof value !== 'number') return '';
         const id = String(value).trim();
         return TEMPLATE_ID_PATTERN.test(id) ? id : '';
+    }
+
+    const SETTINGS_ENUM_VALUES = Object.freeze({
+        translator: new Set(['google', 'deepl']),
+        defaultReplyMethod: new Set(['free', 'ai', 'template']),
+        defaultTone: new Set(['friendly', 'professional', 'apologetic', 'short', 'detailed', 'formal']),
+        previewLanguage: new Set(Object.keys(LANGUAGE_NAMES).filter(code => code !== 'und')),
+        aiProvider: new Set(Object.keys(AI_PROVIDERS)),
+    });
+
+    const SETTINGS_NUMBER_RANGES = Object.freeze({
+        retainHistoryDays: [1, 365],
+        updateCheckHours: [24, 168],
+        messageCenterSyncSeconds: [5, 120],
+        messageCenterPollSeconds: [2, 60],
+    });
+
+    function validMessageCenterUrl(value) {
+        if (!value) return true;
+        try {
+            const parsed = new URL(value);
+            return ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password;
+        } catch { return false; }
+    }
+
+    function normalizeSettingsRecord(value, { strict = false, partial = false, path = 'settings' } = {}) {
+        const source = value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+        if (!source && strict) throw configImportError(path);
+        const output = partial ? {} : clone(DEFAULT_SETTINGS);
+        if (!source) return output;
+
+        for (const [key, defaultValue] of Object.entries(DEFAULT_SETTINGS)) {
+            if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
+            const candidate = source[key];
+            let valid = typeof candidate === typeof defaultValue;
+            if (valid && typeof candidate === 'number') valid = Number.isFinite(candidate);
+            if (valid && SETTINGS_ENUM_VALUES[key]) valid = SETTINGS_ENUM_VALUES[key].has(candidate);
+            if (valid && key === 'defaultDeliveredTemplateId') {
+                valid = candidate === '' || Boolean(normalizedTemplateId(candidate));
+            }
+            if (valid && key === 'messageCenterUrl') valid = validMessageCenterUrl(candidate);
+
+            const range = SETTINGS_NUMBER_RANGES[key];
+            if (valid && range) {
+                const [minimum, maximum] = range;
+                if (strict) valid = Number.isInteger(candidate) && candidate >= minimum && candidate <= maximum;
+                else output[key] = Math.min(maximum, Math.max(minimum, Math.round(candidate)));
+            }
+
+            if (!valid) {
+                if (strict) throw configImportError(`${path}.${key}`);
+                if (!partial) output[key] = clone(defaultValue);
+                continue;
+            }
+            if (!range || strict) output[key] = candidate;
+        }
+        return output;
     }
 
     function normalizeTemplates(templates) {
@@ -1503,8 +1563,7 @@
                 GMX.get(KEYS.onboarding, DEFAULT_ONBOARDING),
                 GMX.get(KEYS.update, DEFAULT_UPDATE),
             ]);
-            this.settings = deepMerge(DEFAULT_SETTINGS, settings);
-            this.settings.updateCheckHours = Math.min(168, Math.max(24, Number(this.settings.updateCheckHours) || 24));
+            this.settings = normalizeSettingsRecord(settings);
             delete this.settings.gatewayUrl;
             delete this.settings.deviceToken;
             delete this.settings.model;
@@ -1563,8 +1622,7 @@
             return withCampaignCoordinator(reconcile);
         },
         async saveSettings(next) {
-            this.settings = deepMerge(DEFAULT_SETTINGS, next);
-            this.settings.updateCheckHours = Math.min(168, Math.max(24, Number(this.settings.updateCheckHours) || 24));
+            this.settings = normalizeSettingsRecord(next);
             delete this.settings.gatewayUrl;
             delete this.settings.deviceToken;
             delete this.settings.model;
@@ -2201,6 +2259,19 @@
 
     const Translator = {
         cache: new Map(),
+        cachePolicyFingerprint(preferred) {
+            if (preferred !== 'deepl') return preferred;
+            const credential = String(Store.settings.deeplApiKey || '');
+            const credentialFingerprint = credential
+                ? `${credential.length}:${hashExactText(credential)}`
+                : 'none';
+            return [
+                preferred,
+                `fallback:${Store.settings.freeFallback === true ? 1 : 0}`,
+                `profile:${Store.settings.deeplPro === true ? 'pro' : 'free'}`,
+                `credential:${credentialFingerprint}`,
+            ].join(':');
+        },
         async translate(text, target = 'tr', options = {}) {
             const sourceText = String(text ?? '').trim();
             if (!sourceText) return { text: '', detectedLanguage: 'und', provider: 'none' };
@@ -2209,7 +2280,8 @@
             const effectiveTarget = targetCode.startsWith('en')
                 ? (Store.settings.preferUsEnglish ? 'en-us' : 'en')
                 : targetCode;
-            const cacheKey = `${effectiveTarget}:${preferred}:${sourceText.length}:${hashExactText(sourceText)}`;
+            const cachePolicy = this.cachePolicyFingerprint(preferred);
+            const cacheKey = `${effectiveTarget}:${cachePolicy}:${sourceText.length}:${hashExactText(sourceText)}`;
             if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
 
             let result;
@@ -2227,8 +2299,11 @@
                 throw error;
             }
 
-            this.cache.set(cacheKey, result);
-            if (this.cache.size > APP.cacheLimit) this.cache.delete(this.cache.keys().next().value);
+            const usedFallback = preferred === 'deepl' && result.provider !== 'deepl';
+            if (!usedFallback) {
+                this.cache.set(cacheKey, result);
+                if (this.cache.size > APP.cacheLimit) this.cache.delete(this.cache.keys().next().value);
+            }
             await History.log('translated', {
                 method: result.provider,
                 status: 'completed',
@@ -2350,15 +2425,7 @@
 
     function normalizeImportedSettings(value) {
         const source = assertConfigRecord(value, 'settings');
-        const normalized = {};
-        for (const [key, defaultValue] of Object.entries(DEFAULT_SETTINGS)) {
-            if (!Object.prototype.hasOwnProperty.call(source, key)) continue;
-            const importedValue = source[key];
-            if (typeof importedValue !== typeof defaultValue) throw configImportError(`settings.${key}`);
-            if (typeof importedValue === 'number' && !Number.isFinite(importedValue)) throw configImportError(`settings.${key}`);
-            normalized[key] = importedValue;
-        }
-        return normalized;
+        return normalizeSettingsRecord(source, { strict: true, partial: true, path: 'settings' });
     }
 
     function normalizeImportedProviders(value) {
@@ -2398,14 +2465,54 @@
         return normalized;
     }
 
+    const IMPORTED_TEMPLATE_FIELDS = new Set([
+        'id', 'name', 'category', 'purpose', 'tone', 'language', 'shortcut', 'text',
+        'archived', 'createdAt', 'updatedAt',
+    ]);
+    const IMPORTED_TEMPLATE_TONES = new Set(['friendly', 'professional', 'apologetic', 'short', 'detailed', 'formal']);
+    const IMPORTED_TEMPLATE_PURPOSES = new Set(['delivery_followup', 'review_request']);
+    const IMPORTED_TEMPLATE_LANGUAGE = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/;
+
+    function normalizeImportedTemplates(value) {
+        if (value === undefined) return null;
+        if (!Array.isArray(value)) throw configImportError('templates');
+        return value.map((template, index) => {
+            const path = `templates[${index}]`;
+            const source = assertConfigRecord(template, path);
+            for (const key of Object.keys(source)) {
+                if (!IMPORTED_TEMPLATE_FIELDS.has(key)) throw configImportError(`${path}.${key}`);
+            }
+            if (source.id !== undefined && !['string', 'number'].includes(typeof source.id)) throw configImportError(`${path}.id`);
+            for (const key of ['name', 'text']) {
+                if (typeof source[key] !== 'string') throw configImportError(`${path}.${key}`);
+                if (!source[key].trim()) throw configImportError(`${path}.${key}`);
+            }
+            for (const key of ['category', 'shortcut', 'createdAt', 'updatedAt']) {
+                if (source[key] !== undefined && typeof source[key] !== 'string') throw configImportError(`${path}.${key}`);
+            }
+            if (source.archived !== undefined && typeof source.archived !== 'boolean') throw configImportError(`${path}.archived`);
+            if (source.tone !== undefined && !IMPORTED_TEMPLATE_TONES.has(source.tone)) throw configImportError(`${path}.tone`);
+            if (source.purpose !== undefined && !IMPORTED_TEMPLATE_PURPOSES.has(source.purpose)) throw configImportError(`${path}.purpose`);
+            if (source.language !== undefined
+                && (typeof source.language !== 'string' || !IMPORTED_TEMPLATE_LANGUAGE.test(source.language))) {
+                throw configImportError(`${path}.language`);
+            }
+            return clone(source);
+        });
+    }
+
     const ConfigManager = {
-        snapshot(includeSecrets = false) {
-            const settings = clone(Store.settings);
-            const providers = clone(Store.providers);
+        snapshot(includeSecrets = false, overrides = {}) {
+            const settings = normalizeSettingsRecord(overrides.settings || Store.settings, {
+                strict: true,
+                path: 'settings',
+            });
+            const providers = clone(overrides.providers || Store.providers);
             if (!includeSecrets) {
                 settings.deeplApiKey = '';
                 for (const profile of Object.values(providers)) profile.apiKey = '';
                 settings.messageCenterAgentToken = '';
+                settings.configIncludeSecrets = false;
             }
             return {
                 app: APP.id,
@@ -2419,8 +2526,8 @@
                 onboarding: clone(Store.onboarding),
             };
         },
-        download(includeSecrets = false) {
-            const payload = this.snapshot(includeSecrets);
+        download(includeSecrets = false, overrides = {}) {
+            const payload = this.snapshot(includeSecrets, overrides);
             downloadText('makaytron-etsy-message-assistant.config.json', JSON.stringify(payload, null, 2));
             return payload;
         },
@@ -2429,11 +2536,19 @@
             if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw configImportError('config');
             assertConfigRecord(payload, 'config');
             if (payload.app !== APP.id) throw new Error('Geçerli Makaytron Message Assistant config dosyası değil.');
-            const importedSchemaVersion = Number(payload.schemaVersion);
+            const importedSchemaVersion = payload.schemaVersion;
+            if (!Number.isInteger(importedSchemaVersion)
+                || importedSchemaVersion < 1
+                || importedSchemaVersion > APP.configSchema) {
+                throw configImportError('schemaVersion');
+            }
             const importedSettings = normalizeImportedSettings(payload.settings);
             const importedProviders = normalizeImportedProviders(payload.providers);
             const importedOnboarding = normalizeImportedOnboarding(payload.onboarding);
-            if (!Number.isInteger(importedSchemaVersion) || importedSchemaVersion < 6) {
+            const importedTemplates = normalizeImportedTemplates(
+                Object.prototype.hasOwnProperty.call(payload, 'templates') ? payload.templates : undefined,
+            );
+            if (importedSchemaVersion < 6) {
                 delete importedSettings.openOnMessagePage;
             }
             importedSettings.deeplApiKey = importedSettings.deeplApiKey || Store.settings.deeplApiKey || '';
@@ -2448,7 +2563,7 @@
             }
             await Store.saveSettings(nextSettings);
             await Store.saveProviders(nextProviders);
-            if (Array.isArray(payload.templates) && payload.templates.length) await Store.saveTemplates(payload.templates);
+            if (importedTemplates?.length) await Store.saveTemplates(importedTemplates);
             if (importedOnboarding) await Store.saveOnboarding(importedOnboarding);
             return payload;
         },
@@ -2456,13 +2571,13 @@
 
     const AI = {
         provider(id = Store.settings.aiProvider) { return AI_PROVIDERS[id] || AI_PROVIDERS.openai; },
-        profile(id = Store.settings.aiProvider) { return Store.providers[id] || Store.providers.openai; },
-        models(id = Store.settings.aiProvider) {
-            const provider = this.provider(id); const profile = this.profile(id);
+        profile(id = Store.settings.aiProvider, profiles = Store.providers) { return profiles[id] || profiles.openai; },
+        models(id = Store.settings.aiProvider, profileOverride = null) {
+            const provider = this.provider(id); const profile = profileOverride || this.profile(id);
             return [...new Set([profile.model, ...provider.fallbackModels, ...(profile.models || [])].filter(Boolean))];
         },
-        ensure(id = Store.settings.aiProvider) {
-            const provider = this.provider(id); const profile = this.profile(id);
+        ensure(id = Store.settings.aiProvider, profileOverride = null) {
+            const provider = this.provider(id); const profile = profileOverride || this.profile(id);
             if (!profile?.apiKey?.trim()) throw new Error(`${provider.name} API anahtarını Ayarlar bölümüne kaydedin.`);
             if (!profile?.model?.trim()) throw new Error(`${provider.name} için model/sürüm seçin.`);
             return { id, provider, profile: { ...profile, apiKey: profile.apiKey.trim(), model: profile.model.trim() } };
@@ -2478,8 +2593,8 @@
             return data;
         },
         userPrompt(kind, payload, schema) { return Prompt.task(kind, payload, schema); },
-        async run(kind, payload, schema) {
-            const active = this.ensure();
+        async run(kind, payload, schema, activeOverride = null) {
+            const active = activeOverride || this.ensure();
             try {
                 if (active.id === 'openai') return await this.openai(active, kind, payload, schema);
                 if (active.id === 'anthropic') return await this.anthropic(active, kind, payload, schema);
@@ -2584,8 +2699,8 @@
                 return jsonFromText(raw.choices?.[0]?.message?.content || '');
             }
         },
-        async listModels(providerId = Store.settings.aiProvider) {
-            const provider = this.provider(providerId); const profile = this.profile(providerId);
+        async listModels(providerId = Store.settings.aiProvider, profileOverride = null, { persist = !profileOverride } = {}) {
+            const provider = this.provider(providerId); const profile = profileOverride || this.profile(providerId);
             const key = profile.apiKey?.trim();
             if (providerId !== 'openrouter' && !key) throw new Error(`${provider.name} model listesini almak için API anahtarını girin.`);
             let raw; let models = [];
@@ -2612,7 +2727,7 @@
             models = [...new Set([...provider.fallbackModels, ...models.filter(Boolean)])];
             profile.models = models; profile.modelsFetchedAt = nowIso();
             if (!models.includes(profile.model)) models.unshift(profile.model);
-            await Store.saveProviders(Store.providers);
+            if (persist) await Store.saveProviders(Store.providers);
             return models;
         },
         async generateReply(context, options) {
@@ -2644,9 +2759,9 @@
                 preferences: { shop_name: Store.settings.shopName, signature: Store.settings.signature, extra_instruction: extraInstruction },
             }, Prompt.reviewSchema());
         },
-        async test() {
+        async test(activeOverride = null) {
             const schema = { type: 'object', additionalProperties: false, required: ['ok', 'message'], properties: { ok: { type: 'boolean' }, message: { type: 'string' } } };
-            const result = await this.run('test', { instruction: 'ok true ve kısa bir bağlantı mesajı döndür.' }, schema);
+            const result = await this.run('test', { instruction: 'ok true ve kısa bir bağlantı mesajı döndür.' }, schema, activeOverride);
             if (result.ok !== true) throw new Error(result.message || 'API bağlantı testi başarısız.');
             return result;
         },
@@ -2770,19 +2885,32 @@
         },
     };
 
+    const MESSAGE_LIST_SEGMENTS = new Set([
+        'all', 'archive', 'archived', 'custom_requests', 'etsy_notifications',
+        'from_potential_buyers', 'inbox', 'order_help_requests', 'spam', 'starred',
+        'sent', 'trash', 'unread',
+    ]);
+
     const Router = {
         page() {
             const path = location.pathname.toLowerCase();
             if (/^\/(?:messages|conversations)(?:\/|$)/.test(path)) return 'messages';
             if (/^\/your\/orders\/sold(?:\/|$)/.test(path)) return 'orders';
-            if (document.querySelector('.dashboard-activity-item') || /^\/your\/shops\/[^/]+\/dashboard(?:\/|$)/.test(path)) return 'reviews';
+            if (document.querySelector('.dashboard-activity-item') || /^\/your\/shops\/[^/]+\/dashboard\/activity(?:\/|$)/.test(path)) return 'reviews';
             return 'unknown';
         },
         conversationIdFromUrl(value = location.href) {
             try {
                 const url = new URL(value, location.href);
-                const match = url.pathname.match(/\/(?:messages|conversations)(?:\/with)?\/([^/?#]+)/i);
-                const raw = match?.[1] || url.searchParams.get('conversation_id') || '';
+                const parts = url.pathname.split('/').filter(Boolean);
+                let raw = url.searchParams.get('conversation_id') || '';
+                if (!raw && parts[0]?.toLowerCase() === 'messages') {
+                    const candidate = parts[1] || '';
+                    raw = MESSAGE_LIST_SEGMENTS.has(candidate.toLowerCase()) ? '' : candidate;
+                }
+                if (!raw && parts[0]?.toLowerCase() === 'conversations') {
+                    raw = parts[1]?.toLowerCase() === 'with' ? parts[2] || '' : parts[1] || '';
+                }
                 try { return decodeURIComponent(raw); } catch { return raw; }
             } catch { return ''; }
         },
@@ -2791,6 +2919,12 @@
         },
         conversationId() {
             return this.conversationIdFromUrl(location.href);
+        },
+        isCompletedOrdersPage() {
+            return /^\/your\/orders\/sold\/completed(?:\/|$)/i.test(location.pathname);
+        },
+        isReviewActivityPage() {
+            return /^\/your\/shops\/[^/]+\/dashboard\/activity(?:\/|$)/i.test(location.pathname);
         },
         routeFingerprint() {
             return `${location.pathname}${location.search}|${this.page()}|${this.conversationId()}`;
@@ -2851,6 +2985,7 @@
             'textarea.textarea',
         ],
         conversationScopeSelector: '#dg-tabs-preact__tab-1--default_wt_tab_panel, [role="tabpanel"], [data-conversation-id], [data-message-thread-id], [data-test-id*="conversation" i], [data-testid*="conversation" i]',
+        orderDetailsSelector: '.buyer-info, [data-test-id*="order-details" i], [data-testid*="order-details" i]',
         isVisible(element) {
             if (!element || element.hidden || element.getAttribute?.('aria-hidden') === 'true') return false;
             if (element.offsetParent !== null) return true;
@@ -2980,12 +3115,32 @@
             }
             return '';
         },
+        getOrderDetailsScope(resolvedScope = null, resolvedTextarea = null) {
+            const textarea = resolvedTextarea || this.getTextarea();
+            const scope = resolvedScope || this.getConversationScope(textarea);
+            if (!scope || !textarea) return null;
+            if (scope.querySelector?.('a[href*="order_id="], a[href*="/listing/"], a[href*="/transaction/"]')) return scope;
+
+            const conversationRoot = textarea.closest?.('.conversations-subapp') || null;
+            if (!conversationRoot) return null;
+            const candidates = [...conversationRoot.querySelectorAll?.(this.orderDetailsSelector) || []]
+                .filter(candidate => candidate !== scope
+                    && candidate.querySelector?.('a[href*="order_id="], a[href*="/listing/"], a[href*="/transaction/"]'));
+            return candidates.length === 1 ? candidates[0] : null;
+        },
         getOrderId(resolvedScope = null) {
             const scope = resolvedScope || this.getConversationScope();
             if (!scope) return '';
-            const orderLink = scope.querySelector('a[href*="order_id="]');
-            const fromUrl = orderLink ? new URL(orderLink.href).searchParams.get('order_id') : '';
-            if (fromUrl) return fromUrl;
+            const orderLinks = [...scope.querySelectorAll?.('a[href*="order_id="]') || []];
+            const singleOrderLink = scope.querySelector?.('a[href*="order_id="]');
+            if (!orderLinks.length && singleOrderLink) orderLinks.push(singleOrderLink);
+            const orderIds = orderLinks.map((orderLink) => {
+                try { return new URL(orderLink.href, location.href).searchParams.get('order_id') || ''; }
+                catch { return ''; }
+            }).filter(Boolean);
+            const uniqueOrderIds = [...new Set(orderIds)];
+            if (uniqueOrderIds.length === 1) return uniqueOrderIds[0];
+            if (uniqueOrderIds.length > 1) return '';
             const text = normalize(scope.innerText || scope.textContent || '');
             return text.match(/#(\d{8,})/)?.[1] || '';
         },
@@ -2997,20 +3152,22 @@
                 .flatMap((candidate) => [candidate.getAttribute('title'), candidate.textContent, candidate.querySelector('img')?.alt])
                 .map(normalize)
                 .filter((title) => title.length > 4 && title.length < 300 && !generic.test(title));
-            return candidates.sort((a, b) => b.length - a.length)[0] || '';
+            return [...new Set(candidates)].sort((a, b) => b.length - a.length)[0] || '';
         },
         context() {
-            const scope = this.getConversationScope();
+            const textarea = this.getTextarea();
+            const scope = this.getConversationScope(textarea);
+            const orderScope = this.getOrderDetailsScope(scope, textarea) || scope;
             const messages = this.getMessages(scope);
             const lastCustomerMessage = [...messages].reverse().find((message) => message.role === 'customer')?.text || '';
-            const customerName = this.getBuyerName(scope);
+            const customerName = this.getBuyerName(scope) || this.getBuyerName(orderScope);
             return {
                 conversationId: scope ? Router.conversationId() : '',
                 customerName,
                 customerFirstName: firstName(customerName),
                 customerAvatar: this.getBuyerAvatar(scope),
-                orderId: this.getOrderId(scope),
-                itemTitle: this.getItemTitle(scope),
+                orderId: this.getOrderId(orderScope),
+                itemTitle: this.getItemTitle(orderScope),
                 messages,
                 lastCustomerMessage,
                 pageUrl: location.href,
@@ -3082,6 +3239,23 @@
     const MessageCenterAgent = {
         started: false,
         busy: false,
+        processPromise: null,
+        syncPromise: null,
+        generation: 0,
+        processorLockName: `${APP.prefix}:message-center:processor:v1`,
+        pendingLeaseMs: 120000,
+        tabId: (() => {
+            const key = `${APP.prefix}:message-center:tab-id`;
+            try {
+                const existing = globalThis.sessionStorage?.getItem(key);
+                if (existing) return existing;
+                const created = uid('mc-tab');
+                globalThis.sessionStorage?.setItem(key, created);
+                return created;
+            } catch {
+                return uid('mc-tab');
+            }
+        })(),
         heartbeatTimer: null,
         syncTimer: null,
         pollTimer: null,
@@ -3089,12 +3263,16 @@
         lastError: '',
         lastHeartbeatAt: '',
         lastSyncAt: '',
-        pendingKey() {
-            const storeId = String(Store.settings.messageCenterStoreId || '').trim().toLowerCase();
+        pendingKey(binding = this.config()) {
+            const storeId = String(binding?.storeId || '').trim().toLowerCase();
             return `${APP.prefix}:message-center:pending:${storeId || 'unset'}`;
         },
-        sentLedgerKey() {
-            const storeId = String(Store.settings.messageCenterStoreId || '').trim().toLowerCase();
+        legacyPendingKey(binding = this.config()) {
+            const storeId = String(binding?.storeId || '').trim().toLowerCase();
+            return `${APP.prefix}:message-center:legacy-pending-quarantine:${storeId || 'unset'}`;
+        },
+        sentLedgerKey(binding = this.config()) {
+            const storeId = String(binding?.storeId || '').trim().toLowerCase();
             return `${APP.prefix}:message-center:sent-ledger:${storeId || 'unset'}`;
         },
         config() {
@@ -3118,9 +3296,44 @@
                 pollSeconds: Math.max(2, Math.min(60, Number(Store.settings.messageCenterPollSeconds) || 3)),
             };
         },
-        isConfigured() {
-            const cfg = this.config();
+        configId(binding = this.config()) {
+            return hashText(JSON.stringify({
+                serverUrl: String(binding?.serverUrl || ''),
+                storeId: String(binding?.storeId || ''),
+                token: String(binding?.token || ''),
+            }));
+        },
+        isConfigured(cfg = this.config()) {
             return cfg.enabled && Boolean(cfg.serverUrl && cfg.storeId && cfg.token);
+        },
+        bindingIsCurrent(binding, generation = this.generation) {
+            if (generation !== this.generation || !this.isConfigured(binding)) return false;
+            const current = this.config();
+            return this.isConfigured(current) && this.configId(current) === this.configId(binding);
+        },
+        staleRunError(message = 'Message Center i\u015flemi ayar veya sahiplik de\u011fi\u015fikli\u011fi nedeniyle durduruldu.') {
+            const error = new Error(message);
+            error.code = 'MESSAGE_CENTER_RUN_STALE';
+            return error;
+        },
+        ensureBindingCurrent(binding, generation) {
+            if (!this.bindingIsCurrent(binding, generation)) throw this.staleRunError();
+            return true;
+        },
+        coordinatorAvailable() {
+            return Boolean(globalThis.navigator?.locks && typeof globalThis.navigator.locks.request === 'function');
+        },
+        async withProcessorLock(operation) {
+            if (!this.coordinatorAvailable()) {
+                const error = new Error('Message Center sekmeler aras\u0131 g\u00fcvenli bi\u00e7imde koordine edilemiyor. Otomatik i\u015flem durduruldu.');
+                error.code = 'MESSAGE_CENTER_COORDINATOR_UNAVAILABLE';
+                throw error;
+            }
+            return globalThis.navigator.locks.request(
+                this.processorLockName,
+                { mode: 'exclusive' },
+                operation,
+            );
         },
         statusText() {
             if (!Store.settings.messageCenterEnabled) return 'Kapalı';
@@ -3129,8 +3342,8 @@
             if (this.lastHeartbeatAt) return `Bağlı · ${formatDate(this.lastHeartbeatAt)}`;
             return 'Bağlantı bekleniyor';
         },
-        async request(method, path, body = null) {
-            const cfg = this.config();
+        async request(method, path, body = null, binding = this.config()) {
+            const cfg = binding;
             if (!cfg.serverUrl || !cfg.storeId || !cfg.token) throw new Error('Mesaj Merkezi agent ayarları eksik.');
             const response = await GMX.request({
                 method,
@@ -3252,7 +3465,7 @@
             if (Router.page() !== 'messages' || !Router.conversationId()) return null;
             const context = await MessageAdapter.waitForContext(4500);
             if (!context?.conversationId) return null;
-            const messages = context.messages.map(message => ({
+            const messages = (Array.isArray(context.messages) ? context.messages : []).map(message => ({
                 id: message.id,
                 author: message.role === 'seller' ? 'seller' : 'buyer',
                 text: message.text,
@@ -3268,10 +3481,15 @@
                 hydrated,
             };
         },
-        async syncNow({ hydrated = false } = {}) {
-            if (!this.isConfigured() || Router.page() !== 'messages') return false;
+        async syncOnce({ hydrated = false, binding = this.config(), generation = this.generation } = {}) {
+            if (!this.bindingIsCurrent(binding, generation) || Router.page() !== 'messages') return false;
+            const routeBinding = Router.routeFingerprint();
             const list = this.scanConversationList();
-            const current = await this.currentConversationPayload({ hydrated: hydrated || true }).catch(() => null);
+            const current = await this.currentConversationPayload({ hydrated });
+            this.ensureBindingCurrent(binding, generation);
+            if (Router.page() !== 'messages' || Router.routeFingerprint() !== routeBinding) {
+                throw this.staleRunError('Message Center e\u015fitlemesi beklerken Etsy rota ba\u011flam\u0131 de\u011fi\u015fti.');
+            }
             const byIdentity = new Map();
             for (const item of list) byIdentity.set(Router.conversationIdentity(item.conversationUrl), item);
             if (current?.conversationUrl) {
@@ -3280,67 +3498,216 @@
             }
             const conversations = [...byIdentity.values()].filter(item => item.conversationId);
             if (!conversations.length) return false;
-            await this.request('POST', `/api/agent/${encodeURIComponent(this.config().storeId)}/sync`, { conversations });
+            await this.request(
+                'POST',
+                `/api/agent/${encodeURIComponent(binding.storeId)}/sync`,
+                { conversations },
+                binding,
+            );
+            this.ensureBindingCurrent(binding, generation);
             this.lastSyncAt = nowIso();
             this.lastError = '';
             return true;
         },
-        async heartbeat() {
-            if (!this.isConfigured()) return false;
+        syncNow(options = {}) {
+            if (this.syncPromise) return this.syncPromise;
+            const binding = options.binding || this.config();
+            const generation = options.generation ?? this.generation;
+            const task = this.syncOnce({ ...options, binding, generation })
+                .catch((error) => {
+                    this.lastError = error.message || 'sync';
+                    console.error(`[${APP.id}] Message Center sync`, error);
+                    return false;
+                })
+                .finally(() => {
+                    if (this.syncPromise === task) this.syncPromise = null;
+                });
+            this.syncPromise = task;
+            return task;
+        },
+        async heartbeat(binding = this.config(), generation = this.generation) {
+            if (!this.bindingIsCurrent(binding, generation)) return false;
             try {
-                await this.request('POST', `/api/agent/${encodeURIComponent(this.config().storeId)}/heartbeat`, {
+                await this.request('POST', `/api/agent/${encodeURIComponent(binding.storeId)}/heartbeat`, {
                     version: APP.version,
                     page: location.href,
                     routerPage: Router.page(),
-                });
+                }, binding);
+                this.ensureBindingCurrent(binding, generation);
                 this.lastHeartbeatAt = nowIso();
                 this.lastError = '';
                 return true;
             } catch (error) {
-                this.lastError = error.message || 'heartbeat';
+                if (generation === this.generation) this.lastError = error.message || 'heartbeat';
                 return false;
             }
         },
-        async sentLedger() {
-            const value = await GMX.get(this.sentLedgerKey(), {});
+        async sentLedger(binding = this.config()) {
+            const value = await GMX.get(this.sentLedgerKey(binding), {});
             return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
         },
-        async markSent(job) {
-            const ledger = await this.sentLedger();
-            ledger[job.id] = { at: nowIso(), conversationId: job.conversationId, textHash: hashText(job.text || '') };
+        pendingMatchesRun(pending, run) {
+            return Boolean(pending?.job?.id
+                && String(pending.job.id) === String(run?.jobId || '')
+                && String(pending.ownerId || '') === String(run?.ownerId || '')
+                && String(pending.fenceToken || '') === String(run?.fenceToken || '')
+                && String(pending.configId || '') === String(run?.configId || ''));
+        },
+        makeRun(pending, binding, generation) {
+            const immutableBinding = Object.freeze({ ...binding });
+            return Object.freeze({
+                binding: immutableBinding,
+                generation,
+                pendingKey: this.pendingKey(immutableBinding),
+                jobId: String(pending?.job?.id || ''),
+                ownerId: String(pending?.ownerId || ''),
+                fenceToken: String(pending?.fenceToken || ''),
+                configId: String(pending?.configId || this.configId(immutableBinding)),
+            });
+        },
+        async loadPending(binding = this.config()) {
+            const value = await GMX.get(this.pendingKey(binding), null);
+            return value && typeof value === 'object' && value.job?.id ? value : null;
+        },
+        async ownsPending(run) {
+            if (!run?.pendingKey) return false;
+            return this.pendingMatchesRun(await GMX.get(run.pendingKey, null), run);
+        },
+        async assertRunOwned(run) {
+            this.ensureBindingCurrent(run.binding, run.generation);
+            const pending = await GMX.get(run.pendingKey, null);
+            if (!this.pendingMatchesRun(pending, run)) throw this.staleRunError('Message Center pending ownership changed.');
+            this.ensureBindingCurrent(run.binding, run.generation);
+            return pending;
+        },
+        isLegacyPending(pending) {
+            return Boolean(pending?.job?.id
+                && !pending.configId
+                && !pending.ownerId
+                && !pending.fenceToken);
+        },
+        async quarantineLegacyPending(pending, binding) {
+            await GMX.set(this.legacyPendingKey(binding), {
+                pending,
+                reason: 'missing_fencing_metadata',
+                quarantinedAt: nowIso(),
+            });
+        },
+        async claimPending(binding, generation) {
+            this.ensureBindingCurrent(binding, generation);
+            const key = this.pendingKey(binding);
+            const current = await GMX.get(key, null);
+            if (!current?.job?.id) return { pending: null, run: null, blocked: false };
+            const configId = this.configId(binding);
+            const legacy = this.isLegacyPending(current);
+            if (!legacy && String(current.configId || '') !== configId) {
+                return { pending: current, run: null, blocked: true, reason: 'config_mismatch' };
+            }
+            const expires = new Date(current.leaseExpiresAt || 0).getTime();
+            if (current.ownerId && current.ownerId !== this.tabId && Number.isFinite(expires) && expires > Date.now()) {
+                return { pending: current, run: null, blocked: true };
+            }
+            if (legacy) await this.quarantineLegacyPending(current, binding);
+            const sameOwner = current.ownerId === this.tabId && current.fenceToken;
+            const pending = {
+                ...current,
+                stage: legacy ? 'legacy_blocked' : current.stage,
+                legacyBlocked: legacy || current.legacyBlocked === true,
+                ...(legacy ? { legacyStage: current.stage || 'unknown' } : {}),
+                ownerId: this.tabId,
+                fenceToken: sameOwner ? current.fenceToken : uid('mc-fence'),
+                configId,
+                leaseExpiresAt: new Date(Date.now() + this.pendingLeaseMs).toISOString(),
+                updatedAt: nowIso(),
+            };
+            await GMX.set(key, pending);
+            const run = this.makeRun(pending, binding, generation);
+            if (!await this.ownsPending(run)) throw this.staleRunError('Message Center pending claim was lost.');
+            return { pending, run, blocked: false };
+        },
+        async createPending(job, binding, generation) {
+            this.ensureBindingCurrent(binding, generation);
+            const key = this.pendingKey(binding);
+            if (await GMX.get(key, null)) return { pending: null, run: null, blocked: true };
+            const pending = {
+                job,
+                stage: 'leased',
+                ownerId: this.tabId,
+                fenceToken: uid('mc-fence'),
+                configId: this.configId(binding),
+                leaseExpiresAt: new Date(Date.now() + this.pendingLeaseMs).toISOString(),
+                updatedAt: nowIso(),
+            };
+            await GMX.set(key, pending);
+            const run = this.makeRun(pending, binding, generation);
+            if (!await this.ownsPending(run)) throw this.staleRunError('Message Center pending create was lost.');
+            return { pending, run, blocked: false };
+        },
+        async persistPending(job, stage = 'leased', extra = {}, run) {
+            const current = await this.assertRunOwned(run);
+            const pending = {
+                ...current,
+                job,
+                stage,
+                ...extra,
+                ownerId: run.ownerId,
+                fenceToken: run.fenceToken,
+                configId: run.configId,
+                leaseExpiresAt: new Date(Date.now() + this.pendingLeaseMs).toISOString(),
+                updatedAt: nowIso(),
+            };
+            await GMX.set(run.pendingKey, pending);
+            if (!await this.ownsPending(run)) throw this.staleRunError('Message Center pending write was lost.');
+            this.ensureBindingCurrent(run.binding, run.generation);
+            return pending;
+        },
+        async clearPending(run) {
+            if (!run?.pendingKey) return false;
+            const pending = await GMX.get(run.pendingKey, null);
+            if (!this.pendingMatchesRun(pending, run)) return false;
+            await GMX.del(run.pendingKey);
+            return true;
+        },
+        async markSent(job, run) {
+            await this.assertRunOwned(run);
+            const ledger = await this.sentLedger(run.binding);
+            ledger[job.id] = {
+                at: nowIso(),
+                conversationId: job.conversationId,
+                conversationIdentity: Router.conversationIdentity(job.conversationUrl || ''),
+                textHash: hashText(job.text || ''),
+                configId: run.configId,
+                fenceToken: run.fenceToken,
+            };
             const entries = Object.entries(ledger)
                 .sort((a, b) => new Date(b[1]?.at || 0) - new Date(a[1]?.at || 0))
                 .slice(0, 300);
-            await GMX.set(this.sentLedgerKey(), Object.fromEntries(entries));
+            await GMX.set(this.sentLedgerKey(run.binding), Object.fromEntries(entries));
+            await this.assertRunOwned(run);
         },
-        async alreadySent(job) {
-            const ledger = await this.sentLedger();
-            const record = ledger[job.id];
+        async alreadySent(job, run) {
+            await this.assertRunOwned(run);
+            const record = (await this.sentLedger(run.binding))[job.id];
             if (!record) return false;
-            const expectedConversation = Router.conversationIdentity(job.conversationUrl || '');
-            if (expectedConversation && Router.conversationIdentity() !== expectedConversation) return false;
-            return MessageAdapter.countOutgoing(job.text || '') > 0;
+            const expected = Router.conversationIdentity(job.conversationUrl || '');
+            const recordedIdentity = record.conversationIdentity
+                || String(record.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+            return (!record.configId || record.configId === run.configId)
+                && record.textHash === hashText(job.text || '')
+                && (!expected || recordedIdentity === expected);
         },
-        async reportResult(job, payload) {
+        async reportResult(job, payload, run) {
+            await this.assertRunOwned(run);
             await this.request(
                 'POST',
-                `/api/agent/${encodeURIComponent(this.config().storeId)}/jobs/${encodeURIComponent(job.id)}/result`,
+                `/api/agent/${encodeURIComponent(run.binding.storeId)}/jobs/${encodeURIComponent(job.id)}/result`,
                 payload,
+                run.binding,
             );
+            this.ensureBindingCurrent(run.binding, run.generation);
         },
-        async persistPending(job, stage = 'leased', extra = {}) {
-            const pending = { job, stage, updatedAt: nowIso(), ...extra };
-            await GMX.set(this.pendingKey(), pending);
-            return pending;
-        },
-        async clearPending() {
-            await GMX.del(this.pendingKey());
-        },
-        async loadPending() {
-            const value = await GMX.get(this.pendingKey(), null);
-            return value && typeof value === 'object' && value.job?.id ? value : null;
-        },
-        async navigateForJob(job, stage = 'navigating') {
+        async navigateForJob(job, stage = 'navigating', run) {
+            await this.assertRunOwned(run);
             const target = this.canonicalConversationUrl(job.conversationUrl || '');
             if (!target) throw new Error('Job için güvenli Etsy konuşma URL’si bulunamadı.');
             if (Router.page() === 'messages') {
@@ -3350,7 +3717,8 @@
                     throw new Error('Etsy cevap alanında gönderilmemiş manuel metin var; agent konuşmayı değiştirmedi.');
                 }
             }
-            await this.persistPending(job, stage);
+            await this.persistPending(job, stage, {}, run);
+            await this.assertRunOwned(run);
             location.href = target;
             return 'navigating';
         },
@@ -3358,135 +3726,226 @@
             const expected = Router.conversationIdentity(job.conversationUrl || '');
             return Boolean(expected) && expected === Router.conversationIdentity();
         },
-        async completeHydrate(job) {
-            if (!this.jobConversationMatches(job)) return this.navigateForJob(job);
+        async assertActionCurrent(run, job, { textarea = null, button = null } = {}) {
+            await this.assertRunOwned(run);
+            if (!this.jobConversationMatches(job)) throw new Error('Active Etsy conversation changed during Message Center work.');
+            if (textarea && MessageAdapter.getTextarea() !== textarea) throw new Error('Active Etsy composer changed during Message Center work.');
+            if (button && MessageAdapter.getSendButton() !== button) throw new Error('Active Etsy send button changed during Message Center work.');
+            this.ensureBindingCurrent(run.binding, run.generation);
+            return true;
+        },
+        async completeHydrate(job, run) {
+            if (!this.jobConversationMatches(job)) return this.navigateForJob(job, 'navigating', run);
+            await this.assertActionCurrent(run, job);
             const payload = await this.currentConversationPayload({ hydrated: true });
+            await this.assertActionCurrent(run, job);
             if (!payload?.conversationId) throw new Error('Konuşma bağlamı yüklenemedi.');
-            await this.request('POST', `/api/agent/${encodeURIComponent(this.config().storeId)}/sync`, { conversations: [payload] });
-            await this.reportResult(job, { status: 'completed', completedAt: nowIso() });
-            await this.clearPending();
+            const expected = Router.conversationIdentity(job.conversationUrl || '');
+            const actual = Router.conversationIdentity(payload.conversationUrl || '')
+                || String(payload.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+            if (!expected || actual !== expected) throw new Error('Hydrate payload does not match the active Etsy conversation.');
+            await this.request('POST', `/api/agent/${encodeURIComponent(run.binding.storeId)}/sync`, { conversations: [payload] }, run.binding);
+            await this.assertActionCurrent(run, job);
+            await this.reportResult(job, { status: 'completed', completedAt: nowIso() }, run);
+            await this.clearPending(run);
             this.lastError = '';
             return true;
         },
-        async recoverDispatched(job, pending) {
-            if (!this.jobConversationMatches(job)) return this.navigateForJob(job, 'recovering');
+        async recoverDispatched(job, pending, run) {
+            if (!this.jobConversationMatches(job)) return this.navigateForJob(job, 'recovering', run);
+            await this.assertActionCurrent(run, job);
             const baseline = Number(pending.baselineMatches || 0);
             const verified = await MessageAdapter.waitForOutgoing(
                 job.text,
                 baseline,
                 7000,
-                () => this.jobConversationMatches(job),
+                () => this.bindingIsCurrent(run.binding, run.generation) && this.jobConversationMatches(job),
             );
+            await this.assertActionCurrent(run, job);
             if (verified || MessageAdapter.countOutgoing(job.text) > baseline) {
-                await this.markSent(job);
-                await this.syncNow({ hydrated: true }).catch(() => false);
-                await this.reportResult(job, { status: 'sent', sentAt: nowIso(), recovered: true });
-                await this.clearPending();
+                await this.markSent(job, run);
+                await this.syncNow({ hydrated: true, binding: run.binding, generation: run.generation });
+                await this.reportResult(job, { status: 'sent', sentAt: nowIso(), recovered: true }, run);
+                await this.clearPending(run);
                 return true;
             }
             await this.reportResult(job, {
                 status: 'failed',
                 retryable: false,
                 error: 'send_outcome_ambiguous_manual_check_required',
-            });
-            await this.clearPending();
+            }, run);
+            await this.clearPending(run);
             return false;
         },
-        async sendReplyJob(job, pending = null) {
-            if (!this.jobConversationMatches(job)) return this.navigateForJob(job);
-            if (pending?.stage === 'dispatched') return this.recoverDispatched(job, pending);
-            if (await this.alreadySent(job)) {
-                await this.reportResult(job, { status: 'sent', sentAt: nowIso(), duplicatePrevented: true });
-                await this.clearPending();
+        async sendReplyJob(job, pending, run) {
+            if (!this.jobConversationMatches(job)) return this.navigateForJob(job, 'navigating', run);
+            if (pending?.stage === 'dispatched') return this.recoverDispatched(job, pending, run);
+            await this.assertActionCurrent(run, job);
+            if (await this.alreadySent(job, run)) {
+                await this.reportResult(job, { status: 'sent', sentAt: nowIso(), duplicatePrevented: true }, run);
+                await this.clearPending(run);
                 return true;
             }
 
             const context = await MessageAdapter.waitForContext(5000);
-            if (!context?.conversationId || !this.jobConversationMatches(job)) {
+            await this.assertActionCurrent(run, job);
+            const expectedIdentity = Router.conversationIdentity(job.conversationUrl || '');
+            const contextIdentity = Router.conversationIdentity(context?.pageUrl || '')
+                || String(context?.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+            if (!context?.conversationId || !expectedIdentity || contextIdentity !== expectedIdentity) {
                 throw new Error('Doğru Etsy konuşması doğrulanamadı.');
             }
             const textarea = await MessageAdapter.waitForTextarea(5000);
             if (!textarea) throw new Error('Etsy cevap alanı bulunamadı.');
+            await this.assertActionCurrent(run, job, { textarea });
             const currentComposer = String(textarea.value || '').trim();
             if (currentComposer && normalize(currentComposer) !== normalize(job.text || '')) {
                 throw new Error('Etsy cevap alanında kullanıcıya ait başka bir metin var; otomatik üzerine yazılmadı.');
             }
             const baselineMatches = MessageAdapter.countOutgoing(job.text);
+            await this.assertActionCurrent(run, job, { textarea });
             MessageAdapter.insert(job.text, textarea);
-            const inserted = String(MessageAdapter.getTextarea()?.value || '').trim();
+            await this.assertActionCurrent(run, job, { textarea });
+            const inserted = String(textarea.value || '').trim();
             if (normalize(inserted) !== normalize(job.text || '')) {
                 throw new Error('Mesaj Etsy cevap alanına güvenli biçimde aktarılamadı.');
             }
             const button = MessageAdapter.getSendButton();
             if (!button) throw new Error('Etkin Etsy Gönder düğmesi bulunamadı.');
-            const attempt = await this.persistPending(job, 'prepared', { baselineMatches });
+            await this.assertActionCurrent(run, job, { textarea, button });
+            await this.persistPending(job, 'prepared', { baselineMatches }, run);
             let dispatchObserved = false;
             const observeDispatch = () => { dispatchObserved = true; };
             button.addEventListener('click', observeDispatch, { capture: true, once: true });
-            await this.persistPending(job, 'dispatched', { baselineMatches, dispatchedAt: nowIso() });
+            await this.persistPending(job, 'dispatched', { baselineMatches, dispatchedAt: nowIso() }, run);
             try {
+                await this.assertActionCurrent(run, job, { textarea, button });
                 button.click();
             } finally {
                 button.removeEventListener('click', observeDispatch, true);
             }
             if (!dispatchObserved) {
-                await this.persistPending(job, 'prepared', { baselineMatches });
+                await this.persistPending(job, 'prepared', { baselineMatches }, run);
                 throw new Error('Etsy Gönder tıklaması tarayıcıya iletilemedi.');
             }
             const verified = await MessageAdapter.waitForOutgoing(
                 job.text,
                 baselineMatches,
                 18000,
-                () => this.jobConversationMatches(job),
+                () => this.bindingIsCurrent(run.binding, run.generation) && this.jobConversationMatches(job),
             );
+            await this.assertActionCurrent(run, job);
             if (!verified) {
                 await this.reportResult(job, {
                     status: 'failed',
                     retryable: false,
                     error: 'send_verification_failed_manual_check_required',
-                });
-                await this.clearPending();
+                }, run);
+                await this.clearPending(run);
                 return false;
             }
-            await this.markSent(job);
-            await this.syncNow({ hydrated: true }).catch(() => false);
-            await this.reportResult(job, { status: 'sent', sentAt: nowIso() });
-            await this.clearPending();
+            await this.markSent(job, run);
+            await this.syncNow({ hydrated: true, binding: run.binding, generation: run.generation });
+            await this.reportResult(job, { status: 'sent', sentAt: nowIso() }, run);
+            await this.clearPending(run);
             this.lastError = '';
             return true;
         },
-        async executePending(pending) {
+        async failPendingJob(job, errorCode, message, run) {
+            await this.assertRunOwned(run);
+            this.lastError = message;
+            await this.persistPending(job, 'rejected', {
+                rejectionCode: errorCode,
+                rejectedAt: nowIso(),
+            }, run);
+            await this.reportResult(job, {
+                status: 'failed',
+                retryable: false,
+                error: errorCode,
+            }, run);
+            if (!await this.clearPending(run)) {
+                throw this.staleRunError('Message Center failed job pending record changed before cleanup.');
+            }
+            return false;
+        },
+        async executePending(pending, run) {
             const job = pending?.job;
             if (!job?.id) return false;
-            if (job.type === 'hydrate') return this.completeHydrate(job);
-            return this.sendReplyJob(job, pending);
+            if (pending.legacyBlocked === true || pending.stage === 'legacy_blocked') {
+                return this.failPendingJob(
+                    job,
+                    'legacy_pending_requires_manual_review',
+                    'Legacy pending was blocked safely and reported for manual review.',
+                    run,
+                );
+            }
+            const jobType = String(job.type || '').trim().toLowerCase();
+            if (!['hydrate', 'reply'].includes(jobType)) {
+                return this.failPendingJob(
+                    job,
+                    'unsupported_job_type',
+                    'Message Center rejected an unsupported job type.',
+                    run,
+                );
+            }
+            if (jobType === 'reply' && (typeof job.text !== 'string' || !job.text.trim())) {
+                return this.failPendingJob(
+                    job,
+                    'empty_reply_text',
+                    'Message Center rejected an empty reply job.',
+                    run,
+                );
+            }
+            if (jobType === 'hydrate') return this.completeHydrate(job, run);
+            return this.sendReplyJob(job, pending, run);
         },
-        async processNextJob() {
-            if (!this.isConfigured() || this.busy) return false;
+        async processNextJobLocked() {
+            const binding = Object.freeze({ ...this.config() });
+            const generation = this.generation;
+            if (!this.isConfigured(binding)) return false;
             this.busy = true;
+            let pending = null;
+            let run = null;
             try {
-                const pending = await this.loadPending();
-                if (pending) return await this.executePending(pending);
+                const claimed = await this.claimPending(binding, generation);
+                if (claimed.blocked) {
+                    if (claimed.reason === 'config_mismatch') {
+                        this.lastError = 'Pending Message Center job belongs to a different configuration; automatic dispatch is blocked.';
+                    }
+                    return false;
+                }
+                pending = claimed.pending;
+                run = claimed.run;
+                if (pending) return await this.executePending(pending, run);
                 const result = await this.request(
                     'GET',
-                    `/api/agent/${encodeURIComponent(this.config().storeId)}/jobs/next`,
+                    `/api/agent/${encodeURIComponent(binding.storeId)}/jobs/next`,
+                    null,
+                    binding,
                 );
+                this.ensureBindingCurrent(binding, generation);
                 const job = result?.job;
                 if (!job) return false;
-                const saved = await this.persistPending(job, 'leased');
-                return await this.executePending(saved);
+                const created = await this.createPending(job, binding, generation);
+                if (created.blocked) return false;
+                pending = created.pending;
+                run = created.run;
+                return await this.executePending(pending, run);
             } catch (error) {
                 this.lastError = error.message || 'job';
-                const pending = await this.loadPending().catch(() => null);
-                if (pending?.job?.id && pending.stage !== 'navigating') {
+                if (error.code === 'MESSAGE_CENTER_RUN_STALE') return false;
+                const owned = run && await this.ownsPending(run).catch(() => false)
+                    ? await GMX.get(run.pendingKey, null).catch(() => null)
+                    : null;
+                if (owned?.job?.id && !['navigating', 'recovering', 'dispatched', 'legacy_blocked', 'rejected'].includes(owned.stage)) {
                     const retryable = !/manual_check_required|başka bir metin|güvenli Etsy konuşma URL/i.test(this.lastError);
                     try {
-                        await this.reportResult(pending.job, {
+                        await this.reportResult(owned.job, {
                             status: 'failed',
                             retryable,
                             error: this.lastError,
-                        });
-                        await this.clearPending();
+                        }, run);
+                        await this.clearPending(run);
                     } catch { /* keep local pending for recovery */ }
                 }
                 console.error(`[${APP.id}] Message Center agent`, error);
@@ -3494,6 +3953,20 @@
             } finally {
                 this.busy = false;
             }
+        },
+        processNextJob() {
+            if (this.processPromise) return this.processPromise;
+            const task = this.withProcessorLock(() => this.processNextJobLocked())
+                .catch((error) => {
+                    this.lastError = error.message || 'job';
+                    console.error(`[${APP.id}] Message Center agent`, error);
+                    return false;
+                })
+                .finally(() => {
+                    if (this.processPromise === task) this.processPromise = null;
+                });
+            this.processPromise = task;
+            return task;
         },
         clearTimers() {
             for (const key of ['heartbeatTimer', 'syncTimer', 'pollTimer', 'routeTimer']) {
@@ -3522,6 +3995,7 @@
             await this.processNextJob();
         },
         async reconfigure() {
+            this.generation += 1;
             this.schedule();
             if (!this.isConfigured()) {
                 this.lastError = '';
@@ -3570,7 +4044,7 @@
             for (const order of orders) {
                 let badge = order.row.querySelector('.mema-order-badge');
                 if (!order.status?.status || order.status.status === 'none') { badge?.remove(); continue; }
-                const label = ({ draft: 'Taslak hazır', inserted: 'Kutuya aktarıldı', sent: 'Gönderildi ✓', error: 'Hata', skipped: 'Atlandı' })[order.status.status] || order.status.status;
+                const label = ({ draft: 'Taslak hazır', inserted: 'Kutuya aktarıldı', sent_pending_verification: 'Gönderim doğrulanıyor', sent: 'Gönderildi ✓', error: 'Hata', skipped: 'Atlandı' })[order.status.status] || order.status.status;
                 if (!badge) {
                     const anchor = order.row.querySelector('clg-icon-button[aria-label="Message"], button[aria-label="Message"], a[href*="/conversations/with/"]')?.parentElement || order.row;
                     badge = document.createElement('span');
@@ -3610,7 +4084,8 @@
             return [...new Set(newTextareas.filter(area => newDialogs.some(dialog => dialog.contains?.(area))))];
         },
         scan() {
-            const cards = [...document.querySelectorAll('.dashboard-activity-item')].filter((card) => /left a review|yorum bıraktı/i.test(card.textContent));
+            const cards = [...document.querySelectorAll('.dashboard-activity-item')]
+                .filter((card) => /\b(?:left|updated)\s+a review\b|yorum(?:unu)?\s+(?:bıraktı|güncelledi)/i.test(card.textContent));
             return cards.map((card, index) => this.fromCard(card, index)).filter((item) => item.id && item.text);
         },
         fromCard(card, index) {
@@ -3625,19 +4100,36 @@
             const publicButton = [...card.querySelectorAll('button')].find((button) => /public response|herkese açık/i.test(button.textContent));
             return { index, card, id, customerName, firstName: firstName(customerName), itemTitle, rating, text, imageUrl, publicButton, status: Store.getStatus('reviews', id) };
         },
-        async insertPublic(review, text) {
+        async insertPublic(review, text, options = {}) {
             if (!review.publicButton) throw new Error('Etsy public cevap düğmesi bulunamadı.');
+            const isCurrent = typeof options.isCurrent === 'function' ? options.isCurrent : () => true;
+            const assertCurrent = () => {
+                const cardDisconnected = review.card
+                    && 'isConnected' in review.card
+                    && review.card.isConnected === false;
+                if (!isCurrent() || cardDisconnected) {
+                    throw new Error('Yorum veya sayfa değişti; public cevap hiçbir alana yazılmadı. Güncel yorumu yeniden seçin.');
+                }
+            };
+            assertCurrent();
             const baselineTextareas = new Set(this.visibleTextareas());
             const baselineDialogs = new Set(this.visibleDialogs());
             review.publicButton.click();
             const started = Date.now();
             while (Date.now() - started < 6000) {
+                assertCurrent();
                 const candidates = this.newlyOpenedReplyCandidates(review, baselineTextareas, baselineDialogs);
                 if (candidates.length > 1) {
                     throw new Error('Public cevap alanı belirsiz; güvenliğiniz için hiçbir alana yazılmadı. Review penceresini kapatıp yeniden deneyin.');
                 }
                 if (candidates.length === 1) {
-                    setNativeValue(candidates[0], text);
+                    const existingText = trimmedMessageText(candidates[0].value || '');
+                    const replyText = trimmedMessageText(text);
+                    if (existingText && existingText !== replyText) {
+                        throw new Error('Etsy public cevap alanında farklı, gönderilmemiş bir taslak var. Mevcut metni korumak için üzerine yazılmadı; alanı kontrol edip temizledikten sonra yeniden deneyin.');
+                    }
+                    assertCurrent();
+                    if (!existingText) setNativeValue(candidates[0], text);
                     return true;
                 }
                 await sleep(200);
@@ -4529,6 +5021,27 @@
                 && Boolean(reservation?.token)
                 && new Date(reservation.expiresAt || 0).getTime() > Date.now();
         },
+        composerOccupiedError() {
+            return new Error('Etsy cevap alanında gönderilmemiş bir taslak var. Kampanya taslağınızı korudu; mevcut metnin üzerine yazmadı ve otomatik gönderim başlatmadı.');
+        },
+        async releasePendingReservation(run) {
+            if (!run?.campaignId || !run?.itemId || !run?.reservationToken) return false;
+            return withCampaignCoordinator(async () => {
+                const fresh = await Store.readCoordinatedStateLocked();
+                Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
+                const campaign = fresh.campaign;
+                const itemIndex = campaign?.items?.findIndex(entry => entry.id === run.itemId) ?? -1;
+                const item = itemIndex >= 0 ? campaign.items[itemIndex] : null;
+                if (campaign?.id !== run.campaignId
+                    || item?.status !== 'pending'
+                    || item.reservation?.ownerId !== CAMPAIGN_TAB_ID
+                    || item.reservation?.token !== run.reservationToken) return false;
+                const snapshot = clone(campaign);
+                delete snapshot.items[itemIndex].reservation;
+                await Store.saveCampaignLocked(snapshot, { expectedRevision: campaign.revision });
+                return true;
+            });
+        },
         async claimCurrent() {
             return withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
@@ -4804,6 +5317,7 @@
         async create(orders, templateId, method) {
             const selectedTemplate = TemplateEngine.get(templateId);
             if (!selectedTemplate || selectedTemplate.archived) throw new Error('Aktif bir teslimat mesajı şablonu seçin.');
+            if (!['free', 'ai', 'template'].includes(method)) throw new Error('Geçerli bir kampanya mesaj yöntemi seçin.');
             const purpose = Outreach.purposeForTemplate(selectedTemplate);
             const frozenTemplateHash = templateFingerprint(selectedTemplate);
             this.invalidateWork();
@@ -4928,6 +5442,9 @@
                 || !currentConversationBeforeClaim
                 || !cachedConversation
                 || currentConversationBeforeClaim !== cachedConversation) return false;
+            if (String(MessageAdapter.getTextarea()?.value || '').trim()) {
+                throw this.composerOccupiedError();
+            }
             const claim = await this.claimCurrent();
             if (!claim) return false;
             if (claim.blocked) {
@@ -4959,6 +5476,10 @@
                 return false;
             }
             if (!this.runIsCurrent(run)) return false;
+            if (String(MessageAdapter.getTextarea()?.value || '').trim()) {
+                await this.releasePendingReservation(run);
+                throw this.composerOccupiedError();
+            }
             const context = MessageAdapter.context();
             if (!MessageAdapter.getTextarea()) return;
             const template = TemplateEngine.get(item.templateId);
@@ -4996,6 +5517,10 @@
                 return false;
             }
             if (!this.runIsCurrent(run)) return false;
+            if (String(textarea.value || '').trim()) {
+                await this.releasePendingReservation(run);
+                throw this.composerOccupiedError();
+            }
             MessageAdapter.insert(finalText, textarea);
             Verification.prepare(finalText, {
                 method: item.method,
@@ -5247,14 +5772,35 @@
         },
         async skipOrder(orderId, options = {}) {
             const expectedItemId = options.expectedItemId || '';
-            this.invalidateWork();
+            const expectedCampaignId = String(options.expectedCampaignId || '');
+            const hasExpectedRevision = options.expectedRevision !== undefined
+                && options.expectedRevision !== null
+                && options.expectedRevision !== '';
+            const expectedRevision = hasExpectedRevision ? Number(options.expectedRevision) : null;
             const result = await withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
                 const campaign = fresh.campaign;
-                const activeMatches = campaign?.status === 'active'
-                    ? campaign.items.filter(entry => (entry.orderId === orderId || (expectedItemId && entry.id === expectedItemId)) && ['pending', 'inserted'].includes(entry.status))
+                if ((expectedCampaignId && campaign?.id !== expectedCampaignId)
+                    || (hasExpectedRevision && campaign?.revision !== expectedRevision)) {
+                    throw campaignConflictError();
+                }
+                const identityMatches = (entry) => expectedItemId
+                    ? entry.id === expectedItemId && entry.orderId === orderId
+                    : entry.orderId === orderId;
+                const campaignMatches = campaign?.status === 'active'
+                    ? campaign.items.filter(identityMatches)
                     : [];
+                const activeMatches = campaignMatches.filter(entry => ['pending', 'inserted'].includes(entry.status));
+                if (!activeMatches.length) {
+                    return {
+                        skipped: false,
+                        nextIndex: campaign?.currentIndex ?? -1,
+                        campaign,
+                        reason: campaignMatches.length ? 'not_skippable' : 'no_active_match',
+                    };
+                }
+                this.invalidateWork();
                 if (activeMatches.length) {
                     const matchingIds = new Set(activeMatches.map(entry => entry.id));
                     Verification.invalidate(pending => pending.campaignId === campaign.id
@@ -5267,15 +5813,12 @@
                     status: 'skipped',
                     campaignId: campaign?.id || '',
                 });
-                if (!campaign || campaign.status !== 'active') {
-                    return { skipped: false, nextIndex: -1, campaign };
-                }
                 const snapshot = clone(campaign);
                 const currentIndex = snapshot.currentIndex;
                 let currentWasSkipped = false;
                 let changed = false;
                 snapshot.items.forEach((entry, index) => {
-                    const matches = entry.orderId === orderId || (expectedItemId && entry.id === expectedItemId);
+                    const matches = identityMatches(entry);
                     if (!matches || !['pending', 'inserted'].includes(entry.status)) return;
                     entry.status = 'skipped';
                     entry.skippedAt = nowIso();
@@ -5308,15 +5851,30 @@
             if (!campaign || !item) return;
             return this.skipOrder(item.orderId, { expectedItemId: item.id, navigate: true });
         },
-        async cancel() {
-            if (!Store.campaign) return;
+        async cancel(options = {}) {
+            const expectedCampaignId = String(options.expectedCampaignId || '');
+            const hasExpectedRevision = options.expectedRevision !== undefined
+                && options.expectedRevision !== null
+                && options.expectedRevision !== '';
+            const expectedRevision = hasExpectedRevision ? Number(options.expectedRevision) : null;
+            if (!Store.campaign) {
+                if (expectedCampaignId || hasExpectedRevision) throw campaignConflictError();
+                return;
+            }
+            if ((expectedCampaignId && Store.campaign.id !== expectedCampaignId)
+                || (hasExpectedRevision && Store.campaign.revision !== expectedRevision)) {
+                throw campaignConflictError();
+            }
             const campaignId = Store.campaign.id;
             this.invalidateWork();
-            Verification.invalidate(pending => pending.campaignId === campaignId);
             const cancelled = await withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
                 const campaign = fresh.campaign;
+                if ((expectedCampaignId && campaign?.id !== expectedCampaignId)
+                    || (hasExpectedRevision && campaign?.revision !== expectedRevision)) {
+                    throw campaignConflictError();
+                }
                 if (!campaign || campaign.id !== campaignId || !this.isNonterminal(campaign)) return null;
                 if (campaign.items.some(item => item.status === CAMPAIGN_SEND_PENDING_STATUS)) {
                     throw new Error('Doğrulaması bekleyen gönderim çözülmeden kampanya durdurulamaz. Önce “Gönderildi” veya “Gönderilmedi” seçin.');
@@ -5332,6 +5890,7 @@
                 return saved;
             });
             if (!cancelled) return false;
+            Verification.invalidate(pending => pending.campaignId === campaignId);
             UI.toast('Kampanya durduruldu.', 'warning');
             await UI.refreshCurrent();
             return true;
@@ -5355,6 +5914,7 @@
             reply: null,
             replyBinding: null,
             replyTr: '',
+            replyMethod: '',
             composeMethod: DEFAULT_SETTINGS.defaultReplyMethod,
             tone: DEFAULT_SETTINGS.defaultTone,
             draftTr: '',
@@ -5363,15 +5923,22 @@
             lastReplyMode: '',
             selectedTemplateId: '',
             templateEditId: 'tpl-order-thanks',
+            templateDraft: null,
+            templateDirty: false,
+            settingsDraft: null,
+            providersDraft: null,
+            settingsDirty: false,
             selectedOrders: new Set(),
             ordersTemplateInitialized: false,
             orders: [],
             reviews: [],
             selectedReviewId: '',
             reviewAnalysis: null,
+            reviewAnalysisBinding: null,
             historyDetailId: '',
         },
         messageWorkGeneration: 0,
+        reviewWorkGeneration: 0,
         messageContextChanged(context, previous = this.state.context) {
             return context.conversationId !== (previous?.conversationId || '')
                 || (context.routeFingerprint || Router.routeFingerprint()) !== (previous?.routeFingerprint || '')
@@ -5404,9 +5971,96 @@
             if (!binding || binding.generation !== this.messageWorkGeneration || !this.messageRouteIsCurrent(binding)) return false;
             return binding.messageHash === hashText(MessageAdapter.context().lastCustomerMessage || '');
         },
+        messageContextMatchesBinding(context, binding = this.state.replyBinding) {
+            if (!context || !this.messageRouteIsCurrent(binding)) return false;
+            return context.conversationId === binding.conversationId
+                && (context.routeFingerprint || Router.routeFingerprint()) === binding.routeFingerprint
+                && binding.messageHash === hashText(context.lastCustomerMessage || '');
+        },
         replyIsCurrent(binding = this.state.replyBinding) {
-            if (!this.messageRouteIsCurrent(binding)) return false;
-            return binding.messageHash === hashText(MessageAdapter.context().lastCustomerMessage || '');
+            return this.messageContextMatchesBinding(MessageAdapter.context(), binding);
+        },
+        beginReviewWork(review) {
+            return {
+                generation: ++this.reviewWorkGeneration,
+                reviewId: review?.id || '',
+                reviewHash: hashText(review?.text || ''),
+                routeFingerprint: Router.routeFingerprint(),
+            };
+        },
+        invalidateReviewWork() {
+            this.reviewWorkGeneration += 1;
+        },
+        reviewWorkIsCurrent(binding) {
+            if (!binding || binding.generation !== this.reviewWorkGeneration) return false;
+            if (binding.routeFingerprint !== Router.routeFingerprint() || binding.reviewId !== this.state.selectedReviewId) return false;
+            const review = this.state.reviews.find(item => item.id === binding.reviewId);
+            return Boolean(review && binding.reviewHash === hashText(review.text || ''));
+        },
+        reviewAnalysisIsCurrent(review) {
+            const binding = this.state.reviewAnalysisBinding;
+            return Boolean(review && binding
+                && binding.reviewId === review.id
+                && binding.reviewHash === hashText(review.text || '')
+                && binding.routeFingerprint === Router.routeFingerprint());
+        },
+        selectReview(reviewId) {
+            if (this.state.selectedReviewId === reviewId) return false;
+            this.invalidateReviewWork();
+            this.state.selectedReviewId = reviewId;
+            this.state.reviewAnalysis = null;
+            this.state.reviewAnalysisBinding = null;
+            return true;
+        },
+        templateForEdit() {
+            if (this.state.templateDraft && this.state.templateDraft.id === this.state.templateEditId) {
+                return this.state.templateDraft;
+            }
+            const stored = TemplateEngine.get(this.state.templateEditId) || Store.templates[0] || null;
+            if (!stored) return null;
+            if (!this.state.templateDraft || this.state.templateDraft.id !== stored.id) {
+                this.state.templateEditId = stored.id;
+                this.state.templateDraft = clone(stored);
+                this.state.templateDirty = false;
+            }
+            return this.state.templateDraft;
+        },
+        selectTemplateForEdit(templateId) {
+            if (templateId === this.state.templateEditId) return true;
+            if (this.state.templateDirty && !confirm('Kaydedilmemiş şablon değişiklikleri silinsin mi?')) return false;
+            const template = TemplateEngine.get(templateId);
+            if (!template) return false;
+            this.state.templateEditId = template.id;
+            this.state.templateDraft = clone(template);
+            this.state.templateDirty = false;
+            return true;
+        },
+        updateTemplatePreview() {
+            const preview = this.shadow.querySelector('[data-template-preview]');
+            if (preview && this.state.templateDraft) {
+                const previewContext = { customerName: 'Ashley', customerFirstName: 'Ashley', orderId: '1234567890', itemTitle: 'Personalized Birth Flower Name Sign' };
+                preview.textContent = TemplateEngine.render(this.state.templateDraft, previewContext);
+            }
+            const dirty = this.shadow.querySelector('[data-template-dirty]');
+            if (dirty) dirty.hidden = !this.state.templateDirty;
+        },
+        ensureSettingsDraft({ reset = false } = {}) {
+            if (reset || !this.state.settingsDraft || !this.state.providersDraft) {
+                this.state.settingsDraft = clone(Store.settings);
+                this.state.providersDraft = clone(Store.providers);
+                this.state.settingsDirty = false;
+            }
+            return { settings: this.state.settingsDraft, providers: this.state.providersDraft };
+        },
+        draftProviderProfile(providerId = this.state.settingsDraft?.aiProvider || Store.settings.aiProvider) {
+            const { providers } = this.ensureSettingsDraft();
+            if (!providers[providerId]) providers[providerId] = clone(DEFAULT_PROVIDERS[providerId] || DEFAULT_PROVIDERS.openai);
+            return providers[providerId];
+        },
+        markSettingsDirty() {
+            this.state.settingsDirty = true;
+            const dirty = this.shadow.querySelector('[data-settings-dirty]');
+            if (dirty) dirty.hidden = false;
         },
         async resolveReplyTargetLanguage(context, work) {
             const selectedTarget = String(this.state.targetLanguage || '').trim().toLowerCase();
@@ -5436,7 +6090,7 @@
             document.documentElement.appendChild(this.host);
             this.shadow = this.host.attachShadow({ mode: 'open' });
             this.shadow.innerHTML = `
-                <style>${CSS}${LAUNCHER_CSS}</style>${ICON_SPRITE}
+                <style>${CSS}${LAUNCHER_CSS}${UX_CSS}</style>${ICON_SPRITE}
                 <div class="ma-root">
                     <button class="ma-launcher" type="button" data-action="toggle-app" aria-label="Makaytron Mesaj Asistanını Aç" aria-controls="mema-app-panel" aria-expanded="false"><span class="ma-launcher__mark"><img class="ma-logo-img" src="${attr(BRAND_LOGO_URL)}" alt=""></span><span class="ma-launcher__copy"><span class="ma-launcher__title">Asistan</span><span class="ma-launcher__state">Kapalı</span></span><span class="ma-launcher__action">Aç</span></button>
                     <section id="mema-app-panel" class="ma-app ma-hidden" aria-label="Makaytron Etsy Message Assistant" aria-hidden="true">
@@ -5444,11 +6098,11 @@
                             <div class="ma-brand"><span class="ma-brand__mark"><img class="ma-brand__logo" src="${attr(BRAND_LOGO_URL)}" alt="Makaytron"></span><div class="ma-brand__text"><div class="ma-brand__title">Makaytron Etsy Message Assistant</div><div class="ma-brand__version">Kendi API’niz · ${html(AI.provider().short)}</div></div></div>
                             <div class="ma-header__spacer"></div>
                             <button class="ma-version-chip" type="button" data-action="version-action" title="Güncellemeleri kontrol et">v${APP.version}</button>
-                            <button class="ma-icon-btn" type="button" data-action="toggle-wide" title="Geniş görünüm">${icon('expand')}</button>
+                            <button class="ma-icon-btn" type="button" data-action="toggle-wide" title="Geniş görünüm" aria-pressed="false">${icon('expand')}</button>
                             <button class="ma-panel-close" type="button" data-action="close-app" aria-label="Mesaj Asistanını Kapat" title="Paneli kapat"><span>Kapat</span>${icon('close', 'ma-icon--sm')}</button>
                         </header>
-                        <nav class="ma-nav">${NAV_ITEMS.map(([id, iconName, label]) => `<button class="ma-nav__item" type="button" data-page="${id}" title="${label}">${icon(iconName)}<span class="ma-nav__label">${label}</span></button>`).join('')}<div class="ma-nav__foot">v${APP.version}</div></nav>
-                        <main class="ma-main"><div class="ma-view"></div></main>
+                        <nav class="ma-nav" aria-label="Asistan bölümleri">${NAV_ITEMS.map(([id, iconName, label]) => `<button class="ma-nav__item" type="button" data-page="${id}" title="${label}">${icon(iconName)}<span class="ma-nav__label">${label}</span></button>`).join('')}<div class="ma-nav__foot">v${APP.version}</div></nav>
+                        <main class="ma-main"><div class="ma-busy-status" role="status" aria-live="polite">İşlem sürüyor…</div><div class="ma-view"></div></main>
                     </section>
                 </div>`;
             this.app = this.shadow.querySelector('.ma-app');
@@ -5470,7 +6124,19 @@
                 });
             });
             this.shadow.addEventListener('input', (event) => this.onInput(event));
-            this.shadow.addEventListener('change', (event) => this.onChange(event).catch((error) => { console.error(`[${APP.id}]`, error); this.toast(error.message || 'Ayar değişikliği uygulanamadı.', 'error', 6000); this.setBusy(false); }));
+            this.shadow.addEventListener('change', (event) => this.onChange(event).catch((error) => { console.error(`[${APP.id}]`, error); this.toast(error.message || 'Ayar değişikliği uygulanamadı.', 'error', 6000); this.setBusy(false); this.render(); }));
+            this.shadow.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && this.state.open) {
+                    event.preventDefault();
+                    this.close();
+                    return;
+                }
+                const selectable = event.target.closest?.('[data-template-edit], [data-review-id], [data-history-id]');
+                if (selectable && ['Enter', ' '].includes(event.key)) {
+                    event.preventDefault();
+                    selectable.click();
+                }
+            });
             document.addEventListener('click', (event) => {
                 if (MessageAdapter.isSendButton(event.target)) {
                     if (Campaign.suppressConcurrentNativeSend(event)) {
@@ -5510,6 +6176,7 @@
         setBusy(value) {
             this.state.busy = value;
             this.app.classList.toggle('ma-busy', value);
+            this.app.setAttribute('aria-busy', String(Boolean(value)));
         },
         async refreshCurrent() {
             if (!this.state.open) return;
@@ -5532,13 +6199,14 @@
                 this.state.reply = null;
                 this.state.replyBinding = null;
                 this.state.replyTr = '';
+                this.state.replyMethod = '';
                 this.state.draftTr = '';
                 this.state.extraInstruction = '';
                 this.state.lastReplyMode = '';
                 if (!Campaign.current()) this.state.selectedTemplateId = '';
                 if (Store.settings.autoTurkishPreview && context.lastCustomerMessage) {
                     try {
-                        const translated = await Translator.translate(context.lastCustomerMessage, 'tr');
+                        const translated = await Translator.translate(context.lastCustomerMessage, Store.settings.previewLanguage || 'tr');
                         if (!this.messageWorkIsCurrent(work)) return false;
                         this.state.translation = translated;
                         if (Store.settings.replyInCustomerLanguage) {
@@ -5574,8 +6242,18 @@
             this.state.selectedOrders = new Set([...this.state.selectedOrders].filter((id) => available.has(id)));
         },
         refreshReviews() {
+            const previousId = this.state.selectedReviewId;
+            const previous = this.state.reviews.find(review => review.id === previousId);
             this.state.reviews = ReviewsAdapter.scan();
-            if (!this.state.selectedReviewId && this.state.reviews.length) this.state.selectedReviewId = this.state.reviews[0].id;
+            const selected = this.state.reviews.find(review => review.id === previousId) || this.state.reviews[0] || null;
+            const changed = selected?.id !== previousId
+                || (selected && previous && hashText(selected.text || '') !== hashText(previous.text || ''));
+            this.state.selectedReviewId = selected?.id || '';
+            if (changed || !this.reviewAnalysisIsCurrent(selected)) {
+                this.invalidateReviewWork();
+                this.state.reviewAnalysis = null;
+                this.state.reviewAnalysisBinding = null;
+            }
         },
         render() {
             if (!this.app || !this.view) return;
@@ -5594,7 +6272,13 @@
             this.app.classList.toggle('ma-app--wide', wide);
             this.app.classList.toggle('ma-app--message', this.state.page === 'messages');
             this.app.classList.toggle('ma-app--fullscreen', this.state.fullscreen);
-            for (const button of this.shadow.querySelectorAll('[data-page]')) button.classList.toggle('is-active', button.dataset.page === this.state.page);
+            this.shadow.querySelector('[data-action="toggle-wide"]')?.setAttribute('aria-pressed', String(this.state.fullscreen));
+            for (const button of this.shadow.querySelectorAll('[data-page]')) {
+                const active = button.dataset.page === this.state.page;
+                button.classList.toggle('is-active', active);
+                if (active) button.setAttribute('aria-current', 'page');
+                else button.removeAttribute('aria-current');
+            }
             const renderer = this[`render${this.state.page[0].toUpperCase()}${this.state.page.slice(1)}`] || this.renderUnknown;
             this.view.innerHTML = renderer.call(this);
             if (this.state.scrollToResult) {
@@ -5606,10 +6290,14 @@
             return `<div class="ma-page-head"><div class="ma-page-head__copy"><h2>${html(title)}</h2><p>${html(subtitle)}</p></div>${actions ? `<div class="ma-page-head__actions">${actions}</div>` : ''}</div>`;
         },
         renderUnknown() {
-            return `${this.renderHead('Desteklenen Etsy sayfasını açın', 'Bu Shop Manager rotasında mesaj, sipariş veya yorum bağlamı doğrulanamadı.')}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Güvenli bekleme modu</h3><p>Script bu sayfayı mesaj ekranı olarak kabul etmez ve gönderim doğrulaması başlatmaz.</p><button class="ma-btn ma-btn--primary" data-action="go-orders">Teslim edilen siparişlere git</button></div></div>`;
+            return `${this.renderHead('Bu sayfada doğrudan işlem yok', 'Asistan yalnız doğrulanmış mesaj, teslim edilmiş sipariş ve yorum bağlamlarında işlem yapar.')}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Ne yapmak istiyorsunuz?</h3><p>Doğru Etsy ekranını açın; Şablonlar, Geçmiş ve Ayarlar bölümlerini ise her sayfada kullanabilirsiniz.</p><div class="ma-actions"><button class="ma-btn" data-action="go-messages">Mesajlara Git</button><button class="ma-btn ma-btn--primary" data-action="go-orders">Teslim Edilenlere Git</button><button class="ma-btn" data-action="go-reviews">Yorumlara Git</button></div></div></div>`;
         },
         renderMessages() {
             const context = this.state.context || MessageAdapter.context();
+            if (!context.conversationId) {
+                const onMessagesPage = Router.page() === 'messages';
+                return `${this.renderHead('Mesajlar', 'Çeviri ve cevap araçları yalnız doğrulanmış açık konuşmada etkinleşir.')}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>${onMessagesPage ? 'Bir konuşma açın' : 'Etsy Mesajlar ekranını açın'}</h3><p>${onMessagesPage ? 'Soldaki listeden yanıtlamak istediğiniz konuşmayı seçin. Konuşma açılmadan taslak üretme veya Etsy alanına aktarma kontrolü gösterilmez.' : 'Müşteri konuşmasını doğrulayabilmem için Etsy Mesajlar ekranına geçin.'}</p>${onMessagesPage ? '' : '<button class="ma-btn ma-btn--primary" data-action="go-messages">Mesajlara Git</button>'}</div></div>`;
+            }
             const original = context.lastCustomerMessage || '';
             const translationRaw = this.state.translation?.text || '';
             const translation = analysisText(translationRaw) || translationRaw;
@@ -5619,11 +6307,16 @@
             const campaign = Campaign.current();
             const activeTemplates = TemplateEngine.active();
             const primaryTag = analysis.tags?.[0] || { label: 'Genel Soru', color: 'info' };
+            const previewLanguage = Store.settings.previewLanguage || 'tr';
             const hasDraft = Boolean(this.state.draftTr.trim());
             const campaignOrderStatus = campaign ? Store.getStatus('orders', campaign.orderId) : null;
-            const campaignRouteMatches = campaign
-                && Router.conversationIdentity(campaign.messageUrl)
-                && Router.conversationIdentity(campaign.messageUrl) === Router.conversationIdentity(location.href);
+            const campaignConversationIdentity = campaign ? Router.conversationIdentity(campaign.messageUrl) : '';
+            const activeContextIdentity = String(context.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+            const campaignRouteMatches = Boolean(campaign
+                && campaignConversationIdentity
+                && campaignConversationIdentity === Router.conversationIdentity(location.href)
+                && campaignConversationIdentity === activeContextIdentity
+                && (!context.orderId || String(context.orderId) === String(campaign.orderId)));
             const guidedSendReady = Boolean(campaign
                 && campaign.status === 'inserted'
                 && campaignOrderStatus?.status === 'inserted'
@@ -5631,10 +6324,21 @@
                 && !Campaign.orderIsBlockedFromSend(campaign, Store.statuses, ['prepared'])
                 && MessageAdapter.getTextarea()
                 && MessageAdapter.getSendButton());
-            const campaignBar = campaign ? `<div class="ma-notice ma-notice--info">${icon('send')}<div><strong>Aktif kampanya:</strong> ${html(campaign.customerName)} — Sipariş #${html(campaign.orderId)}<br>${guidedSendReady ? 'Mesaj Etsy kutusunda hazır; son kontrol ve gönderim sizde.' : 'Sıradaki mesaj hazırlanıyor veya doğru konuşma bekleniyor.'}<div class="ma-actions"><button class="ma-btn ma-btn--primary" data-action="campaign-send-next" ${guidedSendReady ? '' : 'disabled'}>${icon('send')}Gönder ve Sonrakine Geç</button><button class="ma-btn ma-btn--small" data-action="campaign-skip">Atla ve Sonraki</button><button class="ma-btn ma-btn--small ma-btn--danger" data-action="campaign-cancel">Kampanyayı Durdur</button></div></div></div>` : '';
-            const riskNotice = analysis.risk === 'high'
+            const campaignAwaitingVerification = campaign?.status === CAMPAIGN_SEND_PENDING_STATUS;
+            const campaignBinding = Store.campaign;
+            const campaignActionBinding = campaignBinding && campaign
+                ? `data-campaign-id="${attr(campaignBinding.id)}" data-campaign-item-id="${attr(campaign.id)}" data-campaign-order-id="${attr(campaign.orderId)}" data-campaign-revision="${attr(campaignBinding.revision)}"`
+                : '';
+            const campaignBar = campaign
+                ? campaignAwaitingVerification
+                    ? campaignRouteMatches
+                        ? `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Gönderim sonucu doğrulanmayı bekliyor.</strong><br>Sipariş #${html(campaign.orderId)} için Etsy konuşmasındaki yeni mesaj balonunu kontrol edin; sonuç çözülmeden kampanya ilerletilemez.<div class="ma-actions"><button class="ma-btn ma-btn--small" data-order-confirm-sent="${attr(campaign.orderId)}">Gönderildi</button><button class="ma-btn ma-btn--small" data-order-confirm-not-sent="${attr(campaign.orderId)}">Gönderilmedi</button></div></div></div>`
+                        : `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Sipariş #${html(campaign.orderId)} için gönderim doğrulaması bekliyor.</strong><br>“Gönderildi” veya “Gönderilmedi” seçmeden önce bu siparişin doğru Etsy konuşmasını açın.</div></div>`
+                    : `<div class="ma-notice ma-notice--info">${icon('send')}<div><strong>Aktif kampanya:</strong> ${html(campaign.customerName)} — Sipariş #${html(campaign.orderId)}<br>${guidedSendReady ? 'Mesaj Etsy kutusunda hazır; son kontrol ve gönderim sizde.' : 'Sıradaki mesaj hazırlanıyor veya doğru konuşma bekleniyor.'}<div class="ma-actions"><button class="ma-btn ma-btn--primary" data-action="campaign-send-next" ${guidedSendReady ? '' : 'disabled'}>${icon('send')}Gönder ve Sonrakine Geç</button><button class="ma-btn ma-btn--small" data-action="campaign-skip" ${campaignActionBinding}>Atla ve Sonraki</button><button class="ma-btn ma-btn--small ma-btn--danger" data-action="campaign-cancel" ${campaignActionBinding}>Kampanyayı Durdur</button></div></div></div>`
+                : '';
+            const riskNotice = Store.settings.showRiskTags && analysis.risk === 'high'
                 ? `<div class="ma-notice ma-notice--danger ma-risk-only">${icon('alert')}<div><strong>Manuel kontrol gerekli.</strong> Mesaj para iadesi, hasar veya ciddi memnuniyetsizlik içerebilir.</div></div>`
-                : analysis.risk === 'medium'
+                : Store.settings.showRiskTags && analysis.risk === 'medium'
                     ? `<div class="ma-notice ma-risk-only">${icon('alert')}<div>Yanıtı göndermeden önce kargo veya teslimat bilgisini kontrol edin.</div></div>`
                     : '';
             const composerBody = `
@@ -5649,7 +6353,7 @@
                     <button class="ma-icon-btn" data-page="templates" title="Şablonları yönet">${icon('settings')}</button>
                 </div>
                 <details class="ma-disclosure"><summary>${icon('settings')}Dil, ton ve ek talimat</summary><div class="ma-disclosure__body ma-options-grid">
-                    <div><div class="ma-label-row"><strong>Ton</strong></div><div class="ma-tone-row">${[['friendly', 'Samimi'], ['professional', 'Profesyonel'], ['short', 'Kısa'], ['detailed', 'Detaylı']].map(([id, label]) => `<button type="button" class="ma-tone ${this.state.tone === id ? 'is-active' : ''}" data-tone="${id}">${label}</button>`).join('')}</div></div>
+                    <div><div class="ma-label-row"><strong>Ton</strong></div><div class="ma-tone-row">${[['friendly', 'Samimi'], ['professional', 'Profesyonel'], ['short', 'Kısa'], ['detailed', 'Detaylı']].map(([id, label]) => `<button type="button" class="ma-tone ${this.state.tone === id ? 'is-active' : ''}" data-tone="${id}" aria-pressed="${this.state.tone === id}">${label}</button>`).join('')}</div></div>
                     <div class="ma-field"><label>Gönderilecek Dil</label><select class="ma-select" data-bind="targetLanguage">${Object.entries(LANGUAGE_NAMES).filter(([code]) => code !== 'und').map(([code, name]) => `<option value="${code}" ${language.split('-')[0] === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div>
                     <div class="ma-field"><label>AI’ye Ek Talimat <span class="ma-muted">(isteğe bağlı)</span></label><input class="ma-input" data-bind="extraInstruction" value="${attr(this.state.extraInstruction)}" placeholder="Örn: Kısa tut; kupon veya tarih sözü verme."></div>
                 </div></details>`;
@@ -5681,10 +6385,10 @@
                 </div>
 
                 <section class="ma-card">
-                    <div class="ma-card__head"><h3>Müşterinin Mesajı</h3><span class="ma-spacer"></span>${!translation && original ? `<button class="ma-btn ma-btn--small" data-action="translate-last">${icon('globe')}Türkçe Göster</button>` : ''}</div>
+                    <div class="ma-card__head"><h3>Müşterinin Mesajı</h3><span class="ma-spacer"></span>${!translation && original ? `<button class="ma-btn ma-btn--small" data-action="translate-last">${icon('globe')}${html(langName(previewLanguage))} Göster</button>` : ''}</div>
                     <div class="ma-card__body ma-stack">
-                        <div class="ma-message-box ma-message-box--accent ma-message-text">${translation ? html(translation) : original ? 'Türkçe çeviri hazırlanıyor veya “Türkçe Göster” düğmesini kullanın.' : 'Aktif müşteri mesajı bulunamadı.'}</div>
-                        <div class="ma-insight-row"><span class="ma-pill ma-pill--${primaryTag.color || 'info'}">${html(primaryTag.label)}</span><span class="ma-insight-row__summary">${html(analysis.summary || '')}</span></div>
+                        <div class="ma-message-box ma-message-box--accent ma-message-text">${translation ? html(translation) : original ? `${html(langName(previewLanguage))} çevirisini görmek için “${html(langName(previewLanguage))} Göster” düğmesini kullanın.` : 'Aktif müşteri mesajı bulunamadı.'}</div>
+                        <div class="ma-insight-row">${Store.settings.showRiskTags ? `<span class="ma-pill ma-pill--${primaryTag.color || 'info'}">${html(primaryTag.label)}</span>` : ''}<span class="ma-insight-row__summary">${html(analysis.summary || '')}</span></div>
                         <details class="ma-disclosure"><summary>Orijinal mesajı göster</summary><div class="ma-disclosure__body"><div class="ma-message-box">${original ? html(original) : 'Orijinal mesaj bulunamadı.'}</div><div class="ma-actions"><button class="ma-btn ma-btn--small" data-action="copy" data-copy-source="original">${icon('copy')}Kopyala</button></div></div></details>
                     </div>
                 </section>
@@ -5697,14 +6401,19 @@
         },
         renderOrders() {
             const orders = this.state.orders;
-            const campaign = Store.campaign;
+            const campaign = Campaign.isNonterminal(Store.campaign) ? Store.campaign : null;
             const selectedTemplate = TemplateEngine.get(this.state.selectedTemplateId);
             const purpose = Outreach.purposeForTemplate(selectedTemplate);
             const isReviewRequest = purpose === 'review_request';
             const eligibleOrders = orders.filter((order) => order.messageUrl && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose));
             const selected = eligibleOrders.filter((order) => this.state.selectedOrders.has(order.orderId));
-            const actions = `<button class="ma-btn" data-action="orders-scan">${icon('refresh')}Yenile</button><button class="ma-btn ma-btn--primary" data-action="campaign-create" ${selected.length ? '' : 'disabled'}>${icon('send')}Seçilenlere Mesaj Hazırla</button>`;
-            if (Router.page() !== 'orders') return `${this.renderHead('Teslim Edilen Siparişler', 'Teslim edilen siparişlerde kontrollü ve tekrarsız iletişim akışı oluşturun.', actions)}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Etsy sipariş sayfasını açın</h3><p>Sipariş kartlarını okuyabilmem için Etsy Completed Orders sayfasına geçin.</p><button class="ma-btn ma-btn--primary" data-action="go-orders">Siparişlere Git</button></div></div>`;
+            const current = Campaign.current();
+            const campaignAwaitingVerification = current?.status === CAMPAIGN_SEND_PENDING_STATUS;
+            const pendingReviewChecks = isReviewRequest
+                ? orders.filter(order => order.messageUrl && ['unknown', 'expired'].includes(Outreach.decisionUiValue(Outreach.record(order.orderId, 'review_request')))).length
+                : 0;
+            const actions = `<button class="ma-btn" data-action="orders-scan">${icon('refresh')}Yenile</button>${campaignAwaitingVerification ? '' : `<button class="ma-btn ma-btn--primary" data-action="campaign-create" ${selected.length ? '' : 'disabled'}>${icon('send')}Seçilenlere Mesaj Hazırla</button>`}`;
+            if (Router.page() !== 'orders' || !Router.isCompletedOrdersPage()) return `${this.renderHead('Teslim Edilen Siparişler', 'Teslim edilen siparişlerde kontrollü ve tekrarsız iletişim akışı oluşturun.')}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Completed Orders sayfasını açın</h3><p>Yalnız tamamlanmış sipariş kartları bu akışa alınır. New veya başka bir sipariş görünümünde kampanya kontrolleri gösterilmez.</p><button class="ma-btn ma-btn--primary" data-action="go-orders">Teslim Edilenlere Git</button></div></div>`;
             const rows = orders.map((order) => {
                 const status = Store.getStatus('orders', order.orderId).status || order.status?.status || 'none';
                 const outreach = Outreach.record(order.orderId, 'review_request');
@@ -5716,6 +6425,12 @@
                 const statusTone = !canMessage && status === 'none' ? 'warning' : ({ none: '', draft: 'info', inserted: 'warning', sent_pending_verification: 'warning', sent: 'success', error: 'danger', skipped: '' }[status]);
                 const recoveryActions = status === CAMPAIGN_SEND_PENDING_STATUS
                     ? `<button class="ma-btn ma-btn--small" data-order-confirm-sent="${order.orderId}">Gönderildi</button><button class="ma-btn ma-btn--small" data-order-confirm-not-sent="${order.orderId}">Gönderilmedi</button>`
+                    : '';
+                const campaignItem = campaign?.status === 'active'
+                    ? campaign.items?.find(item => item.orderId === order.orderId && ['pending', 'inserted'].includes(item.status))
+                    : null;
+                const skipAction = campaignItem
+                    ? `<button class="ma-btn ma-btn--small" data-order-skip="${attr(order.orderId)}">Bu Kampanyada Atla</button>`
                     : '';
                 const workflowLabel = ({
                     none: 'Talep yok', queued: 'Kuyrukta', prepared: 'Mesaj hazır',
@@ -5735,19 +6450,23 @@
                         ${reviewDecision === 'expired' ? '<option value="expired" selected disabled>Kontrol süresi doldu — yeniden seçin</option>' : ''}
                     </select><div class="ma-field__hint">${html(workflowLabel)}</div></div>`
                     : '<span class="ma-muted">—</span>';
-                return `<tr class="${isSelected ? 'is-selected' : ''}"><td><input class="ma-check" type="checkbox" data-order-select="${order.orderId}" ${isSelected ? 'checked' : ''} ${canMessage && isEligible ? '' : 'disabled'}></td><td><strong>#${html(order.orderId)}</strong><div class="ma-small ma-muted">${html(order.price)}</div></td><td>${html(order.customerName)}</td><td><div class="ma-product">${order.imageUrl ? `<img class="ma-product__image" src="${attr(order.imageUrl)}" alt="">` : '<span class="ma-product__image"></span>'}<div class="ma-table__product" title="${attr(order.itemTitle)}">${html(order.itemTitle || 'Ürün')}</div></div></td><td><span class="ma-pill ma-pill--success">Teslim Edildi</span></td><td>${reviewDecisionControl}</td><td><span class="ma-pill ${statusTone ? `ma-pill--${statusTone}` : ''}">${html(statusLabel)}</span></td><td><div class="ma-actions"><button class="ma-btn ma-btn--small" data-order-open="${order.orderId}" ${order.messageUrl ? '' : 'disabled'}>Mesajı Aç</button>${recoveryActions}<button class="ma-icon-btn" data-order-skip="${order.orderId}" title="Atla">${icon('close')}</button></div></td></tr>`;
+                return `<tr class="${isSelected ? 'is-selected' : ''}"><td><input class="ma-check" type="checkbox" data-order-select="${order.orderId}" ${isSelected ? 'checked' : ''} ${canMessage && isEligible ? '' : 'disabled'}></td><td><strong>#${html(order.orderId)}</strong><div class="ma-small ma-muted">${html(order.price)}</div></td><td>${html(order.customerName)}</td><td><div class="ma-product">${order.imageUrl ? `<img class="ma-product__image" src="${attr(order.imageUrl)}" alt="">` : '<span class="ma-product__image"></span>'}<div class="ma-table__product" title="${attr(order.itemTitle)}">${html(order.itemTitle || 'Ürün')}</div></div></td><td><span class="ma-pill ma-pill--success">Teslim Edildi</span></td><td>${reviewDecisionControl}</td><td><span class="ma-pill ${statusTone ? `ma-pill--${statusTone}` : ''}">${html(statusLabel)}</span></td><td><div class="ma-actions"><button class="ma-btn ma-btn--small" data-order-open="${order.orderId}" ${order.messageUrl ? '' : 'disabled'}>Mesajı Aç</button>${recoveryActions}${skipAction}</div></td></tr>`;
             }).join('');
             const templateOptions = TemplateEngine.active().map((template) => `<option value="${attr(template.id)}" ${this.state.selectedTemplateId === template.id ? 'selected' : ''}>${html(template.name)}</option>`).join('');
             const reviewRequestNotice = isReviewRequest
                 ? `<div class="ma-notice">${icon('alert')}<div><strong>Önce her siparişin yorum durumunu işaretleyin.</strong><br>“Yorum yok” onayı 2 saat geçerlidir. Script aynı siparişe ikinci yorum talebini engeller ve mesajı hazırlar; son gönderim her alıcı için sizin düğme tıklamanızla yapılır.</div></div>`
                 : '';
-            const current = Campaign.current();
+            const campaignPanel = campaign
+                ? campaignAwaitingVerification
+                    ? `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Gönderim sonucu doğrulanmayı bekliyor.</strong><br>Etsy konuşmasında mesajın gerçekten gönderilip gönderilmediğini kontrol edin; sonra ilgili sipariş satırındaki “Gönderildi” veya “Gönderilmedi” doğrulama aksiyonunu kullanın. Sonuç çözülmeden sıra devam ettirilemez, atlanamaz veya durdurulamaz.</div></div>`
+                    : `<div class="ma-notice ma-notice--info">${icon('send')}<div><strong>Kampanya ${html(campaign.status)}</strong><br>${campaign.items.filter((item) => item.status === 'sent').length}/${campaign.items.length} gönderildi.${current ? `<br>Sıradaki: ${html(current.customerName)}` : ''}</div></div><div class="ma-actions"><button class="ma-btn ma-btn--primary" data-action="campaign-start" ${current ? '' : 'disabled'}>Sırayı Devam Ettir</button><button class="ma-btn ma-btn--danger" data-action="campaign-cancel" data-campaign-id="${attr(campaign.id)}" data-campaign-revision="${attr(campaign.revision)}">Durdur</button></div>`
+                : '';
             return `${this.renderHead('Teslim Edilen Siparişler', 'Yalnız Etsy kartında Delivered olarak doğrulanan siparişler listelenir.', actions)}
                 <div class="ma-split">
                     <div class="ma-stack">
                         <div class="ma-toolbar">
                             <span class="ma-pill ma-pill--primary">${selected.length} seçili</span>
-                            <span class="ma-pill">${orders.length} teslim edilmiş · ${eligibleOrders.length} mesaj uygun</span>
+                            <span class="ma-pill">${isReviewRequest ? `${eligibleOrders.length} gönderime hazır · ${pendingReviewChecks} yorum kontrolü bekliyor` : `${orders.length} teslim edilmiş · ${eligibleOrders.length} mesaj uygun`}</span>
                             <button class="ma-btn ma-btn--small" data-action="orders-select-all">${isReviewRequest ? 'Onaylıları Seç' : 'Uygunların Tümünü Seç'}</button>
                             <button class="ma-btn ma-btn--small" data-action="orders-clear-selection">Temizle</button>
                         </div>
@@ -5760,7 +6479,7 @@
                             ${reviewRequestNotice}
                             <div class="ma-field"><label>Yöntem</label><select class="ma-select" data-bind="composeMethod"><option value="free" ${this.state.composeMethod === 'free' ? 'selected' : ''}>Ücretsiz Çeviri</option><option value="ai" ${this.state.composeMethod === 'ai' ? 'selected' : ''}>AI (${html(AI.provider().short)})</option><option value="template" ${this.state.composeMethod === 'template' ? 'selected' : ''}>Standart Şablon</option></select></div>
                             ${selected[0] ? `<div><div class="ma-label-row"><strong>Önizleme — ${html(selected[0].customerName)}</strong></div><div class="ma-message-box ma-message-box--accent">${html(TemplateEngine.render(selectedTemplate, selected[0]))}</div></div>` : '<div class="ma-muted">Önizleme için bir sipariş seçin.</div>'}
-                            ${campaign ? `<div class="ma-notice ma-notice--info">${icon('send')}<div><strong>Kampanya ${html(campaign.status)}</strong><br>${campaign.items.filter((item) => item.status === 'sent').length}/${campaign.items.length} gönderildi.${current ? `<br>Sıradaki: ${html(current.customerName)}` : ''}</div></div><div class="ma-actions"><button class="ma-btn ma-btn--primary" data-action="campaign-start" ${current ? '' : 'disabled'}>Sırayı Devam Ettir</button><button class="ma-btn ma-btn--danger" data-action="campaign-cancel">Durdur</button></div>` : ''}
+                            ${campaignPanel}
                         </div>
                     </div>
                 </div>`;
@@ -5768,41 +6487,67 @@
         renderReviews() {
             const reviews = this.state.reviews;
             const selected = reviews.find((review) => review.id === this.state.selectedReviewId) || reviews[0];
-            const analysis = this.state.reviewAnalysis;
+            const analysis = this.reviewAnalysisIsCurrent(selected) ? this.state.reviewAnalysis : null;
             const actions = `<button class="ma-btn" data-action="reviews-scan">${icon('refresh')}Yenile</button>`;
-            if (Router.page() !== 'reviews' || !reviews.length) return `${this.renderHead('Yorumlar', 'Yorumları Türkçe görün, analiz edin ve kontrollü cevap taslakları hazırlayın.', actions)}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Etsy Dashboard yorum akışını açın</h3><p>Yorum kartlarını okuyabilmem için Etsy Shop Manager Dashboard üzerinde Reviews filtresini açın.</p><button class="ma-btn ma-btn--primary" data-action="go-dashboard">Dashboard’a Git</button></div></div>`;
-            const cards = reviews.map((review) => `<div class="ma-review-card ${selected?.id === review.id ? 'is-active' : ''}" data-review-id="${review.id}"><div class="ma-customer">${review.imageUrl ? `<span class="ma-avatar"><img src="${attr(review.imageUrl)}" alt=""></span>` : `<span class="ma-avatar">${html(initials(review.customerName))}</span>`}<div><strong>${html(review.customerName)}</strong><div class="ma-stars">${'★'.repeat(Math.round(review.rating))}${'☆'.repeat(Math.max(0, 5 - Math.round(review.rating)))}</div></div></div><div class="ma-list-item__title">${html(review.itemTitle)}</div><div class="ma-muted">${html(review.text)}</div></div>`).join('');
+            if (Router.page() !== 'reviews' || !Router.isReviewActivityPage()) return `${this.renderHead('Yorumlar', 'Yorumları görün, analiz edin ve kontrollü cevap taslakları hazırlayın.')}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Recent activity ekranını açın</h3><p>Yorum kartları Dashboard ana sayfasında değil, Recent activity görünümündedir.</p><button class="ma-btn ma-btn--primary" data-action="go-reviews">Yorumlara Git</button></div></div>`;
+            if (!reviews.length) return `${this.renderHead('Yorumlar', 'Yalnız metin içeren ve güvenle eşleştirilen yorumlar işlenir.', actions)}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Yanıtlanabilir metinli yorum bulunamadı</h3><p>Recent activity ekranında Reviews filtresini seçip Yenile’ye basın. Yalnız puan içeren boş kartlar taslak akışına alınmaz.</p></div></div>`;
+            const cards = reviews.map((review) => `<button type="button" class="ma-review-card ${selected?.id === review.id ? 'is-active' : ''}" data-review-id="${attr(review.id)}" aria-pressed="${selected?.id === review.id}"><div class="ma-customer">${review.imageUrl ? `<span class="ma-avatar"><img src="${attr(review.imageUrl)}" alt=""></span>` : `<span class="ma-avatar">${html(initials(review.customerName))}</span>`}<div><strong>${html(review.customerName)}</strong><div class="ma-stars">${'★'.repeat(Math.round(review.rating))}${'☆'.repeat(Math.max(0, 5 - Math.round(review.rating)))}</div></div></div><div class="ma-list-item__title">${html(review.itemTitle)}</div><div class="ma-muted">${html(review.text)}</div></button>`).join('');
             const heuristic = selected ? Heuristics.analyze(selected.text, selected.rating) : null;
-            return `${this.renderHead('Yorumlar', 'Özel mesaj ve public cevap birbirinden ayrılır; hiçbir cevap otomatik yayınlanmaz.', actions)}<div class="ma-split"><div class="ma-list">${cards}</div><div class="ma-stack">${selected ? `<div class="ma-card"><div class="ma-card__head"><h3>AI Analiz Özeti</h3><span class="ma-spacer"></span><button class="ma-btn ma-btn--small" data-action="review-translate">${icon('globe')}TR Gör</button></div><div class="ma-card__body ma-stack"><div class="ma-grid ma-grid--3"><div class="ma-stat"><div class="ma-stat__label">Duygu</div><div class="ma-stat__value">${html(localizedEnum(SENTIMENT_LABELS, analysis?.sentiment || heuristic.sentiment))}</div></div><div class="ma-stat"><div class="ma-stat__label">Risk</div><div class="ma-stat__value">${html(localizedEnum(RISK_LABELS, analysis?.risk_level || heuristic.risk))}</div></div><div class="ma-stat"><div class="ma-stat__label">Puan</div><div class="ma-stat__value">${selected.rating}/5</div></div></div><div><div class="ma-label-row"><strong>Yorum Özeti</strong></div><div class="ma-message-box">${html(analysis?.summary_tr || heuristic.summary)}</div></div><div class="ma-pill-row">${(analysis?.topics || heuristic.tags.map((tag) => tag.label)).map((tag) => `<span class="ma-pill ma-pill--info">${html(typeof tag === 'string' ? tag : tag.label)}</span>`).join('')}</div><button class="ma-btn ma-btn--primary ma-btn--block" data-action="review-analyze">AI Analiz ve Taslak Hazırla</button></div></div><div class="ma-card"><div class="ma-card__head"><h3>Özel Mesaj Taslağı</h3></div><div class="ma-card__body"><textarea class="ma-textarea" data-bind="reviewPrivate">${html(analysis?.private_reply || '')}</textarea></div><div class="ma-card__foot ma-actions--end"><button class="ma-btn" data-action="copy" data-copy-source="review-private">${icon('copy')}Kopyala</button></div></div><div class="ma-card"><div class="ma-card__head"><h3>Public Cevap Taslağı</h3></div><div class="ma-card__body ma-stack"><textarea class="ma-textarea" data-bind="reviewPublic">${html(analysis?.public_reply || '')}</textarea><div class="ma-notice">${icon('alert')}<div>Public cevap herkese açık görünür. Düşük puanlı yorumlarda önce özel mesajla çözüm arayın ve metni mutlaka kontrol edin.</div></div></div><div class="ma-card__foot ma-actions--end"><button class="ma-btn" data-action="copy" data-copy-source="review-public">${icon('copy')}Kopyala</button><button class="ma-btn ma-btn--primary" data-action="review-insert-public" ${analysis?.public_reply ? '' : 'disabled'}>Etsy Alanına Aktar</button></div></div>` : ''}</div></div>`;
+            return `${this.renderHead('Yorumlar', 'Özel mesaj ve public cevap birbirinden ayrılır; hiçbir cevap otomatik yayınlanmaz.', actions)}<div class="ma-split"><div class="ma-list">${cards}</div><div class="ma-stack">${selected ? `<div class="ma-card"><div class="ma-card__head"><h3>AI Analiz Özeti</h3><span class="ma-spacer"></span><button class="ma-btn ma-btn--small" data-action="review-translate">${icon('globe')}TR Gör</button></div><div class="ma-card__body ma-stack"><div class="ma-grid ma-grid--3"><div class="ma-stat"><div class="ma-stat__label">Duygu</div><div class="ma-stat__value">${html(localizedEnum(SENTIMENT_LABELS, analysis?.sentiment || heuristic.sentiment))}</div></div><div class="ma-stat"><div class="ma-stat__label">Risk</div><div class="ma-stat__value">${html(localizedEnum(RISK_LABELS, analysis?.risk_level || heuristic.risk))}</div></div><div class="ma-stat"><div class="ma-stat__label">Puan</div><div class="ma-stat__value">${selected.rating}/5</div></div></div><div><div class="ma-label-row"><strong>Yorum Özeti</strong></div><div class="ma-message-box">${html(analysis?.summary_tr || heuristic.summary)}</div></div><div class="ma-pill-row">${(analysis?.topics || heuristic.tags.map((tag) => tag.label)).map((tag) => `<span class="ma-pill ma-pill--info">${html(typeof tag === 'string' ? tag : tag.label)}</span>`).join('')}</div><button class="ma-btn ma-btn--primary ma-btn--block" data-action="review-analyze">AI Analiz ve Taslak Hazırla</button></div></div><div class="ma-card"><div class="ma-card__head"><h3>Özel Mesaj Taslağı</h3></div><div class="ma-card__body"><textarea class="ma-textarea" data-bind="reviewPrivate">${html(analysis?.private_reply || '')}</textarea></div><div class="ma-card__foot ma-actions--end"><button class="ma-btn" data-action="copy" data-copy-source="review-private" ${analysis?.private_reply ? '' : 'disabled'}>${icon('copy')}Kopyala</button></div></div><div class="ma-card"><div class="ma-card__head"><h3>Public Cevap Taslağı</h3></div><div class="ma-card__body ma-stack"><textarea class="ma-textarea" data-bind="reviewPublic">${html(analysis?.public_reply || '')}</textarea><div class="ma-notice">${icon('alert')}<div>Public cevap herkese açık görünür. Düşük puanlı yorumlarda önce özel mesajla çözüm arayın ve metni mutlaka kontrol edin.</div></div></div><div class="ma-card__foot ma-actions--end"><button class="ma-btn" data-action="copy" data-copy-source="review-public" ${analysis?.public_reply ? '' : 'disabled'}>${icon('copy')}Kopyala</button><button class="ma-btn ma-btn--primary" data-action="review-insert-public" ${analysis?.public_reply ? '' : 'disabled'}>Etsy Alanına Aktar</button></div></div>` : ''}</div></div>`;
         },
         renderTemplates() {
-            const template = TemplateEngine.get(this.state.templateEditId) || Store.templates[0];
+            const template = this.templateForEdit();
             const variables = ['firstName', 'fullName', 'shopName', 'orderNumber', 'itemTitle', 'trackingNumber', 'signature'];
             const previewContext = { customerName: 'Ashley', customerFirstName: 'Ashley', orderId: '1234567890', itemTitle: 'Personalized Birth Flower Name Sign' };
             const preview = TemplateEngine.render(template, previewContext);
-            const actions = `<button class="ma-btn ma-btn--primary" data-action="template-new">${icon('plus')}Yeni Şablon</button><button class="ma-btn" data-action="template-save">Kaydet</button><button class="ma-btn ma-btn--danger" data-action="template-archive">Arşivle</button>`;
-            const list = Store.templates.map((item) => `<div class="ma-list-item ${item.id === template?.id ? 'is-active' : ''}" data-template-edit="${attr(item.id)}"><div class="ma-list-item__body"><div class="ma-list-item__title">${html(item.name)}</div><div class="ma-list-item__desc">${html(item.category)} · ${html(item.shortcut || 'Kısayol yok')}</div></div>${item.archived ? '<span class="ma-pill">Arşiv</span>' : ''}</div>`).join('');
-            return `${this.renderHead('Şablonlar', 'Tekrarlanan metinleri değişkenli ve müşterinin diline çevrilebilir şablonlar olarak yönetin.', actions)}<div class="ma-split"><div class="ma-card"><div class="ma-card__body"><div class="ma-list">${list}</div></div></div>${template ? `<div class="ma-grid ma-grid--2"><div class="ma-card"><div class="ma-card__body ma-stack"><div class="ma-grid ma-grid--2"><div class="ma-field"><label>Şablon Adı</label><input class="ma-input" data-template-field="name" value="${attr(template.name)}"></div><div class="ma-field"><label>Kategori</label><input class="ma-input" data-template-field="category" value="${attr(template.category)}"></div><div class="ma-field"><label>Ton</label><select class="ma-select" data-template-field="tone">${[['friendly','Samimi'],['professional','Profesyonel'],['apologetic','Özür Dileyen'],['short','Kısa']].map(([id,label]) => `<option value="${id}" ${template.tone === id ? 'selected' : ''}>${label}</option>`).join('')}</select></div><div class="ma-field"><label>Varsayılan Dil</label><select class="ma-select" data-template-field="language"><option value="tr" ${template.language === 'tr' ? 'selected' : ''}>Türkçe</option><option value="en" ${template.language === 'en' ? 'selected' : ''}>English (US)</option></select></div></div><div class="ma-field"><label>Kısayol</label><input class="ma-input" data-template-field="shortcut" value="${attr(template.shortcut || '')}"></div><div class="ma-field"><label>Şablon Metni</label><textarea class="ma-textarea ma-textarea--large" data-template-field="text">${html(template.text)}</textarea></div><div><div class="ma-label-row"><strong>Kullanılabilir Değişkenler</strong></div><div class="ma-pill-row">${variables.map((variable) => `<button class="ma-pill ma-pill--primary" data-variable="${variable}">{{${variable}}}</button>`).join('')}</div></div></div></div><div class="ma-card"><div class="ma-card__head"><h3>Canlı Önizleme</h3></div><div class="ma-card__body ma-stack"><div><div class="ma-label-row"><strong>Müşteriye Giden Mesaj</strong></div><div class="ma-message-box ma-message-box--accent">${html(preview)}</div></div><div><div class="ma-label-row"><strong>Türkçe Anlamı</strong></div><div class="ma-message-box">${html(preview)}</div></div></div></div></div>` : ''}</div>`;
+            const archiveLabel = template?.archived ? 'Etkinleştir' : 'Arşivle';
+            const archiveClass = template?.archived ? 'ma-btn' : 'ma-btn ma-btn--danger';
+            const actions = `<span class="ma-pill ma-pill--warning" data-template-dirty ${this.state.templateDirty ? '' : 'hidden'}>Kaydedilmedi</span><button class="ma-btn ma-btn--primary" data-action="template-new">${icon('plus')}Yeni Şablon</button><button class="ma-btn" data-action="template-save">Kaydet</button><button class="${archiveClass}" data-action="template-archive">${archiveLabel}</button>`;
+            const listItems = Store.templates.some(item => item.id === template?.id)
+                ? Store.templates
+                : template ? [template, ...Store.templates] : Store.templates;
+            const list = listItems.map((item) => `<button type="button" class="ma-list-item ${item.id === template?.id ? 'is-active' : ''}" data-template-edit="${attr(item.id)}" aria-pressed="${item.id === template?.id}"><div class="ma-list-item__body"><div class="ma-list-item__title">${html(item.name)}</div><div class="ma-list-item__desc">${html(item.category)} · ${html(item.shortcut || 'Kısayol yok')}</div></div>${item.archived ? '<span class="ma-pill">Arşiv</span>' : ''}</button>`).join('');
+            return `${this.renderHead('Şablonlar', 'Yazarken önizleyin; değişiklikler yalnız Kaydet düğmesiyle kalıcı olur.', actions)}
+                <div class="ma-split">
+                    <div class="ma-card"><div class="ma-card__body"><div class="ma-list">${list}</div></div></div>
+                    ${template ? `<div class="ma-grid ma-grid--2">
+                        <div class="ma-card"><div class="ma-card__body ma-stack">
+                            <div class="ma-grid ma-grid--2">
+                                <div class="ma-field"><label>Şablon Adı</label><input class="ma-input" data-template-field="name" value="${attr(template.name)}"></div>
+                                <div class="ma-field"><label>Kategori</label><input class="ma-input" data-template-field="category" value="${attr(template.category)}"></div>
+                                <div class="ma-field"><label>Ton</label><select class="ma-select" data-template-field="tone">${[['friendly','Samimi'],['professional','Profesyonel'],['apologetic','Özür Dileyen'],['short','Kısa']].map(([id,label]) => `<option value="${id}" ${template.tone === id ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+                                <div class="ma-field"><label>Varsayılan Dil</label><select class="ma-select" data-template-field="language"><option value="tr" ${template.language === 'tr' ? 'selected' : ''}>Türkçe</option><option value="en" ${template.language === 'en' ? 'selected' : ''}>English (US)</option></select></div>
+                            </div>
+                            <div class="ma-field"><label>Kısayol</label><input class="ma-input" data-template-field="shortcut" value="${attr(template.shortcut || '')}"></div>
+                            <div class="ma-field"><label>Şablon Metni</label><textarea class="ma-textarea ma-textarea--large" data-template-field="text">${html(template.text)}</textarea></div>
+                            <div><div class="ma-label-row"><strong>Kullanılabilir Değişkenler</strong></div><div class="ma-pill-row">${variables.map(variable => `<button type="button" class="ma-pill ma-pill--primary" data-variable="${variable}">{{${variable}}}</button>`).join('')}</div></div>
+                        </div></div>
+                        <div class="ma-card"><div class="ma-card__head"><h3>Canlı Önizleme</h3></div><div class="ma-card__body ma-stack"><div><div class="ma-label-row"><strong>Örnek alıcı mesajı</strong></div><div class="ma-message-box ma-message-box--accent" data-template-preview>${html(preview)}</div></div>${template.language === 'tr' ? '' : '<div class="ma-field__hint">Türkçe anlamı, gerçek mesaj akışında çeviri motoruyla hazırlanır; burada kaynak şablon önizlenir.</div>'}</div></div>
+                    </div>` : ''}
+                </div>`;
         },
         renderHistory() {
             const stats = History.stats();
             const detail = Store.history.find((item) => item.id === this.state.historyDetailId) || Store.history[0];
             const actions = `<button class="ma-btn" data-action="history-export">${icon('download')}Dışa Aktar</button><button class="ma-btn ma-btn--danger" data-action="history-clear">${icon('trash')}Temizle</button>`;
-            const rows = Store.history.map((item) => `<tr class="${detail?.id === item.id ? 'is-selected' : ''}" data-history-id="${item.id}"><td>${html(item.customer || '—')}</td><td>${html(item.source || '—')}</td><td>${html(item.title || item.type)}</td><td>${html(item.method || '—')}</td><td><span class="ma-pill ma-pill--${item.status === 'error' ? 'danger' : item.status === 'completed' ? 'success' : 'info'}">${html(item.status)}</span></td><td>${html(formatDate(item.createdAt))}</td></tr>`).join('');
+            const rows = Store.history.map((item) => `<tr class="${detail?.id === item.id ? 'is-selected' : ''}" data-history-id="${item.id}" tabindex="0" role="button" aria-label="${attr(`${item.customer || 'Müşteri'}: ${item.title || item.type}`)}"><td>${html(item.customer || '—')}</td><td>${html(item.source || '—')}</td><td>${html(item.title || item.type)}</td><td>${html(item.method || '—')}</td><td><span class="ma-pill ma-pill--${item.status === 'error' ? 'danger' : item.status === 'completed' ? 'success' : 'info'}">${html(item.status)}</span></td><td>${html(formatDate(item.createdAt))}</td></tr>`).join('');
             return `${this.renderHead('Geçmiş', 'Çeviri, taslak, aktarım ve doğrulama adımlarını tek yerde takip edin.', actions)}<div class="ma-stats"><div class="ma-stat"><div class="ma-stat__label">Bugün Hazırlanan</div><div class="ma-stat__value">${stats.prepared}</div></div><div class="ma-stat"><div class="ma-stat__label">Kutuya Aktarılan</div><div class="ma-stat__value">${stats.inserted}</div></div><div class="ma-stat"><div class="ma-stat__label">Doğrulanan</div><div class="ma-stat__value">${stats.verified}</div></div><div class="ma-stat"><div class="ma-stat__label">Başarısız</div><div class="ma-stat__value">${stats.failed}</div></div><div class="ma-stat"><div class="ma-stat__label">Çeviri Kullanımı</div><div class="ma-stat__value">${stats.translated}</div></div></div><div class="ma-split"><div class="ma-table-wrap"><table class="ma-table"><thead><tr><th>Müşteri</th><th>Kaynak</th><th>Aksiyon</th><th>Yöntem</th><th>Durum</th><th>Tarih</th></tr></thead><tbody>${rows || '<tr><td colspan="6">Henüz kayıt yok.</td></tr>'}</tbody></table></div>${detail ? `<div class="ma-card"><div class="ma-card__head"><h3>${html(detail.title || detail.type)}</h3></div><div class="ma-card__body ma-stack"><div class="ma-kv"><span class="ma-kv__label">Müşteri</span><span class="ma-kv__value">${html(detail.customer || '—')}</span></div><div class="ma-kv"><span class="ma-kv__label">Sipariş</span><span class="ma-kv__value">${html(detail.orderId || '—')}</span></div><div class="ma-kv"><span class="ma-kv__label">Tarih</span><span class="ma-kv__value">${html(formatDate(detail.createdAt))}</span></div><div class="ma-code">${html(JSON.stringify(detail.detail || {}, null, 2))}</div></div></div>` : ''}</div>`;
         },
         renderSettings() {
-            const s = Store.settings;
+            const { settings: s } = this.ensureSettingsDraft();
             const providerId = AI_PROVIDERS[s.aiProvider] ? s.aiProvider : 'openai';
             const provider = AI.provider(providerId);
-            const profile = AI.profile(providerId);
-            const models = AI.models(providerId);
+            const profile = this.draftProviderProfile(providerId);
+            const models = AI.models(providerId, profile);
             const hasKey = Boolean(profile.apiKey?.trim());
             const hasModel = Boolean(profile.model?.trim());
             const githubReady = Boolean(s.githubUsername?.trim());
             const updateAvailable = Updates.isAvailable();
-            const actions = `<button class="ma-btn" data-action="config-export">${icon('download')}Config İndir</button><button class="ma-btn" data-action="update-check">${icon('refresh')}Güncelleme Kontrolü</button><button class="ma-btn ma-btn--primary" data-action="settings-save">Kaydet</button>`;
-            const switchRow = (key, title, desc) => `<div class="ma-switch-row"><div class="ma-switch-row__copy"><div class="ma-switch-row__title">${title}</div><div class="ma-switch-row__desc">${desc}</div></div><label class="ma-switch"><input type="checkbox" data-settings-field="${key}" ${s[key] ? 'checked' : ''}><span></span></label></div>`;
+            const actions = `<span class="ma-pill ma-pill--warning" data-settings-dirty ${this.state.settingsDirty ? '' : 'hidden'}>Kaydedilmedi</span><button class="ma-btn" data-action="settings-reset">Varsayılanlar</button><button class="ma-btn ma-btn--primary" data-action="settings-save">Kaydet</button>`;
+            const switchRow = (key, title, desc) => {
+                const id = `mema-setting-${key}`;
+                return `<div class="ma-switch-row"><div class="ma-switch-row__copy"><div id="${attr(id)}-label" class="ma-switch-row__title">${html(title)}</div><div id="${attr(id)}-description" class="ma-switch-row__desc">${html(desc)}</div></div><label class="ma-switch"><input type="checkbox" data-settings-field="${attr(key)}" aria-labelledby="${attr(id)}-label" aria-describedby="${attr(id)}-description" ${s[key] ? 'checked' : ''}><span></span></label></div>`;
+            };
             const step = (number, title, desc, done) => `<div class="ma-setup-step ${done ? 'is-done' : ''}"><div class="ma-setup-step__top"><span class="ma-setup-step__number">${done ? '✓' : number}</span><span class="ma-setup-step__title">${title}</span></div><div class="ma-setup-step__desc">${desc}</div></div>`;
             const providerOptions = Object.entries(AI_PROVIDERS).map(([id, item]) => `<option value="${id}" ${providerId === id ? 'selected' : ''}>${html(item.name)}</option>`).join('');
             const modelOptions = models.map((model) => `<option value="${attr(model)}"></option>`).join('');
@@ -5813,10 +6558,10 @@
                         <div class="ma-card__head"><h3>Hızlı Kurulum</h3><span class="ma-spacer"></span><span class="ma-pill ${Store.onboarding.completed ? 'ma-pill--success' : ''}">${Store.onboarding.completed ? 'Tamamlandı' : '4 adım'}</span></div>
                         <div class="ma-card__body ma-stack"><div class="ma-setup-grid">
                             ${step(1, 'Sağlayıcı', `${provider.name} seçili.`, Boolean(providerId))}
-                            ${step(2, 'API + Model', hasKey && hasModel ? `${profile.model} hazır.` : 'API anahtarını girip model/sürüm seçin.', hasKey && hasModel)}
-                            ${step(3, 'GitHub', githubReady ? `@${html(s.githubUsername)} kaydedildi.` : 'GitHub hesabını ve release bildirimini ayarlayın.', githubReady)}
-                            ${step(4, 'Config', 'Ayarlar güncellemede korunur; ayrıca JSON yedeği indirin.', Boolean(Store.configMeta.updatedAt))}
-                        </div><div class="ma-actions ma-actions--end"><button class="ma-btn" data-action="setup-complete">Kurulumu Tamamla</button></div></div>
+                            ${step(2, 'AI (isteğe bağlı)', hasKey && hasModel ? `${profile.model} hazır.` : 'AI kullanacaksanız API anahtarı ve model seçin.', hasKey && hasModel)}
+                            ${step(3, 'GitHub (isteğe bağlı)', githubReady ? `@${html(s.githubUsername)} kaydedildi.` : 'Release bildirimleri için isterseniz ayarlayın.', githubReady)}
+                            ${step(4, 'Kalıcı ayarlar', 'Ayarlar Tampermonkey depolamasında güncellemeler boyunca korunur.', true)}
+                        </div><div class="ma-actions ma-actions--end"><button class="ma-btn" data-action="setup-complete">Ayarları Kaydet ve Bitir</button></div></div>
                     </section>
 
                     <div class="ma-settings-grid">
@@ -5850,6 +6595,7 @@
                                 ${switchRow('configIncludeSecrets', 'API / Agent Anahtarlarını Config’e Dahil Et', 'Varsayılan kapalıdır. Açılırsa indirilen JSON dosyası API ve Message Center agent anahtarlarını düz metin içerir.')}
                                 ${s.configIncludeSecrets ? `<div class="ma-notice ma-secret-warning">${icon('alert')}<div>Config dosyasını paylaşmayın; API ve Message Center agent anahtarları düz metin olarak yazılacaktır.</div></div>` : ''}
                                 <div class="ma-config-actions"><button class="ma-btn" data-action="config-export">${icon('download')}Config İndir</button><button class="ma-btn" data-action="config-import">${icon('file')}Config Yükle</button></div>
+                                <button class="ma-btn" data-action="telemetry-settings">Kullanım Verisi ve Gizlilik Ayarları</button>
                                 <input class="ma-hidden" type="file" accept="application/json,.json" data-config-file>
                                 <div class="ma-small ma-muted">Şema v${APP.configSchema} · Son config değişikliği: ${html(formatDate(Store.configMeta.updatedAt))}</div>
                             </div>
@@ -5872,13 +6618,19 @@
                             </div>
                         </section>
 
-                        <section class="ma-card"><div class="ma-card__head"><h3>Genel</h3></div><div class="ma-card__body">${switchRow('autoTurkishPreview','Otomatik Türkçe Önizleme','Yeni müşteri mesajını otomatik Türkçe gösterir.')}${switchRow('replyInCustomerLanguage','Müşteri Diline Otomatik Yanıt','Yanıt hedef dilini müşterinin mesajından belirler.')}${switchRow('preferUsEnglish','US İngilizcesi Öncelikli','İngilizce cevaplarda en-US kullanır.')}${switchRow('openOnMessagePage','Mesaj Sayfasında Otomatik Aç','Aktif konuşma varsa paneli açar.')}</div></section>
+                        <section class="ma-card"><div class="ma-card__head"><h3>Genel</h3></div><div class="ma-card__body ma-stack">
+                            <div>${switchRow('autoTurkishPreview','Otomatik Çeviri Önizlemesi','Yeni müşteri mesajını seçtiğiniz önizleme dilinde otomatik gösterir.')}${switchRow('replyInCustomerLanguage','Müşteri Diline Otomatik Yanıt','Yanıt hedef dilini müşterinin mesajından belirler.')}${switchRow('preferUsEnglish','US İngilizcesi Öncelikli','İngilizce cevaplarda en-US kullanır.')}${switchRow('showRiskTags','Risk Uyarılarını Göster','İade, hasar veya ciddi memnuniyetsizlik içeren mesajlarda manuel kontrol uyarısı gösterir.')}${switchRow('openOnMessagePage','Mesaj Sayfasında Otomatik Aç','Yalnız doğrulanmış aktif konuşma varsa paneli açar.')}</div>
+                            <div class="ma-grid ma-grid--2">
+                                <div class="ma-field"><label>Varsayılan Yanıt Yöntemi</label><select class="ma-select" data-settings-field="defaultReplyMethod">${[['free','Sadece Çeviri'],['ai','AI ile Düzenle'],['template','Hazır Şablon']].map(([id,label]) => `<option value="${id}" ${s.defaultReplyMethod === id ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+                                <div class="ma-field"><label>Varsayılan Ton</label><select class="ma-select" data-settings-field="defaultTone">${[['friendly','Samimi'],['professional','Profesyonel'],['apologetic','Özür Dileyen'],['short','Kısa'],['detailed','Detaylı'],['formal','Resmî']].map(([id,label]) => `<option value="${id}" ${s.defaultTone === id ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+                            </div>
+                        </div></section>
 
-                        <section class="ma-card"><div class="ma-card__head"><h3>Çeviri Ayarları</h3></div><div class="ma-card__body ma-stack">${switchRow('freeFallback','Ücretsiz Çeviri Yedeğini Kullan','DeepL hatasında Google çeviri devreye girer.')}<div class="ma-field"><label>Varsayılan Çeviri Motoru</label><select class="ma-select" data-settings-field="translator"><option value="google" ${s.translator === 'google' ? 'selected' : ''}>Google Ücretsiz</option><option value="deepl" ${s.translator === 'deepl' ? 'selected' : ''}>DeepL</option></select></div><div class="ma-field"><label>DeepL API Anahtarı</label><input class="ma-input" type="password" data-settings-field="deeplApiKey" value="${attr(s.deeplApiKey)}" autocomplete="off"></div>${switchRow('deeplPro','DeepL Pro','api.deepl.com endpointini kullanır.')}</div></section>
+                        <section class="ma-card"><div class="ma-card__head"><h3>Çeviri Ayarları</h3></div><div class="ma-card__body ma-stack">${switchRow('freeFallback','Ücretsiz Çeviri Yedeğini Kullan','DeepL hatasında Google çeviri devreye girer.')}<div class="ma-grid ma-grid--2"><div class="ma-field"><label>Varsayılan Çeviri Motoru</label><select class="ma-select" data-settings-field="translator"><option value="google" ${s.translator === 'google' ? 'selected' : ''}>Google Ücretsiz</option><option value="deepl" ${s.translator === 'deepl' ? 'selected' : ''}>DeepL</option></select></div><div class="ma-field"><label>Önizleme Dili</label><select class="ma-select" data-settings-field="previewLanguage">${Object.entries(LANGUAGE_NAMES).filter(([code]) => code !== 'und').map(([code,name]) => `<option value="${code}" ${s.previewLanguage === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div></div><div class="ma-field"><label>DeepL API Anahtarı</label><input class="ma-input" type="password" data-settings-field="deeplApiKey" value="${attr(s.deeplApiKey)}" autocomplete="off"></div>${switchRow('deeplPro','DeepL Pro','api.deepl.com endpointini kullanır.')}</div></section>
 
                         <section class="ma-card"><div class="ma-card__head"><h3>İmza ve Mağaza</h3></div><div class="ma-card__body ma-stack"><div class="ma-field"><label>Mağaza Adı</label><input class="ma-input" data-settings-field="shopName" value="${attr(s.shopName)}"></div><div class="ma-field"><label>İmza</label><input class="ma-input" data-settings-field="signature" value="${attr(s.signature)}"></div><div class="ma-field"><label>Kalıcı Mağaza Talimatı</label><textarea class="ma-textarea" data-settings-field="storeInstruction">${html(s.storeInstruction)}</textarea></div></div></section>
 
-                        <section class="ma-card"><div class="ma-card__head"><h3>Kampanya ve Geçmiş</h3></div><div class="ma-card__body ma-stack">${switchRow('autoAdvanceCampaign','Doğrulama Sonrası Sıradaki','Mesaj doğrulanınca sonraki konuşmaya geçer.')}${switchRow('autoSendCampaign','Otomatik Gönderim','Yorum taleplerinde uygulanmaz; bu mesajlar yalnız sizin “Gönder ve Sonrakine Geç” tıklamanızla gönderilir.')}${switchRow('checkUpdates','GitHub Güncelleme Kontrolü','Belirlenen aralıkla userscript sürümünü kontrol eder.')}<div class="ma-grid ma-grid--2"><div class="ma-field"><label>Güncelleme Kontrol Aralığı (saat)</label><input class="ma-input" type="number" min="24" max="168" data-settings-field="updateCheckHours" value="${attr(s.updateCheckHours)}"></div><div class="ma-field"><label>Geçmiş Saklama Süresi (gün)</label><input class="ma-input" type="number" min="1" max="365" data-settings-field="retainHistoryDays" value="${attr(s.retainHistoryDays)}"></div></div></div></section>
+                        <section class="ma-card"><div class="ma-card__head"><h3>Kampanya ve Geçmiş</h3></div><div class="ma-card__body ma-stack">${switchRow('autoAdvanceCampaign','Doğrulama Sonrası Sıradaki','Mesaj doğrulanınca sonraki konuşmaya geçer.')}${switchRow('autoSendCampaign','Otomatik Gönderim','Yorum taleplerinde uygulanmaz; bu mesajlar yalnız sizin “Gönder ve Sonrakine Geç” tıklamanızla gönderilir.')}${switchRow('checkUpdates','GitHub Güncelleme Kontrolü','Belirlenen aralıkla userscript sürümünü kontrol eder.')}<div class="ma-field"><label>Teslim Edilenler Varsayılan Şablonu</label><select class="ma-select" data-settings-field="defaultDeliveredTemplateId">${TemplateEngine.active().map(template => `<option value="${attr(template.id)}" ${s.defaultDeliveredTemplateId === template.id ? 'selected' : ''}>${html(template.name)}</option>`).join('')}</select></div><div class="ma-grid ma-grid--2"><div class="ma-field"><label>Güncelleme Kontrol Aralığı (saat)</label><input class="ma-input" type="number" min="24" max="168" data-settings-field="updateCheckHours" value="${attr(s.updateCheckHours)}"></div><div class="ma-field"><label>Geçmiş Saklama Süresi (gün)</label><input class="ma-input" type="number" min="1" max="365" data-settings-field="retainHistoryDays" value="${attr(s.retainHistoryDays)}"></div></div></div></section>
                     </div>
                 </div>`;
         },
@@ -5891,6 +6643,20 @@
                 detail: { action, message: error?.message || String(error) },
             }).catch(historyError => console.error(`[${APP.id}] UI hata kaydı saklanamadı.`, historyError));
         },
+        pendingResolutionContextIsCurrent(orderId) {
+            const item = Campaign.current();
+            if (!item || item.status !== CAMPAIGN_SEND_PENDING_STATUS || String(item.orderId) !== String(orderId)) return false;
+            if (Router.page() === 'orders') return Router.isCompletedOrdersPage();
+            if (Router.page() !== 'messages') return false;
+            const expectedIdentity = Router.conversationIdentity(item.messageUrl);
+            const routeIdentity = Router.conversationIdentity(location.href);
+            const context = MessageAdapter.context();
+            const contextIdentity = String(context?.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+            return Boolean(expectedIdentity
+                && expectedIdentity === routeIdentity
+                && expectedIdentity === contextIdentity
+                && (!context?.orderId || String(context.orderId) === String(orderId)));
+        },
         async onClick(event) {
             const target = event.target.closest('button, [data-template-edit], [data-review-id], [data-history-id]');
             if (!target) return;
@@ -5899,8 +6665,8 @@
             if (target.dataset.action === 'toggle-wide') { this.state.fullscreen = !this.state.fullscreen; return this.render(); }
             if (target.dataset.page) { this.state.page = target.dataset.page; return this.refreshCurrent(); }
             if (target.dataset.tone) { this.state.tone = target.dataset.tone; return this.render(); }
-            if (target.dataset.templateEdit) { this.state.templateEditId = target.dataset.templateEdit; return this.render(); }
-            if (target.dataset.reviewId) { this.state.selectedReviewId = target.dataset.reviewId; this.state.reviewAnalysis = null; return this.render(); }
+            if (target.dataset.templateEdit) { this.selectTemplateForEdit(target.dataset.templateEdit); return this.render(); }
+            if (target.dataset.reviewId) { this.selectReview(target.dataset.reviewId); return this.render(); }
             if (target.dataset.historyId) { this.state.historyDetailId = target.dataset.historyId; return this.render(); }
             if (target.dataset.variable) return this.insertVariable(target.dataset.variable);
             if (target.dataset.orderOpen) {
@@ -5910,6 +6676,9 @@
             }
             if (target.dataset.orderConfirmSent) {
                 const orderId = target.dataset.orderConfirmSent;
+                if (!this.pendingResolutionContextIsCurrent(orderId)) {
+                    throw new Error('Bu gönderim doğrulaması bu konuşmaya ait değil veya konuşma değişti. Doğru Etsy konuşmasını açıp yeniden deneyin.');
+                }
                 if (!confirm('Mesajın Etsy konuşmasında gerçekten gönderildiğini doğruluyor musunuz?')) return;
                 await Campaign.resolvePendingSend(orderId, 'sent');
                 this.toast('Gönderim kullanıcı tarafından doğrulandı.', 'success');
@@ -5917,6 +6686,9 @@
             }
             if (target.dataset.orderConfirmNotSent) {
                 const orderId = target.dataset.orderConfirmNotSent;
+                if (!this.pendingResolutionContextIsCurrent(orderId)) {
+                    throw new Error('Bu gönderim doğrulaması bu konuşmaya ait değil veya konuşma değişti. Doğru Etsy konuşmasını açıp yeniden deneyin.');
+                }
                 if (!confirm('Mesajın Etsy konuşmasında gönderilmediğini kontrol ettiniz mi? Bu seçim siparişi yeniden denemeye açar.')) return;
                 await Campaign.resolvePendingSend(orderId, 'not_sent');
                 this.toast('Sipariş yeniden denemeye açıldı.', 'warning');
@@ -5924,6 +6696,7 @@
             }
             if (target.dataset.orderSkip) {
                 const orderId = target.dataset.orderSkip;
+                if (!confirm('Bu alıcı yalnız mevcut kampanyada atlansın mı? Gönderim yapılmayacak.')) return;
                 await Campaign.skipOrder(orderId);
                 this.state.selectedOrders.delete(orderId);
                 const order = this.state.orders.find(item => item.orderId === orderId);
@@ -5934,11 +6707,15 @@
             if (!action) return;
             try {
                 if (action === 'version-action') { if (Updates.isAvailable()) Updates.install(); else await Updates.check({ force: true }); }
-                if (action === 'provider-doc') GMX.open(AI.provider().apiKeyUrl);
+                if (action === 'provider-doc') {
+                    const providerId = this.ensureSettingsDraft().settings.aiProvider;
+                    GMX.open(AI.provider(providerId).apiKeyUrl);
+                }
                 if (action === 'provider-refresh-models') await this.refreshProviderModels();
                 if (action === 'provider-test') await this.testProvider();
                 if (action === 'config-export') await this.exportConfig();
                 if (action === 'config-import') this.shadow.querySelector('[data-config-file]')?.click();
+                if (action === 'telemetry-settings') await openTelemetrySettings();
                 if (action === 'update-check') await Updates.check({ force: true });
                 if (action === 'update-install') Updates.install();
                 if (action === 'github-open') GMX.open(RELEASE.repoUrl);
@@ -5962,14 +6739,35 @@
                 if (action === 'orders-clear-selection') {
                     this.state.selectedOrders.clear();
                 }
+                if (action === 'go-messages') location.href = 'https://www.etsy.com/messages';
                 if (action === 'go-orders') location.href = 'https://www.etsy.com/your/orders/sold/completed';
                 if (action === 'campaign-create') await this.createCampaign();
                 if (action === 'campaign-start') await Campaign.start();
                 if (action === 'campaign-send-next') { this.setBusy(true); await Campaign.sendCurrentByUser(); }
-                if (action === 'campaign-skip') await Campaign.skipCurrent();
-                if (action === 'campaign-cancel') await Campaign.cancel();
+                if (action === 'campaign-skip') {
+                    if (confirm('Bu alıcı mevcut kampanyada atlansın ve sıradaki alıcıya geçilsin mi? Bu işlem mesaj göndermez.')) {
+                        const expectedItemId = target.dataset.campaignItemId || '';
+                        const current = Campaign.current();
+                        const orderId = target.dataset.campaignOrderId || (current?.id === expectedItemId ? current.orderId : '');
+                        if (!orderId || !expectedItemId) throw campaignConflictError();
+                        await Campaign.skipOrder(orderId, {
+                            expectedItemId,
+                            expectedCampaignId: target.dataset.campaignId || '',
+                            expectedRevision: target.dataset.campaignRevision,
+                            navigate: true,
+                        });
+                    }
+                }
+                if (action === 'campaign-cancel') {
+                    if (confirm('Bu kampanya durdurulsun mu? Henüz gönderilmemiş alıcılar kuyruktan çıkarılır.')) {
+                        await Campaign.cancel({
+                            expectedCampaignId: target.dataset.campaignId || '',
+                            expectedRevision: target.dataset.campaignRevision,
+                        });
+                    }
+                }
                 if (action === 'reviews-scan') this.refreshReviews();
-                if (action === 'go-dashboard') location.href = 'https://www.etsy.com/your/shops/me/dashboard';
+                if (action === 'go-dashboard' || action === 'go-reviews') location.href = 'https://www.etsy.com/your/shops/me/dashboard/activity';
                 if (action === 'review-translate') await this.translateReview();
                 if (action === 'review-analyze') await this.analyzeReview();
                 if (action === 'review-insert-public') await this.insertReviewPublic();
@@ -5989,8 +6787,9 @@
         },
         onInput(event) {
             if (event.target.dataset.providerField) {
-                const profile = AI.profile();
+                const profile = this.draftProviderProfile();
                 profile[event.target.dataset.providerField] = event.target.value;
+                this.markSettingsDirty();
                 return;
             }
             const bind = event.target.dataset.bind;
@@ -6009,10 +6808,19 @@
             }
             if (event.target.dataset.settingsField) {
                 const key = event.target.dataset.settingsField;
-                Store.settings[key] = event.target.type === 'checkbox' ? event.target.checked : event.target.type === 'number' ? Number(event.target.value) : event.target.value;
+                const draft = this.ensureSettingsDraft().settings;
+                draft[key] = event.target.type === 'checkbox' ? event.target.checked : event.target.type === 'number' ? Number(event.target.value) : event.target.value;
+                this.markSettingsDirty();
                 return;
             }
-            if (event.target.dataset.templateField) return;
+            if (event.target.dataset.templateField) {
+                const template = this.templateForEdit();
+                if (!template) return;
+                template[event.target.dataset.templateField] = event.target.value;
+                this.state.templateDirty = true;
+                this.updateTemplatePreview();
+                return;
+            }
         },
         async onChange(event) {
             if (event.target.dataset.reviewDecision) {
@@ -6033,12 +6841,23 @@
                 return;
             }
             if (event.target.dataset.providerField) {
-                AI.profile()[event.target.dataset.providerField] = event.target.value;
+                this.draftProviderProfile()[event.target.dataset.providerField] = event.target.value;
+                this.markSettingsDirty();
+                return;
+            }
+            if (event.target.dataset.templateField) {
+                const template = this.templateForEdit();
+                if (!template) return;
+                template[event.target.dataset.templateField] = event.target.value;
+                this.state.templateDirty = true;
+                this.updateTemplatePreview();
                 return;
             }
             if (event.target.dataset.settingsField) {
                 const key = event.target.dataset.settingsField;
-                Store.settings[key] = event.target.type === 'checkbox' ? event.target.checked : event.target.type === 'number' ? Number(event.target.value) : event.target.value;
+                const draft = this.ensureSettingsDraft().settings;
+                draft[key] = event.target.type === 'checkbox' ? event.target.checked : event.target.type === 'number' ? Number(event.target.value) : event.target.value;
+                this.markSettingsDirty();
                 if (key === 'aiProvider' || key === 'configIncludeSecrets') this.render();
                 return;
             }
@@ -6051,6 +6870,7 @@
                     this.state.reply = null;
                     this.state.replyBinding = null;
                     this.state.replyTr = '';
+                    this.state.replyMethod = '';
                     this.state.lastReplyMode = '';
                 }
                 this.render();
@@ -6087,7 +6907,8 @@
             const work = this.beginMessageWork(context);
             this.adoptMessageContext(context);
             this.setBusy(true);
-            const result = await Translator.translate(text, 'tr');
+            const previewLanguage = Store.settings.previewLanguage || 'tr';
+            const result = await Translator.translate(text, previewLanguage);
             if (!this.messageWorkIsCurrent(work)) return false;
             this.state.translation = result;
             if (Store.settings.replyInCustomerLanguage) {
@@ -6096,7 +6917,7 @@
             this.state.analysis = Heuristics.analyze(`${text}
 ${result.text || ''}`);
             void trackTelemetry('message_translation_generated');
-            this.toast(`Mesaj ${langName(result.detectedLanguage)} dilinden Türkçeye çevrildi.`, 'success');
+            this.toast(`Mesaj ${langName(result.detectedLanguage)} dilinden ${langName(previewLanguage)} diline çevrildi.`, 'success');
             return true;
         },
         async generateReply(options = {}) {
@@ -6175,7 +6996,8 @@ ${result.text || ''}`);
             this.state.reply = reply;
             this.state.replyBinding = { ...work };
             this.state.replyTr = replyTr;
-            this.state.composeMethod = finalMethod;
+            this.state.replyMethod = finalMethod;
+            this.state.composeMethod = method === 'ai' ? 'ai' : finalMethod;
             this.state.lastReplyMode = lastReplyMode;
             if (nextAnalysis) this.state.analysis = nextAnalysis;
             this.state.scrollToResult = true;
@@ -6198,11 +7020,20 @@ ${result.text || ''}`);
             if (!textarea) throw new Error('Etsy cevap alanı bulunamadı. Konuşmayı açıp tekrar deneyin.');
             if (!this.replyIsCurrent(binding)) throw new Error('Konuşma değiştiği için bu taslak aktarılamaz. Yeni konuşma için tekrar taslak hazırlayın.');
             const context = MessageAdapter.context();
-            MessageAdapter.insert(text, textarea);
-            Verification.prepare(text, { method: this.state.composeMethod, customerName: context.customerName, orderId: context.orderId, conversationId: context.conversationId, routeFingerprint: binding.routeFingerprint });
+            if (!this.messageContextMatchesBinding(context, binding) || MessageAdapter.getTextarea() !== textarea) {
+                throw new Error('Konuşma değiştiği için bu taslak aktarılamaz. Yeni konuşma için tekrar taslak hazırlayın.');
+            }
+            const existingText = trimmedMessageText(textarea.value || '');
+            const replyText = trimmedMessageText(text);
+            if (existingText && existingText !== replyText) {
+                throw new Error('Etsy mesaj alanında farklı, gönderilmemiş bir taslak var. Mevcut metni korumak için üzerine yazılmadı; alanı kontrol edip temizledikten sonra yeniden deneyin.');
+            }
+            if (!existingText) MessageAdapter.insert(text, textarea);
+            const replyMethod = this.state.replyMethod || this.state.composeMethod;
+            Verification.prepare(text, { method: replyMethod, customerName: context.customerName, orderId: context.orderId, conversationId: context.conversationId, routeFingerprint: binding.routeFingerprint });
             if (context.orderId) await Store.setStatus('orders', context.orderId, { status: 'inserted', messageHash: hashText(text) });
             if (context.conversationId) await Store.setStatus('conversations', context.conversationId, { status: 'inserted', messageHash: hashText(text) });
-            await History.log('reply_inserted', { source: 'messages', method: this.state.composeMethod, customer: context.customerName, orderId: context.orderId, conversationId: context.conversationId, title: 'Cevap Etsy kutusuna aktarıldı', detail: { text } });
+            await History.log('reply_inserted', { source: 'messages', method: replyMethod, customer: context.customerName, orderId: context.orderId, conversationId: context.conversationId, title: 'Cevap Etsy kutusuna aktarıldı', detail: { text } });
             this.toast('Cevap Etsy mesaj alanına aktarıldı. Göndermeden önce kontrol edin.', 'success', 6000);
         },
         async copySource(source) {
@@ -6215,9 +7046,14 @@ ${result.text || ''}`);
             if (!text) throw new Error('Kopyalanacak metin yok.');
             await copyText(text);
             this.toast('Panoya kopyalandı.', 'success');
-            if (selected) await History.log('copied', { source: 'reviews', customer: selected.customerName, title: 'Yorum cevabı kopyalandı', detail: { kind: source } });
+            if (selected && ['review-private', 'review-public'].includes(source)) {
+                await History.log('copied', { source: 'reviews', customer: selected.customerName, title: 'Yorum cevabı kopyalandı', detail: { kind: source } });
+            }
         },
         async createCampaign() {
+            if (Store.campaign?.items?.some(item => item.status === CAMPAIGN_SEND_PENDING_STATUS)) {
+                throw new Error('Gönderim doğrulaması bekleyen kampanya değiştirilemez. Önce Etsy konuşmasını kontrol edip “Gönderildi” veya “Gönderilmedi” seçin.');
+            }
             const template = TemplateEngine.get(this.state.selectedTemplateId);
             if (!template || template.archived) throw new Error('Aktif bir teslimat mesajı şablonu seçin.');
             const purpose = Outreach.purposeForTemplate(template);
@@ -6239,53 +7075,82 @@ ${result.text || ''}`);
         async translateReview() {
             const review = this.state.reviews.find((item) => item.id === this.state.selectedReviewId);
             if (!review) throw new Error('Yorum seçilmedi.');
+            const work = this.beginReviewWork(review);
             this.setBusy(true);
             const result = await Translator.translate(review.text, 'tr');
+            if (!this.reviewWorkIsCurrent(work)) return false;
             this.state.reviewAnalysis = { ...(this.state.reviewAnalysis || {}), summary_tr: result.text, detected_language: result.detectedLanguage };
+            this.state.reviewAnalysisBinding = work;
             this.toast('Yorum Türkçeye çevrildi.', 'success');
+            return true;
         },
         async analyzeReview() {
             const review = this.state.reviews.find((item) => item.id === this.state.selectedReviewId);
             if (!review) throw new Error('Yorum seçilmedi.');
+            const work = this.beginReviewWork(review);
             this.setBusy(true);
             const result = await AI.analyzeReview(review);
+            if (!this.reviewWorkIsCurrent(work)) return false;
             this.state.reviewAnalysis = result;
+            this.state.reviewAnalysisBinding = work;
             await Store.setStatus('reviews', review.id, { status: 'draft', analysis: { sentiment: result.sentiment, risk: result.risk_level } });
             await History.log('review_analyzed', { source: 'reviews', method: `ai:${Store.settings.aiProvider}`, customer: review.customerName, title: 'Yorum analiz edildi', detail: result });
             this.toast('Yorum analizi ve cevap taslakları hazırlandı.', 'success');
+            return true;
         },
         async insertReviewPublic() {
             const review = this.state.reviews.find((item) => item.id === this.state.selectedReviewId);
-            const text = this.state.reviewAnalysis?.public_reply;
+            const text = this.reviewAnalysisIsCurrent(review) ? this.state.reviewAnalysis?.public_reply : '';
             if (!review || !text) throw new Error('Public cevap taslağı bulunamadı.');
+            const binding = { ...this.state.reviewAnalysisBinding };
+            const replyHash = hashText(text);
+            const isCurrent = () => this.reviewWorkIsCurrent(binding)
+                && this.state.reviewAnalysisBinding?.generation === binding.generation
+                && hashText(this.state.reviewAnalysis?.public_reply || '') === replyHash;
+            if (!isCurrent()) throw new Error('Yorum veya sayfa değişti; güncel yorum için yeniden taslak hazırlayın.');
             this.setBusy(true);
-            await ReviewsAdapter.insertPublic(review, text);
+            await ReviewsAdapter.insertPublic(review, text, { isCurrent });
+            if (!isCurrent()) throw new Error('Yorum veya sayfa değişti; public cevap durumu kaydedilmedi. Güncel yorumu kontrol edin.');
             await Store.setStatus('reviews', review.id, { status: 'inserted', publicReplyHash: hashText(text) });
             await History.log('review_public_inserted', { source: 'reviews', method: 'manual', customer: review.customerName, title: 'Public cevap Etsy alanına aktarıldı', detail: { text } });
             this.toast('Public cevap Etsy alanına aktarıldı; yayınlamadan önce kontrol edin.', 'warning', 7000);
         },
         async newTemplate() {
+            if (this.state.templateDirty && !confirm('Kaydedilmemiş şablon değişiklikleri silinip yeni şablon açılsın mı?')) return false;
             const template = { id: uid('tpl'), name: 'Yeni Şablon', category: 'Genel', tone: 'friendly', language: 'tr', shortcut: '', text: 'Merhaba {{firstName}}!\n\n\n\n{{signature}}', archived: false, createdAt: nowIso(), updatedAt: nowIso() };
-            await Store.saveTemplates([template, ...Store.templates]);
             this.state.templateEditId = template.id;
-            this.toast('Yeni şablon oluşturuldu.', 'success');
+            this.state.templateDraft = template;
+            this.state.templateDirty = true;
+            this.toast('Yeni şablon taslağı açıldı; kalıcı olması için Kaydet’e basın.', 'info', 5000);
+            return true;
         },
         async saveTemplate() {
-            const template = TemplateEngine.get(this.state.templateEditId);
+            const template = this.templateForEdit();
             if (!template) throw new Error('Şablon bulunamadı.');
             const fields = [...this.shadow.querySelectorAll('[data-template-field]')];
             for (const field of fields) template[field.dataset.templateField] = field.value;
             template.name = normalize(template.name) || 'Adsız Şablon';
+            template.category = normalize(template.category) || 'Genel';
+            template.shortcut = normalize(template.shortcut || '');
+            if (!String(template.text || '').trim()) throw new Error('Şablon metni boş bırakılamaz.');
             template.updatedAt = nowIso();
-            await Store.saveTemplates([...Store.templates]);
+            const storedIndex = Store.templates.findIndex(item => item.id === template.id);
+            const next = Store.templates.map(clone);
+            if (storedIndex === -1) next.unshift(clone(template));
+            else next[storedIndex] = clone(template);
+            await Store.saveTemplates(next);
+            this.state.templateDraft = clone(TemplateEngine.get(template.id) || template);
+            this.state.templateDirty = false;
             this.toast('Şablon kaydedildi.', 'success');
         },
         async archiveTemplate() {
+            if (this.state.templateDirty) throw new Error('Arşiv durumunu değiştirmeden önce şablonu kaydedin.');
             const template = TemplateEngine.get(this.state.templateEditId);
             if (!template) throw new Error('Şablon bulunamadı.');
             template.archived = !template.archived;
             template.updatedAt = nowIso();
             await Store.saveTemplates([...Store.templates]);
+            this.state.templateDraft = clone(template);
             this.toast(template.archived ? 'Şablon arşivlendi.' : 'Şablon yeniden etkinleştirildi.', 'success');
         },
         insertVariable(variable) {
@@ -6313,69 +7178,102 @@ ${result.text || ''}`);
             this.toast('Geçmiş temizlendi.', 'success');
         },
         readSettingsForm() {
-            const next = { ...Store.settings };
+            const next = clone(this.ensureSettingsDraft().settings);
             for (const field of this.shadow.querySelectorAll('[data-settings-field]')) {
                 const key = field.dataset.settingsField;
                 if (field.type === 'checkbox') next[key] = field.checked;
                 else if (field.type === 'number') next[key] = Number(field.value);
                 else next[key] = field.value.trim();
             }
+            this.state.settingsDraft = next;
             return next;
         },
-        async saveSettings() {
+        async saveSettings({ notify = true } = {}) {
             const next = this.readSettingsForm();
+            const providers = clone(this.ensureSettingsDraft().providers);
             await Store.saveSettings(next);
-            await Store.saveProviders(Store.providers);
+            await Store.saveProviders(providers);
             await Store.pruneHistory();
-            this.state.composeMethod = next.defaultReplyMethod || this.state.composeMethod;
+            this.state.composeMethod = Store.settings.defaultReplyMethod;
+            this.state.tone = Store.settings.defaultTone;
+            this.state.ordersTemplateInitialized = false;
             await MessageCenterAgent.reconfigure().catch(error => {
                 MessageCenterAgent.lastError = error.message || 'agent';
             });
-            this.toast('Ayarlar ve API profilleri kalıcı olarak kaydedildi.', 'success');
+            this.ensureSettingsDraft({ reset: true });
+            if (notify) this.toast('Ayarlar ve API profilleri kalıcı olarak kaydedildi.', 'success');
+            return Store.settings;
         },
         async resetSettings() {
-            if (!confirm('Genel ayarlar varsayılanlara döndürülsün mü? API anahtarları korunacaktır.')) return;
-            const preservedProvider = Store.settings.aiProvider;
-            await Store.saveSettings({ ...DEFAULT_SETTINGS, aiProvider: preservedProvider, githubUsername: Store.settings.githubUsername });
-            this.toast('Genel ayarlar sıfırlandı; API anahtarları korundu.', 'success');
+            if (!confirm('Genel ayarlar varsayılan taslağa döndürülsün mü? Kalıcı olması için ardından Kaydet’e basmanız gerekir.')) return;
+            const current = this.ensureSettingsDraft().settings;
+            this.state.settingsDraft = {
+                ...clone(DEFAULT_SETTINGS),
+                aiProvider: current.aiProvider,
+                githubUsername: current.githubUsername,
+                deeplApiKey: current.deeplApiKey,
+                messageCenterAgentToken: current.messageCenterAgentToken,
+            };
+            this.state.settingsDirty = true;
+            this.toast('Varsayılanlar taslağa alındı; API ve agent anahtarları korundu.', 'info');
         },
         async refreshProviderModels() {
             const next = this.readSettingsForm();
-            await Store.saveSettings(next);
-            await Store.saveProviders(Store.providers);
+            const providerId = AI_PROVIDERS[next.aiProvider] ? next.aiProvider : 'openai';
+            const profile = this.draftProviderProfile(providerId);
             this.setBusy(true);
-            const models = await AI.listModels(next.aiProvider);
-            this.toast(`${AI.provider(next.aiProvider).name}: ${models.length} model/sürüm yüklendi.`, 'success');
+            const models = await AI.listModels(providerId, profile, { persist: false });
+            this.markSettingsDirty();
+            this.toast(`${AI.provider(providerId).name}: ${models.length} model/sürüm taslağa yüklendi. Kaydet ile kalıcılaştırın.`, 'success');
         },
         async testProvider() {
             const next = this.readSettingsForm();
-            await Store.saveSettings(next);
-            await Store.saveProviders(Store.providers);
+            const providerId = AI_PROVIDERS[next.aiProvider] ? next.aiProvider : 'openai';
+            const active = AI.ensure(providerId, this.draftProviderProfile(providerId));
             this.setBusy(true);
-            const result = await AI.test();
-            this.toast(`${AI.provider().name} bağlantısı başarılı: ${result.message}`, 'success', 6000);
+            const result = await AI.test(active);
+            this.toast(`${AI.provider(providerId).name} bağlantısı başarılı: ${result.message}`, 'success', 6000);
         },
         async exportConfig() {
             const next = this.readSettingsForm();
-            await Store.saveSettings(next);
-            await Store.saveProviders(Store.providers);
-            ConfigManager.download(Boolean(next.configIncludeSecrets));
-            this.toast(next.configIncludeSecrets ? 'Config API anahtarlarıyla indirildi. Dosyayı paylaşmayın.' : 'Config güvenli biçimde indirildi; API anahtarları dahil edilmedi.', next.configIncludeSecrets ? 'warning' : 'success', 6000);
+            const includeSecrets = Boolean(next.configIncludeSecrets);
+            if (includeSecrets && !confirm('İndirilecek config API ve agent anahtarlarını düz metin içerecek. Devam edilsin mi?')) return;
+            ConfigManager.download(includeSecrets, { settings: next, providers: this.ensureSettingsDraft().providers });
+            this.toast(includeSecrets ? 'Config API anahtarlarıyla indirildi. Dosyayı paylaşmayın.' : 'Config güvenli biçimde indirildi; API anahtarları dahil edilmedi.', includeSecrets ? 'warning' : 'success', 6000);
         },
         async importConfigFile(file) {
             this.setBusy(true);
-            const payload = await ConfigManager.importText(await file.text());
-            this.state.composeMethod = Store.settings.defaultReplyMethod;
-            await MessageCenterAgent.reconfigure().catch(error => {
-                MessageCenterAgent.lastError = error.message || 'agent';
-            });
-            this.toast(`Config v${payload.appVersion || 'bilinmiyor'} içe aktarıldı.`, 'success');
-            this.render();
+            try {
+                const text = await file.text();
+                const preview = safeJson(text);
+                const replacesTemplates = Array.isArray(preview?.templates) && preview.templates.length > 0;
+                if (replacesTemplates
+                    && this.state.templateDirty
+                    && !confirm('Config mevcut kaydedilmemiş şablon taslağını değiştirecek. Taslak silinip config şablonları yüklensin mi?')) {
+                    return false;
+                }
+                const payload = await ConfigManager.importText(text);
+                this.state.composeMethod = Store.settings.defaultReplyMethod;
+                this.state.tone = Store.settings.defaultTone;
+                this.state.ordersTemplateInitialized = false;
+                if (replacesTemplates) {
+                    if (!TemplateEngine.get(this.state.templateEditId)) this.state.templateEditId = Store.templates[0]?.id || '';
+                    this.state.templateDraft = null;
+                    this.state.templateDirty = false;
+                }
+                this.ensureSettingsDraft({ reset: true });
+                await MessageCenterAgent.reconfigure().catch(error => {
+                    MessageCenterAgent.lastError = error.message || 'agent';
+                });
+                this.toast(`Config v${payload.appVersion || 'bilinmiyor'} içe aktarıldı.`, 'success');
+                this.render();
+                return true;
+            } finally {
+                this.setBusy(false);
+            }
         },
         async completeSetup() {
-            const next = this.readSettingsForm();
-            await Store.saveSettings(next);
-            await Store.saveProviders(Store.providers);
+            const next = await this.saveSettings({ notify: false });
             await Store.saveOnboarding({ completed: true, completedAt: nowIso(), githubStepSeen: Boolean(next.githubUsername) });
             this.toast('Kurulum tamamlandı. Ayarlar sonraki script güncellemelerinde korunacak.', 'success', 6000);
         },
@@ -6402,15 +7300,29 @@ ${result.text || ''}`);
             await this.onRoute();
             Updates.check({ silent: true }).then(() => UI.render()).catch(() => {});
         },
+        maybeAutoOpenVerifiedMessage() {
+            if (UI.state.open || Store.settings.openOnMessagePage !== true || Router.page() !== 'messages') return false;
+            const conversationId = Router.conversationId();
+            if (!conversationId) return false;
+            try {
+                const context = MessageAdapter.context();
+                if (!context?.conversationId || context.conversationId !== conversationId) return false;
+            } catch { return false; }
+            const targetPage = CONTEXT_PAGES.has(UI.state.page) ? 'messages' : UI.state.page;
+            UI.open(targetPage);
+            return true;
+        },
         async onRoute() {
             const fingerprint = Router.routeFingerprint();
             if (fingerprint !== this.routeFingerprint) {
                 this.routeFingerprint = fingerprint;
                 UI.invalidateMessageWork();
+                UI.invalidateReviewWork();
                 Verification.invalidate(pending => pending.routeFingerprint !== fingerprint);
-                if (Router.page() === 'messages') UI.state.page = 'messages';
+                if (CONTEXT_PAGES.has(UI.state.page)) UI.state.page = Router.page();
             }
-            if (UI.state.open) await UI.refreshCurrent();
+            const autoOpened = this.maybeAutoOpenVerifiedMessage();
+            if (UI.state.open && !autoOpened) await UI.refreshCurrent();
             if (Router.page() === 'orders' && !UI.state.open) {
                 const orders = OrdersAdapter.scan();
                 OrdersAdapter.decorate(orders);
