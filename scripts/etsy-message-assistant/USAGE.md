@@ -22,22 +22,23 @@ Script doğrulanamayan bir dashboard bağlamında gönderim yapmaz; uygun sayfa 
 4. Varsayılan çeviri motorunu seçin; kullanacaksanız DeepL veya AI sağlayıcısı, model ve API anahtarını kaydedip test edin.
 5. Gerekirse şablonları, imzayı ve cevap tercihlerini düzenleyin.
 
-> **Gizlilik uyarısı:** Google Translate varsayılan sağlayıcıdır ve otomatik Türkçe önizleme varsayılan olarak açıktır. Bir konuşma açıldığında son müşteri mesajı Google Translate'e gönderilebilir. DeepL hatasında, **Ücretsiz fallback** açıkken çeviri Google'a düşebilir. Yorum talebi dışındaki teslimat şablonları da otomatik önizleme kapalı olsa bile hedef dili belirlemek için son mesajı seçili çeviri sağlayıcısına gönderebilir. Özel yorum-talebi şablonu bu dil algılama aktarımını atlar; AI yöntemi ayrıca seçilirse aşağıda açıklanan bağlam yine AI sağlayıcısına gidebilir. Bu aktarımları istemiyorsanız mesaj sayfasını veya sırayı açmadan önce **Makaytron Ayarları**ndaki sağlayıcı, otomatik önizleme ve fallback tercihlerini kontrol edin.
+> **Gizlilik uyarısı:** Panel mesaj sayfasında varsayılan olarak kapalıdır. Google Translate varsayılan sağlayıcıdır ve otomatik Türkçe önizleme ayarı varsayılan olarak açıktır; ancak önizleme yalnız paneli sağ üstteki **Mesaj Asistanı · Aç** kontrolüyle açtığınızda veya **Mesaj Sayfasında Otomatik Aç** tercihini ayrıca etkinleştirdiğinizde çalışıp son müşteri mesajını Google Translate'e gönderebilir. DeepL hatasında, **Ücretsiz fallback** açıkken çeviri Google'a düşebilir. Yorum talebi dışındaki teslimat şablonları da otomatik önizleme kapalı olsa bile hedef dili belirlemek için son mesajı seçili çeviri sağlayıcısına gönderebilir. Özel yorum-talebi şablonu bu dil algılama aktarımını atlar; AI yöntemi ayrıca seçilirse aşağıda açıklanan bağlam yine AI sağlayıcısına gidebilir. Bu aktarımları istemiyorsanız paneli veya sırayı açmadan önce **Makaytron Ayarları**ndaki sağlayıcı, otomatik önizleme ve fallback tercihlerini kontrol edin.
 
 AI taslak/düzenleme isteği; müşteri adı, konuşma ve sipariş kimlikleri, ürün başlığı, mağaza adı/imzası, son 10 mesaja kadar konuşma bağlamı ile taslak, şablon veya talimatı seçtiğiniz AI sağlayıcısına gönderebilir. Sağlayıcının gizlilik ve saklama koşullarını inceleyin.
 
 ## Bireysel müşteri mesajı
 
 1. Etsy'de doğru müşteri konuşmasını açın.
-2. **Müşterinin Mesajı** bölümünü ve gerekiyorsa **Türkçe Göster** sonucunu okuyun.
-3. Türkçe cevabınızı yazın veya **Hazır mesaj ekle…** listesinden bir şablon seçin.
-4. İhtiyacınıza göre bir işlem kullanın:
+2. Sağ üstteki **Mesaj Asistanı · Aç** kontrolüyle paneli açın. Bu kontrol sayfada kalır; panel kendiliğinden ekranın ortasına gelmez.
+3. **Müşterinin Mesajı** bölümünü ve gerekiyorsa **Türkçe Göster** sonucunu okuyun.
+4. Türkçe cevabınızı yazın veya **Hazır mesaj ekle…** listesinden bir şablon seçin.
+5. İhtiyacınıza göre bir işlem kullanın:
    - **Sadece Çevir:** Yazdığınız cevabı müşterinin diline çevirir.
    - **AI ile Düzenle:** Mevcut taslağı seçili AI sağlayıcısıyla iyileştirir.
    - **AI Cevap Önersin:** Konuşma bağlamından yeni bir cevap taslağı üretir.
-5. **Gönderilecek Mesaj** metnini okuyun; gerekiyorsa düzenleyin, yeniden hazırlayın veya kopyalayın.
-6. **Etsy'ye Aktar** düğmesine basın.
-7. Etsy mesaj alanına aktarılan metni son kez kontrol edin ve Etsy'nin kendi **Gönder** düğmesine siz basın.
+6. **Gönderilecek Mesaj** metnini okuyun; gerekiyorsa düzenleyin, yeniden hazırlayın veya kopyalayın.
+7. **Etsy'ye Aktar** düğmesine basın.
+8. Etsy mesaj alanına aktarılan metni son kez kontrol edin ve Etsy'nin kendi **Gönder** düğmesine siz basın.
 
 **Etsy'ye Aktar** normal bireysel akışta mesajı göndermez; yalnız composer alanını doldurur. Konuşma kullanıcı/kimlik bağlamı taslak hazırlandıktan sonra değişirse eski taslak güvenli biçimde reddedilir.
 

@@ -22,22 +22,23 @@ The script waits safely in an unverified dashboard context and does not send any
 4. Choose a translation engine. If needed, save and test your DeepL or AI provider, model, and API key.
 5. Configure templates, signature, and reply preferences.
 
-> **Privacy warning:** Google Translate is the default provider and automatic Turkish preview is enabled by default. Opening a conversation may send the latest customer message to Google Translate. If DeepL fails while **Ücretsiz fallback (Free fallback)** is enabled, translation may fall back to Google. Other, non-review delivered-order templates may also send the latest message to the selected translation provider to determine the target language even when automatic preview is off. The dedicated review-request template skips that language-detection transfer; choosing AI drafting can still send the context described below. Review the provider, automatic-preview, and fallback settings in **Makaytron Ayarları (Makaytron Settings)** before opening messages or a queue if you do not want these transfers.
+> **Privacy warning:** The panel is closed by default on message pages. Google Translate is the default provider and automatic Turkish preview is enabled by default, but the preview runs—and may send the latest customer message to Google Translate—only after you use the top-right **Message Assistant · Open** control or explicitly enable **Open Automatically on Message Page**. If DeepL fails while **Ücretsiz fallback (Free fallback)** is enabled, translation may fall back to Google. Other, non-review delivered-order templates may also send the latest message to the selected translation provider to determine the target language even when automatic preview is off. The dedicated review-request template skips that language-detection transfer; choosing AI drafting can still send the context described below. Review the provider, automatic-preview, and fallback settings in **Makaytron Ayarları (Makaytron Settings)** before opening the panel or a queue if you do not want these transfers.
 
 An AI drafting or polishing request may send the customer name, conversation and order IDs, item title, shop name/signature, up to the last 10 messages, and the draft, template, or instruction to the selected AI provider. Review that provider's privacy and retention terms.
 
 ## Individual customer reply
 
 1. Open the correct Etsy conversation.
-2. Read **Müşterinin Mesajı (Customer Message)** and, when needed, **Türkçe Göster (Show in Turkish)**.
-3. Write your Turkish response or choose a template from **Hazır mesaj ekle… (Insert Saved Template)**.
-4. Choose the appropriate action:
+2. Open the panel from the top-right **Message Assistant · Open** control. The compact control remains on the page; the panel does not appear in the middle of the page by itself.
+3. Read **Müşterinin Mesajı (Customer Message)** and, when needed, **Türkçe Göster (Show in Turkish)**.
+4. Write your Turkish response or choose a template from **Hazır mesaj ekle… (Insert Saved Template)**.
+5. Choose the appropriate action:
    - **Sadece Çevir (Translate Only):** translates your draft into the customer's language.
    - **AI ile Düzenle (Polish with AI):** improves the existing draft with the selected AI provider.
    - **AI Cevap Önersin (Suggest an AI Reply):** creates a new draft from the conversation context.
-5. Read and edit **Gönderilecek Mesaj (Message to Send)**; regenerate or copy it if needed.
-6. Select **Etsy'ye Aktar (Insert into Etsy)**.
-7. Recheck the text in Etsy's composer and click Etsy's own **Send** button yourself.
+6. Read and edit **Gönderilecek Mesaj (Message to Send)**; regenerate or copy it if needed.
+7. Select **Etsy'ye Aktar (Insert into Etsy)**.
+8. Recheck the text in Etsy's composer and click Etsy's own **Send** button yourself.
 
 In the normal individual workflow, **Insert into Etsy** fills the composer only; it does not send. If the conversation identity changes after drafting, the stale draft is rejected.
 
