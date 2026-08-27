@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.0.4
+// @version      1.1.0
 // @description  Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -12,8 +12,6 @@
 // @antifeature  tracking
 // @homepageURL  https://github.com/Makaytron/Etsy-Automation-Tools/tree/main/scripts/etsy-message-assistant
 // @supportURL   https://github.com/Makaytron/Etsy-Automation-Tools/issues
-// @updateURL    https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
-// @downloadURL  https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
 // @resource     makaytronLogo https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/assets/makaytron-logo.png
 // @match        https://www.etsy.com/messages*
 // @match        https://www.etsy.com/messages/*
@@ -43,6 +41,7 @@
 // @connect      openrouter.ai
 // @connect      raw.githubusercontent.com
 // @connect      sjwibgcflufmzaorlwqe.supabase.co
+// @connect      *
 // @noframes
 // @run-at       document-end
 // ==/UserScript==
@@ -50,7 +49,8 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.0.4';
+    const APP_VERSION = '1.1.0';
+    const CENTRAL_MESSAGE_CENTER_BUILD = true;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -737,6 +737,12 @@
         checkUpdates: true,
         updateCheckHours: 24,
         configIncludeSecrets: false,
+        messageCenterEnabled: false,
+        messageCenterUrl: '',
+        messageCenterStoreId: '',
+        messageCenterAgentToken: '',
+        messageCenterSyncSeconds: 10,
+        messageCenterPollSeconds: 3,
     });
 
     const AI_PROVIDERS = Object.freeze({
@@ -2224,14 +2230,18 @@
     const ConfigManager = {
         snapshot(includeSecrets = false) {
             const providers = clone(Store.providers);
-            if (!includeSecrets) for (const profile of Object.values(providers)) profile.apiKey = '';
+            const settings = clone(Store.settings);
+            if (!includeSecrets) {
+                for (const profile of Object.values(providers)) profile.apiKey = '';
+                settings.messageCenterAgentToken = '';
+            }
             return {
                 app: APP.id,
                 schemaVersion: APP.configSchema,
                 appVersion: APP.version,
                 exportedAt: nowIso(),
                 includesApiKeys: includeSecrets,
-                settings: clone(Store.settings),
+                settings,
                 providers,
                 templates: clone(Store.templates),
                 onboarding: clone(Store.onboarding),
@@ -2246,6 +2256,9 @@
             const payload = safeJson(text);
             if (!payload || payload.app !== APP.id || !payload.settings || !payload.providers) throw new Error('Geçerli Makaytron Message Assistant config dosyası değil.');
             const nextSettings = deepMerge(Store.settings, payload.settings);
+            if (!String(payload.settings?.messageCenterAgentToken || '').trim()) {
+                nextSettings.messageCenterAgentToken = Store.settings.messageCenterAgentToken || '';
+            }
             const nextProviders = clone(Store.providers);
             for (const [id, imported] of Object.entries(payload.providers || {})) {
                 if (!AI_PROVIDERS[id]) continue;
@@ -2470,6 +2483,7 @@
         },
         installationSourceUrl() { return this.installationSourceUrls()[0] || ''; },
         usesGitHubUpdateChannel() {
+            if (CENTRAL_MESSAGE_CENTER_BUILD) return false;
             const sources = this.installationSourceUrls();
             if (!sources.length) return true;
             try {
@@ -2806,6 +2820,468 @@
             return false;
         },
     };
+
+
+    const MessageCenterAgent = {
+        started: false,
+        busy: false,
+        heartbeatTimer: null,
+        syncTimer: null,
+        pollTimer: null,
+        routeTimer: null,
+        lastError: '',
+        lastHeartbeatAt: '',
+        lastSyncAt: '',
+        pendingKey() {
+            const storeId = String(Store.settings.messageCenterStoreId || '').trim().toLowerCase();
+            return `${APP.prefix}:message-center:pending:${storeId || 'unset'}`;
+        },
+        sentLedgerKey() {
+            const storeId = String(Store.settings.messageCenterStoreId || '').trim().toLowerCase();
+            return `${APP.prefix}:message-center:sent-ledger:${storeId || 'unset'}`;
+        },
+        config() {
+            const enabled = Store.settings.messageCenterEnabled === true;
+            const storeId = String(Store.settings.messageCenterStoreId || '').trim().toLowerCase();
+            const token = String(Store.settings.messageCenterAgentToken || '').trim();
+            const rawUrl = String(Store.settings.messageCenterUrl || '').trim().replace(/\/+$/, '');
+            let serverUrl = '';
+            try {
+                const parsed = new URL(rawUrl);
+                if (['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password) {
+                    serverUrl = parsed.href.replace(/\/+$/, '');
+                }
+            } catch { /* invalid URL */ }
+            return {
+                enabled,
+                storeId,
+                token,
+                serverUrl,
+                syncSeconds: Math.max(5, Math.min(120, Number(Store.settings.messageCenterSyncSeconds) || 10)),
+                pollSeconds: Math.max(2, Math.min(60, Number(Store.settings.messageCenterPollSeconds) || 3)),
+            };
+        },
+        isConfigured() {
+            const cfg = this.config();
+            return cfg.enabled && Boolean(cfg.serverUrl && cfg.storeId && cfg.token);
+        },
+        statusText() {
+            if (!Store.settings.messageCenterEnabled) return 'Kapalı';
+            if (!this.isConfigured()) return 'Eksik ayar';
+            if (this.lastError) return `Hata: ${this.lastError}`;
+            if (this.lastHeartbeatAt) return `Bağlı · ${formatDate(this.lastHeartbeatAt)}`;
+            return 'Bağlantı bekleniyor';
+        },
+        async request(method, path, body = null) {
+            const cfg = this.config();
+            if (!cfg.serverUrl || !cfg.storeId || !cfg.token) throw new Error('Mesaj Merkezi agent ayarları eksik.');
+            const response = await GMX.request({
+                method,
+                url: `${cfg.serverUrl}${path}`,
+                headers: {
+                    Authorization: `Bearer ${cfg.token}`,
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                data: body == null ? undefined : JSON.stringify(body),
+                timeout: 20000,
+            });
+            const payload = safeJson(response.responseText, {});
+            if (response.status && (response.status < 200 || response.status >= 300)) {
+                const error = new Error(String(payload?.error || `Message Center HTTP ${response.status}`));
+                error.status = response.status;
+                throw error;
+            }
+            return payload;
+        },
+        canonicalConversationUrl(value) {
+            try {
+                const url = new URL(value, location.href);
+                if (url.protocol !== 'https:' || url.hostname !== 'www.etsy.com') return '';
+                const id = Router.conversationIdFromUrl(url.href);
+                if (!id) return '';
+                url.hash = '';
+                return url.href;
+            } catch { return ''; }
+        },
+        extractTime(scope) {
+            if (!scope) return '';
+            const candidates = [
+                scope.querySelector('time[datetime]')?.getAttribute('datetime'),
+                scope.querySelector('[data-timestamp]')?.getAttribute('data-timestamp'),
+                scope.querySelector('[datetime]')?.getAttribute('datetime'),
+            ].filter(Boolean);
+            for (const candidate of candidates) {
+                const date = new Date(candidate);
+                if (!Number.isNaN(date.getTime())) return date.toISOString();
+            }
+            return '';
+        },
+        conversationScope(anchor) {
+            if (!anchor) return null;
+            const direct = anchor.closest('li, [role="listitem"], [data-conversation-id], [data-message-thread-id]');
+            if (direct) return direct;
+            let current = anchor;
+            for (let depth = 0; depth < 6 && current?.parentElement; depth += 1) {
+                current = current.parentElement;
+                const links = [...current.querySelectorAll('a[href*="/messages/"], a[href*="/conversations/"]')]
+                    .filter(link => Router.conversationIdFromUrl(link.href));
+                const unique = new Set(links.map(link => Router.conversationIdentity(link.href)));
+                if (unique.size === 1 && normalize(current.innerText || current.textContent || '').length <= 1400) return current;
+            }
+            return anchor.parentElement;
+        },
+        buyerNameFromScope(scope, anchor) {
+            const ignored = /^(messages?|conversations?|inbox|reply|send|etsy|mark as unread|mark unread)$/i;
+            const values = [
+                ...[...scope?.querySelectorAll?.('h1,h2,h3,h4,strong,[data-test-id*="name" i],[class*="buyer-name" i]') || []].map(el => normalize(el.textContent)),
+                normalize(anchor?.getAttribute?.('aria-label')),
+                normalize(anchor?.textContent),
+                ...String(scope?.innerText || '').split(/\n+/).map(normalize),
+            ].filter(value => value && value.length <= 90 && !ignored.test(value));
+            return values.find(value => /[\p{L}\p{N}]/u.test(value)) || '';
+        },
+        previewFromScope(scope, buyerName) {
+            const lines = String(scope?.innerText || '')
+                .split(/\n+/)
+                .map(normalize)
+                .filter(Boolean)
+                .filter(line => line !== buyerName)
+                .filter(line => !/^(unread|read|reply|mark as unread|mark unread|\d+\s*(?:m|min|h|hr|d|day)s?\s*ago)$/i.test(line))
+                .filter(line => line.length <= 320);
+            if (!lines.length) return '';
+            return lines.sort((a, b) => b.length - a.length)[0] || '';
+        },
+        scanConversationList() {
+            if (Router.page() !== 'messages') return [];
+            const anchors = [...document.querySelectorAll('a[href*="/messages/"], a[href*="/conversations/"]')];
+            const items = new Map();
+            for (const anchor of anchors) {
+                const conversationId = Router.conversationIdFromUrl(anchor.href);
+                const identity = Router.conversationIdentity(anchor.href);
+                if (!conversationId || !identity) continue;
+                const url = this.canonicalConversationUrl(anchor.href);
+                if (!url) continue;
+                const scope = this.conversationScope(anchor);
+                if (!scope) continue;
+                const buyerName = this.buyerNameFromScope(scope, anchor);
+                const preview = this.previewFromScope(scope, buyerName);
+                const text = normalize(scope.innerText || scope.textContent || '');
+                const classText = `${scope.className || ''} ${anchor.className || ''}`;
+                const unread = Boolean(
+                    scope.querySelector?.('[aria-label*="unread" i],[data-unread="true"],[class*="unread" i]')
+                    || /\bunread\b/i.test(classText)
+                    || /\bunread\b/i.test(text)
+                );
+                const orderId = text.match(/#(\d{8,})/)?.[1] || '';
+                const lastMessageAt = this.extractTime(scope);
+                const existing = items.get(identity);
+                const candidate = {
+                    conversationId,
+                    conversationUrl: url,
+                    buyerName: buyerName || existing?.buyerName || 'Müşteri',
+                    orderId: orderId || existing?.orderId || '',
+                    unread: unread || Boolean(existing?.unread),
+                    preview: preview || existing?.preview || '',
+                    ...(lastMessageAt ? { lastMessageAt } : {}),
+                    messages: [],
+                    hydrated: false,
+                };
+                if (!existing || candidate.preview.length > existing.preview.length) items.set(identity, candidate);
+            }
+            return [...items.values()].slice(0, 200);
+        },
+        async currentConversationPayload({ hydrated = true } = {}) {
+            if (Router.page() !== 'messages' || !Router.conversationId()) return null;
+            const context = await MessageAdapter.waitForContext(4500);
+            if (!context?.conversationId) return null;
+            const messages = context.messages.map(message => ({
+                id: message.id,
+                author: message.role === 'seller' ? 'seller' : 'buyer',
+                text: message.text,
+            }));
+            return {
+                conversationId: context.conversationId,
+                conversationUrl: this.canonicalConversationUrl(context.pageUrl || location.href),
+                buyerName: context.customerName || 'Müşteri',
+                orderId: context.orderId || '',
+                unread: false,
+                preview: context.lastCustomerMessage || messages.at(-1)?.text || '',
+                messages,
+                hydrated,
+            };
+        },
+        async syncNow({ hydrated = false } = {}) {
+            if (!this.isConfigured() || Router.page() !== 'messages') return false;
+            const list = this.scanConversationList();
+            const current = await this.currentConversationPayload({ hydrated: hydrated || true }).catch(() => null);
+            const byIdentity = new Map();
+            for (const item of list) byIdentity.set(Router.conversationIdentity(item.conversationUrl), item);
+            if (current?.conversationUrl) {
+                const identity = Router.conversationIdentity(current.conversationUrl);
+                byIdentity.set(identity, { ...(byIdentity.get(identity) || {}), ...current, messages: current.messages });
+            }
+            const conversations = [...byIdentity.values()].filter(item => item.conversationId);
+            if (!conversations.length) return false;
+            await this.request('POST', `/api/agent/${encodeURIComponent(this.config().storeId)}/sync`, { conversations });
+            this.lastSyncAt = nowIso();
+            this.lastError = '';
+            return true;
+        },
+        async heartbeat() {
+            if (!this.isConfigured()) return false;
+            try {
+                await this.request('POST', `/api/agent/${encodeURIComponent(this.config().storeId)}/heartbeat`, {
+                    version: APP.version,
+                    page: location.href,
+                    routerPage: Router.page(),
+                });
+                this.lastHeartbeatAt = nowIso();
+                this.lastError = '';
+                return true;
+            } catch (error) {
+                this.lastError = error.message || 'heartbeat';
+                return false;
+            }
+        },
+        async sentLedger() {
+            const value = await GMX.get(this.sentLedgerKey(), {});
+            return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        },
+        async markSent(job) {
+            const ledger = await this.sentLedger();
+            ledger[job.id] = { at: nowIso(), conversationId: job.conversationId, textHash: hashText(job.text || '') };
+            const entries = Object.entries(ledger)
+                .sort((a, b) => new Date(b[1]?.at || 0) - new Date(a[1]?.at || 0))
+                .slice(0, 300);
+            await GMX.set(this.sentLedgerKey(), Object.fromEntries(entries));
+        },
+        async alreadySent(job) {
+            const ledger = await this.sentLedger();
+            const record = ledger[job.id];
+            if (!record) return false;
+            const expectedConversation = Router.conversationIdentity(job.conversationUrl || '');
+            if (expectedConversation && Router.conversationIdentity() !== expectedConversation) return false;
+            return MessageAdapter.countOutgoing(job.text || '') > 0;
+        },
+        async reportResult(job, payload) {
+            await this.request(
+                'POST',
+                `/api/agent/${encodeURIComponent(this.config().storeId)}/jobs/${encodeURIComponent(job.id)}/result`,
+                payload,
+            );
+        },
+        async persistPending(job, stage = 'leased', extra = {}) {
+            const pending = { job, stage, updatedAt: nowIso(), ...extra };
+            await GMX.set(this.pendingKey(), pending);
+            return pending;
+        },
+        async clearPending() {
+            await GMX.del(this.pendingKey());
+        },
+        async loadPending() {
+            const value = await GMX.get(this.pendingKey(), null);
+            return value && typeof value === 'object' && value.job?.id ? value : null;
+        },
+        async navigateForJob(job, stage = 'navigating') {
+            const target = this.canonicalConversationUrl(job.conversationUrl || '');
+            if (!target) throw new Error('Job için güvenli Etsy konuşma URL’si bulunamadı.');
+            if (Router.page() === 'messages') {
+                const textarea = MessageAdapter.getTextarea();
+                const manualText = String(textarea?.value || '').trim();
+                if (manualText && !this.jobConversationMatches(job)) {
+                    throw new Error('Etsy cevap alanında gönderilmemiş manuel metin var; agent konuşmayı değiştirmedi.');
+                }
+            }
+            await this.persistPending(job, stage);
+            location.href = target;
+            return 'navigating';
+        },
+        jobConversationMatches(job) {
+            const expected = Router.conversationIdentity(job.conversationUrl || '');
+            return Boolean(expected) && expected === Router.conversationIdentity();
+        },
+        async completeHydrate(job) {
+            if (!this.jobConversationMatches(job)) return this.navigateForJob(job);
+            const payload = await this.currentConversationPayload({ hydrated: true });
+            if (!payload?.conversationId) throw new Error('Konuşma bağlamı yüklenemedi.');
+            await this.request('POST', `/api/agent/${encodeURIComponent(this.config().storeId)}/sync`, { conversations: [payload] });
+            await this.reportResult(job, { status: 'completed', completedAt: nowIso() });
+            await this.clearPending();
+            this.lastError = '';
+            return true;
+        },
+        async recoverDispatched(job, pending) {
+            if (!this.jobConversationMatches(job)) return this.navigateForJob(job, 'recovering');
+            const baseline = Number(pending.baselineMatches || 0);
+            const verified = await MessageAdapter.waitForOutgoing(
+                job.text,
+                baseline,
+                7000,
+                () => this.jobConversationMatches(job),
+            );
+            if (verified || MessageAdapter.countOutgoing(job.text) > baseline) {
+                await this.markSent(job);
+                await this.syncNow({ hydrated: true }).catch(() => false);
+                await this.reportResult(job, { status: 'sent', sentAt: nowIso(), recovered: true });
+                await this.clearPending();
+                return true;
+            }
+            await this.reportResult(job, {
+                status: 'failed',
+                retryable: false,
+                error: 'send_outcome_ambiguous_manual_check_required',
+            });
+            await this.clearPending();
+            return false;
+        },
+        async sendReplyJob(job, pending = null) {
+            if (!this.jobConversationMatches(job)) return this.navigateForJob(job);
+            if (pending?.stage === 'dispatched') return this.recoverDispatched(job, pending);
+            if (await this.alreadySent(job)) {
+                await this.reportResult(job, { status: 'sent', sentAt: nowIso(), duplicatePrevented: true });
+                await this.clearPending();
+                return true;
+            }
+
+            const context = await MessageAdapter.waitForContext(5000);
+            if (!context?.conversationId || !this.jobConversationMatches(job)) {
+                throw new Error('Doğru Etsy konuşması doğrulanamadı.');
+            }
+            const textarea = await MessageAdapter.waitForTextarea(5000);
+            if (!textarea) throw new Error('Etsy cevap alanı bulunamadı.');
+            const currentComposer = String(textarea.value || '').trim();
+            if (currentComposer && normalize(currentComposer) !== normalize(job.text || '')) {
+                throw new Error('Etsy cevap alanında kullanıcıya ait başka bir metin var; otomatik üzerine yazılmadı.');
+            }
+            const baselineMatches = MessageAdapter.countOutgoing(job.text);
+            MessageAdapter.insert(job.text, textarea);
+            const inserted = String(MessageAdapter.getTextarea()?.value || '').trim();
+            if (normalize(inserted) !== normalize(job.text || '')) {
+                throw new Error('Mesaj Etsy cevap alanına güvenli biçimde aktarılamadı.');
+            }
+            const button = MessageAdapter.getSendButton();
+            if (!button) throw new Error('Etkin Etsy Gönder düğmesi bulunamadı.');
+            const attempt = await this.persistPending(job, 'prepared', { baselineMatches });
+            let dispatchObserved = false;
+            const observeDispatch = () => { dispatchObserved = true; };
+            button.addEventListener('click', observeDispatch, { capture: true, once: true });
+            await this.persistPending(job, 'dispatched', { baselineMatches, dispatchedAt: nowIso() });
+            try {
+                button.click();
+            } finally {
+                button.removeEventListener('click', observeDispatch, true);
+            }
+            if (!dispatchObserved) {
+                await this.persistPending(job, 'prepared', { baselineMatches });
+                throw new Error('Etsy Gönder tıklaması tarayıcıya iletilemedi.');
+            }
+            const verified = await MessageAdapter.waitForOutgoing(
+                job.text,
+                baselineMatches,
+                18000,
+                () => this.jobConversationMatches(job),
+            );
+            if (!verified) {
+                await this.reportResult(job, {
+                    status: 'failed',
+                    retryable: false,
+                    error: 'send_verification_failed_manual_check_required',
+                });
+                await this.clearPending();
+                return false;
+            }
+            await this.markSent(job);
+            await this.syncNow({ hydrated: true }).catch(() => false);
+            await this.reportResult(job, { status: 'sent', sentAt: nowIso() });
+            await this.clearPending();
+            this.lastError = '';
+            return true;
+        },
+        async executePending(pending) {
+            const job = pending?.job;
+            if (!job?.id) return false;
+            if (job.type === 'hydrate') return this.completeHydrate(job);
+            return this.sendReplyJob(job, pending);
+        },
+        async processNextJob() {
+            if (!this.isConfigured() || this.busy) return false;
+            this.busy = true;
+            try {
+                const pending = await this.loadPending();
+                if (pending) return await this.executePending(pending);
+                const result = await this.request(
+                    'GET',
+                    `/api/agent/${encodeURIComponent(this.config().storeId)}/jobs/next`,
+                );
+                const job = result?.job;
+                if (!job) return false;
+                const saved = await this.persistPending(job, 'leased');
+                return await this.executePending(saved);
+            } catch (error) {
+                this.lastError = error.message || 'job';
+                const pending = await this.loadPending().catch(() => null);
+                if (pending?.job?.id && pending.stage !== 'navigating') {
+                    const retryable = !/manual_check_required|başka bir metin|güvenli Etsy konuşma URL/i.test(this.lastError);
+                    try {
+                        await this.reportResult(pending.job, {
+                            status: 'failed',
+                            retryable,
+                            error: this.lastError,
+                        });
+                        await this.clearPending();
+                    } catch { /* keep local pending for recovery */ }
+                }
+                console.error(`[${APP.id}] Message Center agent`, error);
+                return false;
+            } finally {
+                this.busy = false;
+            }
+        },
+        clearTimers() {
+            for (const key of ['heartbeatTimer', 'syncTimer', 'pollTimer', 'routeTimer']) {
+                if (this[key]) clearInterval(this[key]);
+                this[key] = null;
+            }
+        },
+        schedule() {
+            this.clearTimers();
+            if (!this.isConfigured()) return;
+            const cfg = this.config();
+            this.heartbeatTimer = setInterval(() => void this.heartbeat(), 15000);
+            this.syncTimer = setInterval(() => void this.syncNow(), cfg.syncSeconds * 1000);
+            this.pollTimer = setInterval(() => void this.processNextJob(), cfg.pollSeconds * 1000);
+            this.routeTimer = setInterval(() => {
+                if (Router.page() === 'messages') void this.syncNow();
+            }, 30000);
+        },
+        async start() {
+            if (this.started) return;
+            this.started = true;
+            this.schedule();
+            if (!this.isConfigured()) return;
+            await this.heartbeat();
+            if (Router.page() === 'messages') await this.syncNow().catch(() => false);
+            await this.processNextJob();
+        },
+        async reconfigure() {
+            this.schedule();
+            if (!this.isConfigured()) {
+                this.lastError = '';
+                return false;
+            }
+            await this.heartbeat();
+            if (Router.page() === 'messages') await this.syncNow().catch(() => false);
+            await this.processNextJob();
+            return true;
+        },
+        async onRoute() {
+            if (!this.isConfigured()) return;
+            if (Router.page() === 'messages') await this.syncNow().catch(() => false);
+            await this.processNextJob();
+        },
+    };
+
 
     const OrdersAdapter = {
         scan({ deliveredOnly = true } = {}) {
@@ -5044,11 +5520,28 @@
                             <div class="ma-card__head"><h3>Config ve Kalıcı Ayarlar</h3></div>
                             <div class="ma-card__body ma-stack">
                                 <div class="ma-notice ma-notice--info">${icon('check')}<div>Ayarlar <strong>mema:*</strong> Tampermonkey depolamasında saklanır. Script güncellendiğinde yeniden kurulum gerekmez; config şeması otomatik taşınır.</div></div>
-                                ${switchRow('configIncludeSecrets', 'API Anahtarlarını Config’e Dahil Et', 'Varsayılan kapalıdır. Açılırsa indirilen JSON dosyası anahtarları düz metin içerir.')}
-                                ${s.configIncludeSecrets ? `<div class="ma-notice ma-secret-warning">${icon('alert')}<div>Config dosyasını paylaşmayın; API anahtarları düz metin olarak yazılacaktır.</div></div>` : ''}
+                                ${switchRow('configIncludeSecrets', 'API / Agent Anahtarlarını Config’e Dahil Et', 'Varsayılan kapalıdır. Açılırsa indirilen JSON dosyası API ve Message Center agent anahtarlarını düz metin içerir.')}
+                                ${s.configIncludeSecrets ? `<div class="ma-notice ma-secret-warning">${icon('alert')}<div>Config dosyasını paylaşmayın; API ve Message Center agent anahtarları düz metin olarak yazılacaktır.</div></div>` : ''}
                                 <div class="ma-config-actions"><button class="ma-btn" data-action="config-export">${icon('download')}Config İndir</button><button class="ma-btn" data-action="config-import">${icon('file')}Config Yükle</button></div>
                                 <input class="ma-hidden" type="file" accept="application/json,.json" data-config-file>
                                 <div class="ma-small ma-muted">Şema v${APP.configSchema} · Son config değişikliği: ${html(formatDate(Store.configMeta.updatedAt))}</div>
+                            </div>
+                        </section>
+
+                        <section class="ma-card ma-settings-span-2">
+                            <div class="ma-card__head"><h3>Merkezi Mesaj Paneli Agent</h3><span class="ma-spacer"></span><span class="ma-pill ${MessageCenterAgent.isConfigured() && !MessageCenterAgent.lastError ? 'ma-pill--success' : Store.settings.messageCenterEnabled ? 'ma-pill--warning' : ''}">${html(MessageCenterAgent.statusText())}</span></div>
+                            <div class="ma-card__body ma-stack">
+                                ${switchRow('messageCenterEnabled','Merkezi Mesaj Panelini Etkinleştir','Bu Etsy oturumunu merkezi paneldeki ilgili mağazaya bağlar. Etsy oturum bilgileri panel sunucusuna gönderilmez.')}
+                                <div class="ma-grid ma-grid--2">
+                                    <div class="ma-field"><label>Mesaj Merkezi URL</label><input class="ma-input" data-settings-field="messageCenterUrl" value="${attr(s.messageCenterUrl || '')}" placeholder="https://messages.example.com veya http://SUNUCU-IP:4173"><div class="ma-field__hint">URL sonuna / eklemeden sunucu adresini yazın.</div></div>
+                                    <div class="ma-field"><label>Mağaza ID</label><input class="ma-input" data-settings-field="messageCenterStoreId" value="${attr(s.messageCenterStoreId || '')}" placeholder="pakayus"><div class="ma-field__hint">Sunucudaki config.json içindeki store id ile birebir aynı olmalı.</div></div>
+                                    <div class="ma-field"><label>Agent Token</label><input class="ma-input" type="password" data-settings-field="messageCenterAgentToken" value="${attr(s.messageCenterAgentToken || '')}" autocomplete="off" placeholder="İlgili mağazanın agentToken değeri"><div class="ma-field__hint">Bu token yalnız bu mağazanın agent API’sinde kullanılır.</div></div>
+                                    <div class="ma-grid ma-grid--2">
+                                        <div class="ma-field"><label>Mesaj Senkronu (sn)</label><input class="ma-input" type="number" min="5" max="120" data-settings-field="messageCenterSyncSeconds" value="${attr(s.messageCenterSyncSeconds || 10)}"></div>
+                                        <div class="ma-field"><label>Gönderim Kuyruğu (sn)</label><input class="ma-input" type="number" min="2" max="60" data-settings-field="messageCenterPollSeconds" value="${attr(s.messageCenterPollSeconds || 3)}"></div>
+                                    </div>
+                                </div>
+                                <div class="ma-notice ma-notice--info">${icon('send')}<div>VPS’de bir Etsy <strong>Messages</strong> sekmesini açık bırakın. Agent konuşma listesini panele taşır; panelden gelen cevabı doğru konuşmayı açıp Etsy balonunda gerçekten göründükten sonra “gönderildi” sayar.</div></div>
                             </div>
                         </section>
 
@@ -5505,6 +5998,9 @@ ${result.text || ''}`);
             await Store.saveProviders(Store.providers);
             await Store.pruneHistory();
             this.state.composeMethod = next.defaultReplyMethod || this.state.composeMethod;
+            await MessageCenterAgent.reconfigure().catch(error => {
+                MessageCenterAgent.lastError = error.message || 'agent';
+            });
             this.toast('Ayarlar ve API profilleri kalıcı olarak kaydedildi.', 'success');
         },
         async resetSettings() {
@@ -5540,6 +6036,9 @@ ${result.text || ''}`);
             this.setBusy(true);
             const payload = await ConfigManager.importText(await file.text());
             this.state.composeMethod = Store.settings.defaultReplyMethod;
+            await MessageCenterAgent.reconfigure().catch(error => {
+                MessageCenterAgent.lastError = error.message || 'agent';
+            });
             this.toast(`Config v${payload.appVersion || 'bilinmiyor'} içe aktarıldı.`, 'success');
             this.render();
         },
@@ -5569,6 +6068,7 @@ ${result.text || ''}`);
             GMX.menu('Config Yedeğini İndir', () => ConfigManager.download(false));
             GMX.menu('Güncellemeyi Kontrol Et', () => Updates.check({ force: true }).catch((error) => Notify.show(error.message, 'error', 6000)));
             Router.start(() => this.onRoute());
+            await MessageCenterAgent.start();
             await this.onRoute();
             if (!Store.onboarding.completed) UI.open('settings');
             Updates.check({ silent: true }).then(() => UI.render()).catch(() => {});
@@ -5589,6 +6089,9 @@ ${result.text || ''}`);
             if (Router.page() === 'messages') {
                 try { await Campaign.resume(); } catch (error) { UI.toast(error.message, 'error', 6000); }
             }
+            await MessageCenterAgent.onRoute().catch(error => {
+                MessageCenterAgent.lastError = error.message || 'agent';
+            });
         },
     };
 
