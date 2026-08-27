@@ -159,6 +159,8 @@ async function loadAssistant(options = {}) {
         Outreach,
         Verification,
         MessageAdapter,
+        OrdersAdapter,
+        MessageCenterAgent,
         ReviewsAdapter,
         GMX,
         Translator,
@@ -183,6 +185,19 @@ async function loadAssistant(options = {}) {
 }
 
 const copy = (value) => JSON.parse(JSON.stringify(value));
+
+const readUserscriptSource = () => fs.readFileSync(scriptPath, 'utf8');
+
+function readTemplateConstant(name) {
+    const source = readUserscriptSource();
+    const prefix = `const ${name} = \``;
+    const start = source.indexOf(prefix);
+    assert.notEqual(start, -1, `${name} must exist in the userscript source.`);
+    const valueStart = start + prefix.length;
+    const end = source.indexOf('`;', valueStart);
+    assert.notEqual(end, -1, `${name} must be a template-literal constant.`);
+    return source.slice(valueStart, end);
+}
 
 test('message context reads only the active composer panel and fails closed when the composer is ambiguous', async () => {
     const { api, sandbox } = await loadAssistant();
@@ -328,6 +343,235 @@ test('message composer resolution rejects a unique unrelated textarea outside an
     assert.equal(unrelatedTextarea.value, 'Keep this text');
 });
 
+test('message folders are not conversations and missing trusted composers render no production actions', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const productionActions = /data-action="(?:ai-polish-reply|ai-auto-reply|free-translate-reply|regenerate-reply|insert-reply|campaign-send-next)"/;
+
+    for (const folder of ['all', 'inbox', 'unread', 'spam']) {
+        sandbox.location.pathname = `/messages/${folder}`;
+        sandbox.location.href = `https://www.etsy.com/messages/${folder}`;
+        api.UI.state.context = null;
+
+        assert.equal(api.Router.page(), 'messages');
+        assert.equal(api.Router.conversationId(), '', `${folder} must remain a message-list folder`);
+        const markup = api.UI.renderMessages();
+        assert.match(markup, /Bir konuşma açın/);
+        assert.doesNotMatch(markup, productionActions);
+        assert.doesNotMatch(markup, /data-bind="draftTr"|data-message-template-select/);
+    }
+
+    sandbox.location.pathname = '/messages/looks-like-a-conversation';
+    sandbox.location.href = 'https://www.etsy.com/messages/looks-like-a-conversation';
+    api.UI.state.context = null;
+    assert.equal(api.Router.conversationId(), 'looks-like-a-conversation');
+    assert.equal(api.MessageAdapter.context().conversationId, '', 'a URL segment alone must not establish a trusted conversation');
+    const untrustedMarkup = api.UI.renderMessages();
+    assert.match(untrustedMarkup, /Bir konuşma açın/);
+    assert.doesNotMatch(untrustedMarkup, productionActions);
+});
+
+test('message context reads an order only from the unique companion buyer-info scope', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/active-conversation';
+    sandbox.location.href = 'https://www.etsy.com/messages/active-conversation';
+
+    const orderLink = { href: 'https://www.etsy.com/your/orders/sold?order_id=22222222' };
+    const otherOrderLink = { href: 'https://www.etsy.com/your/orders/sold?order_id=99999999' };
+    const buyerInfo = {
+        querySelector(selector) {
+            return selector.includes('order_id=') ? orderLink : null;
+        },
+        querySelectorAll(selector) {
+            if (selector === 'a[href*="order_id="]') return [orderLink];
+            return [];
+        },
+    };
+    const unrelatedBuyerInfo = {
+        querySelector(selector) {
+            return selector.includes('order_id=') ? otherOrderLink : null;
+        },
+        querySelectorAll(selector) {
+            if (selector === 'a[href*="order_id="]') return [otherOrderLink];
+            return [];
+        },
+    };
+    let companionScopes = [buyerInfo];
+    const conversationRoot = {
+        querySelectorAll(selector) {
+            return selector === api.MessageAdapter.orderDetailsSelector ? companionScopes : [];
+        },
+    };
+    const textarea = {
+        closest(selector) {
+            return selector === '.conversations-subapp' ? conversationRoot : null;
+        },
+    };
+    const customerBubble = {
+        id: 'active-customer-message',
+        innerText: 'Where is my order?',
+        textContent: 'Where is my order?',
+        className: 'message-bubble',
+        closest: () => ({ className: 'wt-grid' }),
+    };
+    const buyerHeader = {
+        textContent: 'Active Buyer',
+        closest: () => ({ querySelector: () => null }),
+    };
+    const conversationScope = {
+        querySelector(selector) {
+            if (selector === 'h3.buyer-name a' || selector === 'h3.buyer-name') return buyerHeader;
+            return null;
+        },
+        querySelectorAll(selector) {
+            if (selector === api.MessageAdapter.bubbleSelector) return [customerBubble];
+            return [];
+        },
+    };
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => conversationScope;
+
+    const context = api.MessageAdapter.context();
+    assert.equal(context.conversationId, 'active-conversation');
+    assert.equal(context.customerName, 'Active Buyer');
+    assert.equal(context.orderId, '22222222');
+    assert.equal(context.lastCustomerMessage, 'Where is my order?');
+
+    companionScopes = [buyerInfo, unrelatedBuyerInfo];
+    assert.equal(
+        api.MessageAdapter.context().orderId,
+        '',
+        'multiple companion order scopes must fail closed instead of choosing a buyer order',
+    );
+});
+
+test('review scanning includes cards whose buyer updated a review', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const updatedCard = {
+        textContent: 'Ashley updated a review for this item',
+        querySelector(selector) {
+            if (selector === 'a[href*="/reviews/"]') return { href: 'https://www.etsy.com/reviews/123456' };
+            if (selector === 'h4 a[href*="/people/"]') return { textContent: 'Ashley' };
+            if (selector === 'p.wt-mb-xs-2.wt-text-body-small') return { textContent: 'Custom Shirt' };
+            if (selector === '[aria-label^="Rating:" i]') return { getAttribute: () => 'Rating: 4 out of 5' };
+            if (selector === '.wt-p-xs-2.wt-b-xs p.wt-mt-xs-1, .wt-p-xs-2.wt-b-xs .wt-text-body-small') {
+                return { textContent: 'The updated review text.' };
+            }
+            return null;
+        },
+        querySelectorAll: () => [],
+    };
+    const unrelatedCard = { textContent: 'Ashley purchased an item' };
+    sandbox.document.querySelectorAll = selector => selector === '.dashboard-activity-item'
+        ? [unrelatedCard, updatedCard]
+        : [];
+
+    const reviews = api.ReviewsAdapter.scan();
+    assert.equal(reviews.length, 1);
+    assert.equal(reviews[0].id, '123456');
+    assert.equal(reviews[0].customerName, 'Ashley');
+    assert.equal(reviews[0].rating, 4);
+    assert.equal(reviews[0].text, 'The updated review text.');
+});
+
+test('busy state exposes status and aria-busy while leaving the header close control interactive', async () => {
+    const { api } = await loadAssistant();
+    const classes = new Set();
+    const attributes = new Map();
+    api.UI.app = {
+        classList: {
+            toggle(name, enabled) {
+                if (enabled) classes.add(name);
+                else classes.delete(name);
+            },
+        },
+        setAttribute(name, value) { attributes.set(name, value); },
+    };
+
+    api.UI.setBusy(true);
+    assert.equal(api.UI.state.busy, true);
+    assert.equal(classes.has('ma-busy'), true);
+    assert.equal(attributes.get('aria-busy'), 'true');
+
+    const source = readUserscriptSource();
+    const busyCss = readTemplateConstant('UX_CSS');
+    assert.match(source, /class="ma-busy-status" role="status" aria-live="polite">İşlem sürüyor…/);
+    assert.match(source, /data-action="close-app"/);
+    assert.match(busyCss, /\.ma-busy\{pointer-events:auto;opacity:1\}/);
+    assert.match(busyCss, /\.ma-busy \.ma-nav,\.ma-busy \.ma-view\{pointer-events:none\}/);
+    assert.match(busyCss, /\.ma-busy \.ma-busy-status\{display:flex\}/);
+    assert.doesNotMatch(busyCss, /\.ma-busy \.ma-header[^}]*pointer-events:none/);
+
+    api.UI.setBusy(false);
+    assert.equal(api.UI.state.busy, false);
+    assert.equal(classes.has('ma-busy'), false);
+    assert.equal(attributes.get('aria-busy'), 'false');
+});
+
+test('closed launcher keeps its compact 120 by 36 desktop footprint', () => {
+    const launcherCss = readTemplateConstant('LAUNCHER_CSS');
+    const desktopRule = launcherCss.match(/^\.ma-launcher\{([^}]*)\}/)?.[1] || '';
+    assert.match(desktopRule, /(?:^|;)width:120px(?:;|$)/);
+    assert.match(desktopRule, /(?:^|;)height:36px(?:;|$)/);
+    assert.doesNotMatch(desktopRule, /width:176px|height:44px/);
+});
+
+test('pending-verification order badges use a localized warning label and style', async () => {
+    const { api } = await loadAssistant();
+    const badge = { dataset: {}, textContent: '' };
+    const row = { querySelector: selector => selector === '.mema-order-badge' ? badge : null };
+
+    api.OrdersAdapter.decorate([{
+        row,
+        status: { status: 'sent_pending_verification' },
+    }]);
+
+    assert.equal(badge.textContent, 'Gönderim doğrulanıyor');
+    assert.equal(badge.dataset.status, 'sent_pending_verification');
+    const css = readTemplateConstant('GLOBAL_CSS');
+    assert.match(css, /\.mema-order-badge\[data-status="sent_pending_verification"\]\{[^}]+\}/);
+});
+
+test('history rows expose keyboard semantics and activate with Enter or Space', async () => {
+    const { api } = await loadAssistant();
+    api.Store.history = [{
+        id: 'evt-history-1',
+        createdAt: '2026-08-27T12:00:00.000Z',
+        type: 'reply_generated',
+        source: 'messages',
+        status: 'completed',
+        method: 'manual',
+        customer: 'Ashley',
+        title: 'Cevap taslağı hazırlandı',
+        detail: {},
+    }];
+
+    const markup = api.UI.renderHistory();
+    assert.match(markup, /data-history-id="evt-history-1" tabindex="0" role="button"/);
+    assert.match(markup, /aria-label="Ashley: Cevap taslağı hazırlandı"/);
+
+    const handlers = new Map();
+    api.UI.shadow = {
+        addEventListener(type, handler) { handlers.set(type, handler); },
+    };
+    api.UI.bind();
+    let clickCount = 0;
+    let preventCount = 0;
+    const row = {
+        dataset: { historyId: 'evt-history-1' },
+        click() { clickCount += 1; },
+    };
+    const target = { closest: () => row };
+    for (const key of ['Enter', ' ']) {
+        handlers.get('keydown')({
+            key,
+            target,
+            preventDefault() { preventCount += 1; },
+        });
+    }
+    assert.equal(clickCount, 2);
+    assert.equal(preventCount, 2);
+});
+
 test('public review reply writes only to the newly opened selected-review surface', async () => {
     const { api, sandbox } = await loadAssistant();
     const makeTextarea = () => Object.assign(new sandbox.HTMLTextAreaElement(), {
@@ -402,6 +646,97 @@ test('public review reply fails closed when the selected-review surface exposes 
     await assert.rejects(api.ReviewsAdapter.insertPublic(review, 'Must not be inserted'), /belirsiz|birden fazla|güvenli/i);
     assert.equal(first.value, '');
     assert.equal(second.value, '');
+});
+
+test('public review reply preserves a different occupied Etsy draft', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const target = Object.assign(new sandbox.HTMLTextAreaElement(), {
+        offsetParent: {},
+        value: 'My unsent manual public-response draft',
+        dispatchEvent() {},
+        focus() {},
+    });
+    const dialog = {
+        offsetParent: {},
+        contains: element => element === target,
+        querySelectorAll: selector => selector === 'textarea' ? [target] : [],
+    };
+    target.closest = selector => selector.includes('[role="dialog"]') ? dialog : null;
+    let opened = false;
+    sandbox.document.querySelectorAll = selector => {
+        if (selector === 'textarea') return opened ? [target] : [];
+        if (selector.includes('[role="dialog"]')) return opened ? [dialog] : [];
+        return [];
+    };
+    sandbox.document.getElementById = () => null;
+    const review = {
+        card: { contains: () => false, querySelectorAll: () => [], isConnected: true },
+        publicButton: { getAttribute: () => '', click: () => { opened = true; } },
+    };
+
+    await assert.rejects(
+        api.ReviewsAdapter.insertPublic(review, 'Generated public response'),
+        /farklı.*taslak|mevcut metni korumak|üzerine yazılmadı/i,
+    );
+    assert.equal(target.value, 'My unsent manual public-response draft');
+});
+
+test('public review insertion revalidates its review binding before DOM and persistence side effects', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/your/shops/me/dashboard/activity';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/dashboard/activity';
+    const target = Object.assign(new sandbox.HTMLTextAreaElement(), {
+        offsetParent: {}, value: '', dispatchEvent() {}, focus() {},
+    });
+    const dialog = {
+        offsetParent: {},
+        contains: element => element === target,
+        querySelectorAll: selector => selector === 'textarea' ? [target] : [],
+    };
+    target.closest = selector => selector.includes('[role="dialog"]') ? dialog : null;
+    let opened = false;
+    sandbox.document.querySelectorAll = selector => {
+        if (selector === 'textarea') return opened ? [target] : [];
+        if (selector.includes('[role="dialog"]')) return opened ? [dialog] : [];
+        return [];
+    };
+    sandbox.document.getElementById = () => null;
+    const review = {
+        id: 'review-a', text: 'Original review', customerName: 'Ashley',
+        card: { contains: () => false, querySelectorAll: () => [], isConnected: true },
+        publicButton: {
+            getAttribute: () => '',
+            click() {
+                opened = true;
+                sandbox.location.pathname = '/your/shops/me/dashboard/activity/other';
+                sandbox.location.href = 'https://www.etsy.com/your/shops/me/dashboard/activity/other';
+            },
+        },
+    };
+    api.UI.state.reviews = [review];
+    api.UI.state.selectedReviewId = review.id;
+    const binding = api.UI.beginReviewWork(review);
+    api.UI.state.reviewAnalysis = { public_reply: 'Generated public response' };
+    api.UI.state.reviewAnalysisBinding = binding;
+
+    const originals = {
+        setBusy: api.UI.setBusy,
+        setStatus: api.Store.setStatus,
+        addHistory: api.Store.addHistory,
+    };
+    const calls = { setStatus: 0, addHistory: 0 };
+    api.UI.setBusy = () => {};
+    api.Store.setStatus = async () => { calls.setStatus += 1; };
+    api.Store.addHistory = async () => { calls.addHistory += 1; };
+    try {
+        await assert.rejects(api.UI.insertReviewPublic(), /Yorum|sayfa|değişti/i);
+        assert.equal(target.value, '');
+        assert.deepEqual(calls, { setStatus: 0, addHistory: 0 });
+    } finally {
+        api.UI.setBusy = originals.setBusy;
+        api.Store.setStatus = originals.setStatus;
+        api.Store.addHistory = originals.addHistory;
+    }
 });
 
 test('history writes from concurrent tabs merge and idempotent events remain unique', async () => {
@@ -538,6 +873,298 @@ test('assistant stays closed by default until the user explicitly opens it', asy
     assert.deepEqual(openedPages, []);
 });
 
+test('SPA auto-open waits for a verified conversation and preserves utility drafts', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const openedPages = [];
+    let verifiedConversation = false;
+    sandbox.location.pathname = '/messages/spa-conversation';
+    sandbox.location.href = 'https://www.etsy.com/messages/spa-conversation';
+    api.Store.settings = { ...api.DEFAULT_SETTINGS, openOnMessagePage: true };
+    api.MessageAdapter.context = () => ({
+        conversationId: verifiedConversation ? api.Router.conversationId() : '',
+    });
+    api.Campaign.resume = async () => false;
+    api.UI.open = (page) => {
+        openedPages.push(page);
+        api.UI.state.open = true;
+        api.UI.state.page = page;
+    };
+    api.UI.state.open = false;
+    api.UI.state.page = 'unknown';
+    api.App.routeFingerprint = '';
+
+    await api.App.onRoute();
+    assert.deepEqual(openedPages, [], 'route detection alone must not open without a verified composer scope');
+
+    verifiedConversation = true;
+    await api.App.onRoute();
+    assert.deepEqual(openedPages, ['messages'], 'a later DOM hydration pass must open the verified conversation');
+
+    const draft = { id: 'tpl-draft', name: 'Unsaved draft', text: 'Keep this draft' };
+    api.UI.state.open = false;
+    api.UI.state.page = 'templates';
+    api.UI.state.templateDraft = draft;
+    api.UI.state.templateDirty = true;
+    openedPages.length = 0;
+    await api.App.onRoute();
+    assert.deepEqual(openedPages, ['templates']);
+    assert.equal(api.UI.state.templateDraft, draft);
+    assert.equal(api.UI.state.templateDirty, true);
+
+    api.UI.state.open = false;
+    api.UI.state.page = 'messages';
+    openedPages.length = 0;
+    sandbox.location.pathname = '/messages/inbox';
+    sandbox.location.href = 'https://www.etsy.com/messages/inbox';
+    api.MessageAdapter.context = () => ({ conversationId: 'not-a-real-open-conversation' });
+    api.App.routeFingerprint = '';
+    await api.App.onRoute();
+    assert.deepEqual(openedPages, [], 'message list routes must remain fail-closed');
+
+    sandbox.location.pathname = '/messages/disabled-conversation';
+    sandbox.location.href = 'https://www.etsy.com/messages/disabled-conversation';
+    api.MessageAdapter.context = () => ({ conversationId: api.Router.conversationId() });
+    api.Store.settings.openOnMessagePage = false;
+    api.App.routeFingerprint = '';
+    await api.App.onRoute();
+    assert.deepEqual(openedPages, [], 'the explicit setting must remain authoritative');
+});
+
+test('settings edits remain drafts until Save and provider tests do not silently persist them', async () => {
+    const { api, storage } = await loadAssistant();
+    const dirty = { hidden: true };
+    api.UI.shadow = {
+        querySelector: selector => selector === '[data-settings-dirty]' ? dirty : null,
+        querySelectorAll: () => [],
+    };
+    api.UI.ensureSettingsDraft({ reset: true });
+
+    api.UI.onInput({ target: {
+        dataset: { settingsField: 'autoSendCampaign' },
+        type: 'checkbox',
+        checked: true,
+    } });
+    api.UI.onInput({ target: {
+        dataset: { providerField: 'apiKey' },
+        type: 'password',
+        value: 'draft-provider-key',
+    } });
+
+    assert.equal(api.Store.settings.autoSendCampaign, false);
+    assert.equal(api.Store.providers.openai.apiKey, '');
+    assert.equal(api.UI.state.settingsDraft.autoSendCampaign, true);
+    assert.equal(api.UI.state.providersDraft.openai.apiKey, 'draft-provider-key');
+    assert.equal(api.UI.state.settingsDirty, true);
+    assert.equal(dirty.hidden, false);
+
+    api.UI.toast = () => {};
+    await api.UI.saveSettings();
+    assert.equal(api.Store.settings.autoSendCampaign, true);
+    assert.equal(api.Store.providers.openai.apiKey, 'draft-provider-key');
+    assert.equal(storage.get(api.KEYS.settings).autoSendCampaign, true);
+    assert.equal(storage.get(api.KEYS.providers).openai.apiKey, 'draft-provider-key');
+    assert.equal(api.UI.state.settingsDirty, false);
+});
+
+test('settings switches expose accessible names and descriptions', async () => {
+    const { api } = await loadAssistant();
+    const markup = api.UI.renderSettings();
+    const switches = [...markup.matchAll(/<input type="checkbox"[^>]*data-settings-field="([^"]+)"[^>]*>/g)];
+    assert.ok(switches.length >= 8, 'expected the settings screen to render its switches');
+    for (const match of switches) {
+        const [tag, key] = match;
+        const id = `mema-setting-${key}`;
+        assert.match(tag, new RegExp(`aria-labelledby="${id}-label"`), `${key} needs an accessible name`);
+        assert.match(tag, new RegExp(`aria-describedby="${id}-description"`), `${key} needs a description`);
+        assert.match(markup, new RegExp(`id="${id}-label"`));
+        assert.match(markup, new RegExp(`id="${id}-description"`));
+    }
+});
+
+test('config export uses the visible settings draft without saving it as runtime state', async () => {
+    const { api } = await loadAssistant();
+    api.UI.shadow = {
+        querySelector: () => null,
+        querySelectorAll: () => [],
+    };
+    api.UI.ensureSettingsDraft({ reset: true });
+    api.UI.state.settingsDraft.shopName = 'Unsaved draft shop';
+    api.UI.state.providersDraft.openai.apiKey = 'unsaved-draft-key';
+    api.UI.state.settingsDirty = true;
+    let downloaded = null;
+    api.ConfigManager.download = (includeSecrets, overrides) => {
+        downloaded = { includeSecrets, overrides: copy(overrides) };
+    };
+    api.UI.toast = () => {};
+
+    await api.UI.exportConfig();
+
+    assert.equal(api.Store.settings.shopName, '');
+    assert.equal(api.Store.providers.openai.apiKey, '');
+    assert.equal(downloaded.includeSecrets, false);
+    assert.equal(downloaded.overrides.settings.shopName, 'Unsaved draft shop');
+    assert.equal(downloaded.overrides.providers.openai.apiKey, 'unsaved-draft-key');
+});
+
+test('secret-free config export rejects credentials embedded in an unsaved Message Center URL', async () => {
+    const { api } = await loadAssistant();
+    api.UI.shadow = {
+        querySelector: () => null,
+        querySelectorAll: () => [],
+    };
+    api.UI.ensureSettingsDraft({ reset: true });
+    api.UI.state.settingsDraft.messageCenterUrl = 'https://backup-user:backup-pass@messages.example.test';
+    api.UI.state.settingsDraft.configIncludeSecrets = false;
+
+    assert.throws(
+        () => api.ConfigManager.snapshot(false, {
+            settings: api.UI.state.settingsDraft,
+            providers: api.UI.state.providersDraft,
+        }),
+        /messageCenterUrl|config/i,
+    );
+    await assert.rejects(api.UI.exportConfig(), /messageCenterUrl|config/i);
+});
+
+test('settings reset is a non-persistent draft and preserves DeepL and agent secrets', async () => {
+    const { api } = await loadAssistant();
+    api.Store.settings = {
+        ...api.DEFAULT_SETTINGS,
+        shopName: 'Persisted shop',
+        defaultTone: 'formal',
+        deeplApiKey: 'deepl-secret',
+        messageCenterAgentToken: 'agent-secret',
+    };
+    api.UI.shadow = { querySelector: () => null, querySelectorAll: () => [] };
+    api.UI.toast = () => {};
+    api.UI.ensureSettingsDraft({ reset: true });
+
+    await api.UI.resetSettings();
+
+    assert.equal(api.Store.settings.shopName, 'Persisted shop');
+    assert.equal(api.Store.settings.defaultTone, 'formal');
+    assert.equal(api.UI.state.settingsDraft.shopName, api.DEFAULT_SETTINGS.shopName);
+    assert.equal(api.UI.state.settingsDraft.defaultTone, api.DEFAULT_SETTINGS.defaultTone);
+    assert.equal(api.UI.state.settingsDraft.deeplApiKey, 'deepl-secret');
+    assert.equal(api.UI.state.settingsDraft.messageCenterAgentToken, 'agent-secret');
+    assert.equal(api.UI.state.settingsDirty, true);
+});
+
+test('config import always clears the busy state and refreshes runtime drafts', async () => {
+    const { api } = await loadAssistant();
+    const classes = new Set();
+    const attributes = new Map();
+    api.UI.app = {
+        classList: { toggle(name, enabled) { if (enabled) classes.add(name); else classes.delete(name); } },
+        setAttribute(name, value) { attributes.set(name, value); },
+    };
+    api.UI.view = null;
+    api.UI.toast = () => {};
+    api.UI.state.settingsDraft = { stale: true };
+    api.UI.state.providersDraft = { stale: true };
+    const payload = api.ConfigManager.snapshot(false);
+    payload.settings.defaultTone = 'formal';
+
+    await api.UI.importConfigFile({ text: async () => JSON.stringify(payload) });
+
+    assert.equal(api.UI.state.busy, false);
+    assert.equal(classes.has('ma-busy'), false);
+    assert.equal(attributes.get('aria-busy'), 'false');
+    assert.equal(api.UI.state.tone, 'formal');
+    assert.equal(api.UI.state.settingsDraft.defaultTone, 'formal');
+    assert.equal(api.UI.state.settingsDirty, false);
+});
+
+test('config import preserves a dirty template draft unless template replacement is confirmed', async () => {
+    const { api, sandbox } = await loadAssistant();
+    api.UI.app = {
+        classList: { toggle() {} },
+        setAttribute() {},
+    };
+    api.UI.view = null;
+    api.UI.render = () => {};
+    api.UI.toast = () => {};
+    const draft = { id: 'tpl-order-thanks', name: 'Unsaved name', text: 'Unsaved template text' };
+    api.UI.state.templateDraft = draft;
+    api.UI.state.templateDirty = true;
+    let confirmations = 0;
+    sandbox.confirm = () => { confirmations += 1; return false; };
+
+    const settingsOnly = {
+        app: api.APP.id,
+        schemaVersion: api.APP.configSchema,
+        settings: { shopName: 'Imported without templates' },
+        providers: {},
+        templates: [],
+    };
+    assert.equal(await api.UI.importConfigFile({ text: async () => JSON.stringify(settingsOnly) }), true);
+    assert.equal(confirmations, 0);
+    assert.equal(api.Store.settings.shopName, 'Imported without templates');
+    assert.equal(api.UI.state.templateDraft, draft);
+    assert.equal(api.UI.state.templateDirty, true);
+
+    const templatesBeforeDeclinedImport = copy(api.Store.templates);
+    const replacement = {
+        ...settingsOnly,
+        settings: { shopName: 'Declined replacement must not import' },
+        templates: [{ id: 'tpl-imported', name: 'Imported', text: 'Imported text' }],
+    };
+    assert.equal(await api.UI.importConfigFile({ text: async () => JSON.stringify(replacement) }), false);
+    assert.equal(confirmations, 1);
+    assert.equal(api.Store.settings.shopName, 'Imported without templates');
+    assert.deepEqual(copy(api.Store.templates), templatesBeforeDeclinedImport);
+    assert.equal(api.UI.state.templateDraft, draft);
+    assert.equal(api.UI.state.templateDirty, true);
+
+    sandbox.confirm = () => { confirmations += 1; return true; };
+    assert.equal(await api.UI.importConfigFile({ text: async () => JSON.stringify(replacement) }), true);
+    assert.equal(confirmations, 2);
+    assert.equal(api.Store.settings.shopName, 'Declined replacement must not import');
+    assert.equal(api.Store.templates.some(template => template.id === 'tpl-imported'), true);
+    assert.equal(api.UI.state.templateDraft, null);
+    assert.equal(api.UI.state.templateDirty, false);
+});
+
+test('SPA route changes preserve utility tabs but update contextual tabs', async () => {
+    const { api, sandbox } = await loadAssistant();
+    api.UI.state.open = false;
+    api.UI.state.page = 'templates';
+    api.App.routeFingerprint = 'previous';
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+
+    await api.App.onRoute();
+    assert.equal(api.UI.state.page, 'templates');
+
+    api.UI.state.page = 'messages';
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.href = 'https://www.etsy.com/your/orders/sold/completed';
+    await api.App.onRoute();
+    assert.equal(api.UI.state.page, 'orders');
+});
+
+test('review refresh replaces stale selection and rejects late work from the old review', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/your/shops/me/dashboard/activity';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/dashboard/activity';
+    const first = { id: 'review-a', text: 'First review' };
+    const second = { id: 'review-b', text: 'Second review' };
+    api.UI.state.reviews = [first];
+    api.UI.state.selectedReviewId = first.id;
+    const oldWork = api.UI.beginReviewWork(first);
+    api.UI.state.reviewAnalysis = { summary_tr: 'Old result' };
+    api.UI.state.reviewAnalysisBinding = oldWork;
+    api.ReviewsAdapter.scan = () => [second];
+
+    api.UI.refreshReviews();
+
+    assert.equal(api.UI.state.selectedReviewId, second.id);
+    assert.equal(api.UI.state.reviewAnalysis, null);
+    assert.equal(api.UI.state.reviewAnalysisBinding, null);
+    assert.equal(api.UI.reviewWorkIsCurrent(oldWork), false);
+});
+
 test('translator preserves formatting and separates cache entries by exact text and preferred provider', async () => {
     const environment = await loadAssistant();
     const requests = [];
@@ -585,6 +1212,105 @@ test('translator preserves formatting and separates cache entries by exact text 
         deepLRequests.slice(1).map(request => new URLSearchParams(request.data).get('target_lang')),
         ['EN-US', 'EN'],
     );
+});
+
+test('translator fallback cache follows policy and credential profile without exposing secrets', async () => {
+    const { api } = await loadAssistant();
+    const requests = [];
+    api.Store.settings = {
+        ...api.Store.settings,
+        translator: 'deepl',
+        deeplApiKey: 'deepl-bad-secret',
+        deeplPro: false,
+        freeFallback: true,
+    };
+    api.GMX.request = async (request) => {
+        requests.push(request);
+        if (request.url.includes('translate.googleapis.com')) {
+            return {
+                status: 200,
+                responseText: JSON.stringify([[['Google fallback', 'Policy probe']], null, 'en']),
+            };
+        }
+        const key = new URLSearchParams(request.data).get('auth_key');
+        if (key === 'deepl-bad-secret') {
+            return { status: 403, responseText: JSON.stringify({ message: 'Invalid key' }) };
+        }
+        return {
+            status: 200,
+            responseText: JSON.stringify({
+                translations: [{
+                    text: request.url.includes('api-free.deepl.com') ? 'DeepL fixed' : 'DeepL Pro fixed',
+                    detected_source_language: 'EN',
+                }],
+            }),
+        };
+    };
+
+    const fallback = await api.Translator.translate('Policy probe', 'tr');
+    assert.equal(fallback.provider, 'google');
+    assert.equal(requests.filter(request => request.url.includes('api-free.deepl.com')).length, 1);
+    assert.equal(requests.filter(request => request.url.includes('translate.googleapis.com')).length, 1);
+
+    api.Store.settings.freeFallback = false;
+    await assert.rejects(api.Translator.translate('Policy probe', 'tr'), /Invalid key|DeepL/i);
+    assert.equal(requests.filter(request => request.url.includes('api-free.deepl.com')).length, 2);
+    assert.equal(requests.filter(request => request.url.includes('translate.googleapis.com')).length, 1);
+
+    api.Store.settings.freeFallback = true;
+    api.Store.settings.deeplApiKey = 'deepl-good-secret';
+    const fixed = await api.Translator.translate('Policy probe', 'tr');
+    assert.equal(fixed.provider, 'deepl');
+    assert.equal(fixed.text, 'DeepL fixed');
+    assert.equal(requests.filter(request => request.url.includes('api-free.deepl.com')).length, 3);
+
+    api.Store.settings.deeplPro = true;
+    const fixedPro = await api.Translator.translate('Policy probe', 'tr');
+    assert.equal(fixedPro.text, 'DeepL Pro fixed');
+    assert.equal(requests.filter(request => request.url.includes('api.deepl.com')).length, 1);
+
+    const cacheIdentity = [...api.Translator.cache.keys()].join('\n');
+    assert.equal(cacheIdentity.includes('deepl-bad-secret'), false);
+    assert.equal(cacheIdentity.includes('deepl-good-secret'), false);
+});
+
+test('translator retries DeepL after a transient Google fallback instead of caching the fallback', async () => {
+    const { api } = await loadAssistant();
+    api.Store.settings = {
+        ...api.Store.settings,
+        translator: 'deepl',
+        deeplApiKey: 'stable-key',
+        deeplPro: false,
+        freeFallback: true,
+    };
+    let deepLCalls = 0;
+    let googleCalls = 0;
+    api.GMX.request = async (request) => {
+        if (request.url.includes('deepl.com')) {
+            deepLCalls += 1;
+            if (deepLCalls === 1) return { status: 503, responseText: '{}' };
+            return {
+                status: 200,
+                responseText: JSON.stringify({
+                    translations: [{ text: 'DeepL recovered', detected_source_language: 'EN' }],
+                }),
+            };
+        }
+        googleCalls += 1;
+        return {
+            status: 200,
+            responseText: JSON.stringify([[['Google fallback', 'Transient probe']], null, 'en']),
+        };
+    };
+
+    const fallback = await api.Translator.translate('Transient probe', 'tr');
+    const recovered = await api.Translator.translate('Transient probe', 'tr');
+
+    assert.equal(fallback.provider, 'google');
+    assert.equal(recovered.provider, 'deepl');
+    assert.equal(recovered.text, 'DeepL recovered');
+    assert.equal(deepLCalls, 2);
+    assert.equal(googleCalls, 1);
 });
 
 test('message adapter and UI translation paths preserve trimmed multiline customer text', async () => {
@@ -745,6 +1471,7 @@ test('secret-free config export omits every API key and import preserves existin
         ...api.Store.settings,
         deeplApiKey: exportedDeepLKey,
         messageCenterAgentToken: exportedMessageCenterToken,
+        configIncludeSecrets: true,
     };
     for (const [id, profile] of Object.entries(api.Store.providers)) {
         exportedProviderKeys[id] = `${id}-export-secret`;
@@ -753,6 +1480,7 @@ test('secret-free config export omits every API key and import preserves existin
 
     const safeSnapshot = api.ConfigManager.snapshot(false);
     assert.equal(safeSnapshot.includesApiKeys, false);
+    assert.equal(safeSnapshot.settings.configIncludeSecrets, false);
     assert.equal(safeSnapshot.settings.deeplApiKey, '');
     assert.equal(safeSnapshot.settings.messageCenterAgentToken, '');
     for (const profile of Object.values(safeSnapshot.providers)) assert.equal(profile.apiKey, '');
@@ -790,6 +1518,15 @@ test('config import rejects malformed settings and provider types before changin
         { settings: [], providers: {} },
         { settings: { openOnMessagePage: 'false' }, providers: {} },
         { settings: { retainHistoryDays: '90' }, providers: {} },
+        { settings: { translator: 'not-a-translator' }, providers: {} },
+        { settings: { aiProvider: 'not-an-ai-provider' }, providers: {} },
+        { settings: { defaultReplyMethod: 'not-a-method' }, providers: {} },
+        { settings: { retainHistoryDays: 0 }, providers: {} },
+        { settings: { updateCheckHours: 169 }, providers: {} },
+        { settings: { messageCenterSyncSeconds: 4 }, providers: {} },
+        { settings: { messageCenterPollSeconds: 61 }, providers: {} },
+        { settings: { messageCenterUrl: 'javascript:alert(1)' }, providers: {} },
+        { settings: { defaultDeliveredTemplateId: 'invalid template id' }, providers: {} },
         { settings: {}, providers: [] },
         { settings: {}, providers: { openai: 'not-a-provider-profile' } },
         { settings: {}, providers: { openai: { apiKey: 123 } } },
@@ -822,6 +1559,165 @@ test('config import rejects malformed settings and provider types before changin
         assert.deepEqual(copy(api.Store.providers), beforeProviders);
         assert.deepEqual(copy(Object.fromEntries(storage)), beforeStorage);
     }
+});
+
+test('config import rejects future schemas before changing any state', async () => {
+    const { api, storage } = await loadAssistant();
+    api.Store.settings = { ...api.Store.settings, shopName: 'Before future import' };
+    api.Store.templates = [...api.Store.templates, {
+        id: 'tpl-existing-custom', name: 'Existing custom', text: 'Keep me', archived: false,
+    }];
+    const beforeSettings = copy(api.Store.settings);
+    const beforeTemplates = copy(api.Store.templates);
+    const beforeStorage = copy(Object.fromEntries(storage));
+
+    await assert.rejects(
+        api.ConfigManager.importText(JSON.stringify({
+            app: api.APP.id,
+            schemaVersion: api.APP.configSchema + 1,
+            settings: { shopName: 'Must not be imported', futureSetting: true },
+            providers: {},
+            templates: [{ id: 'tpl-future', name: 'Future', text: 'Future template' }],
+        })),
+        /schema|sürüm|config/i,
+    );
+
+    assert.deepEqual(copy(api.Store.settings), beforeSettings);
+    assert.deepEqual(copy(api.Store.templates), beforeTemplates);
+    assert.deepEqual(copy(Object.fromEntries(storage)), beforeStorage);
+});
+
+test('config import atomically rejects noninteger schema versions', async () => {
+    for (const schemaVersion of [6.5, '6.5', 'future']) {
+        const { api, storage } = await loadAssistant();
+        api.Store.settings = { ...api.Store.settings, shopName: 'Before malformed schema import' };
+        const beforeSettings = copy(api.Store.settings);
+        const beforeProviders = copy(api.Store.providers);
+        const beforeTemplates = copy(api.Store.templates);
+        const beforeStorage = copy(Object.fromEntries(storage));
+
+        await assert.rejects(
+            api.ConfigManager.importText(JSON.stringify({
+                app: api.APP.id,
+                schemaVersion,
+                settings: { shopName: 'Must not be imported' },
+                providers: {},
+                templates: [{ id: 'tpl-malformed-schema', name: 'No import', text: 'No import' }],
+            })),
+            /schema|config/i,
+        );
+
+        assert.deepEqual(copy(api.Store.settings), beforeSettings);
+        assert.deepEqual(copy(api.Store.providers), beforeProviders);
+        assert.deepEqual(copy(api.Store.templates), beforeTemplates);
+        assert.deepEqual(copy(Object.fromEntries(storage)), beforeStorage);
+    }
+});
+
+test('config import validates every template before any write and preserves existing custom templates', async () => {
+    const invalidTemplatePayloads = [
+        {},
+        [null],
+        [[]],
+        [{ id: 'tpl-invalid', name: 42, text: 'Text' }],
+        [{ id: 'tpl-invalid', name: 'Name', text: 42 }],
+        [{ id: 'tpl-invalid', name: 'Name', text: 'Text', archived: 'false' }],
+        [{ id: 'tpl-invalid', name: 'Name', text: 'Text', tone: 'not-a-tone' }],
+        [{ id: 'tpl-invalid', name: 'Name', text: 'Text', language: 42 }],
+        [{ id: 'tpl-invalid', name: 'Name', text: 'Text', purpose: 'not-a-purpose' }],
+        [{ id: 'tpl-invalid', name: 'Name', text: 'Text', unexpectedField: true }],
+        [{ id: 'tpl-invalid', name: '   ', text: 'Text' }],
+        [{ id: 'tpl-invalid', name: 'Name', text: '\n\t' }],
+    ];
+
+    for (const templates of invalidTemplatePayloads) {
+        const { api, storage } = await loadAssistant();
+        api.Store.settings = { ...api.Store.settings, shopName: 'Before template import' };
+        api.Store.templates = [...api.Store.templates, {
+            id: 'tpl-existing-custom', name: 'Existing custom', text: 'Keep me', archived: false,
+        }];
+        const beforeSettings = copy(api.Store.settings);
+        const beforeTemplates = copy(api.Store.templates);
+        const beforeStorage = copy(Object.fromEntries(storage));
+
+        await assert.rejects(
+            api.ConfigManager.importText(JSON.stringify({
+                app: api.APP.id,
+                schemaVersion: api.APP.configSchema,
+                settings: { shopName: 'Must not be imported' },
+                providers: {},
+                templates,
+            })),
+            /templates?/i,
+        );
+
+        assert.deepEqual(copy(api.Store.settings), beforeSettings);
+        assert.deepEqual(copy(api.Store.templates), beforeTemplates);
+        assert.deepEqual(copy(Object.fromEntries(storage)), beforeStorage);
+    }
+
+    const { api, storage } = await loadAssistant();
+    const custom = { id: 'tpl-existing-custom', name: 'Existing custom', text: 'Keep me', archived: false };
+    await api.Store.saveTemplates([...api.Store.templates, custom]);
+    await api.ConfigManager.importText(JSON.stringify({
+        app: api.APP.id,
+        schemaVersion: api.APP.configSchema,
+        settings: { shopName: 'Valid import' },
+        providers: {},
+        templates: [],
+    }));
+    assert.equal(api.Store.settings.shopName, 'Valid import');
+    assert.equal(api.Store.templates.find(item => item.id === custom.id)?.text, custom.text);
+    assert.equal(storage.get(api.KEYS.templates).find(item => item.id === custom.id)?.text, custom.text);
+});
+
+test('stored and directly saved settings normalize malformed values fail-safe', async () => {
+    const { api, storage } = await loadAssistant();
+    storage.set(api.KEYS.settings, {
+        ...api.DEFAULT_SETTINGS,
+        autoSendCampaign: 'false',
+        openOnMessagePage: 'true',
+        messageCenterEnabled: 'false',
+        translator: 'not-a-translator',
+        aiProvider: 'not-an-ai-provider',
+        defaultReplyMethod: 'not-a-method',
+        retainHistoryDays: -40,
+        updateCheckHours: 999,
+        messageCenterSyncSeconds: '5',
+        messageCenterPollSeconds: 100,
+        messageCenterUrl: 'javascript:alert(1)',
+    });
+    storage.set(api.KEYS.configMeta, { schemaVersion: api.APP.configSchema, updatedAt: '' });
+
+    await api.Store.load();
+
+    assert.equal(api.Store.settings.autoSendCampaign, false);
+    assert.equal(api.Store.settings.openOnMessagePage, false);
+    assert.equal(api.Store.settings.messageCenterEnabled, false);
+    assert.equal(api.Store.settings.translator, api.DEFAULT_SETTINGS.translator);
+    assert.equal(api.Store.settings.aiProvider, api.DEFAULT_SETTINGS.aiProvider);
+    assert.equal(api.Store.settings.defaultReplyMethod, api.DEFAULT_SETTINGS.defaultReplyMethod);
+    assert.equal(api.Store.settings.retainHistoryDays, 1);
+    assert.equal(api.Store.settings.updateCheckHours, 168);
+    assert.equal(api.Store.settings.messageCenterSyncSeconds, api.DEFAULT_SETTINGS.messageCenterSyncSeconds);
+    assert.equal(api.Store.settings.messageCenterPollSeconds, 60);
+    assert.equal(api.Store.settings.messageCenterUrl, api.DEFAULT_SETTINGS.messageCenterUrl);
+    assert.equal(api.campaignAutoSendAllowed({ purpose: 'delivery_followup' }), false);
+
+    await api.Store.saveSettings({
+        ...api.DEFAULT_SETTINGS,
+        autoSendCampaign: 'true',
+        openOnMessagePage: 'true',
+        messageCenterEnabled: 'true',
+        retainHistoryDays: 999,
+        messageCenterSyncSeconds: -10,
+    });
+    assert.equal(api.Store.settings.autoSendCampaign, false);
+    assert.equal(api.Store.settings.openOnMessagePage, false);
+    assert.equal(api.Store.settings.messageCenterEnabled, false);
+    assert.equal(api.Store.settings.retainHistoryDays, 365);
+    assert.equal(api.Store.settings.messageCenterSyncSeconds, 5);
+    assert.deepEqual(copy(storage.get(api.KEYS.settings)), copy(api.Store.settings));
 });
 
 test('config import rejects prototype-pollution keys before changing any state', async () => {
@@ -1498,6 +2394,34 @@ test('review decision control selects an eligible recipient and renders its dura
     assert.match(markup, /data-order-select="order-1" checked/);
 });
 
+test('failed review-decision persistence rerenders the durable value instead of leaving a false selection', async () => {
+    const { api } = await loadAssistant();
+    const handlers = new Map();
+    api.UI.shadow = {
+        addEventListener(type, handler) { handlers.set(type, handler); },
+    };
+    const originalDecision = api.Outreach.setManualDecision;
+    const originalSetBusy = api.UI.setBusy;
+    let renders = 0;
+    let errors = 0;
+    api.Outreach.setManualDecision = async () => { throw new Error('injected review decision write failure'); };
+    api.UI.setBusy = () => {};
+    api.UI.render = () => { renders += 1; };
+    api.UI.toast = () => { errors += 1; };
+    api.UI.bind();
+    try {
+        await handlers.get('change')({
+            target: { dataset: { reviewDecision: 'order-1' }, value: 'eligible' },
+        });
+        assert.equal(errors, 1);
+        assert.equal(renders, 1, 'the failed native selection must be replaced from durable state');
+        assert.equal(api.UI.state.selectedOrders.has('order-1'), false);
+    } finally {
+        api.Outreach.setManualDecision = originalDecision;
+        api.UI.setBusy = originalSetBusy;
+    }
+});
+
 test('message campaign bar exposes the enabled user-triggered send-and-next action only for a ready draft', async () => {
     const { api, sandbox } = await loadAssistant();
     sandbox.location.pathname = '/messages/order-1';
@@ -1518,7 +2442,9 @@ test('message campaign bar exposes the enabled user-triggered send-and-next acti
             campaignId: 'campaign-1', campaignItemId: 'item-1', templateHash: 'hash',
         },
     };
-    api.UI.state.context = { customerName: 'Ashley', orderId: 'order-1', lastCustomerMessage: '' };
+    api.UI.state.context = {
+        conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1', lastCustomerMessage: '',
+    };
     const originalTextarea = api.MessageAdapter.getTextarea;
     const originalSendButton = api.MessageAdapter.getSendButton;
     api.MessageAdapter.getTextarea = () => ({ value: 'Prepared review request', offsetParent: {} });
@@ -1531,6 +2457,301 @@ test('message campaign bar exposes the enabled user-triggered send-and-next acti
     } finally {
         api.MessageAdapter.getTextarea = originalTextarea;
         api.MessageAdapter.getSendButton = originalSendButton;
+    }
+});
+
+test('message campaign skip and cancel require confirmation and reject stale revisions', async () => {
+    const confirmationEnvironment = await loadAssistant();
+    const { api, sandbox } = confirmationEnvironment;
+    installGuidedFixture(confirmationEnvironment);
+    api.UI.state.context = {
+        conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1',
+        lastCustomerMessage: '', routeFingerprint: api.Router.routeFingerprint(),
+    };
+    const markup = api.UI.renderMessages();
+    assert.match(markup, /data-action="campaign-skip"[^>]*data-campaign-revision=/);
+    assert.match(markup, /data-action="campaign-cancel"[^>]*data-campaign-revision=/);
+
+    const originals = {
+        confirm: sandbox.confirm,
+        skipCurrent: api.Campaign.skipCurrent,
+        skipOrder: api.Campaign.skipOrder,
+        cancel: api.Campaign.cancel,
+        setBusy: api.UI.setBusy,
+        render: api.UI.render,
+    };
+    const calls = { skip: 0, cancel: 0, confirm: 0 };
+    sandbox.confirm = () => { calls.confirm += 1; return false; };
+    api.Campaign.skipCurrent = async () => { calls.skip += 1; };
+    api.Campaign.skipOrder = async () => { calls.skip += 1; };
+    api.Campaign.cancel = async () => { calls.cancel += 1; };
+    api.UI.setBusy = () => {};
+    api.UI.render = () => {};
+    const campaign = api.Store.campaign;
+    const item = api.Campaign.current();
+    const targetFor = action => ({
+        dataset: {
+            action,
+            campaignId: campaign.id,
+            campaignItemId: item.id,
+            campaignRevision: String(campaign.revision),
+        },
+    });
+    try {
+        await api.UI.onClick({ target: { closest: () => targetFor('campaign-skip') } });
+        await api.UI.onClick({ target: { closest: () => targetFor('campaign-cancel') } });
+        assert.deepEqual(calls, { skip: 0, cancel: 0, confirm: 2 });
+    } finally {
+        sandbox.confirm = originals.confirm;
+        api.Campaign.skipCurrent = originals.skipCurrent;
+        api.Campaign.skipOrder = originals.skipOrder;
+        api.Campaign.cancel = originals.cancel;
+        api.UI.setBusy = originals.setBusy;
+        api.UI.render = originals.render;
+    }
+
+    const staleSkipEnvironment = await loadAssistant();
+    const staleSkipFixture = installGuidedFixture(staleSkipEnvironment);
+    const staleSkipBefore = copy(staleSkipEnvironment.api.Store.campaign);
+    await assert.rejects(
+        staleSkipEnvironment.api.Campaign.skipOrder('order-1', {
+            expectedItemId: staleSkipFixture.first.id,
+            expectedCampaignId: staleSkipBefore.id,
+            expectedRevision: staleSkipBefore.revision - 1,
+        }),
+        /başka bir (?:Etsy )?sekmesinde değişti|güncel değil|revision/i,
+    );
+    assert.deepEqual(copy(staleSkipEnvironment.api.Store.campaign), staleSkipBefore);
+
+    const staleCancelEnvironment = await loadAssistant();
+    installGuidedFixture(staleCancelEnvironment);
+    const staleCancelBefore = copy(staleCancelEnvironment.api.Store.campaign);
+    await assert.rejects(
+        staleCancelEnvironment.api.Campaign.cancel({
+            expectedCampaignId: staleCancelBefore.id,
+            expectedRevision: staleCancelBefore.revision - 1,
+        }),
+        /başka bir (?:Etsy )?sekmesinde değişti|güncel değil|revision/i,
+    );
+    assert.deepEqual(copy(staleCancelEnvironment.api.Store.campaign), staleCancelBefore);
+});
+
+test('manual reply insertion preserves a different occupied Etsy composer without side effects', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/order-1';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/order-1';
+    const routeFingerprint = api.Router.routeFingerprint();
+    const context = {
+        conversationId: 'order-1',
+        customerName: 'Ashley',
+        orderId: 'order-1',
+        lastCustomerMessage: 'Can you help with my order?',
+        routeFingerprint,
+    };
+    const textarea = { value: 'My unsent manual Etsy draft', offsetParent: {} };
+    api.UI.state.reply = 'Generated assistant reply';
+    api.UI.state.replyMethod = 'free';
+    api.UI.state.replyBinding = {
+        conversationId: context.conversationId,
+        routeFingerprint,
+        messageHash: api.hashText(context.lastCustomerMessage),
+    };
+
+    const originals = {
+        context: api.MessageAdapter.context,
+        waitForTextarea: api.MessageAdapter.waitForTextarea,
+        getTextarea: api.MessageAdapter.getTextarea,
+        insert: api.MessageAdapter.insert,
+        prepare: api.Verification.prepare,
+        setStatus: api.Store.setStatus,
+        addHistory: api.Store.addHistory,
+    };
+    const calls = { insert: 0, prepare: 0, setStatus: 0, addHistory: 0 };
+    api.MessageAdapter.context = () => context;
+    api.MessageAdapter.waitForTextarea = async () => textarea;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.insert = () => { calls.insert += 1; };
+    api.Verification.prepare = () => { calls.prepare += 1; };
+    api.Store.setStatus = async () => { calls.setStatus += 1; };
+    api.Store.addHistory = async () => { calls.addHistory += 1; };
+    try {
+        await assert.rejects(
+            api.UI.insertReply(),
+            /farklı.*taslak|mevcut metni korumak|üzerine yazılmadı/i,
+        );
+        assert.equal(textarea.value, 'My unsent manual Etsy draft');
+        assert.deepEqual(calls, { insert: 0, prepare: 0, setStatus: 0, addHistory: 0 });
+    } finally {
+        api.MessageAdapter.context = originals.context;
+        api.MessageAdapter.waitForTextarea = originals.waitForTextarea;
+        api.MessageAdapter.getTextarea = originals.getTextarea;
+        api.MessageAdapter.insert = originals.insert;
+        api.Verification.prepare = originals.prepare;
+        api.Store.setStatus = originals.setStatus;
+        api.Store.addHistory = originals.addHistory;
+    }
+});
+
+test('manual reply insertion revalidates the captured conversation context immediately before mutation', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/order-1';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/order-1';
+    const routeFingerprint = api.Router.routeFingerprint();
+    const currentContext = {
+        conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1',
+        lastCustomerMessage: 'Original customer message', routeFingerprint,
+    };
+    const driftedContext = {
+        ...currentContext,
+        conversationId: 'order-2',
+        orderId: 'order-2',
+        customerName: 'Morgan',
+    };
+    const textarea = { value: '', offsetParent: {} };
+    api.UI.state.reply = 'Generated assistant reply';
+    api.UI.state.replyBinding = {
+        conversationId: currentContext.conversationId,
+        routeFingerprint,
+        messageHash: api.hashText(currentContext.lastCustomerMessage),
+    };
+
+    const originals = {
+        context: api.MessageAdapter.context,
+        waitForTextarea: api.MessageAdapter.waitForTextarea,
+        getTextarea: api.MessageAdapter.getTextarea,
+        insert: api.MessageAdapter.insert,
+        prepare: api.Verification.prepare,
+        setStatus: api.Store.setStatus,
+        addHistory: api.Store.addHistory,
+    };
+    let contextReads = 0;
+    const calls = { insert: 0, prepare: 0, setStatus: 0, addHistory: 0 };
+    api.MessageAdapter.context = () => (++contextReads <= 2 ? currentContext : driftedContext);
+    api.MessageAdapter.waitForTextarea = async () => textarea;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.insert = () => { calls.insert += 1; };
+    api.Verification.prepare = () => { calls.prepare += 1; };
+    api.Store.setStatus = async () => { calls.setStatus += 1; };
+    api.Store.addHistory = async () => { calls.addHistory += 1; };
+    try {
+        await assert.rejects(api.UI.insertReply(), /Konuşma değişti/i);
+        assert.equal(contextReads, 3, 'the captured context must be checked after the post-wait route check');
+        assert.deepEqual(calls, { insert: 0, prepare: 0, setStatus: 0, addHistory: 0 });
+    } finally {
+        api.MessageAdapter.context = originals.context;
+        api.MessageAdapter.waitForTextarea = originals.waitForTextarea;
+        api.MessageAdapter.getTextarea = originals.getTextarea;
+        api.MessageAdapter.insert = originals.insert;
+        api.Verification.prepare = originals.prepare;
+        api.Store.setStatus = originals.setStatus;
+        api.Store.addHistory = originals.addHistory;
+    }
+});
+
+test('pending send verification renders reconciliation guidance without advance skip or stop controls', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    installPendingResolutionFixture(environment);
+    api.UI.state.context = {
+        conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1',
+        lastCustomerMessage: '', routeFingerprint: api.Router.routeFingerprint(),
+    };
+
+    const messagesMarkup = api.UI.renderMessages();
+    assert.match(messagesMarkup, /Gönderim sonucu.*doğrulanmayı bekliyor/i);
+    assert.match(messagesMarkup, /Etsy.*kontrol.*Gönderildi.*Gönderilmedi/is);
+    assert.match(messagesMarkup, /data-order-confirm-sent="order-1"/);
+    assert.match(messagesMarkup, /data-order-confirm-not-sent="order-1"/);
+    assert.doesNotMatch(messagesMarkup, /data-action="campaign-(?:send-next|skip|cancel)"/);
+
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/orders/sold/completed';
+    api.UI.state.orders = [{
+        orderId: 'order-1', customerName: 'Ashley', itemTitle: 'Custom Team Shirt', price: '$20',
+        messageUrl: 'https://www.etsy.com/messages/order-1', delivered: true,
+        status: { status: 'sent_pending_verification' },
+    }];
+    const ordersMarkup = api.UI.renderOrders();
+    assert.match(ordersMarkup, /Gönderim sonucu.*doğrulanmayı bekliyor/i);
+    assert.match(ordersMarkup, /Etsy.*kontrol.*Gönderildi.*Gönderilmedi/is);
+    assert.match(ordersMarkup, /data-order-confirm-sent="order-1"/);
+    assert.match(ordersMarkup, /data-order-confirm-not-sent="order-1"/);
+    assert.doesNotMatch(ordersMarkup, /data-action="campaign-(?:start|cancel)"/);
+    assert.doesNotMatch(ordersMarkup, /data-order-skip=/);
+});
+
+test('pending reconciliation controls stay bound to the campaign conversation', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    installPendingResolutionFixture(environment);
+    sandbox.location.pathname = '/messages/order-2';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/order-2';
+    const context = {
+        conversationId: 'order-2', customerName: 'Morgan', orderId: 'order-2',
+        lastCustomerMessage: '', routeFingerprint: api.Router.routeFingerprint(),
+    };
+    api.UI.state.context = context;
+    const originalContext = api.MessageAdapter.context;
+    const originalResolve = api.Campaign.resolvePendingSend;
+    const originalToast = api.UI.toast;
+    let resolutions = 0;
+    api.MessageAdapter.context = () => context;
+    api.Campaign.resolvePendingSend = async () => { resolutions += 1; return 'sent'; };
+    api.UI.toast = () => {};
+    try {
+        const markup = api.UI.renderMessages();
+        assert.match(markup, /order-1|Sipariş #order-1/i);
+        assert.doesNotMatch(markup, /data-order-confirm-(?:sent|not-sent)=/);
+        await assert.rejects(
+            api.UI.onClick({ target: { closest: () => ({ dataset: { orderConfirmSent: 'order-1' } }) } }),
+            /doğru konuşma|konuşma değişti|bu konuşmaya ait değil/i,
+        );
+        assert.equal(resolutions, 0);
+    } finally {
+        api.MessageAdapter.context = originalContext;
+        api.Campaign.resolvePendingSend = originalResolve;
+        api.UI.toast = originalToast;
+    }
+});
+
+test('pending verification suppresses new campaign creation before replacement confirmation', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    installPendingResolutionFixture(environment);
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/orders/sold/completed';
+    api.UI.state.selectedTemplateId = 'tpl-delivered';
+    api.UI.state.orders = [{
+        orderId: 'order-3', customerName: 'Taylor', itemTitle: 'Third Shirt', price: '$24',
+        messageUrl: 'https://www.etsy.com/messages/order-3', delivered: true,
+        status: { status: 'none' },
+    }];
+    api.UI.state.selectedOrders = new Set(['order-3']);
+
+    const markup = api.UI.renderOrders();
+    assert.doesNotMatch(markup, /data-action="campaign-create"/);
+
+    const originalConfirm = sandbox.confirm;
+    const originalCancel = api.Campaign.cancel;
+    const originalSetBusy = api.UI.setBusy;
+    let confirmations = 0;
+    let cancellations = 0;
+    sandbox.confirm = () => { confirmations += 1; return true; };
+    api.Campaign.cancel = async () => { cancellations += 1; };
+    api.UI.setBusy = () => {};
+    try {
+        await assert.rejects(api.UI.createCampaign(), /doğrulama|Gönderildi|Gönderilmedi/i);
+        assert.equal(confirmations, 0);
+        assert.equal(cancellations, 0);
+    } finally {
+        sandbox.confirm = originalConfirm;
+        api.Campaign.cancel = originalCancel;
+        api.UI.setBusy = originalSetBusy;
     }
 });
 
@@ -2222,4 +3443,583 @@ test('releasing an early guided claim preserves a newer review decision from ano
     assert.equal(outreach.decision, 'ineligible');
     assert.equal(outreach.reason, 'review_exists');
     assert.deepEqual(copy(api.Store.campaign.items[0]), copy(fixture.first));
+});
+
+test('campaign resume refuses an already occupied composer before reserving or auto-sending', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    sandbox.location.pathname = '/messages/order-1';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/order-1';
+    api.Store.settings.replyInCustomerLanguage = false;
+    api.Store.settings.autoSendCampaign = true;
+    await api.Campaign.create([{
+        orderId: 'order-1',
+        customerName: 'Ashley',
+        itemTitle: 'Custom Team Shirt',
+        messageUrl: sandbox.location.href,
+    }], 'tpl-delivered', 'template');
+
+    const textarea = { value: 'My unsent manual Etsy draft', offsetParent: {} };
+    const originals = {
+        getTextarea: api.MessageAdapter.getTextarea,
+        insert: api.MessageAdapter.insert,
+        autoSendIfCurrent: api.Campaign.autoSendIfCurrent,
+    };
+    let insertCalls = 0;
+    let autoSendCalls = 0;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.insert = () => { insertCalls += 1; };
+    api.Campaign.autoSendIfCurrent = async () => { autoSendCalls += 1; return true; };
+
+    try {
+        await assert.rejects(api.Campaign.resume(), /gönderilmemiş.*taslak|taslağ.*koru/i);
+        assert.equal(textarea.value, 'My unsent manual Etsy draft');
+        assert.equal(insertCalls, 0);
+        assert.equal(autoSendCalls, 0);
+        assert.equal(api.Store.campaign.items[0].status, 'pending');
+        assert.equal(api.Store.statuses.orders['order-1'].status, 'draft');
+        assert.equal(api.Store.campaign.items[0].reservation, undefined);
+    } finally {
+        api.MessageAdapter.getTextarea = originals.getTextarea;
+        api.MessageAdapter.insert = originals.insert;
+        api.Campaign.autoSendIfCurrent = originals.autoSendIfCurrent;
+    }
+});
+
+test('campaign resume never overwrites a different occupied composer mounted while the draft is prepared', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    sandbox.location.pathname = '/messages/order-1';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/order-1';
+    api.Store.settings.replyInCustomerLanguage = false;
+    api.Store.settings.autoSendCampaign = true;
+    await api.Campaign.create([{
+        orderId: 'order-1',
+        customerName: 'Ashley',
+        itemTitle: 'Custom Team Shirt',
+        messageUrl: sandbox.location.href,
+    }], 'tpl-delivered', 'template');
+
+    let textarea = { value: '', offsetParent: {} };
+    const originals = {
+        getTextarea: api.MessageAdapter.getTextarea,
+        context: api.MessageAdapter.context,
+        insert: api.MessageAdapter.insert,
+        autoSendIfCurrent: api.Campaign.autoSendIfCurrent,
+    };
+    let insertCalls = 0;
+    let autoSendCalls = 0;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.context = () => ({
+        conversationId: 'order-1',
+        customerName: 'Ashley',
+        customerFirstName: 'Ashley',
+        orderId: 'order-1',
+        itemTitle: 'Custom Team Shirt',
+        messages: [],
+        lastCustomerMessage: '',
+        routeFingerprint: api.Router.routeFingerprint(),
+    });
+    api.MessageAdapter.insert = () => { insertCalls += 1; };
+    api.Campaign.autoSendIfCurrent = async () => { autoSendCalls += 1; return true; };
+
+    try {
+        const resume = api.Campaign.resume();
+        await waitUntil(
+            () => Boolean(api.Store.campaign.items[0].reservation),
+            'campaign reservation was not acquired',
+        );
+        textarea = { value: 'My unsent manual Etsy draft', offsetParent: {} };
+
+        await assert.rejects(resume, /gönderilmemiş.*taslak|taslağ.*koru/i);
+        assert.equal(textarea.value, 'My unsent manual Etsy draft');
+        assert.equal(insertCalls, 0);
+        assert.equal(autoSendCalls, 0);
+        assert.equal(api.Store.campaign.items[0].status, 'pending');
+        assert.equal(api.Store.statuses.orders['order-1'].status, 'draft');
+        assert.equal(api.Store.campaign.items[0].reservation, undefined);
+    } finally {
+        Object.assign(api.MessageAdapter, {
+            getTextarea: originals.getTextarea,
+            context: originals.context,
+            insert: originals.insert,
+        });
+        api.Campaign.autoSendIfCurrent = originals.autoSendIfCurrent;
+    }
+});
+
+test('campaign skip is a state-preserving no-op without a matching skippable active item', async () => {
+    const mismatchedEnvironment = await loadAssistant();
+    const mismatchedFixture = installGuidedFixture(mismatchedEnvironment);
+    const mismatchedBefore = {
+        campaign: copy(mismatchedEnvironment.api.Store.campaign),
+        statuses: copy(mismatchedEnvironment.api.Store.statuses),
+    };
+
+    const mismatched = await mismatchedEnvironment.api.Campaign.skipOrder('other-order', {
+        expectedItemId: mismatchedFixture.first.id,
+    });
+    assert.equal(mismatched.skipped, false);
+    assert.deepEqual(copy(mismatchedEnvironment.api.Store.campaign), mismatchedBefore.campaign);
+    assert.deepEqual(copy(mismatchedEnvironment.api.Store.statuses), mismatchedBefore.statuses);
+
+    const terminalEnvironment = await loadAssistant();
+    installPendingResolutionFixture(terminalEnvironment);
+    const terminalBefore = {
+        campaign: copy(terminalEnvironment.api.Store.campaign),
+        statuses: copy(terminalEnvironment.api.Store.statuses),
+    };
+
+    const terminal = await terminalEnvironment.api.Campaign.skipOrder('order-1');
+    assert.equal(terminal.skipped, false);
+    assert.deepEqual(copy(terminalEnvironment.api.Store.campaign), terminalBefore.campaign);
+    assert.deepEqual(copy(terminalEnvironment.api.Store.statuses), terminalBefore.statuses);
+});
+
+function configureMessageCenter(environment, overrides = {}) {
+    const { api, sandbox } = environment;
+    api.Store.settings = {
+        ...api.Store.settings,
+        messageCenterEnabled: true,
+        messageCenterUrl: 'https://messages-a.example',
+        messageCenterStoreId: 'shop-a',
+        messageCenterAgentToken: 'token-a',
+        ...overrides,
+    };
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    return api.MessageCenterAgent;
+}
+
+function messageCenterJob(overrides = {}) {
+    return {
+        id: 'job-1',
+        type: 'reply',
+        conversationId: 'conversation-a',
+        conversationUrl: 'https://www.etsy.com/messages/conversation-a',
+        text: 'Safe central reply',
+        ...overrides,
+    };
+}
+
+function messageCenterButton(onClick) {
+    const listeners = new Set();
+    return {
+        disabled: false,
+        addEventListener(_type, listener) { listeners.add(listener); },
+        removeEventListener(_type, listener) { listeners.delete(listener); },
+        click() {
+            for (const listener of [...listeners]) listener({ type: 'click' });
+            onClick();
+        },
+    };
+}
+
+async function runInvalidMessageCenterJob(job) {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const textarea = { value: '', offsetParent: {} };
+    const results = [];
+    let contextCalls = 0;
+    let insertCalls = 0;
+    let clickCalls = 0;
+    agent.request = async (method, path, body) => {
+        if (method === 'GET' && path.endsWith('/jobs/next')) return { job };
+        if (path.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    agent.syncNow = async () => false;
+    api.MessageAdapter.waitForContext = async () => {
+        contextCalls += 1;
+        return { conversationId: 'conversation-a' };
+    };
+    api.MessageAdapter.waitForTextarea = async () => textarea;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.insert = (text, target) => { insertCalls += 1; target.value = text; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clickCalls += 1; });
+    api.MessageAdapter.waitForOutgoing = async () => true;
+
+    await agent.processNextJob();
+    return { agent, storage, results, contextCalls, insertCalls, clickCalls };
+}
+
+test('Message Center rejects an unknown job type before any Etsy DOM action', async () => {
+    const job = messageCenterJob({ id: 'job-unknown', type: 'delete-conversation' });
+    const result = await runInvalidMessageCenterJob(job);
+
+    assert.equal(result.contextCalls, 0);
+    assert.equal(result.insertCalls, 0);
+    assert.equal(result.clickCalls, 0);
+    assert.deepEqual(result.results, [{
+        status: 'failed',
+        retryable: false,
+        error: 'unsupported_job_type',
+    }]);
+    assert.equal(result.storage.has(result.agent.pendingKey(result.agent.config())), false);
+});
+
+test('Message Center rejects a whitespace-only reply before any Etsy DOM action', async () => {
+    const job = messageCenterJob({ id: 'job-empty-reply', text: '  \n\t  ' });
+    const result = await runInvalidMessageCenterJob(job);
+
+    assert.equal(result.contextCalls, 0);
+    assert.equal(result.insertCalls, 0);
+    assert.equal(result.clickCalls, 0);
+    assert.deepEqual(result.results, [{
+        status: 'failed',
+        retryable: false,
+        error: 'empty_reply_text',
+    }]);
+    assert.equal(result.storage.has(result.agent.pendingKey(result.agent.config())), false);
+});
+
+test('Message Center fences and fails a legacy pending record instead of blocking or dispatching it', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-legacy' });
+    storage.set(agent.pendingKey(binding), {
+        job,
+        stage: 'dispatched',
+        baselineMatches: 0,
+        updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const requests = [];
+    let insertCalls = 0;
+    let clickCalls = 0;
+    agent.request = async (method, path, body) => {
+        requests.push({ method, path, body: copy(body) });
+        return {};
+    };
+    api.MessageAdapter.insert = () => { insertCalls += 1; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clickCalls += 1; });
+
+    await agent.processNextJob();
+
+    assert.equal(insertCalls, 0);
+    assert.equal(clickCalls, 0);
+    assert.equal(requests.some(call => call.method === 'GET' && call.path.endsWith('/jobs/next')), false);
+    assert.deepEqual(
+        requests.filter(call => call.path.includes('/result')).map(call => call.body),
+        [{ status: 'failed', retryable: false, error: 'legacy_pending_requires_manual_review' }],
+    );
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+    assert.equal(storage.get(agent.legacyPendingKey(binding))?.pending?.job?.id, job.id);
+    assert.match(agent.lastError, /legacy pending/i);
+});
+
+test('Message Center keeps a legacy rejection fenced and retries it after a result outage', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-legacy-retry' });
+    storage.set(agent.pendingKey(binding), {
+        job,
+        stage: 'prepared',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+    });
+    const results = [];
+    let resultAttempts = 0;
+    let insertCalls = 0;
+    let clickCalls = 0;
+    agent.request = async (method, path, body) => {
+        if (method === 'GET') throw new Error('legacy recovery must not lease another job');
+        if (path.includes('/result')) {
+            resultAttempts += 1;
+            results.push(copy(body));
+            if (resultAttempts === 1) throw new Error('result service offline');
+        }
+        return {};
+    };
+    api.MessageAdapter.insert = () => { insertCalls += 1; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clickCalls += 1; });
+
+    assert.equal(await agent.processNextJob(), false);
+    const fenced = storage.get(agent.pendingKey(binding));
+    assert.equal(fenced.stage, 'rejected');
+    assert.equal(fenced.legacyBlocked, true);
+    assert.equal(fenced.rejectionCode, 'legacy_pending_requires_manual_review');
+    assert.ok(fenced.ownerId && fenced.fenceToken && fenced.configId);
+    assert.match(agent.lastError, /result service offline/i);
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(resultAttempts, 2);
+    assert.deepEqual(results, [
+        { status: 'failed', retryable: false, error: 'legacy_pending_requires_manual_review' },
+        { status: 'failed', retryable: false, error: 'legacy_pending_requires_manual_review' },
+    ]);
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+    assert.equal(storage.get(agent.legacyPendingKey(binding))?.pending?.job?.id, job.id);
+    assert.equal(insertCalls, 0);
+    assert.equal(clickCalls, 0);
+});
+
+test('Message Center never inserts or clicks after the active conversation changes while resolving the composer', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    const agent = configureMessageCenter(environment);
+    const job = messageCenterJob();
+    let resolveTextarea;
+    let waitingForTextarea = false;
+    const textareaReady = new Promise(resolve => { resolveTextarea = resolve; });
+    const textareaA = { value: '', offsetParent: {} };
+    const textareaB = { value: '', offsetParent: {} };
+    let activeTextarea = textareaA;
+    let insertCalls = 0;
+    let clickCalls = 0;
+    const resultCalls = [];
+
+    agent.request = async (method, path) => {
+        if (method === 'GET' && path.endsWith('/jobs/next')) return { job };
+        if (path.includes('/result')) resultCalls.push({ method, path });
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => ({ conversationId: 'conversation-a' });
+    api.MessageAdapter.waitForTextarea = async () => { waitingForTextarea = true; return textareaReady; };
+    api.MessageAdapter.getTextarea = () => activeTextarea;
+    api.MessageAdapter.insert = (text, textarea) => { insertCalls += 1; textarea.value = text; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clickCalls += 1; });
+
+    const processing = agent.processNextJob();
+    await waitUntil(() => waitingForTextarea, 'Message Center did not begin waiting for the composer');
+    sandbox.location.pathname = '/messages/conversation-b';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-b';
+    activeTextarea = textareaB;
+    resolveTextarea(textareaB);
+    await processing;
+
+    assert.equal(insertCalls, 0);
+    assert.equal(clickCalls, 0);
+    assert.equal(textareaB.value, '');
+    assert.equal(resultCalls.some(call => /status=sent/.test(call.path)), false);
+});
+
+test('Message Center revalidates a hydrate job after awaiting the conversation payload', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    const agent = configureMessageCenter(environment);
+    const job = messageCenterJob({ type: 'hydrate', text: '' });
+    let resolvePayload;
+    let waitingForPayload = false;
+    const payloadReady = new Promise(resolve => { resolvePayload = resolve; });
+    const requests = [];
+
+    agent.request = async (method, path, body) => {
+        requests.push({ method, path, body });
+        if (method === 'GET' && path.endsWith('/jobs/next')) return { job };
+        return {};
+    };
+    agent.currentConversationPayload = async () => { waitingForPayload = true; return payloadReady; };
+
+    const processing = agent.processNextJob();
+    await waitUntil(() => waitingForPayload, 'hydrate payload was not requested');
+    sandbox.location.pathname = '/messages/conversation-b';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-b';
+    resolvePayload({
+        conversationId: 'conversation-b',
+        conversationUrl: sandbox.location.href,
+        buyerName: 'Buyer B',
+        messages: [],
+        hydrated: true,
+    });
+    await processing;
+
+    assert.equal(requests.some(call => call.path.endsWith('/sync')), false);
+    assert.equal(requests.some(call => call.path.includes('/result') && call.body?.status === 'completed'), false);
+});
+
+test('Message Center serializes tabs and uses its sent ledger to prevent a duplicate dispatch', async () => {
+    const shared = {
+        storage: new Map(),
+        lockTails: new Map(),
+        valueListeners: new Map(),
+        requestedLocks: [],
+    };
+    const first = await loadAssistant(shared);
+    const second = await loadAssistant(shared);
+    const job = messageCenterJob();
+    let clicks = 0;
+    const results = [];
+
+    for (const environment of [first, second]) {
+        const { api } = environment;
+        const agent = configureMessageCenter(environment);
+        const textarea = { value: '', offsetParent: {} };
+        const button = messageCenterButton(() => { clicks += 1; });
+        agent.request = async (method, path, body) => {
+            if (method === 'GET' && path.endsWith('/jobs/next')) return { job: copy(job) };
+            if (path.includes('/result')) results.push(copy(body));
+            return {};
+        };
+        api.MessageAdapter.waitForContext = async () => ({ conversationId: 'conversation-a' });
+        api.MessageAdapter.waitForTextarea = async () => textarea;
+        api.MessageAdapter.getTextarea = () => textarea;
+        api.MessageAdapter.insert = (text, target) => { target.value = text; };
+        api.MessageAdapter.getSendButton = () => button;
+        api.MessageAdapter.waitForOutgoing = async () => true;
+    }
+
+    await Promise.all([
+        first.api.MessageCenterAgent.processNextJob(),
+        second.api.MessageCenterAgent.processNextJob(),
+    ]);
+
+    assert.equal(clicks, 1);
+    assert.equal(results.filter(result => result.status === 'sent').length, 2);
+    assert.equal(results.some(result => result.duplicatePrevented === true), true);
+    assert.equal(shared.requestedLocks.filter(name => /message-center.*processor/i.test(name)).length, 2);
+});
+
+test('Message Center fenced clear cannot delete another tab owner pending record', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const key = agent.pendingKey(binding);
+    const pending = {
+        job: messageCenterJob(),
+        stage: 'leased',
+        ownerId: 'other-tab',
+        fenceToken: 'other-fence',
+        configId: agent.configId(binding),
+        leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    storage.set(key, copy(pending));
+
+    const cleared = await agent.clearPending({
+        pendingKey: key,
+        jobId: pending.job.id,
+        ownerId: agent.tabId,
+        fenceToken: 'my-fence',
+        configId: pending.configId,
+    });
+
+    assert.equal(cleared, false);
+    assert.deepEqual(storage.get(key), pending);
+});
+
+test('Message Center disable or config generation change cancels an in-flight job before insert and report', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const agent = configureMessageCenter(environment);
+    const job = messageCenterJob();
+    let resolveTextarea;
+    let waitingForTextarea = false;
+    const textareaReady = new Promise(resolve => { resolveTextarea = resolve; });
+    const textarea = { value: '', offsetParent: {} };
+    let inserts = 0;
+    let clicks = 0;
+    const jobResults = [];
+
+    agent.request = async (method, path, body) => {
+        if (method === 'GET' && path.endsWith('/jobs/next')) return { job };
+        if (path.includes(`/jobs/${job.id}/result`)) jobResults.push({ path, body });
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => ({ conversationId: 'conversation-a' });
+    api.MessageAdapter.waitForTextarea = async () => { waitingForTextarea = true; return textareaReady; };
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.insert = () => { inserts += 1; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clicks += 1; });
+
+    const processing = agent.processNextJob();
+    await waitUntil(() => waitingForTextarea, 'Message Center did not reach the deferred composer');
+    api.Store.settings.messageCenterEnabled = false;
+    await agent.reconfigure();
+    resolveTextarea(textarea);
+    await processing;
+
+    assert.equal(inserts, 0);
+    assert.equal(clicks, 0);
+    assert.deepEqual(jobResults, []);
+    assert.ok(environment.storage.get(agent.pendingKey({ ...agent.config(), storeId: 'shop-a' })));
+
+    const changedEnvironment = await loadAssistant();
+    const changedAgent = configureMessageCenter(changedEnvironment);
+    const changedJob = messageCenterJob({ id: 'job-config-change' });
+    const changedTextarea = { value: '', offsetParent: {} };
+    let resolveChangedTextarea;
+    let changedWaiting = false;
+    let changedInserts = 0;
+    let changedClicks = 0;
+    const changedRequests = [];
+    const changedTextareaReady = new Promise(resolve => { resolveChangedTextarea = resolve; });
+    changedAgent.request = async (method, path, body, binding) => {
+        changedRequests.push({ method, path, body, binding: binding && { ...binding } });
+        if (method === 'GET' && path.endsWith('/jobs/next')) return { job: changedJob };
+        return {};
+    };
+    changedAgent.schedule = () => {};
+    changedAgent.heartbeat = async () => true;
+    changedAgent.syncNow = async () => false;
+    changedEnvironment.api.MessageAdapter.waitForContext = async () => ({ conversationId: 'conversation-a' });
+    changedEnvironment.api.MessageAdapter.waitForTextarea = async () => {
+        changedWaiting = true;
+        return changedTextareaReady;
+    };
+    changedEnvironment.api.MessageAdapter.getTextarea = () => changedTextarea;
+    changedEnvironment.api.MessageAdapter.insert = () => { changedInserts += 1; };
+    changedEnvironment.api.MessageAdapter.getSendButton = () => messageCenterButton(() => { changedClicks += 1; });
+
+    const changedProcessing = changedAgent.processNextJob();
+    await waitUntil(() => changedWaiting, 'Message Center did not reach the config-change checkpoint');
+    changedEnvironment.api.Store.settings.messageCenterStoreId = 'shop-b';
+    changedEnvironment.api.Store.settings.messageCenterAgentToken = 'token-b';
+    changedEnvironment.api.Store.settings.messageCenterUrl = 'https://messages-b.example';
+    const reconfiguration = changedAgent.reconfigure();
+    resolveChangedTextarea(changedTextarea);
+    await changedProcessing;
+    await reconfiguration;
+
+    assert.equal(changedInserts, 0);
+    assert.equal(changedClicks, 0);
+    assert.equal(changedRequests.some(call => call.path.includes('/result')), false);
+    assert.deepEqual(
+        changedRequests.find(call => call.method === 'GET')?.binding,
+        {
+            enabled: true,
+            storeId: 'shop-a',
+            token: 'token-a',
+            serverUrl: 'https://messages-a.example',
+            syncSeconds: 10,
+            pollSeconds: 3,
+        },
+    );
+    assert.ok(changedEnvironment.storage.get(changedAgent.pendingKey({ storeId: 'shop-a' })));
+});
+
+test('Message Center sync is single-flight and converts network rejection into visible agent state', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const agent = configureMessageCenter(environment);
+    let resolvePayload;
+    let payloadCalls = 0;
+    let requestCalls = 0;
+    const payloadReady = new Promise(resolve => { resolvePayload = resolve; });
+    agent.scanConversationList = () => [];
+    agent.currentConversationPayload = async () => { payloadCalls += 1; return payloadReady; };
+    agent.request = async () => { requestCalls += 1; throw new Error('central sync offline'); };
+
+    const first = agent.syncNow();
+    const second = agent.syncNow();
+    resolvePayload({
+        conversationId: 'conversation-a',
+        conversationUrl: 'https://www.etsy.com/messages/conversation-a',
+        buyerName: 'Buyer A',
+        messages: [],
+        hydrated: true,
+    });
+
+    assert.equal(await first, false);
+    assert.equal(await second, false);
+    assert.equal(payloadCalls, 1);
+    assert.equal(requestCalls, 1);
+    assert.match(agent.lastError, /central sync offline/);
+    assert.equal(agent.syncPromise, null);
 });

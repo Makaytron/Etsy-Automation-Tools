@@ -4,15 +4,20 @@
 
 Message Assistant; bireysel Etsy konuşmalarında çeviri/taslak hazırlama, teslim edilen siparişler için kontrollü mesaj sırası ve mağaza yorumları için cevap taslağı sunar. Bu üç akışın sayfa ve gönderim sınırları farklıdır.
 
-## Desteklenen sayfalar
+## Sayfa, sekme ve işlem haritası
 
-| İş akışı | Etsy sayfası |
-|---|---|
-| Bireysel müşteri cevabı | `/messages*` veya `/conversations*` |
-| Teslim edilen sipariş mesajları | `/your/orders/sold*` |
-| Yorum analizi ve cevap taslağı | Shop Manager dashboard üzerindeki **Reviews** görünümü |
+| Etsy bağlamı | Panel sekmesi | Kullanılabilen işlem |
+|---|---|---|
+| `/messages` veya `/messages/all` konuşma listesi | **Mesajlar** | Yalnız “Bir konuşma açın” yönlendirmesi; taslak ve aktarım kontrolleri gizlidir. |
+| `/messages/<conversation-id>` ve doğrulanmış tek composer | **Mesajlar** | Mesaj önizleme/çeviri, Türkçe taslak, AI, şablon, kopyalama ve yalnız composer'a **Etsy'ye Aktar**. |
+| `/your/orders/sold/completed` | **Teslim Edilenler** | Delivered kartlarını tara, yorum uygunluğunu işaretle, alıcı seç ve kontrollü sıra oluştur. |
+| New, open veya başka bir `/your/orders/sold*` görünümü | **Teslim Edilenler** | Üretim kontrolü yok; **Completed Orders** sayfasına yönlendirme. |
+| `/your/shops/<shop>/dashboard/activity` üzerindeki **Reviews** filtresi | **Yorumlar** | Metinli yeni/güncellenmiş yorumları tara, çevir/analiz et ve public cevap alanına taslak aktar. |
+| `/dashboard/activity` üzerinde başka bir aktivite filtresi | **Yorumlar** | Üretim kontrolü yok; **Reviews** filtresini seçme yönlendirmesi. |
+| Başka veya desteklenmeyen bir Shop Manager sayfası | **Doğrudan işlem yok** | Mesajlar, Completed Orders ve Recent activity sayfalarına güvenli geçiş bağlantıları. |
+| Desteklenen tüm Etsy sayfaları | **Şablonlar / Geçmiş / Ayarlar** | Bağlamdan bağımsız yerel yönetim; sayfa değişiminde açık utility sekmesi ve kaydedilmemiş taslak korunur. |
 
-Script doğrulanamayan bir dashboard bağlamında gönderim yapmaz; uygun sayfa hazır olana kadar bekler.
+Script tek ve görünür bir konuşma composer'ı, tamamlanmış sipariş görünümü veya yorum kartı doğrulayamazsa güvenli biçimde işlem göstermeyi bırakır. Panel varsayılan olarak kapalıdır; yalnız kullanıcı açar. **Mesaj Sayfasında Otomatik Aç** ayrıca etkinleştirilirse, bu tercih de yalnız doğrulanmış tek konuşma composer'ında uygulanır.
 
 ## Kurulum ve ilk ayar
 
@@ -22,14 +27,14 @@ Script doğrulanamayan bir dashboard bağlamında gönderim yapmaz; uygun sayfa 
 4. Varsayılan çeviri motorunu seçin; kullanacaksanız DeepL veya AI sağlayıcısı, model ve API anahtarını kaydedip test edin.
 5. Gerekirse şablonları, imzayı ve cevap tercihlerini düzenleyin.
 
-> **Gizlilik uyarısı:** Panel mesaj sayfasında varsayılan olarak kapalıdır. Google Translate varsayılan sağlayıcıdır ve otomatik Türkçe önizleme ayarı varsayılan olarak açıktır; ancak önizleme yalnız paneli sağ üstteki **Mesaj Asistanı · Aç** kontrolüyle açtığınızda veya **Mesaj Sayfasında Otomatik Aç** tercihini ayrıca etkinleştirdiğinizde çalışıp son müşteri mesajını Google Translate'e gönderebilir. DeepL hatasında, **Ücretsiz fallback** açıkken çeviri Google'a düşebilir. Yorum talebi dışındaki teslimat şablonları da otomatik önizleme kapalı olsa bile hedef dili belirlemek için son mesajı seçili çeviri sağlayıcısına gönderebilir. Özel yorum-talebi şablonu bu dil algılama aktarımını atlar; AI yöntemi ayrıca seçilirse aşağıda açıklanan bağlam yine AI sağlayıcısına gidebilir. Bu aktarımları istemiyorsanız paneli veya sırayı açmadan önce **Makaytron Ayarları**ndaki sağlayıcı, otomatik önizleme ve fallback tercihlerini kontrol edin.
+> **Gizlilik uyarısı:** Panel mesaj sayfasında varsayılan olarak kapalıdır. Google Translate varsayılan sağlayıcıdır ve otomatik Türkçe önizleme ayarı varsayılan olarak açıktır; ancak önizleme yalnız paneli sağ üstteki **Asistan · Aç** kontrolüyle açtığınızda veya **Mesaj Sayfasında Otomatik Aç** tercihini ayrıca etkinleştirdiğinizde çalışıp son müşteri mesajını Google Translate'e gönderebilir. DeepL hatasında, **Ücretsiz fallback** açıkken çeviri Google'a düşebilir. Yorum talebi dışındaki teslimat şablonları da otomatik önizleme kapalı olsa bile hedef dili belirlemek için son mesajı seçili çeviri sağlayıcısına gönderebilir. Özel yorum-talebi şablonu bu dil algılama aktarımını atlar; AI yöntemi ayrıca seçilirse aşağıda açıklanan bağlam yine AI sağlayıcısına gidebilir. Bu aktarımları istemiyorsanız paneli veya sırayı açmadan önce **Makaytron Ayarları**ndaki sağlayıcı, otomatik önizleme ve fallback tercihlerini kontrol edin.
 
 AI taslak/düzenleme isteği; müşteri adı, konuşma ve sipariş kimlikleri, ürün başlığı, mağaza adı/imzası, son 10 mesaja kadar konuşma bağlamı ile taslak, şablon veya talimatı seçtiğiniz AI sağlayıcısına gönderebilir. Sağlayıcının gizlilik ve saklama koşullarını inceleyin.
 
 ## Bireysel müşteri mesajı
 
 1. Etsy'de doğru müşteri konuşmasını açın.
-2. Sağ üstteki **Mesaj Asistanı · Aç** kontrolüyle paneli açın. Bu kontrol sayfada kalır; panel kendiliğinden ekranın ortasına gelmez.
+2. Sağ üstteki **Asistan · Aç** kontrolüyle paneli açın. Bu kontrol sayfada kalır; panel kendiliğinden ekranın ortasına gelmez.
 3. **Müşterinin Mesajı** bölümünü ve gerekiyorsa **Türkçe Göster** sonucunu okuyun.
 4. Türkçe cevabınızı yazın veya **Hazır mesaj ekle…** listesinden bir şablon seçin.
 5. İhtiyacınıza göre bir işlem kullanın:
