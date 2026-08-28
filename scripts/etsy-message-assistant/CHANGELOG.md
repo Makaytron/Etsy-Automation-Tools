@@ -5,6 +5,27 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.2.1] - 2026-08-28
+
+### Fixed
+
+- İngilizcedeki “a ton” ifadesinin renk değişikliği sayılması giderildi; `tonu`, `tonları` ve “şu ton” gibi Türkçe renk tonu ifadeleri Unicode sınırlarıyla doğru algılanır.
+- Query biçimindeki Etsy konuşma bağlantıları (`/messages?conversation_id=...`) liste ve Message Center taramasına dahil edildi.
+- Farklı metinlerin aynı FNV özetiyle çakışıp çeviri cache'i veya batch sonucu paylaşması engellendi; DeepL `NB` dil kodu güvenli biçimde Google `no` hedefine çevrilir.
+- Konuşma listesi çevirisi sürerken rota değiştiğinde eski işin paneli meşgul bırakması ve düşük ayrıntılı Message Center eşitlemesinin daha güçlü eşitlemeyi yutması giderildi.
+- Konuşma listesi fallback taramasında tarih/saatlerin önizleme, ürün başlıklarının müşteri adı sanılması engellendi; Türkçe göreli zamanlar da filtrelenir.
+- Türkçe “Teslim edildi” siparişleri algılanır; gizli veya birden fazla eşleşen Etsy Gönder düğümü artık güvenli biçimde reddedilir.
+- Başarılı çeviri, taslak, aktarım veya doğrulanmış gönderimin reddedilen ya da askıda kalan geçmiş depolaması yüzünden başarısız sayılması engellendi; geçmiş dışa aktarımındaki object URL gecikmeli kapatılır.
+- Ayar/depolama yazma hatalarında çalışma zamanı durumunun kayıttan ayrışması, config içe aktarımının yarım uygulanması, şablon arşivleme hatasında belleğin değişmesi ve ayar kaydı sürerken yeni taslağın silinmesi giderildi. Config yazıları sekmeler arası kilit altında taze snapshot ile uygulanır; başarısız rollback başka sekmenin başarılı kaydını ezmez.
+- Geçerli şemadaki ayarların her sayfa açılışında yeniden yazılması ve config değişiklik zamanının yanlış güncellenmesi engellendi.
+- Canonical GitHub kurulumundaki panel içi güncelleme kanalı yeniden etkinleştirildi; sağlayıcı fallback JSON çıktıları kullanılmadan önce bildirilen şemaya göre doğrulanır.
+
+### Security
+
+- Sipariş ve kampanya akışları yalnız doğrulanmış `https://www.etsy.com` konuşma adreslerine yönlenir; dış origin ve credential içeren adresler reddedilir.
+- Etsy DOM'undan gelen sipariş kimlikleri ile ayarlardaki model metni HTML/attribute bağlamında kaçırılır.
+- AI, DeepL ve Message Center anahtarları panel HTML'ine yazılmaz; panel kapalı shadow root kullanır ve kayıtlı anahtarların silinmesi açık bir taslak eylemidir.
+
 ## [1.2.0] - 2026-08-27
 
 ### Added

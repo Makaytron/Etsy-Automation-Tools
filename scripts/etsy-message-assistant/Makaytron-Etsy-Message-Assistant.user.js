@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.2.0
+// @version      1.2.1
 // @description  Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -51,8 +51,8 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.2.0';
-    const CENTRAL_MESSAGE_CENTER_BUILD = true;
+    const APP_VERSION = '1.2.1';
+    const CENTRAL_MESSAGE_CENTER_BUILD = false;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -706,6 +706,7 @@
     });
     const CAMPAIGN_COORDINATION_LOCK = `${APP.prefix}:campaign-status-coordination:v1`;
     const HISTORY_COORDINATION_LOCK = `${APP.prefix}:history-coordination:v1`;
+    const CONFIG_COORDINATION_LOCK = `${APP.prefix}:config-coordination:v1`;
     const CAMPAIGN_RESERVATION_TTL_MS = 120000;
     const CAMPAIGN_SEND_PENDING_STATUS = 'sent_pending_verification';
     const CAMPAIGN_INELIGIBLE_ORDER_STATUSES = new Set(['skipped', 'sent', CAMPAIGN_SEND_PENDING_STATUS]);
@@ -1142,7 +1143,7 @@ zu|Zulu
     }));
     const GOOGLE_TRANSLATION_LANGUAGE_NAMES = Object.freeze(Object.fromEntries(GOOGLE_TRANSLATION_LANGUAGE_ENTRIES));
     const TRANSLATION_LANGUAGE_ALIASES = Object.freeze({
-        fil: 'tl', he: 'iw', jv: 'jw', zh: 'zh-cn', 'fr-fr': 'fr', 'pt-br': 'pt',
+        fil: 'tl', he: 'iw', jv: 'jw', nb: 'no', zh: 'zh-cn', 'fr-fr': 'fr', 'pt-br': 'pt',
     });
     const LANGUAGE_NAMES = Object.freeze({
         ...GOOGLE_TRANSLATION_LANGUAGE_NAMES,
@@ -1257,6 +1258,27 @@ zu|Zulu
             if (!range || strict) output[key] = candidate;
         }
         return output;
+    }
+
+    function normalizeProvidersRecord(value) {
+        const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        return Object.fromEntries(Object.entries(AI_PROVIDERS).map(([id, provider]) => {
+            const profile = source[id] && typeof source[id] === 'object' && !Array.isArray(source[id])
+                ? source[id]
+                : {};
+            const storedModels = Array.isArray(profile.models)
+                ? profile.models.filter(model => typeof model === 'string' && model.trim()).map(model => model.trim())
+                : [...DEFAULT_PROVIDERS[id].models];
+            const model = typeof profile.model === 'string' && profile.model.trim()
+                ? profile.model.trim()
+                : provider.fallbackModels[0];
+            return [id, {
+                apiKey: typeof profile.apiKey === 'string' ? profile.apiKey : '',
+                model,
+                models: [...new Set(storedModels)],
+                modelsFetchedAt: typeof profile.modelsFetchedAt === 'string' ? profile.modelsFetchedAt : '',
+            }];
+        }));
     }
 
     function normalizeTemplates(templates) {
@@ -1622,6 +1644,16 @@ zu|Zulu
         );
     }
 
+    function withConfigCoordinator(operation) {
+        const locks = globalThis.navigator?.locks;
+        if (!locks || typeof locks.request !== 'function') return operation();
+        return locks.request(
+            CONFIG_COORDINATION_LOCK,
+            { mode: 'exclusive' },
+            operation,
+        );
+    }
+
     function campaignConflictError(message = 'Kampanya başka bir Etsy sekmesinde değişti. Güncel durum yüklendi; işlemi yeniden deneyin.') {
         const error = new Error(message);
         error.code = 'CAMPAIGN_REVISION_CONFLICT';
@@ -1653,6 +1685,42 @@ zu|Zulu
             if (sliced && typeof sliced === 'object') return sliced;
         }
         throw new Error('AI sağlayıcısı geçerli JSON döndürmedi. Farklı bir model deneyin.');
+    }
+
+    function validateJsonSchema(value, schema, path = 'yanıt') {
+        const fail = (reason) => {
+            throw new Error(`AI sağlayıcısı yanıtı beklenen şemaya uymuyor (${path}: ${reason}). Farklı bir model deneyin.`);
+        };
+        if (!schema || typeof schema !== 'object') return value;
+        if (Array.isArray(schema.enum) && !schema.enum.some(item => Object.is(item, value))) fail('izin verilmeyen değer');
+        const type = schema.type;
+        if (type === 'object') {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) fail('nesne bekleniyor');
+            const properties = schema.properties || {};
+            for (const key of schema.required || []) {
+                if (!Object.prototype.hasOwnProperty.call(value, key)) validateJsonSchema(undefined, { type: '__required' }, `${path}.${key}`);
+            }
+            if (schema.additionalProperties === false) {
+                const extra = Object.keys(value).find(key => !Object.prototype.hasOwnProperty.call(properties, key));
+                if (extra) validateJsonSchema(undefined, { type: '__extra' }, `${path}.${extra}`);
+            }
+            for (const [key, childSchema] of Object.entries(properties)) {
+                if (Object.prototype.hasOwnProperty.call(value, key)) validateJsonSchema(value[key], childSchema, `${path}.${key}`);
+            }
+        } else if (type === 'array') {
+            if (!Array.isArray(value)) fail('dizi bekleniyor');
+            value.forEach((item, index) => validateJsonSchema(item, schema.items || {}, `${path}[${index}]`));
+        } else if (type === 'string') {
+            if (typeof value !== 'string') fail('metin bekleniyor');
+        } else if (type === 'boolean') {
+            if (typeof value !== 'boolean') fail('boolean bekleniyor');
+        } else if (type === 'number') {
+            if (typeof value !== 'number' || !Number.isFinite(value)) fail('sayı bekleniyor');
+        } else if (type === 'integer') {
+            if (!Number.isInteger(value)) fail('tam sayı bekleniyor');
+        } else if (type === '__required') fail('zorunlu alan eksik');
+        else if (type === '__extra') fail('tanımsız alan');
+        return value;
     }
 
     function downloadText(filename, content, type = 'application/json') {
@@ -1821,6 +1889,7 @@ zu|Zulu
         historyWriteChain: Promise.resolve(),
         statusWriteChain: Promise.resolve(),
         campaignWriteChain: Promise.resolve(),
+        configWriteChain: Promise.resolve(),
         coordinationListenersPromise: null,
         coordinationListenersReady: false,
         coordinationRefreshChain: Promise.resolve(),
@@ -1840,7 +1909,7 @@ zu|Zulu
             delete this.settings.gatewayUrl;
             delete this.settings.deviceToken;
             delete this.settings.model;
-            this.providers = deepMerge(DEFAULT_PROVIDERS, providers);
+            this.providers = normalizeProvidersRecord(providers);
             this.templates = mergeDefaultTemplates(templates);
             this.history = Array.isArray(history) ? history : [];
             this.statuses = normalizeStatusState(statuses);
@@ -1852,30 +1921,90 @@ zu|Zulu
             await this.migrateOperationalState();
             await this.pruneHistory();
         },
-        async migrate() {
-            const previousSchema = Number(this.configMeta.schemaVersion || 1);
-            this.templates = mergeDefaultTemplates(this.templates);
-            for (const [id, provider] of Object.entries(AI_PROVIDERS)) {
-                const profile = this.providers[id] || {};
-                const models = Array.isArray(profile.models) ? profile.models.filter(Boolean) : [];
-                this.providers[id] = {
-                    apiKey: String(profile.apiKey || ''),
-                    model: String(profile.model || provider.fallbackModels[0]),
-                    models: [...new Set([...provider.fallbackModels, ...models])],
-                    modelsFetchedAt: String(profile.modelsFetchedAt || ''),
-                };
-            }
-            if (!AI_PROVIDERS[this.settings.aiProvider]) this.settings.aiProvider = 'openai';
-            if (previousSchema < 6) this.settings.openOnMessagePage = false;
-            this.configMeta = { schemaVersion: APP.configSchema, updatedAt: nowIso(), migratedFrom: previousSchema };
-            await Promise.all([
-                GMX.set(KEYS.settings, this.settings),
-                GMX.set(KEYS.providers, this.providers),
-                GMX.set(KEYS.templates, this.templates),
-                GMX.set(KEYS.configMeta, this.configMeta),
-                GMX.set(KEYS.onboarding, this.onboarding),
-                GMX.set(KEYS.update, this.update),
+        enqueueConfigWrite(operation) {
+            const invoke = () => withConfigCoordinator(operation);
+            const write = this.configWriteChain.then(invoke, invoke);
+            this.configWriteChain = write.catch(() => null);
+            return write;
+        },
+        async readConfigSnapshotLocked() {
+            const [settings, providers, templates, configMeta, onboarding, update] = await Promise.all([
+                GMX.get(KEYS.settings, DEFAULT_SETTINGS),
+                GMX.get(KEYS.providers, DEFAULT_PROVIDERS),
+                GMX.get(KEYS.templates, DEFAULT_TEMPLATES),
+                GMX.get(KEYS.configMeta, { schemaVersion: 1, updatedAt: '' }),
+                GMX.get(KEYS.onboarding, DEFAULT_ONBOARDING),
+                GMX.get(KEYS.update, DEFAULT_UPDATE),
             ]);
+            const normalizedSettings = normalizeSettingsRecord(settings);
+            delete normalizedSettings.gatewayUrl;
+            delete normalizedSettings.deviceToken;
+            delete normalizedSettings.model;
+            return {
+                settings: normalizedSettings,
+                providers: normalizeProvidersRecord(providers),
+                templates: mergeDefaultTemplates(templates),
+                configMeta: deepMerge({ schemaVersion: 1, updatedAt: '' }, configMeta),
+                onboarding: deepMerge(DEFAULT_ONBOARDING, onboarding),
+                update: deepMerge(DEFAULT_UPDATE, update),
+            };
+        },
+        applyConfigSnapshot(snapshot) {
+            this.settings = snapshot.settings;
+            this.providers = snapshot.providers;
+            this.templates = snapshot.templates;
+            this.configMeta = snapshot.configMeta;
+            this.onboarding = snapshot.onboarding;
+            this.update = snapshot.update;
+        },
+        async commitConfigWritesLocked(writes) {
+            const attempted = [];
+            try {
+                for (const write of writes) {
+                    attempted.push(write);
+                    await GMX.set(write.key, write.value);
+                }
+            } catch (error) {
+                const rollbackErrors = [];
+                for (const write of [...attempted].reverse()) {
+                    try { await GMX.set(write.key, write.oldValue); }
+                    catch (rollbackError) { rollbackErrors.push(rollbackError); }
+                }
+                if (rollbackErrors.length) error.rollbackErrors = rollbackErrors;
+                throw error;
+            }
+        },
+        async migrate() {
+            return this.enqueueConfigWrite(async () => {
+                const previous = await this.readConfigSnapshotLocked();
+                const previousSchema = Number(previous.configMeta.schemaVersion || 1);
+                if (previousSchema >= APP.configSchema) {
+                    this.applyConfigSnapshot(previous);
+                    return false;
+                }
+                const next = {
+                    ...previous,
+                    settings: clone(previous.settings),
+                    configMeta: { schemaVersion: APP.configSchema, updatedAt: nowIso(), migratedFrom: previousSchema },
+                };
+                if (!AI_PROVIDERS[next.settings.aiProvider]) next.settings.aiProvider = 'openai';
+                if (previousSchema < 6) next.settings.openOnMessagePage = false;
+                const writes = [
+                    { key: KEYS.settings, value: next.settings, oldValue: previous.settings },
+                    { key: KEYS.providers, value: next.providers, oldValue: previous.providers },
+                    { key: KEYS.templates, value: next.templates, oldValue: previous.templates },
+                    { key: KEYS.configMeta, value: next.configMeta, oldValue: previous.configMeta },
+                    { key: KEYS.onboarding, value: next.onboarding, oldValue: previous.onboarding },
+                    { key: KEYS.update, value: next.update, oldValue: previous.update },
+                ];
+                try { await this.commitConfigWritesLocked(writes); }
+                catch (error) {
+                    this.applyConfigSnapshot(previous);
+                    throw error;
+                }
+                this.applyConfigSnapshot(next);
+                return true;
+            });
         },
         async migrateOperationalState() {
             const reconcile = async () => {
@@ -1895,35 +2024,100 @@ zu|Zulu
             return withCampaignCoordinator(reconcile);
         },
         async saveSettings(next) {
-            this.settings = normalizeSettingsRecord(next);
-            delete this.settings.gatewayUrl;
-            delete this.settings.deviceToken;
-            delete this.settings.model;
-            await GMX.set(KEYS.settings, this.settings);
-            await this.touchConfig();
+            const normalized = normalizeSettingsRecord(next);
+            delete normalized.gatewayUrl;
+            delete normalized.deviceToken;
+            delete normalized.model;
+            return this.enqueueConfigWrite(async () => {
+                await GMX.set(KEYS.settings, normalized);
+                this.settings = normalized;
+                await this.touchConfigLocked().catch(error => console.error(`[${APP.id}] Config değişiklik zamanı kaydedilemedi.`, error));
+                return normalized;
+            });
         },
         async saveProviders(next) {
-            this.providers = deepMerge(DEFAULT_PROVIDERS, next);
-            await GMX.set(KEYS.providers, this.providers);
-            await this.touchConfig();
+            const normalized = normalizeProvidersRecord(next);
+            return this.enqueueConfigWrite(async () => {
+                await GMX.set(KEYS.providers, normalized);
+                this.providers = normalized;
+                await this.touchConfigLocked().catch(error => console.error(`[${APP.id}] Config değişiklik zamanı kaydedilemedi.`, error));
+                return normalized;
+            });
         },
         async saveTemplates(next) {
-            this.templates = mergeDefaultTemplates(next);
-            await GMX.set(KEYS.templates, this.templates);
-            await this.touchConfig();
+            const normalized = mergeDefaultTemplates(next);
+            return this.enqueueConfigWrite(async () => {
+                await GMX.set(KEYS.templates, normalized);
+                this.templates = normalized;
+                await this.touchConfigLocked().catch(error => console.error(`[${APP.id}] Config değişiklik zamanı kaydedilemedi.`, error));
+                return normalized;
+            });
         },
         async saveOnboarding(next) {
-            this.onboarding = deepMerge(DEFAULT_ONBOARDING, next);
-            await GMX.set(KEYS.onboarding, this.onboarding);
-            await this.touchConfig();
+            const normalized = deepMerge(DEFAULT_ONBOARDING, next);
+            return this.enqueueConfigWrite(async () => {
+                await GMX.set(KEYS.onboarding, normalized);
+                this.onboarding = normalized;
+                await this.touchConfigLocked().catch(error => console.error(`[${APP.id}] Config değişiklik zamanı kaydedilemedi.`, error));
+                return normalized;
+            });
         },
         async saveUpdate(next) {
-            this.update = deepMerge(DEFAULT_UPDATE, next);
-            await GMX.set(KEYS.update, this.update);
+            const normalized = deepMerge(DEFAULT_UPDATE, next);
+            return this.enqueueConfigWrite(async () => {
+                await GMX.set(KEYS.update, normalized);
+                this.update = normalized;
+                return normalized;
+            });
+        },
+        async saveConfigBundle(next = {}) {
+            const includesSettings = Object.prototype.hasOwnProperty.call(next, 'settings');
+            const includesProviders = Object.prototype.hasOwnProperty.call(next, 'providers');
+            const includesTemplates = Object.prototype.hasOwnProperty.call(next, 'templates');
+            const includesOnboarding = Object.prototype.hasOwnProperty.call(next, 'onboarding');
+            const request = clone(next);
+            return this.enqueueConfigWrite(async () => {
+                const previous = await this.readConfigSnapshotLocked();
+                const settings = includesSettings ? normalizeSettingsRecord(request.settings) : previous.settings;
+                delete settings.gatewayUrl;
+                delete settings.deviceToken;
+                delete settings.model;
+                const normalized = {
+                    ...previous,
+                    settings,
+                    providers: includesProviders ? normalizeProvidersRecord(request.providers) : previous.providers,
+                    templates: includesTemplates ? mergeDefaultTemplates(request.templates) : previous.templates,
+                    onboarding: includesOnboarding ? deepMerge(DEFAULT_ONBOARDING, request.onboarding) : previous.onboarding,
+                    configMeta: { ...previous.configMeta, schemaVersion: APP.configSchema, updatedAt: nowIso() },
+                };
+                const writes = [
+                    ...(includesSettings ? [{ key: KEYS.settings, value: normalized.settings, oldValue: previous.settings }] : []),
+                    ...(includesProviders ? [{ key: KEYS.providers, value: normalized.providers, oldValue: previous.providers }] : []),
+                    ...(includesTemplates ? [{ key: KEYS.templates, value: normalized.templates, oldValue: previous.templates }] : []),
+                    ...(includesOnboarding ? [{ key: KEYS.onboarding, value: normalized.onboarding, oldValue: previous.onboarding }] : []),
+                    { key: KEYS.configMeta, value: normalized.configMeta, oldValue: previous.configMeta },
+                ];
+                try { await this.commitConfigWritesLocked(writes); }
+                catch (error) {
+                    this.applyConfigSnapshot(previous);
+                    throw error;
+                }
+                this.applyConfigSnapshot(normalized);
+                return normalized;
+            });
+        },
+        async touchConfigLocked() {
+            const current = deepMerge(
+                { schemaVersion: APP.configSchema, updatedAt: '' },
+                await GMX.get(KEYS.configMeta, { schemaVersion: APP.configSchema, updatedAt: '' }),
+            );
+            const next = { ...current, schemaVersion: APP.configSchema, updatedAt: nowIso() };
+            await GMX.set(KEYS.configMeta, next);
+            this.configMeta = next;
+            return next;
         },
         async touchConfig() {
-            this.configMeta = { ...this.configMeta, schemaVersion: APP.configSchema, updatedAt: nowIso() };
-            await GMX.set(KEYS.configMeta, this.configMeta);
+            return this.enqueueConfigWrite(() => this.touchConfigLocked());
         },
         async commitHistoryEvent(event, idempotencyKey, history) {
             const current = Array.isArray(history) ? history : [];
@@ -2517,6 +2711,20 @@ zu|Zulu
             const source = detail.source || Router.page();
             return Store.addHistoryOnce({ type, source, status: detail.status || 'completed', method: detail.method || 'manual', ...detail }, idempotencyKey);
         },
+        async tryLog(type, detail = {}) {
+            try { return await this.log(type, detail); }
+            catch (error) {
+                console.error(`[${APP.id}] Geçmiş kaydı saklanamadı (${type}).`, error);
+                return null;
+            }
+        },
+        async tryLogOnce(type, idempotencyKey, detail = {}) {
+            try { return await this.logOnce(type, idempotencyKey, detail); }
+            catch (error) {
+                console.error(`[${APP.id}] Geçmiş kaydı saklanamadı (${type}).`, error);
+                return null;
+            }
+        },
         stats() {
             const today = new Date().toDateString();
             const events = Store.history;
@@ -2566,7 +2774,7 @@ zu|Zulu
             if (!sourceText) return '';
             const preferred = String(options.provider || Store.settings.translator || 'google').toLowerCase();
             const cachePolicy = this.cachePolicyFingerprint(preferred);
-            return `${this.effectiveTarget(target)}:${cachePolicy}:${sourceText.length}:${hashExactText(sourceText)}`;
+            return JSON.stringify([this.effectiveTarget(target), cachePolicy, sourceText]);
         },
         cached(text, target = 'tr', options = {}) {
             const key = this.cacheKey(text, target, options);
@@ -2610,13 +2818,11 @@ zu|Zulu
                 this.cache.set(cacheKey, result);
                 if (this.cache.size > APP.cacheLimit) this.cache.delete(this.cache.keys().next().value);
             }
-            if (options.logHistory !== false) {
-                await History.log('translated', {
-                    method: result.provider,
-                    status: 'completed',
-                    detail: { target: targetCode, detectedLanguage: result.detectedLanguage, characters: sourceText.length },
-                });
-            }
+            if (options.logHistory !== false) void History.tryLog('translated', {
+                method: result.provider,
+                status: 'completed',
+                detail: { target: targetCode, detectedLanguage: result.detectedLanguage, characters: sourceText.length },
+            }).catch(error => console.error(`[${APP.id}] Çeviri geçmişe kaydedilemedi.`, error));
             return result;
         },
         googleTargetCode(target) {
@@ -2889,10 +3095,12 @@ zu|Zulu
                 const current = nextProviders[id] || {};
                 nextProviders[id] = { ...current, ...imported, apiKey: imported.apiKey || current.apiKey || '' };
             }
-            await Store.saveSettings(nextSettings);
-            await Store.saveProviders(nextProviders);
-            if (importedTemplates?.length) await Store.saveTemplates(importedTemplates);
-            if (importedOnboarding) await Store.saveOnboarding(importedOnboarding);
+            await Store.saveConfigBundle({
+                settings: nextSettings,
+                providers: nextProviders,
+                ...(importedTemplates?.length ? { templates: importedTemplates } : {}),
+                ...(importedOnboarding ? { onboarding: importedOnboarding } : {}),
+            });
             return payload;
         },
     };
@@ -2924,12 +3132,14 @@ zu|Zulu
         async run(kind, payload, schema, activeOverride = null) {
             const active = activeOverride || this.ensure();
             try {
-                if (active.id === 'openai') return await this.openai(active, kind, payload, schema);
-                if (active.id === 'anthropic') return await this.anthropic(active, kind, payload, schema);
-                if (active.id === 'gemini') return await this.gemini(active, kind, payload, schema);
-                if (active.id === 'deepseek') return await this.deepseek(active, kind, payload, schema);
-                if (active.id === 'openrouter') return await this.openrouter(active, kind, payload, schema);
-                throw new Error('Desteklenmeyen AI sağlayıcısı.');
+                let result;
+                if (active.id === 'openai') result = await this.openai(active, kind, payload, schema);
+                else if (active.id === 'anthropic') result = await this.anthropic(active, kind, payload, schema);
+                else if (active.id === 'gemini') result = await this.gemini(active, kind, payload, schema);
+                else if (active.id === 'deepseek') result = await this.deepseek(active, kind, payload, schema);
+                else if (active.id === 'openrouter') result = await this.openrouter(active, kind, payload, schema);
+                else throw new Error('Desteklenmeyen AI sağlayıcısı.');
+                return validateJsonSchema(result, schema);
             } catch (error) {
                 if (kind === 'reply') void trackTelemetryError('provider_draft_generation');
                 throw error;
@@ -3218,6 +3428,7 @@ zu|Zulu
         'from_potential_buyers', 'inbox', 'order_help_requests', 'spam', 'starred',
         'sent', 'trash', 'unread', 'with',
     ]);
+    const CONVERSATION_ANCHOR_SELECTOR = 'a[href*="/messages/"], a[href*="/messages?"], a[href*="/conversations/"]';
 
     const Router = {
         page() {
@@ -3247,6 +3458,7 @@ zu|Zulu
         conversationIdFromUrl(value = location.href) {
             try {
                 const url = new URL(value, location.href);
+                if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return '';
                 const parts = url.pathname.split('/').filter(Boolean);
                 const root = parts[0]?.toLowerCase();
                 if (!['messages', 'conversations'].includes(root)) return '';
@@ -3283,6 +3495,29 @@ zu|Zulu
         conversationId() {
             return this.conversationIdFromUrl(location.href);
         },
+        canonicalConversationUrl(value) {
+            try {
+                const url = new URL(value, location.href);
+                if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return '';
+                if (!this.conversationIdFromUrl(url.href)) return '';
+                const parts = url.pathname.split('/').filter(Boolean);
+                const root = parts[0]?.toLowerCase();
+                const validMessagesPath = root === 'messages'
+                    && (parts.length === 1 ? url.searchParams.has('conversation_id') : parts.length === 2);
+                const validConversationsPath = root === 'conversations'
+                    && ((parts.length === 2 && parts[1]?.toLowerCase() !== 'with')
+                        || (parts[1]?.toLowerCase() === 'with' && parts.length === 3));
+                if (!validMessagesPath && !validConversationsPath) return '';
+                url.hash = '';
+                return url.href;
+            } catch { return ''; }
+        },
+        navigateToConversation(value) {
+            const conversationUrl = this.canonicalConversationUrl(value);
+            if (!conversationUrl) throw new Error('Güvenli bir Etsy konuşma bağlantısı doğrulanamadı. Sayfayı yenileyip tekrar deneyin.');
+            location.href = conversationUrl;
+            return true;
+        },
         isMessageListPage() {
             return this.page() === 'messages'
                 && !this.conversationId()
@@ -3318,9 +3553,9 @@ zu|Zulu
                             item.conversationUrl,
                             item.buyerName || '',
                             item.unread ? 1 : 0,
-                            hashExactText(item.preview || ''),
-                        ].join(':')).join('|');
-                        return `${route}|list|${items.length}|${hashExactText(signature)}`;
+                            item.preview || '',
+                        ]);
+                        return `${route}|list|${JSON.stringify(signature)}`;
                     } catch { return `${route}|list|unavailable`; }
                 }
                 const messages = MessageAdapter.getMessages();
@@ -3406,7 +3641,7 @@ zu|Zulu
         scopeHasOtherConversation(scope) {
             const activeIdentity = Router.conversationIdentity();
             if (!activeIdentity) return true;
-            const links = scope?.querySelectorAll?.('a[href*="/messages/"], a[href*="/conversations/"]') || [];
+            const links = scope?.querySelectorAll?.(CONVERSATION_ANCHOR_SELECTOR) || [];
             return [...links].some((link) => {
                 const identity = Router.conversationIdentity(link.href);
                 return identity && identity !== activeIdentity;
@@ -3448,8 +3683,14 @@ zu|Zulu
             if (!scope) return null;
             const buttons = [...scope.querySelectorAll('button')];
             const sendLabel = /^(send|send message|send reply|gönder|mesajı gönder|yanıtı gönder)$/i;
-            return buttons.find((button) => {
+            const candidates = buttons.filter((button) => {
                 if (button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
+                if (button.hidden || button.closest?.('[hidden], [aria-hidden="true"]')) return false;
+                try {
+                    const style = globalThis.getComputedStyle?.(button);
+                    if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+                    if (typeof button.getClientRects === 'function' && button.getClientRects().length === 0) return false;
+                } catch { /* görünürlük bilgisi yoksa etiket doğrulamasına devam et */ }
                 const labels = [
                     button.textContent,
                     button.getAttribute('aria-label'),
@@ -3458,7 +3699,8 @@ zu|Zulu
                     button.getAttribute('title'),
                 ].map(value => normalize(value).replace(/[_-]+/g, ' ')).filter(Boolean);
                 return labels.some(label => sendLabel.test(label));
-            }) || null;
+            });
+            return candidates.length === 1 ? candidates[0] : null;
         },
         isSendButton(element) {
             if (!element) return false;
@@ -3631,6 +3873,9 @@ zu|Zulu
         busy: false,
         processPromise: null,
         syncPromise: null,
+        syncBinding: null,
+        syncGeneration: -1,
+        syncHydrated: false,
         generation: 0,
         processorLockName: `${APP.prefix}:message-center:processor:v1`,
         pendingLeaseMs: 120000,
@@ -3755,22 +4000,7 @@ zu|Zulu
             return payload;
         },
         canonicalConversationUrl(value) {
-            try {
-                const url = new URL(value, location.href);
-                if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return '';
-                const id = Router.conversationIdFromUrl(url.href);
-                if (!id) return '';
-                const parts = url.pathname.split('/').filter(Boolean);
-                const root = parts[0]?.toLowerCase();
-                const validMessagesPath = root === 'messages'
-                    && (parts.length === 1 ? url.searchParams.has('conversation_id') : parts.length === 2);
-                const validConversationsPath = root === 'conversations'
-                    && ((parts.length === 2 && parts[1]?.toLowerCase() !== 'with')
-                        || (parts[1]?.toLowerCase() === 'with' && parts.length === 3));
-                if (!validMessagesPath && !validConversationsPath) return '';
-                url.hash = '';
-                return url.href;
-            } catch { return ''; }
+            return Router.canonicalConversationUrl(value);
         },
         listElementIsVisible(element) {
             if (!element) return false;
@@ -3805,7 +4035,7 @@ zu|Zulu
             if (!anchor) return null;
             const direct = anchor.closest('li, [role="listitem"], [data-conversation-id], [data-message-thread-id]');
             if (direct) {
-                const identities = new Set([...direct.querySelectorAll?.('a[href*="/messages/"], a[href*="/conversations/"]') || []]
+                const identities = new Set([...direct.querySelectorAll?.(CONVERSATION_ANCHOR_SELECTOR) || []]
                     .map(link => Router.conversationIdentity(link.href))
                     .filter(Boolean));
                 if (identities.size > 1) return null;
@@ -3814,30 +4044,72 @@ zu|Zulu
             let current = anchor;
             for (let depth = 0; depth < 6 && current?.parentElement; depth += 1) {
                 current = current.parentElement;
-                const links = [...current.querySelectorAll('a[href*="/messages/"], a[href*="/conversations/"]')]
+                const links = [...current.querySelectorAll(CONVERSATION_ANCHOR_SELECTOR)]
                     .filter(link => Router.conversationIdFromUrl(link.href));
                 const unique = new Set(links.map(link => Router.conversationIdentity(link.href)));
                 if (unique.size === 1 && normalize(current.innerText || current.textContent || '').length <= 1400) return current;
             }
             return anchor.parentElement;
         },
+        listTimestampText(value) {
+            const line = normalize(value);
+            if (!line) return false;
+            return /^\d+\s*(?:m|min|mins?|minutes?|h|hr|hrs?|hours?|d|days?)\s*ago$/i.test(line)
+                || /^(?:yaklaşık\s+)?\d+\s*(?:sn|saniye|dk|dakika|sa|saat|gün|hafta|ay)\.?\s+önce$/i.test(line)
+                || /^(?:today|yesterday|bugün|dün)(?:\s+(?:at|saat)\s+\d{1,2}:\d{2})?$/i.test(line)
+                || /^(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}(?:,\s*\d{4})?$/i.test(line)
+                || /^\d{1,2}\s+(?:oca(?:k)?|şub(?:at)?|mar(?:t)?|nis(?:an)?|may(?:ıs)?|haz(?:iran)?|tem(?:muz)?|ağu(?:stos)?|eyl(?:ül)?|eki(?:m)?|kas(?:ım)?|ara(?:lık)?)\s+\d{4}$/i.test(line)
+                || /^\d{1,2}[./-]\d{1,2}[./-]\d{2,4}$/.test(line)
+                || /^\d{1,2}:\d{2}(?:\s*[ap]\.?m\.?)?$/i.test(line);
+        },
         buyerNameFromScope(scope, anchor) {
-            const ignored = /^(messages?|conversations?|inbox|reply|send|etsy|unread|read|okunmadı|mark as unread|mark unread|\d+\s*(?:m|min|h|hr|d|day)s?\s*ago)$/i;
-            const values = [
-                ...[...scope?.querySelectorAll?.('h1,h2,h3,h4,strong,[data-test-id*="name" i],[class*="buyer-name" i]') || []].map(el => normalize(el.textContent)),
-                normalize(anchor?.getAttribute?.('aria-label')),
-                normalize(anchor?.textContent),
-                ...String(scope?.innerText || '').split(/\n+/).map(normalize),
-            ].filter(value => value && value.length <= 90 && !ignored.test(value));
-            return values.find(value => /[\p{L}\p{N}]/u.test(value)) || '';
+            const ignored = /^(messages?|conversations?|inbox|reply|send|etsy|unread|read|okunmadı|mark as unread|mark unread|select this conversation\b.*)$/i;
+            const ariaLabel = normalize(anchor?.getAttribute?.('aria-label'));
+            const ariaName = ariaLabel.match(/(?:conversation|message)\s+(?:with|from)\s+([^,|·]+)/i)?.[1] || '';
+            const selectionName = String(scope?.innerText || '').split(/\n+/)
+                .map(normalize)
+                .map(line => line.match(/^select this conversation with\s+(.+?)\s+from\s+.+$/i)?.[1] || '')
+                .find(Boolean) || '';
+            const semanticValues = [
+                ariaName,
+                selectionName,
+                ...[...scope?.querySelectorAll?.('[data-test-id*="buyer-name" i],[data-test-id*="sender-name" i],[data-test-id*="conversation-name" i],[class*="buyer-name" i],[class*="sender-name" i]') || []]
+                    .map(el => normalize(el.textContent)),
+            ].filter(value => value && value.length <= 90 && !ignored.test(value) && !this.listTimestampText(value));
+            const semanticName = semanticValues.find(value => /[\p{L}\p{N}]/u.test(value));
+            if (semanticName) return semanticName;
+
+            const values = String(scope?.innerText || '').split(/\n+/)
+                .map(normalize)
+                .filter(value => value
+                    && value.length <= 90
+                    && !ignored.test(value)
+                    && !this.listTimestampText(value)
+                    && /[\p{L}\p{N}]/u.test(value)
+                    && !/^(?:hi|hello|hey|thanks|thank you|merhaba|selam|teşekkür(?:ler| ederim)?)\W*$/iu.test(value));
+            const ranked = values.map((value, index) => {
+                const words = value.split(/\s+/).filter(Boolean);
+                const cleanNameShape = /^[\p{L}\p{M}\p{N}._'’ -]+$/u.test(value);
+                const score = (words.length <= 3 ? 4 : 0)
+                    + (words.length <= 2 ? 2 : 0)
+                    + (value.length <= 40 ? 2 : 0)
+                    + (cleanNameShape ? 1 : -3);
+                return { value, index, score, wordCount: words.length };
+            }).filter(candidate => candidate.score >= 4);
+            ranked.sort((left, right) => left.index - right.index
+                || right.score - left.score
+                || left.wordCount - right.wordCount
+                || left.value.length - right.value.length);
+            return ranked[0]?.value || '';
         },
         previewFromScope(scope, buyerName, anchor = null) {
             const isCandidate = (value) => {
                 const line = normalize(value);
                 if (!line || line === buyerName || line.length > 2000) return false;
-                return !/^(?:unread|read|read message|unread message|reply|mark as unread|mark unread|help request|from etsy|refunded|you have replied to this message|\d+\s*(?:m|min|h|hr|d|day)s?\s*ago)$/i.test(line);
+                return !this.listTimestampText(line)
+                    && !/^(?:unread|read|read message|unread message|reply|mark as unread|mark unread|help request|from etsy|refunded|you have replied to this message)$/i.test(line);
             };
-            const semanticNodes = [...anchor?.querySelectorAll?.('h1,h2,h3,h4,[data-test-id*="message" i],[data-test-id*="preview" i],[class*="message-preview" i]') || []];
+            const semanticNodes = [...scope?.querySelectorAll?.('[data-test-id*="message" i],[data-test-id*="preview" i],[class*="message-preview" i]') || []];
             const semantic = semanticNodes
                 .filter(node => this.listElementIsVisible(node))
                 .map(node => normalize(node.innerText || node.textContent || ''))
@@ -3850,13 +4122,13 @@ zu|Zulu
                     .map(normalize)
                     .filter(isCandidate)
                     .filter(line => !/^select this conversation\b/i.test(line));
-                if (lines.length) return lines.sort((a, b) => b.length - a.length)[0] || '';
+                if (lines.length) return lines[lines.length - 1] || '';
             }
             return '';
         },
         scanConversationList() {
             if (Router.page() !== 'messages') return [];
-            const anchors = [...document.querySelectorAll('a[href*="/messages/"], a[href*="/conversations/"]')];
+            const anchors = [...document.querySelectorAll(CONVERSATION_ANCHOR_SELECTOR)];
             const items = new Map();
             for (const anchor of anchors) {
                 if (!this.listElementIsVisible(anchor)) continue;
@@ -3964,19 +4236,37 @@ zu|Zulu
             return true;
         },
         syncNow(options = {}) {
-            if (this.syncPromise) return this.syncPromise;
             const binding = options.binding || this.config();
             const generation = options.generation ?? this.generation;
+            const hydrated = options.hydrated === true;
+            if (this.syncPromise) {
+                const sameBinding = this.syncGeneration === generation
+                    && this.syncBinding?.serverUrl === binding.serverUrl
+                    && this.syncBinding?.storeId === binding.storeId
+                    && this.syncBinding?.token === binding.token;
+                if (sameBinding && (this.syncHydrated || !hydrated)) return this.syncPromise;
+                return this.syncPromise.then(() => this.syncNow({ ...options, binding, generation, hydrated }));
+            }
             const task = this.syncOnce({ ...options, binding, generation })
                 .catch((error) => {
-                    this.lastError = error.message || 'sync';
-                    console.error(`[${APP.id}] Message Center sync`, error);
+                    if (this.bindingIsCurrent(binding, generation)) {
+                        this.lastError = error.message || 'sync';
+                        console.error(`[${APP.id}] Message Center sync`, error);
+                    }
                     return false;
                 })
                 .finally(() => {
-                    if (this.syncPromise === task) this.syncPromise = null;
+                    if (this.syncPromise === task) {
+                        this.syncPromise = null;
+                        this.syncBinding = null;
+                        this.syncGeneration = -1;
+                        this.syncHydrated = false;
+                    }
                 });
             this.syncPromise = task;
+            this.syncBinding = { serverUrl: binding.serverUrl, storeId: binding.storeId, token: binding.token };
+            this.syncGeneration = generation;
+            this.syncHydrated = hydrated;
             return task;
         },
         async heartbeat(binding = this.config(), generation = this.generation) {
@@ -4484,17 +4774,20 @@ zu|Zulu
             const selectLabel = row.querySelector('[aria-label^="Select this order from" i]')?.getAttribute('aria-label') || '';
             const fromLabel = selectLabel.match(/from\s+(.+?)\s+on\s+/i)?.[1];
             const customerName = normalize(fromLabel || row.querySelector('button.btn-link.strong.fs-mask, .btn-link.strong.fs-mask')?.textContent);
-            const messageUrl = row.querySelector('a[href*="/conversations/with/"], a[href*="/messages/"]')?.href || '';
+            const messageAnchor = [...row.querySelectorAll(CONVERSATION_ANCHOR_SELECTOR)]
+                .find((link) => Router.canonicalConversationUrl(link.href));
+            const messageUrl = Router.canonicalConversationUrl(messageAnchor?.href || '');
             const productLink = row.querySelector('a[href*="/transaction/"]');
             const image = productLink?.querySelector('img');
             const itemTitle = normalize(productLink?.getAttribute('title') || image?.alt || '');
             const imageUrl = image?.src || '';
             const price = [...row.querySelectorAll('a[href*="order_id="]')].map((link) => normalize(link.parentElement?.textContent)).find((text) => /\$|€|£/.test(text))?.match(/[$€£]\s?[\d.,]+/)?.[0] || '';
             const statusCandidates = [...row.querySelectorAll('h2, .wt-text-title-small')].map((element) => normalize(element.textContent));
-            const fulfillmentStatus = statusCandidates.find((value) => /^(delivered|in transit|pre-transit|shipped|not shipped|cancelled|canceled)$/i.test(value))
-                || normalize(row.textContent).match(/\b(Delivered|In transit|Pre-transit|Not shipped|Shipped|Cancelled|Canceled)\b/i)?.[1]
+            const fulfillmentStatusPattern = /^(delivered|teslim edildi|in transit|kargoda|yolda|pre-transit|kargo öncesi|shipped|gönderildi|not shipped|gönderilmedi|cancelled|canceled|iptal edildi)$/i;
+            const fulfillmentStatus = statusCandidates.find((value) => fulfillmentStatusPattern.test(value))
+                || normalize(row.textContent).match(/\b(Delivered|Teslim edildi|In transit|Kargoda|Yolda|Pre-transit|Kargo öncesi|Not shipped|Gönderilmedi|Shipped|Gönderildi|Cancelled|Canceled|İptal edildi)\b/i)?.[1]
                 || '';
-            const delivered = /^delivered$/i.test(fulfillmentStatus);
+            const delivered = /^(delivered|teslim edildi)$/i.test(fulfillmentStatus);
             const status = Store.getStatus('orders', orderId);
             return { index, row, orderId, customerName, firstName: firstName(customerName), messageUrl, itemTitle, imageUrl, price, fulfillmentStatus, delivered, status };
         },
@@ -4605,7 +4898,7 @@ zu|Zulu
                 { id: 'shipping_delay', label: 'Kargo Gecikmesi', color: 'warning', risk: 'medium', regex: /\b(late|delay(?:ed)?|overdue|not arrived|hasn['’]?t arrived|stuck in transit|gecik(?:ti|me|miş)?|ulaşmadı|gelmedi)\b/i, summary: 'Müşteri geciken veya ulaşmayan gönderi hakkında bilgi istiyor.' },
                 { id: 'discount_question', label: 'İndirim / Kampanya', color: 'primary', risk: 'low', regex: /\b(discount|sale|coupon|promo(?:tion)?|promo code|deal|special offer|price reduction|percent off|%\s*off|indirim|kampanya|kupon|promosyon)\b/i, summary: 'Müşteri indirim, kampanya veya kupon hakkında bilgi istiyor.' },
                 { id: 'shipping_question', label: 'Kargo / Teslimat', color: 'info', risk: 'low', regex: /\b(shipping|tracking|delivery|ship to|how long.{0,25}(?:ship|deliver)|kargo|takip|teslimat)\b/i, summary: 'Müşteri kargo veya teslimat hakkında soru soruyor.' },
-                { id: 'color_change', label: 'Renk Değişikliği', color: 'pink', risk: 'low', regex: /\b(colou?r|shade|pink|blue|red|green|black|white|renk|ton)\b/i, summary: 'Müşteri ürünün rengi veya tonu hakkında değişiklik istiyor.' },
+                { id: 'color_change', label: 'Renk Değişikliği', color: 'pink', risk: 'low', regex: /\b(colou?r|shade|pink|blue|red|green|black|white)\b|(?:^|[^\p{L}\p{M}\p{N}_])(?:renk|tonu|tonunu|tonları)(?=$|[^\p{L}\p{M}\p{N}_])|(?:^|[^\p{L}\p{M}\p{N}_])(?:hangi|bu|şu|ne)\s+ton(?=$|[^\p{L}\p{M}\p{N}_])/iu, summary: 'Müşteri ürünün rengi veya tonu hakkında değişiklik istiyor.' },
                 { id: 'size_question', label: 'Beden / Ölçü', color: 'info', risk: 'low', regex: /\b(size|measurement|dimensions?|fit|beden|ölçü|ebat)\b/i, summary: 'Müşteri beden, ölçü veya ürün boyutu hakkında bilgi istiyor.' },
                 { id: 'personalization_request', label: 'Kişiselleştirme', color: 'info', risk: 'low', regex: /\b(personali[sz](?:e|ed|ing|ation)?|customi[sz](?:e|ed|ing|ation)?)\b|\b(add|change|put|include|print|write|use)\b.{0,60}\b(name|logo|wording|text|number|date)\b|\b(name|logo|wording|text|number|date)\b.{0,40}\b(add|change|put|include|print|write|use)\b/i, summary: 'Müşteri ürünün kişiselleştirme seçenekleri hakkında bilgi veya değişiklik istiyor.' },
                 { id: 'thanks', label: 'Teşekkür', color: 'success', risk: 'low', regex: /\b(thank(?:s| you)?|love|perfect|beautiful|great|amazing|teşekkür|harika|mükemmel)\b/i, summary: 'Müşteri olumlu geri bildirim veya teşekkür mesajı gönderiyor.' },
@@ -4792,6 +5085,8 @@ zu|Zulu
                 text,
                 baselineMatches: MessageAdapter.countOutgoing(text),
                 startedAt: nowIso(),
+                customerName: context.customerName || '',
+                orderId: context.orderId || '',
                 conversationId: context.conversationId,
                 routeFingerprint: Router.routeFingerprint(),
                 ...meta,
@@ -4882,10 +5177,10 @@ zu|Zulu
                 if (pending.conversationId) await Store.setStatus('conversations', pending.conversationId, {
                     status: 'sent', messageHash: hashText(pending.text), sentAt: nowIso(),
                 });
-                await History.logOnce('send_verified', `${pending.verificationId}:verified`, {
+                void History.tryLogOnce('send_verified', `${pending.verificationId}:verified`, {
                     source: 'messages', method: pending.method || 'manual', status: 'completed', customer: pending.customerName,
                     orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulandı', detail: { text: pending.text },
-                });
+                }).catch(error => console.error(`[${APP.id}] Doğrulanmış gönderim geçmişe kaydedilemedi.`, error));
                 UI.toast('Mesaj Etsy konuşmasında doğrulandı.', 'success');
                 await Campaign.advanceAfterVerified(pending);
                 void UI.refreshCurrent().catch(error => console.error(`[${APP.id}]`, error));
@@ -4923,11 +5218,6 @@ zu|Zulu
                         throw error;
                     }
                 } else {
-                    await History.logOnce('send_verified', `${pending.verificationId}:verified`, {
-                        source: 'messages', method: pending.method || 'manual', status: 'completed', customer: pending.customerName,
-                        orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulandı', detail: { text: pending.text },
-                    });
-                    if (!this.verificationIsCurrent(pending)) return false;
                     if (pending.orderId) await Store.setStatus('orders', pending.orderId, {
                         status: 'sent',
                         messageHash: hashText(pending.text),
@@ -4939,29 +5229,25 @@ zu|Zulu
                 }
                 if (pending.conversationId) await Store.setStatus('conversations', pending.conversationId, { status: 'sent', messageHash: hashText(pending.text), sentAt: nowIso() });
                 if (!this.verificationIsCurrent(pending)) return false;
-                if (pending.campaignId) {
-                    await History.logOnce('send_verified', `${pending.verificationId}:verified`, {
-                        source: 'messages', method: pending.method || 'manual', status: 'completed', customer: pending.customerName,
-                        orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulandı', detail: { text: pending.text },
-                    });
-                    if (!this.verificationIsCurrent(pending)) return false;
-                }
+                void History.tryLogOnce('send_verified', `${pending.verificationId}:verified`, {
+                    source: 'messages', method: pending.method || 'manual', status: 'completed', customer: pending.customerName,
+                    orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulandı', detail: { text: pending.text },
+                }).catch(error => console.error(`[${APP.id}] Doğrulanmış gönderim geçmişe kaydedilemedi.`, error));
                 UI.toast('Mesaj Etsy konuşmasında doğrulandı.', 'success');
                 if (pending.campaignId) await Campaign.advanceAfterVerified(pending);
             } else {
                 void trackTelemetryError('selector_message_send_verify');
                 if (pending.campaignId && !await Campaign.recordVerificationFailure(pending)) return false;
-                await History.logOnce('send_verification_failed', `${pending.verificationId}:failed`, {
-                    source: 'messages', method: pending.method || 'manual', status: 'error', customer: pending.customerName,
-                    orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulanamadı', detail: { text: pending.text },
-                });
-                if (!this.verificationIsCurrent(pending)) return false;
                 if (pending.orderId && !pending.campaignId) await Store.setStatus('orders', pending.orderId, {
                     status: 'error',
                     error: 'Gönderim doğrulanamadı',
                     verificationFailedAt: nowIso(),
                 });
                 if (!this.verificationIsCurrent(pending)) return false;
+                void History.tryLogOnce('send_verification_failed', `${pending.verificationId}:failed`, {
+                    source: 'messages', method: pending.method || 'manual', status: 'error', customer: pending.customerName,
+                    orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulanamadı', detail: { text: pending.text },
+                }).catch(error => console.error(`[${APP.id}] Gönderim doğrulama hatası geçmişe kaydedilemedi.`, error));
                 UI.toast('Gönderim Etsy mesaj balonunda doğrulanamadı.', 'error');
             }
             void UI.refreshCurrent().catch(error => console.error(`[${APP.id}]`, error));
@@ -5780,7 +6066,10 @@ zu|Zulu
             const purpose = Outreach.purposeForTemplate(selectedTemplate);
             const frozenTemplateHash = templateFingerprint(selectedTemplate);
             this.invalidateWork();
-            const safeOrders = clone(orders);
+            const safeOrders = clone(orders).map((order) => ({
+                ...order,
+                messageUrl: Router.canonicalConversationUrl(order?.messageUrl || ''),
+            }));
             const savedCampaign = await withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
@@ -5863,7 +6152,8 @@ zu|Zulu
                     throw error;
                 }
             });
-            await History.log('campaign_created', { source: 'orders', method, title: 'Teslimat mesaj kampanyası oluşturuldu', detail: { count: savedCampaign.items.length, templateId, purpose } });
+            void History.tryLog('campaign_created', { source: 'orders', method, title: 'Teslimat mesaj kampanyası oluşturuldu', detail: { count: savedCampaign.items.length, templateId, purpose } })
+                .catch(error => console.error(`[${APP.id}] Kampanya geçmişe kaydedilemedi.`, error));
             return savedCampaign;
         },
         current() {
@@ -5878,7 +6168,7 @@ zu|Zulu
                 if (this.orderIsSkipped(item)) await this.skipOrder(item.orderId, { expectedItemId: item.id, navigate: true });
                 return false;
             }
-            location.href = item.messageUrl;
+            Router.navigateToConversation(item.messageUrl);
             return true;
         },
         async resume() {
@@ -6034,7 +6324,8 @@ zu|Zulu
                 } : {}),
             }));
             if (!prepared) throw campaignConflictError('Hazırlanan taslak güncel kampanya kaydıyla eşleşmedi; gönderim kapatıldı.');
-            await History.log('reply_inserted', { source: 'orders', method: item.method, customer: item.customerName, orderId: item.orderId, conversationId: context.conversationId, title: 'Kampanya mesajı Etsy kutusuna aktarıldı', detail: { text: finalText } });
+            void History.tryLog('reply_inserted', { source: 'orders', method: item.method, customer: item.customerName, orderId: item.orderId, conversationId: context.conversationId, title: 'Kampanya mesajı Etsy kutusuna aktarıldı', detail: { text: finalText } })
+                .catch(error => console.error(`[${APP.id}] Kampanya taslağı geçmişe kaydedilemedi.`, error));
             void trackTelemetry('message_draft_generated');
             UI.open('messages');
             const automaticSend = campaignAutoSendAllowed(item);
@@ -6209,7 +6500,7 @@ zu|Zulu
             }
             if (Store.settings.autoAdvanceCampaign) {
                 await sleep(700);
-                location.href = result.savedCampaign.items[result.nextIndex].messageUrl;
+                Router.navigateToConversation(result.savedCampaign.items[result.nextIndex].messageUrl);
             }
             return true;
         },
@@ -6227,7 +6518,7 @@ zu|Zulu
                 && current.status === 'active'
                 && current.items?.[current.currentIndex]?.id === nextItem.id;
             if (!stillNext) return false;
-            location.href = nextItem.messageUrl;
+            Router.navigateToConversation(nextItem.messageUrl);
             return true;
         },
         async skipOrder(orderId, options = {}) {
@@ -6301,7 +6592,7 @@ zu|Zulu
                 return { skipped: true, nextIndex, currentWasSkipped, campaign: savedCampaign };
             });
             if (options.navigate && result.currentWasSkipped && result.nextIndex !== -1) {
-                location.href = result.campaign.items[result.nextIndex].messageUrl;
+                Router.navigateToConversation(result.campaign.items[result.nextIndex].messageUrl);
             } else if (options.navigate && result.currentWasSkipped) await UI.refreshCurrent();
             return result;
         },
@@ -6388,6 +6679,7 @@ zu|Zulu
             settingsDraft: null,
             providersDraft: null,
             settingsDirty: false,
+            settingsDraftGeneration: 0,
             selectedOrders: new Set(),
             ordersTemplateInitialized: false,
             orders: [],
@@ -6461,7 +6753,7 @@ zu|Zulu
             if (!preview) return '';
             const provider = String(Store.settings.translator || 'google').toLowerCase();
             const policy = policyOverride || Translator.cachePolicyFingerprint(provider);
-            return `${Translator.effectiveTarget(target)}:${policy}:${item.conversationId}:${preview.length}:${hashExactText(preview)}`;
+            return JSON.stringify([Translator.effectiveTarget(target), policy, item.conversationId, preview]);
         },
         messageListTranslationFor(item, target = Store.settings.previewLanguage || 'tr', { forBatch = false } = {}) {
             const preview = String(item?.preview || '').trim();
@@ -6474,14 +6766,13 @@ zu|Zulu
         messageListSignature(items, target = Store.settings.previewLanguage || 'tr') {
             const provider = String(Store.settings.translator || 'google');
             const policy = Translator.cachePolicyFingerprint(provider);
-            return `${Router.routeFingerprint()}|${Translator.effectiveTarget(target)}|${policy}|${items.map(item => [
+            return JSON.stringify([Router.routeFingerprint(), Translator.effectiveTarget(target), policy, items.map(item => [
                 item.conversationId,
                 item.conversationUrl,
                 item.buyerName,
                 item.unread ? 1 : 0,
-                item.preview.length,
-                hashExactText(item.preview),
-            ].join(':')).join('|')}`;
+                item.preview,
+            ])]);
         },
         messageListWorkIsCurrent(work) {
             return Boolean(work
@@ -6614,19 +6905,15 @@ zu|Zulu
                 this.setBusy(false);
             }
             if (this.view) this.render();
-            try {
-                await History.log('translated', {
-                    source: 'messages',
-                    method: [...batchProviders].sort().join('+') || String(Store.settings.translator || 'google'),
-                    status: failed ? (batchCompleted ? 'partial' : 'error') : 'completed',
-                    title: failed
-                        ? (batchCompleted ? 'Konuşma listesi önizlemeleri kısmen çevrildi' : 'Konuşma listesi önizleme çevirisi başarısız')
-                        : 'Konuşma listesi önizlemeleri çevrildi',
-                    detail: { target, previews: batchCompleted, failed, requests: requestCount, characters: requestCharacters },
-                });
-            } catch (error) {
-                console.error(`[${APP.id}] Konuşma listesi çeviri geçmişi kaydedilemedi.`, error);
-            }
+            void History.tryLog('translated', {
+                source: 'messages',
+                method: [...batchProviders].sort().join('+') || String(Store.settings.translator || 'google'),
+                status: failed ? (batchCompleted ? 'partial' : 'error') : 'completed',
+                title: failed
+                    ? (batchCompleted ? 'Konuşma listesi önizlemeleri kısmen çevrildi' : 'Konuşma listesi önizleme çevirisi başarısız')
+                    : 'Konuşma listesi önizlemeleri çevrildi',
+                detail: { target, previews: batchCompleted, failed, requests: requestCount, characters: requestCharacters },
+            }).catch(error => console.error(`[${APP.id}] Konuşma listesi çeviri geçmişi kaydedilemedi.`, error));
             if (!auto && failed) this.toast(`${failed} önizleme çevrilemedi. Orijinal metinler korunuyor.`, 'warning', 6000);
             return failed === 0;
         },
@@ -6718,7 +7005,8 @@ zu|Zulu
         },
         markSettingsDirty() {
             this.state.settingsDirty = true;
-            const dirty = this.shadow.querySelector('[data-settings-dirty]');
+            this.state.settingsDraftGeneration += 1;
+            const dirty = this.shadow?.querySelector?.('[data-settings-dirty]');
             if (dirty) dirty.hidden = false;
         },
         async resolveReplyTargetLanguage(context, work) {
@@ -6734,7 +7022,7 @@ zu|Zulu
             try {
                 const translated = await Translator.translate(sourceText, 'tr');
                 if (!this.messageWorkIsCurrent(work)) return '';
-                const detected = String(translated.detectedLanguage || '').trim().toLowerCase();
+                const detected = Translator.normalizedTarget(translated.detectedLanguage || '');
                 this.state.targetLanguage = !detected || detected === 'und' ? 'en' : detected;
             } catch {
                 if (!this.messageWorkIsCurrent(work)) return '';
@@ -6747,7 +7035,7 @@ zu|Zulu
             this.host = document.createElement('div');
             this.host.id = APP.id;
             document.documentElement.appendChild(this.host);
-            this.shadow = this.host.attachShadow({ mode: 'open' });
+            this.shadow = this.host.attachShadow({ mode: 'closed' });
             this.shadow.innerHTML = `
                 <style>${CSS}${LAUNCHER_CSS}${UX_CSS}</style>${ICON_SPRITE}
                 <div class="ma-root">
@@ -6836,8 +7124,9 @@ zu|Zulu
         },
         setBusy(value) {
             this.state.busy = value;
-            this.app.classList.toggle('ma-busy', value);
-            this.app.setAttribute('aria-busy', String(Boolean(value)));
+            this.app?.classList?.toggle('ma-busy', value);
+            this.app?.setAttribute?.('aria-busy', String(Boolean(value)));
+            if (this.view) this.view.inert = Boolean(value);
         },
         async refreshCurrent() {
             if (!this.state.open) return;
@@ -6884,7 +7173,8 @@ zu|Zulu
                         if (!this.messageWorkIsCurrent(work)) return false;
                         this.state.translation = translated;
                         if (Store.settings.replyInCustomerLanguage) {
-                            this.state.targetLanguage = translated.detectedLanguage === 'und' ? 'en' : translated.detectedLanguage;
+                            const detected = Translator.normalizedTarget(translated.detectedLanguage || '');
+                            this.state.targetLanguage = !detected || detected === 'und' ? 'en' : detected;
                         }
                         void trackTelemetry('message_translation_generated');
                     } catch (error) {
@@ -7155,7 +7445,7 @@ zu|Zulu
                 const statusLabel = !canMessage && status === 'none' ? 'Konuşma Yok' : ({ none: 'İşlem Yok', draft: 'Taslak Hazır', inserted: 'Etsy Kutusunda', sent_pending_verification: 'Gönderim Doğrulaması Bekliyor', sent: 'Gönderildi', error: 'Hata', skipped: 'Atlandı' }[status] || status);
                 const statusTone = !canMessage && status === 'none' ? 'warning' : ({ none: '', draft: 'info', inserted: 'warning', sent_pending_verification: 'warning', sent: 'success', error: 'danger', skipped: '' }[status]);
                 const recoveryActions = status === CAMPAIGN_SEND_PENDING_STATUS
-                    ? `<button class="ma-btn ma-btn--small" data-order-confirm-sent="${order.orderId}">Gönderildi</button><button class="ma-btn ma-btn--small" data-order-confirm-not-sent="${order.orderId}">Gönderilmedi</button>`
+                    ? `<button class="ma-btn ma-btn--small" data-order-confirm-sent="${attr(order.orderId)}">Gönderildi</button><button class="ma-btn ma-btn--small" data-order-confirm-not-sent="${attr(order.orderId)}">Gönderilmedi</button>`
                     : '';
                 const campaignItem = campaign?.status === 'active'
                     ? campaign.items?.find(item => item.orderId === order.orderId && ['pending', 'inserted'].includes(item.status))
@@ -7173,7 +7463,7 @@ zu|Zulu
                     : `<option value="unknown" ${reviewDecision === 'unknown' ? 'selected' : ''}>Kontrol edilmedi</option>
                         <option value="eligible" ${reviewDecision === 'eligible' ? 'selected' : ''}>Yorum yok — kuyruğa uygun</option>`;
                 const reviewDecisionControl = isReviewRequest
-                    ? `<div class="ma-field"><select class="ma-select" data-review-decision="${order.orderId}" ${['sent', CAMPAIGN_SEND_PENDING_STATUS].includes(outreach.workflow) ? 'disabled' : ''}>
+                    ? `<div class="ma-field"><select class="ma-select" data-review-decision="${attr(order.orderId)}" ${['sent', CAMPAIGN_SEND_PENDING_STATUS].includes(outreach.workflow) ? 'disabled' : ''}>
                         ${reviewDecisionOptions}
                         <option value="review_exists" ${reviewDecision === 'review_exists' ? 'selected' : ''}>Yorum var</option>
                         <option value="deferred" ${reviewDecision === 'deferred' ? 'selected' : ''}>Ertele</option>
@@ -7181,7 +7471,7 @@ zu|Zulu
                         ${reviewDecision === 'expired' ? '<option value="expired" selected disabled>Kontrol süresi doldu — yeniden seçin</option>' : ''}
                     </select><div class="ma-field__hint">${html(workflowLabel)}</div></div>`
                     : '<span class="ma-muted">—</span>';
-                return `<tr class="${isSelected ? 'is-selected' : ''}"><td><input class="ma-check" type="checkbox" data-order-select="${order.orderId}" ${isSelected ? 'checked' : ''} ${canMessage && isEligible ? '' : 'disabled'}></td><td><strong>#${html(order.orderId)}</strong><div class="ma-small ma-muted">${html(order.price)}</div></td><td>${html(order.customerName)}</td><td><div class="ma-product">${order.imageUrl ? `<img class="ma-product__image" src="${attr(order.imageUrl)}" alt="">` : '<span class="ma-product__image"></span>'}<div class="ma-table__product" title="${attr(order.itemTitle)}">${html(order.itemTitle || 'Ürün')}</div></div></td><td><span class="ma-pill ma-pill--success">Teslim Edildi</span></td><td>${reviewDecisionControl}</td><td><span class="ma-pill ${statusTone ? `ma-pill--${statusTone}` : ''}">${html(statusLabel)}</span></td><td><div class="ma-actions"><button class="ma-btn ma-btn--small" data-order-open="${order.orderId}" ${order.messageUrl ? '' : 'disabled'}>Mesajı Aç</button>${recoveryActions}${skipAction}</div></td></tr>`;
+                return `<tr class="${isSelected ? 'is-selected' : ''}"><td><input class="ma-check" type="checkbox" data-order-select="${attr(order.orderId)}" ${isSelected ? 'checked' : ''} ${canMessage && isEligible ? '' : 'disabled'}></td><td><strong>#${html(order.orderId)}</strong><div class="ma-small ma-muted">${html(order.price)}</div></td><td>${html(order.customerName)}</td><td><div class="ma-product">${order.imageUrl ? `<img class="ma-product__image" src="${attr(order.imageUrl)}" alt="">` : '<span class="ma-product__image"></span>'}<div class="ma-table__product" title="${attr(order.itemTitle)}">${html(order.itemTitle || 'Ürün')}</div></div></td><td><span class="ma-pill ma-pill--success">Teslim Edildi</span></td><td>${reviewDecisionControl}</td><td><span class="ma-pill ${statusTone ? `ma-pill--${statusTone}` : ''}">${html(statusLabel)}</span></td><td><div class="ma-actions"><button class="ma-btn ma-btn--small" data-order-open="${attr(order.orderId)}" ${order.messageUrl ? '' : 'disabled'}>Mesajı Aç</button>${recoveryActions}${skipAction}</div></td></tr>`;
             }).join('');
             const templateOptions = TemplateEngine.active().map((template) => `<option value="${attr(template.id)}" ${this.state.selectedTemplateId === template.id ? 'selected' : ''}>${html(template.name)}</option>`).join('');
             const reviewRequestNotice = isReviewRequest
@@ -7279,7 +7569,7 @@ zu|Zulu
                 const id = `mema-setting-${key}`;
                 return `<div class="ma-switch-row"><div class="ma-switch-row__copy"><div id="${attr(id)}-label" class="ma-switch-row__title">${html(title)}</div><div id="${attr(id)}-description" class="ma-switch-row__desc">${html(desc)}</div></div><label class="ma-switch"><input type="checkbox" data-settings-field="${attr(key)}" aria-labelledby="${attr(id)}-label" aria-describedby="${attr(id)}-description" ${s[key] ? 'checked' : ''}><span></span></label></div>`;
             };
-            const step = (number, title, desc, done) => `<div class="ma-setup-step ${done ? 'is-done' : ''}"><div class="ma-setup-step__top"><span class="ma-setup-step__number">${done ? '✓' : number}</span><span class="ma-setup-step__title">${title}</span></div><div class="ma-setup-step__desc">${desc}</div></div>`;
+            const step = (number, title, desc, done) => `<div class="ma-setup-step ${done ? 'is-done' : ''}"><div class="ma-setup-step__top"><span class="ma-setup-step__number">${done ? '✓' : html(number)}</span><span class="ma-setup-step__title">${html(title)}</span></div><div class="ma-setup-step__desc">${html(desc)}</div></div>`;
             const providerOptions = Object.entries(AI_PROVIDERS).map(([id, item]) => `<option value="${id}" ${providerId === id ? 'selected' : ''}>${html(item.name)}</option>`).join('');
             const modelOptions = models.map((model) => `<option value="${attr(model)}"></option>`).join('');
             const lastModelSync = profile.modelsFetchedAt ? formatDate(profile.modelsFetchedAt) : 'Henüz yenilenmedi';
@@ -7290,7 +7580,7 @@ zu|Zulu
                         <div class="ma-card__body ma-stack"><div class="ma-setup-grid">
                             ${step(1, 'Sağlayıcı', `${provider.name} seçili.`, Boolean(providerId))}
                             ${step(2, 'AI (isteğe bağlı)', hasKey && hasModel ? `${profile.model} hazır.` : 'AI kullanacaksanız API anahtarı ve model seçin.', hasKey && hasModel)}
-                            ${step(3, 'GitHub (isteğe bağlı)', githubReady ? `@${html(s.githubUsername)} kaydedildi.` : 'Release bildirimleri için isterseniz ayarlayın.', githubReady)}
+                            ${step(3, 'GitHub (isteğe bağlı)', githubReady ? `@${s.githubUsername} kaydedildi.` : 'Release bildirimleri için isterseniz ayarlayın.', githubReady)}
                             ${step(4, 'Kalıcı ayarlar', 'Ayarlar Tampermonkey depolamasında güncellemeler boyunca korunur.', true)}
                         </div><div class="ma-actions ma-actions--end"><button class="ma-btn" data-action="setup-complete">Ayarları Kaydet ve Bitir</button></div></div>
                     </section>
@@ -7301,10 +7591,10 @@ zu|Zulu
                             <div class="ma-card__body ma-stack">
                                 <div class="ma-provider-grid">
                                     <div class="ma-field"><label>Firma / Sağlayıcı</label><select class="ma-select" data-settings-field="aiProvider">${providerOptions}</select></div>
-                                    <div class="ma-field"><label>${html(provider.apiKeyLabel)}</label><input class="ma-input" type="password" data-provider-field="apiKey" value="${attr(profile.apiKey)}" autocomplete="off" placeholder="API anahtarınızı yapıştırın"><div class="ma-field__hint">Anahtar yalnızca Tampermonkey depolamasında tutulur ve doğrudan ${html(provider.name)} API’sine gönderilir.</div></div>
+                                    <div class="ma-field"><label>${html(provider.apiKeyLabel)}</label><input class="ma-input" type="password" data-provider-field="apiKey" autocomplete="new-password" placeholder="${hasKey ? 'Kayıtlı anahtarı değiştirmek için yeni değer girin' : 'API anahtarınızı yapıştırın'}"><div class="ma-field__hint">Anahtar yalnızca Tampermonkey depolamasında tutulur ve doğrudan ${html(provider.name)} API’sine gönderilir.</div></div>
                                     <div class="ma-field"><label>Model / Sürüm</label><input class="ma-input" list="ma-provider-models" data-provider-field="model" value="${attr(profile.model)}" placeholder="Model seçin veya adını yazın"><datalist id="ma-provider-models">${modelOptions}</datalist><div class="ma-field__hint">Liste: ${html(lastModelSync)}. Model adı elle de yazılabilir.</div></div>
                                 </div>
-                                <div class="ma-provider-status"><button class="ma-btn" data-action="provider-doc">API Anahtarı Al</button><button class="ma-btn" data-action="provider-refresh-models">${icon('refresh')}Modelleri Yenile</button><button class="ma-btn ma-btn--primary" data-action="provider-test">Bağlantıyı Test Et</button><span class="ma-muted ma-small">Makaytron API kullanımına, ücretine veya kotasına taraf değildir.</span></div>
+                                <div class="ma-provider-status"><button class="ma-btn" data-action="provider-doc">API Anahtarı Al</button><button class="ma-btn" data-action="provider-key-clear" ${hasKey ? '' : 'disabled'}>Kayıtlı Anahtarı Sil</button><button class="ma-btn" data-action="provider-refresh-models">${icon('refresh')}Modelleri Yenile</button><button class="ma-btn ma-btn--primary" data-action="provider-test">Bağlantıyı Test Et</button><span class="ma-muted ma-small">Makaytron API kullanımına, ücretine veya kotasına taraf değildir.</span></div>
                             </div>
                         </section>
 
@@ -7339,7 +7629,7 @@ zu|Zulu
                                 <div class="ma-grid ma-grid--2">
                                     <div class="ma-field"><label>Mesaj Merkezi URL</label><input class="ma-input" data-settings-field="messageCenterUrl" value="${attr(s.messageCenterUrl || '')}" placeholder="https://messages.example.com veya http://SUNUCU-IP:4173"><div class="ma-field__hint">URL sonuna / eklemeden sunucu adresini yazın.</div></div>
                                     <div class="ma-field"><label>Mağaza ID</label><input class="ma-input" data-settings-field="messageCenterStoreId" value="${attr(s.messageCenterStoreId || '')}" placeholder="pakayus"><div class="ma-field__hint">Sunucudaki config.json içindeki store id ile birebir aynı olmalı.</div></div>
-                                    <div class="ma-field"><label>Agent Token</label><input class="ma-input" type="password" data-settings-field="messageCenterAgentToken" value="${attr(s.messageCenterAgentToken || '')}" autocomplete="off" placeholder="İlgili mağazanın agentToken değeri"><div class="ma-field__hint">Bu token yalnız bu mağazanın agent API’sinde kullanılır.</div></div>
+                                    <div class="ma-field"><label>Agent Token</label><input class="ma-input" type="password" data-settings-field="messageCenterAgentToken" data-secret-preserve="true" autocomplete="new-password" placeholder="${s.messageCenterAgentToken ? 'Kayıtlı tokenı değiştirmek için yeni değer girin' : 'İlgili mağazanın agentToken değeri'}"><div class="ma-field__hint">Bu token yalnız bu mağazanın agent API’sinde kullanılır.</div><button class="ma-btn ma-btn--small" data-action="agent-token-clear" ${s.messageCenterAgentToken ? '' : 'disabled'}>Kayıtlı Tokenı Sil</button></div>
                                     <div class="ma-grid ma-grid--2">
                                         <div class="ma-field"><label>Mesaj Senkronu (sn)</label><input class="ma-input" type="number" min="5" max="120" data-settings-field="messageCenterSyncSeconds" value="${attr(s.messageCenterSyncSeconds || 10)}"></div>
                                         <div class="ma-field"><label>Gönderim Kuyruğu (sn)</label><input class="ma-input" type="number" min="2" max="60" data-settings-field="messageCenterPollSeconds" value="${attr(s.messageCenterPollSeconds || 3)}"></div>
@@ -7357,7 +7647,7 @@ zu|Zulu
                             </div>
                         </div></section>
 
-                        <section class="ma-card"><div class="ma-card__head"><h3>Çeviri Ayarları</h3></div><div class="ma-card__body ma-stack">${switchRow('freeFallback','Ücretsiz Çeviri Yedeğini Kullan','DeepL hatasında Google çeviri devreye girer.')}<div class="ma-grid ma-grid--2"><div class="ma-field"><label>Varsayılan Çeviri Motoru</label><select class="ma-select" data-settings-field="translator"><option value="google" ${s.translator === 'google' ? 'selected' : ''}>Google Ücretsiz</option><option value="deepl" ${s.translator === 'deepl' ? 'selected' : ''}>DeepL</option></select></div><div class="ma-field"><label>Önizleme Dili</label><select class="ma-select" data-settings-field="previewLanguage">${Object.entries(GOOGLE_TRANSLATION_LANGUAGE_NAMES).map(([code,name]) => `<option value="${code}" ${Translator.normalizedTarget(s.previewLanguage) === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div></div><div class="ma-field"><label>DeepL API Anahtarı</label><input class="ma-input" type="password" data-settings-field="deeplApiKey" value="${attr(s.deeplApiKey)}" autocomplete="off"></div>${switchRow('deeplPro','DeepL Pro','api.deepl.com endpointini kullanır.')}</div></section>
+                        <section class="ma-card"><div class="ma-card__head"><h3>Çeviri Ayarları</h3></div><div class="ma-card__body ma-stack">${switchRow('freeFallback','Ücretsiz Çeviri Yedeğini Kullan','DeepL hatasında Google çeviri devreye girer.')}<div class="ma-grid ma-grid--2"><div class="ma-field"><label>Varsayılan Çeviri Motoru</label><select class="ma-select" data-settings-field="translator"><option value="google" ${s.translator === 'google' ? 'selected' : ''}>Google Ücretsiz</option><option value="deepl" ${s.translator === 'deepl' ? 'selected' : ''}>DeepL</option></select></div><div class="ma-field"><label>Önizleme Dili</label><select class="ma-select" data-settings-field="previewLanguage">${Object.entries(GOOGLE_TRANSLATION_LANGUAGE_NAMES).map(([code,name]) => `<option value="${code}" ${Translator.normalizedTarget(s.previewLanguage) === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div></div><div class="ma-field"><label>DeepL API Anahtarı</label><input class="ma-input" type="password" data-settings-field="deeplApiKey" data-secret-preserve="true" autocomplete="new-password" placeholder="${s.deeplApiKey ? 'Kayıtlı anahtarı değiştirmek için yeni değer girin' : 'DeepL API anahtarınızı yapıştırın'}"><button class="ma-btn ma-btn--small" data-action="deepl-key-clear" ${s.deeplApiKey ? '' : 'disabled'}>Kayıtlı Anahtarı Sil</button></div>${switchRow('deeplPro','DeepL Pro','api.deepl.com endpointini kullanır.')}</div></section>
 
                         <section class="ma-card"><div class="ma-card__head"><h3>İmza ve Mağaza</h3></div><div class="ma-card__body ma-stack"><div class="ma-field"><label>Mağaza Adı</label><input class="ma-input" data-settings-field="shopName" value="${attr(s.shopName)}"></div><div class="ma-field"><label>İmza</label><input class="ma-input" data-settings-field="signature" value="${attr(s.signature)}"></div><div class="ma-field"><label>Kalıcı Mağaza Talimatı</label><textarea class="ma-textarea" data-settings-field="storeInstruction">${html(s.storeInstruction)}</textarea></div></div></section>
 
@@ -7368,7 +7658,7 @@ zu|Zulu
         reportUiError(error, action = 'ui-action') {
             console.error(`[${APP.id}]`, error);
             this.toast(error?.message || 'Beklenmeyen hata.', 'error', 6000);
-            void History.log('ui_error', {
+            void History.tryLog('ui_error', {
                 status: 'error',
                 title: 'İşlem hatası',
                 detail: { action, message: error?.message || String(error) },
@@ -7401,14 +7691,14 @@ zu|Zulu
             if (target.dataset.historyId) { this.state.historyDetailId = target.dataset.historyId; return this.render(); }
             if (target.dataset.variable) return this.insertVariable(target.dataset.variable);
             if (Object.prototype.hasOwnProperty.call(target.dataset, 'messageOpenUrl')) {
-                const conversationUrl = MessageCenterAgent.canonicalConversationUrl(target.dataset.messageOpenUrl || '');
+                const conversationUrl = Router.canonicalConversationUrl(target.dataset.messageOpenUrl || '');
                 if (!conversationUrl) throw new Error('Güvenli bir Etsy konuşma bağlantısı doğrulanamadı. Listeyi yenileyip tekrar deneyin.');
                 location.href = conversationUrl;
                 return;
             }
             if (target.dataset.orderOpen) {
                 const order = this.state.orders.find((item) => item.orderId === target.dataset.orderOpen);
-                if (order?.messageUrl) location.href = order.messageUrl;
+                if (order?.messageUrl) Router.navigateToConversation(order.messageUrl);
                 return;
             }
             if (target.dataset.orderConfirmSent) {
@@ -7444,6 +7734,21 @@ zu|Zulu
             if (!action) return;
             try {
                 if (action === 'version-action') { if (Updates.isAvailable()) Updates.install(); else await Updates.check({ force: true }); }
+                if (action === 'provider-key-clear') {
+                    this.draftProviderProfile().apiKey = '';
+                    this.markSettingsDirty();
+                    this.toast('AI API anahtarı taslaktan silindi; kalıcılaştırmak için Kaydet’e basın.', 'warning', 5000);
+                }
+                if (action === 'agent-token-clear') {
+                    this.ensureSettingsDraft().settings.messageCenterAgentToken = '';
+                    this.markSettingsDirty();
+                    this.toast('Agent token taslaktan silindi; kalıcılaştırmak için Kaydet’e basın.', 'warning', 5000);
+                }
+                if (action === 'deepl-key-clear') {
+                    this.ensureSettingsDraft().settings.deeplApiKey = '';
+                    this.markSettingsDirty();
+                    this.toast('DeepL anahtarı taslaktan silindi; kalıcılaştırmak için Kaydet’e basın.', 'warning', 5000);
+                }
                 if (action === 'provider-doc') {
                     const providerId = this.ensureSettingsDraft().settings.aiProvider;
                     GMX.open(AI.provider(providerId).apiKeyUrl);
@@ -7663,7 +7968,8 @@ zu|Zulu
             if (!this.messageWorkIsCurrent(work)) return false;
             this.state.translation = result;
             if (Store.settings.replyInCustomerLanguage) {
-                this.state.targetLanguage = result.detectedLanguage === 'und' ? 'en' : result.detectedLanguage;
+                const detected = Translator.normalizedTarget(result.detectedLanguage || '');
+                this.state.targetLanguage = !detected || detected === 'und' ? 'en' : detected;
             }
             this.state.analysis = Heuristics.analyze(`${text}
 ${result.text || ''}`);
@@ -7742,7 +8048,6 @@ ${result.text || ''}`);
                 if (!this.messageWorkIsCurrent(work)) return false;
             }
             const lastReplyMode = method === 'ai' ? replyMode : finalMethod;
-            await History.log('reply_generated', { source: 'messages', method: finalMethod, customer: context.customerName, orderId: context.orderId, conversationId: context.conversationId, title: lastReplyMode === 'polish' ? 'Kullanıcı cevabı AI ile düzenlendi' : 'Cevap taslağı hazırlandı', detail: { reply, replyTr, targetLanguage, replyMode: lastReplyMode } });
             if (!this.messageWorkIsCurrent(work)) return false;
             this.state.reply = reply;
             this.state.replyBinding = { ...work };
@@ -7752,6 +8057,8 @@ ${result.text || ''}`);
             this.state.lastReplyMode = lastReplyMode;
             if (nextAnalysis) this.state.analysis = nextAnalysis;
             this.state.scrollToResult = true;
+            void History.tryLog('reply_generated', { source: 'messages', method: finalMethod, customer: context.customerName, orderId: context.orderId, conversationId: context.conversationId, title: lastReplyMode === 'polish' ? 'Kullanıcı cevabı AI ile düzenlendi' : 'Cevap taslağı hazırlandı', detail: { reply, replyTr, targetLanguage, replyMode: lastReplyMode } })
+                .catch(error => console.error(`[${APP.id}] Cevap taslağı geçmişe kaydedilemedi.`, error));
             void trackTelemetry('message_draft_generated');
             this.toast(this.state.lastReplyMode === 'polish' ? 'Cevabınız AI ile düzenlendi ve müşterinin dilinde hazırlandı.' : 'Cevap taslağı hazırlandı.', 'success');
             return true;
@@ -7784,7 +8091,8 @@ ${result.text || ''}`);
             Verification.prepare(text, { method: replyMethod, customerName: context.customerName, orderId: context.orderId, conversationId: context.conversationId, routeFingerprint: binding.routeFingerprint });
             if (context.orderId) await Store.setStatus('orders', context.orderId, { status: 'inserted', messageHash: hashText(text) });
             if (context.conversationId) await Store.setStatus('conversations', context.conversationId, { status: 'inserted', messageHash: hashText(text) });
-            await History.log('reply_inserted', { source: 'messages', method: replyMethod, customer: context.customerName, orderId: context.orderId, conversationId: context.conversationId, title: 'Cevap Etsy kutusuna aktarıldı', detail: { text } });
+            void History.tryLog('reply_inserted', { source: 'messages', method: replyMethod, customer: context.customerName, orderId: context.orderId, conversationId: context.conversationId, title: 'Cevap Etsy kutusuna aktarıldı', detail: { text } })
+                .catch(error => console.error(`[${APP.id}] Aktarılan cevap geçmişe kaydedilemedi.`, error));
             this.toast('Cevap Etsy mesaj alanına aktarıldı. Göndermeden önce kontrol edin.', 'success', 6000);
         },
         async copySource(source) {
@@ -7798,7 +8106,8 @@ ${result.text || ''}`);
             await copyText(text);
             this.toast('Panoya kopyalandı.', 'success');
             if (selected && ['review-private', 'review-public'].includes(source)) {
-                await History.log('copied', { source: 'reviews', customer: selected.customerName, title: 'Yorum cevabı kopyalandı', detail: { kind: source } });
+                void History.tryLog('copied', { source: 'reviews', customer: selected.customerName, title: 'Yorum cevabı kopyalandı', detail: { kind: source } })
+                    .catch(error => console.error(`[${APP.id}] Kopyalama geçmişe kaydedilemedi.`, error));
             }
         },
         async createCampaign() {
@@ -7845,7 +8154,8 @@ ${result.text || ''}`);
             this.state.reviewAnalysis = result;
             this.state.reviewAnalysisBinding = work;
             await Store.setStatus('reviews', review.id, { status: 'draft', analysis: { sentiment: result.sentiment, risk: result.risk_level } });
-            await History.log('review_analyzed', { source: 'reviews', method: `ai:${Store.settings.aiProvider}`, customer: review.customerName, title: 'Yorum analiz edildi', detail: result });
+            void History.tryLog('review_analyzed', { source: 'reviews', method: `ai:${Store.settings.aiProvider}`, customer: review.customerName, title: 'Yorum analiz edildi', detail: result })
+                .catch(error => console.error(`[${APP.id}] Yorum analizi geçmişe kaydedilemedi.`, error));
             this.toast('Yorum analizi ve cevap taslakları hazırlandı.', 'success');
             return true;
         },
@@ -7863,7 +8173,8 @@ ${result.text || ''}`);
             await ReviewsAdapter.insertPublic(review, text, { isCurrent });
             if (!isCurrent()) throw new Error('Yorum veya sayfa değişti; public cevap durumu kaydedilmedi. Güncel yorumu kontrol edin.');
             await Store.setStatus('reviews', review.id, { status: 'inserted', publicReplyHash: hashText(text) });
-            await History.log('review_public_inserted', { source: 'reviews', method: 'manual', customer: review.customerName, title: 'Public cevap Etsy alanına aktarıldı', detail: { text } });
+            void History.tryLog('review_public_inserted', { source: 'reviews', method: 'manual', customer: review.customerName, title: 'Public cevap Etsy alanına aktarıldı', detail: { text } })
+                .catch(error => console.error(`[${APP.id}] Public cevap geçmişe kaydedilemedi.`, error));
             this.toast('Public cevap Etsy alanına aktarıldı; yayınlamadan önce kontrol edin.', 'warning', 7000);
         },
         async newTemplate() {
@@ -7898,11 +8209,15 @@ ${result.text || ''}`);
             if (this.state.templateDirty) throw new Error('Arşiv durumunu değiştirmeden önce şablonu kaydedin.');
             const template = TemplateEngine.get(this.state.templateEditId);
             if (!template) throw new Error('Şablon bulunamadı.');
-            template.archived = !template.archived;
-            template.updatedAt = nowIso();
-            await Store.saveTemplates([...Store.templates]);
-            this.state.templateDraft = clone(template);
-            this.toast(template.archived ? 'Şablon arşivlendi.' : 'Şablon yeniden etkinleştirildi.', 'success');
+            const next = Store.templates.map(clone);
+            const target = next.find(item => item.id === template.id);
+            if (!target) throw new Error('Şablon bulunamadı.');
+            target.archived = !target.archived;
+            target.updatedAt = nowIso();
+            await Store.saveTemplates(next);
+            const stored = TemplateEngine.get(template.id) || target;
+            this.state.templateDraft = clone(stored);
+            this.toast(stored.archived ? 'Şablon arşivlendi.' : 'Şablon yeniden etkinleştirildi.', 'success');
         },
         insertVariable(variable) {
             const textarea = this.shadow.querySelector('[data-template-field="text"]');
@@ -7914,13 +8229,7 @@ ${result.text || ''}`);
             textarea.selectionStart = textarea.selectionEnd = start + token.length;
         },
         exportHistory() {
-            const blob = new Blob([JSON.stringify(Store.history, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const anchor = document.createElement('a');
-            anchor.href = url;
-            anchor.download = `makaytron-message-history-${new Date().toISOString().slice(0, 10)}.json`;
-            anchor.click();
-            URL.revokeObjectURL(url);
+            downloadText(`makaytron-message-history-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(Store.history, null, 2));
         },
         async clearHistory() {
             if (!confirm('Makaytron Message Assistant geçmişi tamamen silinsin mi?')) return;
@@ -7934,7 +8243,7 @@ ${result.text || ''}`);
                 const key = field.dataset.settingsField;
                 if (field.type === 'checkbox') next[key] = field.checked;
                 else if (field.type === 'number') next[key] = Number(field.value);
-                else next[key] = field.value.trim();
+                else if (!(field.dataset.secretPreserve && field.value === '')) next[key] = field.value.trim();
             }
             this.state.settingsDraft = next;
             return next;
@@ -7942,9 +8251,10 @@ ${result.text || ''}`);
         async saveSettings({ notify = true } = {}) {
             const next = this.readSettingsForm();
             const providers = clone(this.ensureSettingsDraft().providers);
+            const draftGeneration = this.state.settingsDraftGeneration;
             this.invalidateMessageListWork({ resetStatus: true });
-            await Store.saveSettings(next);
-            await Store.saveProviders(providers);
+            this.setBusy(true);
+            await Store.saveConfigBundle({ settings: clone(next), providers: clone(providers) });
             await Store.pruneHistory();
             this.state.composeMethod = Store.settings.defaultReplyMethod;
             this.state.tone = Store.settings.defaultTone;
@@ -7952,8 +8262,16 @@ ${result.text || ''}`);
             await MessageCenterAgent.reconfigure().catch(error => {
                 MessageCenterAgent.lastError = error.message || 'agent';
             });
-            this.ensureSettingsDraft({ reset: true });
-            if (notify) this.toast('Ayarlar ve API profilleri kalıcı olarak kaydedildi.', 'success');
+            const editedDuringSave = this.state.settingsDraftGeneration !== draftGeneration;
+            if (!editedDuringSave) this.ensureSettingsDraft({ reset: true });
+            else this.state.settingsDirty = true;
+            if (notify) this.toast(
+                editedDuringSave
+                    ? 'Ayarlar kaydedildi; işlem sürerken yaptığınız yeni değişiklikler henüz kaydedilmedi.'
+                    : 'Ayarlar ve API profilleri kalıcı olarak kaydedildi.',
+                editedDuringSave ? 'warning' : 'success',
+                editedDuringSave ? 6500 : 3500,
+            );
             return Store.settings;
         },
         async resetSettings() {
@@ -7966,7 +8284,7 @@ ${result.text || ''}`);
                 deeplApiKey: current.deeplApiKey,
                 messageCenterAgentToken: current.messageCenterAgentToken,
             };
-            this.state.settingsDirty = true;
+            this.markSettingsDirty();
             this.toast('Varsayılanlar taslağa alındı; API ve agent anahtarları korundu.', 'info');
         },
         async refreshProviderModels() {
@@ -8070,6 +8388,7 @@ ${result.text || ''}`);
             if (fingerprint !== this.routeFingerprint) {
                 this.routeFingerprint = fingerprint;
                 UI.invalidateMessageWork();
+                UI.invalidateMessageListWork({ resetStatus: true });
                 UI.invalidateReviewWork();
                 Verification.invalidate(pending => pending.routeFingerprint !== fingerprint);
                 if (CONTEXT_PAGES.has(UI.state.page)) UI.state.page = Router.page();

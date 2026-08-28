@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.2.0`
+Version: `1.2.1`
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
@@ -35,6 +35,7 @@ The script is standalone and does not require another Etsy Automation Tools pack
 - API keys and history are stored locally in Tampermonkey. History defaults to 90 days and at most 500 records.
 - Configuration exports exclude API keys unless the user explicitly opts in.
 - Settings and provider fields stay as drafts until **Save**; exporting a config or testing a connection does not silently change runtime settings.
+- Stored API and agent secrets are never rendered into panel markup; they remain in local storage until a replacement or explicit draft deletion is saved.
 - Canonical GitHub installations check the userscript version no more than once per 24 hours; another distributor remains responsible for its own update path.
 - The update installation page opens only after a user action and only when no message campaign is active. Tampermonkey retains final approval.
 - Pseudonymous telemetry is on by default with a visible first-use notice and a one-click Settings opt-out that requests deletion of this userscript's server-side record. Only daily open, successful draft/translation, and categorized-error counters are sent. Raw error text, message/generated text, customer/order/conversation IDs, URLs, and API keys are excluded.

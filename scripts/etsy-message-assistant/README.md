@@ -10,7 +10,7 @@ Etsy mesajlarını Türkçe önizlemek, Türkçe cevabı müşterinin diline çe
 
 Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulması gerekmez.
 
-**Sürüm:** 1.2.0 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.2.1 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
@@ -40,6 +40,7 @@ Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulma
 - Bu, Etsy tarafından onaylanmış bir entegrasyon değil, resmî olmayan bir userscripttir. Etsy [API Koşulları](https://www.etsy.com/legal/api/), Etsy verisine erişen, veriyi analiz eden veya tarayan otomatik sistemler ve tarayıcı uzantıları için Etsy'nin açık yazılı yetkisini arar; son tıklamanın kullanıcıda olması tek başına bu yetkiyi sağlamaz.
 - Ayarları ve sağlayıcı profillerini script güncellemesinde korur.
 - Ayar ve API alanları **Kaydet** düğmesine kadar yalnız taslakta kalır; config dışa aktarma veya bağlantı testi görünmeden çalışma ayarını değiştirmez.
+- Kayıtlı API ve agent anahtarları panel HTML'ine yazılmaz; yeni değer girilene veya açık silme eylemi seçilip kaydedilene kadar yerel depoda korunur.
 - Canonical GitHub kurulumunda yeni sürümü `@version` satırından en fazla 24 saatte bir kontrol eder; farklı dağıtım kaynağının güncelleme mekanizmasını zorlamaz.
 - Güncelleme ekranını yalnız kullanıcı eylemiyle ve aktif mesaj kampanyası yokken açar; son onay Tampermonkey'dedir.
 

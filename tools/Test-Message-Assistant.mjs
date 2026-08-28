@@ -165,6 +165,7 @@ async function loadAssistant(options = {}) {
         ReviewsAdapter,
         GMX,
         Translator,
+        Heuristics,
         Prompt,
         AI,
         Router,
@@ -178,6 +179,7 @@ async function loadAssistant(options = {}) {
         reconcileLegacyReviewOutreach,
         templateFingerprint,
         hashText,
+        downloadText,
     });`);
     const context = vm.createContext(sandbox);
     await vm.runInContext(instrumented, context, { filename: scriptPath });
@@ -400,6 +402,36 @@ test('message composer resolution rejects a unique unrelated textarea outside an
     assert.equal(unrelatedTextarea.value, 'Keep this text');
 });
 
+test('hidden or duplicate Etsy Send controls fail closed instead of choosing a button', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/send-safety';
+    sandbox.location.href = 'https://www.etsy.com/messages/send-safety';
+    const makeButton = (visible = true) => ({
+        disabled: false,
+        textContent: 'Send',
+        getAttribute: () => '',
+        getClientRects: () => visible ? [{}] : [],
+    });
+    let buttons = [makeButton(false)];
+    const textarea = Object.assign(new sandbox.HTMLTextAreaElement(), {
+        closest: () => scope,
+        parentElement: null,
+        getClientRects: () => [{}],
+    });
+    const scope = {
+        querySelectorAll(selector) {
+            if (selector === 'button') return buttons;
+            if (selector.includes('textarea')) return [textarea];
+            return [];
+        },
+    };
+    sandbox.document.querySelectorAll = selector => selector.includes('textarea') ? [textarea] : [];
+
+    assert.equal(api.MessageAdapter.getSendButton(), null, 'a hidden Send control must not be actionable');
+    buttons = [makeButton(true), makeButton(true)];
+    assert.equal(api.MessageAdapter.getSendButton(), null, 'ambiguous Send controls must not be actionable');
+});
+
 test('message folders are not conversations and missing trusted composers render no production actions', async () => {
     const { api, sandbox } = await loadAssistant();
     const productionActions = /data-action="(?:ai-polish-reply|ai-auto-reply|free-translate-reply|regenerate-reply|insert-reply|campaign-send-next)"/;
@@ -494,6 +526,169 @@ test('message-list scanner reads safe Etsy DOM rows without mutating the source 
     assert.equal(items[0].unread, true);
     assert.equal(items[0].conversationUrl, 'https://www.etsy.com/messages/thread-1?ref=inbox');
     assert.deepEqual({ innerText: scope.innerText, textContent: scope.textContent }, before);
+});
+
+test('message-list scanner accepts Etsy query-form conversation links', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    const scope = {
+        innerText: 'Query buyer\nCan you help with this order?',
+        textContent: 'Query buyer Can you help with this order?',
+        querySelectorAll: () => [],
+        querySelector: () => null,
+    };
+    const anchor = {
+        href: 'https://www.etsy.com/messages?conversation_id=query-thread&ref=inbox',
+        innerText: 'Query buyer\nCan you help with this order?',
+        textContent: 'Query buyer',
+        getAttribute: () => '',
+        querySelectorAll: () => [],
+        closest: () => scope,
+    };
+    sandbox.document.querySelectorAll = selector => selector.includes('/messages?') ? [anchor] : [];
+
+    const items = api.MessageCenterAgent.scanConversationList();
+    assert.equal(items.length, 1);
+    assert.equal(items[0].conversationId, 'query-thread');
+    assert.equal(items[0].conversationUrl, 'https://www.etsy.com/messages?conversation_id=query-thread&ref=inbox');
+});
+
+test('message-list fallback ignores absolute Etsy dates instead of using them as previews', async () => {
+    const { api } = await loadAssistant();
+    const buyerName = 'Date-safe buyer';
+    const message = 'Could you make the lettering darker?';
+    const scope = {
+        innerText: `Select this conversation with ${buyerName} from Aug 19, 2026\n${buyerName}\nA Very Long Product Heading That Is Not The Message\n${message}\nAug 19, 2026`,
+        querySelectorAll: () => [],
+    };
+    const anchor = {
+        innerText: `${buyerName}\nA Very Long Product Heading That Is Not The Message\n${message}\nAug 19, 2026`,
+        getAttribute: () => '',
+    };
+
+    assert.equal(api.MessageCenterAgent.buyerNameFromScope(scope, anchor), buyerName);
+    assert.equal(api.MessageCenterAgent.previewFromScope(scope, buyerName, anchor), message);
+});
+
+test('message-list fallback rejects Turkish relative timestamps and a generic strong product title', async () => {
+    const { api } = await loadAssistant();
+    const buyerName = 'Ece';
+    const productTitle = 'Premium Kişiye Özel Ahşap Duvar Dekoru';
+    const message = 'Ürünün tonu biraz daha koyu olabilir mi?';
+    const scope = {
+        innerText: `${buyerName}\n${productTitle}\n2 saat önce\n5 dk önce\n${message}`,
+        querySelectorAll(selector) {
+            return selector.includes('strong') ? [{ textContent: productTitle }] : [];
+        },
+    };
+    const anchor = {
+        innerText: `${buyerName}\n${productTitle}\n2 saat önce\n5 dk önce\n${message}`,
+        getAttribute: () => '',
+    };
+
+    assert.equal(api.MessageCenterAgent.buyerNameFromScope(scope, anchor), buyerName);
+    assert.equal(api.MessageCenterAgent.previewFromScope(scope, buyerName, anchor), message);
+    const timestampsOnly = { innerText: `${buyerName}\n2 saat önce\n5 dk önce`, getAttribute: () => '', querySelectorAll: () => [] };
+    assert.equal(api.MessageCenterAgent.previewFromScope(timestampsOnly, buyerName, timestampsOnly), '');
+    const shortProduct = { innerText: 'Samantha\nArt\nCan you help?', querySelectorAll: () => [] };
+    assert.equal(api.MessageCenterAgent.buyerNameFromScope(shortProduct, { getAttribute: () => '' }), 'Samantha');
+    const multiPartName = { innerText: 'María del Carmen\nArt\nCan you help?', querySelectorAll: () => [] };
+    assert.equal(api.MessageCenterAgent.buyerNameFromScope(multiPartName, { getAttribute: () => '' }), 'María del Carmen');
+});
+
+test('heuristics do not treat English "a ton" as a color but retain Turkish tone detection', async () => {
+    const { api } = await loadAssistant();
+    assert.notEqual(api.Heuristics.analyze('This would save me a ton of extra time.').intent, 'color_change');
+    assert.equal(api.Heuristics.analyze('Ürünün renk tonu biraz daha koyu olabilir mi?').intent, 'color_change');
+    assert.equal(api.Heuristics.analyze('Ürünün tonu biraz daha koyu olabilir mi?').intent, 'color_change');
+    assert.equal(api.Heuristics.analyze('Tonları biraz daha koyu yapabilir misiniz?').intent, 'color_change');
+    assert.equal(api.Heuristics.analyze('Şu ton olur mu?').intent, 'color_change');
+    for (const nonColorText of ['Washington', 'stony texture', 'large tonnage']) {
+        assert.notEqual(api.Heuristics.analyze(nonColorText).intent, 'color_change');
+    }
+});
+
+test('orders reject external conversation links while recognizing Turkish delivered status', async () => {
+    const { api } = await loadAssistant();
+    const orderLink = {
+        href: 'https://www.etsy.com/your/orders/sold/completed?order_id=12345678',
+        parentElement: { textContent: '$24.00' },
+    };
+    const externalMessageLink = { href: 'https://evil.example/messages/stolen-thread' };
+    let conversationSelectorRead = false;
+    const row = {
+        textContent: 'Teslim edildi',
+        querySelectorAll(selector) {
+            if (selector.includes('order_id=')) return [orderLink];
+            if (selector.includes('/messages') || selector.includes('/conversations')) {
+                conversationSelectorRead = true;
+                return [externalMessageLink];
+            }
+            if (selector === 'h2, .wt-text-title-small') return [{ textContent: 'Teslim edildi' }];
+            return [];
+        },
+        querySelector(selector) {
+            if (selector.includes('btn-link.strong.fs-mask')) return { textContent: 'Turkish Buyer' };
+            return null;
+        },
+    };
+    const order = api.OrdersAdapter.fromRow(row, 0);
+    assert.equal(order.orderId, '12345678');
+    assert.equal(order.delivered, true);
+    assert.equal(order.messageUrl, '');
+    assert.equal(conversationSelectorRead, true, 'the row conversation-link selector must be exercised');
+});
+
+test('campaign creation retains only canonical Etsy conversation URLs', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.href = 'https://www.etsy.com/your/orders/sold/completed';
+    const campaign = await api.Campaign.create([
+        { orderId: 'safe-order', customerName: 'Safe', itemTitle: 'Safe item', messageUrl: 'https://www.etsy.com/messages/safe-thread' },
+        { orderId: 'external-order', customerName: 'External', itemTitle: 'Unsafe item', messageUrl: 'https://evil.example/messages/external-thread' },
+    ], 'tpl-delivered', 'template');
+    assert.equal(campaign.items.length, 1);
+    assert.equal(campaign.items[0].orderId, 'safe-order');
+    assert.equal(campaign.items[0].messageUrl, 'https://www.etsy.com/messages/safe-thread');
+    assert.equal(sandbox.location.href, 'https://www.etsy.com/your/orders/sold/completed');
+});
+
+test('known FNV collisions remain separate in translator cache and list batch deduplication', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const first = '00009pf8';
+    const second = '0000arj6';
+    assert.equal(api.hashText(first), api.hashText(second), 'the fixture must retain the known FNV collision');
+    assert.notEqual(api.Translator.cacheKey(first, 'tr'), api.Translator.cacheKey(second, 'tr'));
+
+    const calls = [];
+    api.Translator.cache.clear();
+    api.Translator.google = async text => {
+        calls.push(text);
+        return { text: `TR:${text}`, detectedLanguage: 'en', provider: 'google' };
+    };
+    assert.equal((await api.Translator.translate(first, 'tr', { logHistory: false })).text, `TR:${first}`);
+    assert.equal((await api.Translator.translate(second, 'tr', { logHistory: false })).text, `TR:${second}`);
+    assert.deepEqual(calls, [first, second]);
+
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Translator.cache.clear();
+    calls.length = 0;
+    api.MessageCenterAgent.scanConversationList = () => [first, second].map((preview, index) => ({
+        conversationId: `collision-${index}`,
+        conversationUrl: `https://www.etsy.com/messages/collision-${index}`,
+        buyerName: `Collision ${index}`,
+        preview,
+        unread: false,
+    }));
+    await api.UI.translateMessageListPreviews();
+    assert.deepEqual(calls.sort(), [first, second].sort());
+});
+
+test('Norwegian Bokmål detection is normalized to the Google no target', async () => {
+    const { api } = await loadAssistant();
+    assert.equal(api.Translator.normalizedTarget('NB'), 'no');
+    assert.equal(api.Translator.googleTargetCode('nb'), 'no');
 });
 
 test('message list renders safe local conversations with language controls and no production or network action', async () => {
@@ -905,6 +1100,10 @@ test('message-list automatic preview translation is default-on, optional, capped
     assert.ok(maxInFlight <= 3, `translation concurrency must be bounded, saw ${maxInFlight}`);
     assert.equal(api.UI.state.messageListTranslationStatus.phase, 'success');
     assert.equal(api.UI.state.messageListTranslationStatus.total, 50);
+    await waitUntil(
+        () => api.Store.history.filter(item => item.type === 'translated').length === 1,
+        'the non-blocking list history write did not settle',
+    );
     const batchHistory = api.Store.history.filter(item => item.type === 'translated');
     assert.equal(batchHistory.length, 1, 'one list batch must create one history row, not one row per preview');
     assert.equal(batchHistory[0].detail.previews, 50);
@@ -953,6 +1152,10 @@ test('message-list translation deduplicates identical previews within one batch'
     assert.ok(calls.every(call => call.options.logHistory === false));
     assert.equal(api.UI.state.messageListTranslationStatus.completed, 4);
     assert.equal(api.UI.state.messageListTranslations.size, 4);
+    await waitUntil(
+        () => api.Store.history.filter(item => item.type === 'translated').length === 1,
+        'the deduplicated list history write did not settle',
+    );
     const history = api.Store.history.filter(item => item.type === 'translated');
     assert.equal(history.length, 1);
     assert.equal(history[0].detail.previews, 4);
@@ -1014,12 +1217,45 @@ test('a partially successful message-list batch is recorded as partial and faile
     };
 
     assert.equal(await api.UI.translateMessageListPreviews(), false);
+    await waitUntil(
+        () => api.Store.history.filter(item => item.type === 'translated').length === 1,
+        'the partial list history write did not settle',
+    );
     const history = api.Store.history.filter(item => item.type === 'translated');
     assert.equal(history.length, 1);
     assert.equal(history[0].status, 'partial');
     assert.equal(history[0].detail.previews, 1);
     assert.equal(history[0].detail.failed, 1);
     assert.equal(api.History.stats().failed, 1);
+});
+
+test('never-resolving history logging cannot block message-list translation results', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.previewLanguage = 'tr';
+    api.Translator.cached = () => null;
+    api.MessageCenterAgent.scanConversationList = () => [{
+        conversationId: 'history-stall-list',
+        conversationUrl: 'https://www.etsy.com/messages/history-stall-list',
+        buyerName: 'Buyer',
+        preview: 'Translate this preview',
+        unread: false,
+    }];
+    api.Translator.translate = async text => ({ text: `TR ${text}`, detectedLanguage: 'en', provider: 'google' });
+    const originalTryLog = api.History.tryLog;
+    api.History.tryLog = () => new Promise(() => {});
+    try {
+        const outcome = await Promise.race([
+            api.UI.translateMessageListPreviews(),
+            new Promise(resolve => setTimeout(() => resolve('timed-out'), 100)),
+        ]);
+        assert.equal(outcome, true);
+        assert.equal(api.UI.state.messageListTranslationStatus.phase, 'success');
+        assert.equal(api.UI.state.messageListTranslations.size, 1);
+    } finally {
+        api.History.tryLog = originalTryLog;
+    }
 });
 
 test('message-list translation discards results after language or route changes', async () => {
@@ -1605,6 +1841,8 @@ test('assistant stays closed by default until the user explicitly opens it', asy
     assert.equal(api.DEFAULT_SETTINGS.openOnMessagePage, false);
     api.Store.settings = { ...api.DEFAULT_SETTINGS, openOnMessagePage: true };
     api.Store.configMeta = { schemaVersion: 5, updatedAt: '2026-08-26T00:00:00.000Z' };
+    storage.set(api.KEYS.settings, copy(api.Store.settings));
+    storage.set(api.KEYS.configMeta, copy(api.Store.configMeta));
     await api.Store.migrate();
     assert.equal(api.Store.settings.openOnMessagePage, false);
     assert.equal(storage.get(api.KEYS.settings).openOnMessagePage, false);
@@ -1627,6 +1865,14 @@ test('assistant stays closed by default until the user explicitly opens it', asy
 
     assert.equal(api.UI.state.open, false);
     assert.deepEqual(openedPages, []);
+});
+
+test('canonical GitHub installs keep the in-panel update channel enabled', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.GM.info.script.downloadURL = '';
+    sandbox.GM.info.script.updateURL = '';
+    assert.equal(api.Updates.usesGitHubUpdateChannel(), true);
+    assert.match(readUserscriptSource(), /const CENTRAL_MESSAGE_CENTER_BUILD = false;/);
 });
 
 test('SPA auto-open waits for a verified conversation and preserves utility drafts', async () => {
@@ -1722,6 +1968,252 @@ test('settings edits remain drafts until Save and provider tests do not silently
     assert.equal(api.UI.state.settingsDirty, false);
 });
 
+test('failed settings persistence never publishes an uncommitted runtime value', async () => {
+    const { api, storage } = await loadAssistant();
+    const beforeRuntime = copy(api.Store.settings);
+    storage.set(api.KEYS.settings, copy(beforeRuntime));
+    const beforeStored = copy(storage.get(api.KEYS.settings));
+    const originalSet = api.GMX.set;
+    api.GMX.set = async (key, value) => {
+        if (key === api.KEYS.settings) throw new Error('injected settings write failure');
+        return originalSet(key, value);
+    };
+    try {
+        await assert.rejects(
+            api.Store.saveSettings({ ...beforeRuntime, shopName: 'Must not become runtime state' }),
+            /injected settings write failure/,
+        );
+    } finally {
+        api.GMX.set = originalSet;
+    }
+    assert.deepEqual(copy(api.Store.settings), beforeRuntime);
+    assert.deepEqual(storage.get(api.KEYS.settings), beforeStored);
+});
+
+test('configuration bundle rolls back prior writes when a later provider write fails', async () => {
+    const { api, storage } = await loadAssistant();
+    const beforeSettings = copy(api.Store.settings);
+    const beforeProviders = copy(api.Store.providers);
+    storage.set(api.KEYS.settings, copy(beforeSettings));
+    storage.set(api.KEYS.providers, copy(beforeProviders));
+    const originalSet = api.GMX.set;
+    api.GMX.set = async (key, value) => {
+        if (key === api.KEYS.providers) throw new Error('injected provider write failure');
+        return originalSet(key, value);
+    };
+    try {
+        await assert.rejects(api.Store.saveConfigBundle({
+            settings: { ...beforeSettings, shopName: 'Partial import must roll back' },
+            providers: { ...beforeProviders, openai: { ...beforeProviders.openai, apiKey: 'new-key' } },
+        }), /injected provider write failure/);
+    } finally {
+        api.GMX.set = originalSet;
+    }
+    assert.deepEqual(copy(api.Store.settings), beforeSettings);
+    assert.deepEqual(copy(api.Store.providers), beforeProviders);
+    assert.deepEqual(storage.get(api.KEYS.settings), beforeSettings);
+    assert.deepEqual(storage.get(api.KEYS.providers), beforeProviders);
+});
+
+test('a failed config bundle cannot roll back a later successful bundle', async () => {
+    const requestedLocks = [];
+    const { api, storage } = await loadAssistant({ requestedLocks });
+    const beforeSettings = copy(api.Store.settings);
+    const beforeProviders = copy(api.Store.providers);
+    storage.set(api.KEYS.settings, copy(beforeSettings));
+    storage.set(api.KEYS.providers, copy(beforeProviders));
+    storage.set(api.KEYS.configMeta, copy(api.Store.configMeta));
+    let releaseFirstProvider;
+    let firstProviderReached = false;
+    const firstProviderGate = new Promise(resolve => { releaseFirstProvider = resolve; });
+    const originalSet = api.GMX.set;
+    api.GMX.set = async (key, value) => {
+        if (key === api.KEYS.providers && value?.openai?.apiKey === 'first-failing-key') {
+            firstProviderReached = true;
+            await firstProviderGate;
+            throw new Error('injected first bundle provider failure');
+        }
+        return originalSet(key, value);
+    };
+    const firstSettings = { ...beforeSettings, shopName: 'First bundle must fail' };
+    const firstProviders = { ...beforeProviders, openai: { ...beforeProviders.openai, apiKey: 'first-failing-key' } };
+    const secondSettings = { ...beforeSettings, shopName: 'Second bundle survives' };
+    const secondProviders = { ...beforeProviders, openai: { ...beforeProviders.openai, apiKey: 'second-success-key' } };
+    try {
+        const first = api.Store.saveConfigBundle({ settings: firstSettings, providers: firstProviders });
+        await waitUntil(() => firstProviderReached, 'first bundle did not reach its provider write');
+        const second = api.Store.saveConfigBundle({ settings: secondSettings, providers: secondProviders });
+        // Without a configuration coordinator, the second writer completes here and the
+        // first writer's rollback clobbers its settings. A coordinator queues it instead.
+        await new Promise(resolve => setImmediate(resolve));
+        releaseFirstProvider();
+        await assert.rejects(first, /injected first bundle provider failure/);
+        await second;
+    } finally {
+        api.GMX.set = originalSet;
+    }
+    assert.equal(api.Store.settings.shopName, 'Second bundle survives');
+    assert.equal(api.Store.providers.openai.apiKey, 'second-success-key');
+    assert.equal(storage.get(api.KEYS.settings).shopName, 'Second bundle survives');
+    assert.equal(storage.get(api.KEYS.providers).openai.apiKey, 'second-success-key');
+    assert.ok(requestedLocks.some(name => /config/i.test(name)), 'config bundle writes must use a shared configuration coordinator');
+});
+
+test('settings markup neither exposes stored secrets nor allows a provider model to inject HTML', async () => {
+    const { api } = await loadAssistant();
+    const providerSecret = 'provider-secret-marker';
+    const agentSecret = 'agent-secret-marker';
+    const deeplSecret = 'deepl-secret-marker';
+    const maliciousModel = 'model"><img src=x data-settings-xss>';
+    api.Store.providers = {
+        ...api.Store.providers,
+        openai: { ...api.Store.providers.openai, apiKey: providerSecret, model: maliciousModel },
+    };
+    api.Store.settings = {
+        ...api.Store.settings,
+        aiProvider: 'openai',
+        messageCenterAgentToken: agentSecret,
+        deeplApiKey: deeplSecret,
+    };
+    api.UI.ensureSettingsDraft({ reset: true });
+    const markup = api.UI.renderSettings();
+
+    for (const secret of [providerSecret, agentSecret, deeplSecret]) assert.doesNotMatch(markup, new RegExp(secret));
+    assert.doesNotMatch(markup, /<img src=x data-settings-xss>/);
+    assert.match(markup, /model&quot;&gt;&lt;img src=x data-settings-xss&gt;/);
+    assert.match(markup, /data-settings-field="messageCenterAgentToken"[^>]*data-secret-preserve="true"/);
+    assert.match(markup, /data-settings-field="deeplApiKey"[^>]*data-secret-preserve="true"/);
+    assert.match(markup, /data-action="provider-key-clear"/);
+    assert.match(markup, /data-action="agent-token-clear"/);
+    assert.match(markup, /data-action="deepl-key-clear"/);
+});
+
+test('blank secret settings fields preserve the stored draft values when read back', async () => {
+    const { api } = await loadAssistant();
+    api.UI.ensureSettingsDraft({ reset: true });
+    api.UI.state.settingsDraft.messageCenterAgentToken = 'stored-agent-token';
+    api.UI.state.settingsDraft.deeplApiKey = 'stored-deepl-key';
+    api.UI.shadow = {
+        querySelector: () => null,
+        querySelectorAll: () => [
+            { dataset: { settingsField: 'messageCenterAgentToken', secretPreserve: 'true' }, type: 'password', value: '' },
+            { dataset: { settingsField: 'deeplApiKey', secretPreserve: 'true' }, type: 'password', value: '' },
+            { dataset: { settingsField: 'shopName' }, type: 'text', value: 'Updated public shop' },
+        ],
+    };
+    const values = api.UI.readSettingsForm();
+    assert.equal(values.messageCenterAgentToken, 'stored-agent-token');
+    assert.equal(values.deeplApiKey, 'stored-deepl-key');
+    assert.equal(values.shopName, 'Updated public shop');
+});
+
+test('normal settings save preserves hidden secrets and explicit clear actions persist their removal', async () => {
+    const { api, storage } = await loadAssistant();
+    api.Store.settings = {
+        ...api.Store.settings,
+        messageCenterAgentToken: 'stored-agent-token',
+        deeplApiKey: 'stored-deepl-key',
+    };
+    api.Store.providers = {
+        ...api.Store.providers,
+        openai: { ...api.Store.providers.openai, apiKey: 'stored-provider-key' },
+    };
+    api.UI.ensureSettingsDraft({ reset: true });
+    api.UI.shadow = {
+        querySelector: () => null,
+        querySelectorAll: () => [
+            { dataset: { settingsField: 'messageCenterAgentToken', secretPreserve: 'true' }, type: 'password', value: '' },
+            { dataset: { settingsField: 'deeplApiKey', secretPreserve: 'true' }, type: 'password', value: '' },
+        ],
+    };
+    api.UI.toast = () => {};
+
+    await api.UI.saveSettings({ notify: false });
+    assert.equal(api.Store.settings.messageCenterAgentToken, 'stored-agent-token');
+    assert.equal(api.Store.settings.deeplApiKey, 'stored-deepl-key');
+    assert.equal(api.Store.providers.openai.apiKey, 'stored-provider-key');
+
+    const clickAction = action => api.UI.onClick({
+        target: { closest: () => ({ dataset: { action } }) },
+    });
+    await clickAction('provider-key-clear');
+    await clickAction('agent-token-clear');
+    await clickAction('deepl-key-clear');
+    assert.equal(api.Store.providers.openai.apiKey, 'stored-provider-key', 'clear must remain a draft before Save');
+    assert.equal(api.Store.settings.messageCenterAgentToken, 'stored-agent-token');
+    assert.equal(api.Store.settings.deeplApiKey, 'stored-deepl-key');
+
+    await api.UI.saveSettings({ notify: false });
+    assert.equal(api.Store.providers.openai.apiKey, '');
+    assert.equal(api.Store.settings.messageCenterAgentToken, '');
+    assert.equal(api.Store.settings.deeplApiKey, '');
+    assert.equal(storage.get(api.KEYS.providers).openai.apiKey, '');
+    assert.equal(storage.get(api.KEYS.settings).messageCenterAgentToken, '');
+    assert.equal(storage.get(api.KEYS.settings).deeplApiKey, '');
+});
+
+test('settings save preserves edits made while its asynchronous persistence is in flight', async () => {
+    const { api } = await loadAssistant();
+    api.UI.shadow = { querySelector: () => null, querySelectorAll: () => [] };
+    api.UI.ensureSettingsDraft({ reset: true });
+    api.UI.state.settingsDraft.shopName = 'Saved first value';
+    api.UI.state.settingsDirty = true;
+    let releaseSave;
+    let enteredSave = false;
+    let persistedSnapshot = null;
+    const gate = new Promise(resolve => { releaseSave = resolve; });
+    const originals = {
+        saveConfigBundle: api.Store.saveConfigBundle,
+        pruneHistory: api.Store.pruneHistory,
+        reconfigure: api.MessageCenterAgent.reconfigure,
+        toast: api.UI.toast,
+    };
+    api.Store.saveConfigBundle = async ({ settings, providers }) => {
+        enteredSave = true;
+        await gate;
+        persistedSnapshot = { settings: copy(settings), providers: copy(providers) };
+        api.Store.settings = copy(settings);
+        api.Store.providers = copy(providers);
+    };
+    api.Store.pruneHistory = async () => {};
+    api.MessageCenterAgent.reconfigure = async () => true;
+    api.UI.toast = () => {};
+    try {
+        const saving = api.UI.saveSettings();
+        await waitUntil(() => enteredSave, 'settings persistence did not start');
+        api.UI.onInput({ target: { dataset: { settingsField: 'shopName' }, type: 'text', value: 'Edited during save' } });
+        releaseSave();
+        await saving;
+    } finally {
+        api.Store.saveConfigBundle = originals.saveConfigBundle;
+        api.Store.pruneHistory = originals.pruneHistory;
+        api.MessageCenterAgent.reconfigure = originals.reconfigure;
+        api.UI.toast = originals.toast;
+    }
+    assert.equal(persistedSnapshot.settings.shopName, 'Saved first value');
+    assert.equal(api.Store.settings.shopName, 'Saved first value');
+    assert.deepEqual(api.Store.providers, persistedSnapshot.providers);
+    assert.equal(api.UI.state.settingsDraft.shopName, 'Edited during save');
+    assert.equal(api.UI.state.settingsDirty, true);
+});
+
+test('archiving a template leaves runtime state unchanged if storage rejects the write', async () => {
+    const { api } = await loadAssistant();
+    const template = api.Store.templates.find(item => !item.archived);
+    assert.ok(template, 'fixture needs an active template');
+    const beforeTemplates = copy(api.Store.templates);
+    api.UI.state.templateEditId = template.id;
+    api.UI.state.templateDirty = false;
+    const originalSaveTemplates = api.Store.saveTemplates;
+    api.Store.saveTemplates = async () => { throw new Error('injected template write failure'); };
+    try {
+        await assert.rejects(api.UI.archiveTemplate(), /injected template write failure/);
+    } finally {
+        api.Store.saveTemplates = originalSaveTemplates;
+    }
+    assert.deepEqual(copy(api.Store.templates), beforeTemplates);
+});
+
 test('settings switches expose accessible names and descriptions', async () => {
     const { api } = await loadAssistant();
     const markup = api.UI.renderSettings();
@@ -1760,6 +2252,28 @@ test('config export uses the visible settings draft without saving it as runtime
     assert.equal(downloaded.includeSecrets, false);
     assert.equal(downloaded.overrides.settings.shopName, 'Unsaved draft shop');
     assert.equal(downloaded.overrides.providers.openai.apiKey, 'unsaved-draft-key');
+});
+
+test('AI rejects a provider result that does not satisfy its declared JSON schema', async () => {
+    const { api } = await loadAssistant();
+    const schema = {
+        type: 'object',
+        additionalProperties: false,
+        required: ['ok', 'message'],
+        properties: { ok: { type: 'boolean' }, message: { type: 'string' } },
+    };
+    const active = {
+        id: 'openai',
+        provider: api.AI.provider('openai'),
+        profile: { apiKey: 'test-key', model: 'test-model' },
+    };
+    const originalOpenai = api.AI.openai;
+    api.AI.openai = async () => ({ ok: 'true', message: 'wrong type', unexpected: true });
+    try {
+        await assert.rejects(api.AI.run('test', {}, schema, active), /şema|schema|beklenen|required/i);
+    } finally {
+        api.AI.openai = originalOpenai;
+    }
 });
 
 test('secret-free config export rejects credentials embedded in an unsaved Message Center URL', async () => {
@@ -1889,9 +2403,13 @@ test('SPA route changes preserve utility tabs but update contextual tabs', async
     sandbox.location.pathname = '/messages/all';
     sandbox.location.search = '';
     sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.UI.state.messageListTranslationStatus = { phase: 'loading' };
+    const listGeneration = api.UI.messageListWorkGeneration;
 
     await api.App.onRoute();
     assert.equal(api.UI.state.page, 'templates');
+    assert.ok(api.UI.messageListWorkGeneration > listGeneration);
+    assert.equal(api.UI.state.messageListTranslationStatus.phase, 'idle');
 
     api.UI.state.page = 'messages';
     sandbox.location.pathname = '/your/orders/sold/completed';
@@ -2476,6 +2994,100 @@ test('stored and directly saved settings normalize malformed values fail-safe', 
     assert.deepEqual(copy(storage.get(api.KEYS.settings)), copy(api.Store.settings));
 });
 
+test('loading an already-current schema does not rewrite config metadata or stored records', async () => {
+    const { api, storage } = await loadAssistant();
+    const updatedAt = '2026-08-28T12:00:00.000Z';
+    storage.set(api.KEYS.settings, copy(api.Store.settings));
+    storage.set(api.KEYS.providers, copy(api.Store.providers));
+    storage.set(api.KEYS.templates, copy(api.Store.templates));
+    storage.set(api.KEYS.history, []);
+    storage.set(api.KEYS.statuses, copy(api.Store.statuses));
+    storage.set(api.KEYS.campaign, null);
+    storage.set(api.KEYS.configMeta, { schemaVersion: api.APP.configSchema, updatedAt });
+    storage.set(api.KEYS.onboarding, copy(api.Store.onboarding));
+    storage.set(api.KEYS.update, copy(api.Store.update));
+    const writes = [];
+    const originalSet = api.GMX.set;
+    api.GMX.set = async (key, value) => {
+        writes.push(key);
+        return originalSet(key, value);
+    };
+    try {
+        await api.Store.load();
+    } finally {
+        api.GMX.set = originalSet;
+    }
+    assert.deepEqual(writes, []);
+    assert.equal(api.Store.configMeta.updatedAt, updatedAt);
+    assert.deepEqual(storage.get(api.KEYS.configMeta), { schemaVersion: api.APP.configSchema, updatedAt });
+});
+
+test('current-schema malformed provider records normalize safely in runtime without rewriting storage', async () => {
+    const { api, storage } = await loadAssistant();
+    const malformedProviders = {
+        ...copy(api.Store.providers),
+        openai: { apiKey: { leaked: true }, model: 42, models: 'not-an-array', modelsFetchedAt: ['bad'] },
+    };
+    storage.set(api.KEYS.providers, copy(malformedProviders));
+    storage.set(api.KEYS.configMeta, { schemaVersion: api.APP.configSchema, updatedAt: '2026-08-28T14:00:00.000Z' });
+    const writes = [];
+    const originalSet = api.GMX.set;
+    api.GMX.set = async (key, value) => { writes.push(key); return originalSet(key, value); };
+    try {
+        await api.Store.load();
+    } finally {
+        api.GMX.set = originalSet;
+    }
+    const profile = api.Store.providers.openai;
+    assert.equal(typeof profile.apiKey, 'string');
+    assert.equal(typeof profile.model, 'string');
+    assert.ok(Array.isArray(profile.models));
+    assert.ok(profile.models.every(item => typeof item === 'string'));
+    assert.equal(typeof profile.modelsFetchedAt, 'string');
+    assert.deepEqual(storage.get(api.KEYS.providers), malformedProviders);
+    assert.deepEqual(writes, []);
+});
+
+test('config import provider-write failure preserves the complete runtime and storage bundle', async () => {
+    const { api, storage } = await loadAssistant();
+    for (const [key, value] of [
+        [api.KEYS.settings, api.Store.settings],
+        [api.KEYS.providers, api.Store.providers],
+        [api.KEYS.templates, api.Store.templates],
+        [api.KEYS.onboarding, api.Store.onboarding],
+        [api.KEYS.configMeta, api.Store.configMeta],
+    ]) storage.set(key, copy(value));
+    const beforeRuntime = {
+        settings: copy(api.Store.settings), providers: copy(api.Store.providers), templates: copy(api.Store.templates),
+        onboarding: copy(api.Store.onboarding), configMeta: copy(api.Store.configMeta),
+    };
+    const beforeStorage = copy(Object.fromEntries(storage));
+    const originalSet = api.GMX.set;
+    api.GMX.set = async (key, value) => {
+        if (key === api.KEYS.providers && value?.openai?.apiKey === 'import-provider-write-failure') {
+            throw new Error('injected imported provider write failure');
+        }
+        return originalSet(key, value);
+    };
+    try {
+        await assert.rejects(api.ConfigManager.importText(JSON.stringify({
+            app: api.APP.id,
+            schemaVersion: api.APP.configSchema,
+            settings: { shopName: 'Import must not partially persist' },
+            providers: { openai: { apiKey: 'import-provider-write-failure' } },
+            templates: [{ id: 'imported-template', name: 'Should not persist', text: 'Hello' }],
+            onboarding: { completed: true, completedAt: '2026-08-28T14:00:00.000Z' },
+        })), /injected imported provider write failure/);
+    } finally {
+        api.GMX.set = originalSet;
+    }
+    assert.deepEqual({
+        settings: copy(api.Store.settings), providers: copy(api.Store.providers), templates: copy(api.Store.templates),
+        onboarding: copy(api.Store.onboarding), configMeta: copy(api.Store.configMeta),
+    }, beforeRuntime);
+    assert.deepEqual(copy(Object.fromEntries(storage)), beforeStorage);
+});
+
 test('config import rejects prototype-pollution keys before changing any state', async () => {
     const { api, storage } = await loadAssistant();
     const base = `"app":${JSON.stringify(api.APP.id)},"schemaVersion":${api.APP.configSchema}`;
@@ -2742,6 +3354,8 @@ test('schema migration adds the new preset once and preserves existing template 
     ];
     api.Store.templates = JSON.parse(JSON.stringify(legacyTemplates));
     api.Store.configMeta = { schemaVersion: 2, updatedAt: '2026-08-04T00:00:00.000Z' };
+    storage.set(api.KEYS.templates, copy(legacyTemplates));
+    storage.set(api.KEYS.configMeta, copy(api.Store.configMeta));
 
     await api.Store.migrate();
     await api.Store.migrate();
@@ -2901,7 +3515,7 @@ test('template IDs are escaped in every template attribute rendering context', a
 });
 
 test('schema-3 Turkish review preset is corrected to English without losing user state', async () => {
-    const { api } = await loadAssistant();
+    const { api, storage } = await loadAssistant();
     const legacyText = 'Merhaba {{firstName}}! 🌿\n\n{{itemTitle}} siparişinizin size güvenle ulaştığını ve keyifle kullandığınızı umuyorum. Yeni ve küçük bir işletme olarak, vaktiniz olduğunda deneyiminizi anlatan dürüst bir Etsy yorumu paylaşmanız benim için çok değerli. Geri bildiriminiz mağazamın gelişmesine ve diğer müşterilerin daha güvenle karar vermesine yardımcı olur; elbette hiçbir zorunluluk yok.\n\nÜrünle ilgili herhangi bir sorun veya sorunuz varsa buradan bana yazabilirsiniz; memnuniyetle yardımcı olurum.\n\n{{signature}}';
     api.Store.templates = [{
         id: 'tpl-review-request',
@@ -2915,6 +3529,8 @@ test('schema-3 Turkish review preset is corrected to English without losing user
         archived: true,
     }];
     api.Store.configMeta = { schemaVersion: 3, updatedAt: '2026-08-10T00:00:00.000Z' };
+    storage.set(api.KEYS.templates, copy(api.Store.templates));
+    storage.set(api.KEYS.configMeta, copy(api.Store.configMeta));
 
     await api.Store.migrate();
 
@@ -3903,6 +4519,199 @@ test('failed outgoing verification remains pending and never moves to the next b
     }
 });
 
+test('verified non-campaign sends remain sent when history persistence is unavailable', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/history-resilient';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/history-resilient';
+    const originals = {
+        context: api.MessageAdapter.context,
+        countOutgoing: api.MessageAdapter.countOutgoing,
+        waitForOutgoing: api.MessageAdapter.waitForOutgoing,
+        tryLogOnce: api.History.tryLogOnce,
+        toast: api.UI.toast,
+    };
+    api.MessageAdapter.context = () => ({
+        conversationId: 'history-resilient', customerName: 'Buyer', orderId: 'history-order', messages: [],
+    });
+    api.MessageAdapter.countOutgoing = () => 0;
+    api.MessageAdapter.waitForOutgoing = async () => true;
+    api.History.tryLogOnce = async () => { throw new Error('injected history storage failure'); };
+    api.UI.toast = () => {};
+    try {
+        api.Verification.prepare('A confirmed standalone reply', { method: 'manual' });
+        assert.equal(await api.Verification.onSendClick(), true);
+    } finally {
+        api.MessageAdapter.context = originals.context;
+        api.MessageAdapter.countOutgoing = originals.countOutgoing;
+        api.MessageAdapter.waitForOutgoing = originals.waitForOutgoing;
+        api.History.tryLogOnce = originals.tryLogOnce;
+        api.UI.toast = originals.toast;
+    }
+    assert.equal(api.Store.getStatus('orders', 'history-order').status, 'sent');
+    assert.equal(api.Store.getStatus('conversations', 'history-resilient').status, 'sent');
+    assert.equal(api.Verification.pending, null);
+    assert.equal(api.Verification.activePending, null);
+});
+
+async function verifyStandaloneSendWithStalledHistory(verified) {
+    const { api, sandbox } = await loadAssistant();
+    const suffix = verified ? 'history-stalled-sent' : 'history-stalled-failed';
+    sandbox.location.pathname = `/messages/${suffix}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com/messages/${suffix}`;
+    const originals = {
+        context: api.MessageAdapter.context,
+        countOutgoing: api.MessageAdapter.countOutgoing,
+        waitForOutgoing: api.MessageAdapter.waitForOutgoing,
+        tryLogOnce: api.History.tryLogOnce,
+        toast: api.UI.toast,
+    };
+    api.MessageAdapter.context = () => ({
+        conversationId: suffix, customerName: 'Buyer', orderId: `${suffix}-order`, messages: [],
+    });
+    api.MessageAdapter.countOutgoing = () => 0;
+    api.MessageAdapter.waitForOutgoing = async () => verified;
+    api.History.tryLogOnce = () => new Promise(() => {});
+    api.UI.toast = () => {};
+    let settled = false;
+    let result;
+    let failure;
+    try {
+        api.Verification.prepare('Standalone history stall probe', { method: 'manual' });
+        void api.Verification.onSendClick().then(
+            value => { result = value; settled = true; },
+            error => { failure = error; settled = true; },
+        );
+        for (let turn = 0; turn < 12 && !settled; turn += 1) {
+            await new Promise(resolve => setImmediate(resolve));
+        }
+        assert.ok(settled, 'history logging must not keep standalone verification pending');
+    } finally {
+        api.MessageAdapter.context = originals.context;
+        api.MessageAdapter.countOutgoing = originals.countOutgoing;
+        api.MessageAdapter.waitForOutgoing = originals.waitForOutgoing;
+        api.History.tryLogOnce = originals.tryLogOnce;
+        api.UI.toast = originals.toast;
+    }
+    assert.equal(failure, undefined);
+    assert.equal(result, verified);
+    assert.equal(api.Verification.pending, null);
+    assert.equal(api.Verification.activePending, null);
+    return { api, orderId: `${suffix}-order`, conversationId: suffix };
+}
+
+test('never-resolving history logging cannot block standalone verified status transitions', async () => {
+    const { api, orderId, conversationId } = await verifyStandaloneSendWithStalledHistory(true);
+    assert.equal(api.Store.getStatus('orders', orderId).status, 'sent');
+    assert.equal(api.Store.getStatus('conversations', conversationId).status, 'sent');
+});
+
+test('never-resolving history logging cannot block standalone failed status transitions', async () => {
+    const { api, orderId } = await verifyStandaloneSendWithStalledHistory(false);
+    assert.equal(api.Store.getStatus('orders', orderId).status, 'error');
+});
+
+test('translation and reply generation survive an actual history storage rejection', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/history-write-rejection';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/history-write-rejection';
+    const context = {
+        conversationId: 'history-write-rejection', customerName: 'Buyer', firstName: 'Buyer', orderId: 'history-write-order',
+        lastCustomerMessage: 'Hello', messages: [{ role: 'customer', text: 'Hello' }],
+        routeFingerprint: api.Router.routeFingerprint(),
+    };
+    const originals = {
+        addHistory: api.Store.addHistory,
+        google: api.Translator.google,
+        context: api.MessageAdapter.context,
+        toast: api.UI.toast,
+    };
+    api.Store.addHistory = async () => { throw new Error('injected history storage rejection'); };
+    api.Translator.google = async text => ({ text: `TR ${text}`, detectedLanguage: 'en', provider: 'google' });
+    api.MessageAdapter.context = () => context;
+    api.UI.toast = () => {};
+    api.UI.state.selectedTemplateId = 'tpl-delivered';
+    api.UI.state.targetLanguage = 'tr';
+    api.Store.settings.replyInCustomerLanguage = false;
+    api.Translator.cache.clear();
+    try {
+        assert.equal((await api.Translator.translate('History write translation', 'tr')).text, 'TR History write translation');
+        assert.equal(await api.UI.generateReply({ method: 'template' }), true);
+    } finally {
+        api.Store.addHistory = originals.addHistory;
+        api.Translator.google = originals.google;
+        api.MessageAdapter.context = originals.context;
+        api.UI.toast = originals.toast;
+    }
+    assert.ok(api.UI.state.reply);
+});
+
+test('never-resolving history logging cannot block Translator.translate', async () => {
+    const { api } = await loadAssistant();
+    const originalGoogle = api.Translator.google;
+    const originalTryLog = api.History.tryLog;
+    api.Translator.cache.clear();
+    api.Translator.google = async text => ({ text: `TR ${text}`, detectedLanguage: 'en', provider: 'google' });
+    api.History.tryLog = () => new Promise(() => {});
+    let settled = false;
+    let result;
+    let failure;
+    try {
+        void api.Translator.translate('Translator history stall probe', 'tr').then(
+            value => { result = value; settled = true; },
+            error => { failure = error; settled = true; },
+        );
+        for (let turn = 0; turn < 12 && !settled; turn += 1) await new Promise(resolve => setImmediate(resolve));
+    } finally {
+        api.Translator.google = originalGoogle;
+        api.History.tryLog = originalTryLog;
+    }
+    assert.ok(settled, 'translation must not await an auxiliary history write');
+    assert.equal(failure, undefined);
+    assert.equal(result?.text, 'TR Translator history stall probe');
+});
+
+test('never-resolving history logging cannot block UI reply generation', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/reply-history-stall';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/reply-history-stall';
+    const context = {
+        conversationId: 'reply-history-stall', customerName: 'Buyer', firstName: 'Buyer', orderId: 'reply-history-order',
+        lastCustomerMessage: 'Hello', messages: [{ role: 'customer', text: 'Hello' }],
+        routeFingerprint: api.Router.routeFingerprint(),
+    };
+    const originalContext = api.MessageAdapter.context;
+    const originalTryLog = api.History.tryLog;
+    const originalToast = api.UI.toast;
+    api.MessageAdapter.context = () => context;
+    api.History.tryLog = () => new Promise(() => {});
+    api.UI.toast = () => {};
+    api.UI.state.selectedTemplateId = 'tpl-delivered';
+    api.UI.state.targetLanguage = 'tr';
+    api.Store.settings.replyInCustomerLanguage = false;
+    let settled = false;
+    let result;
+    let failure;
+    try {
+        void api.UI.generateReply({ method: 'template' }).then(
+            value => { result = value; settled = true; },
+            error => { failure = error; settled = true; },
+        );
+        for (let turn = 0; turn < 12 && !settled; turn += 1) await new Promise(resolve => setImmediate(resolve));
+    } finally {
+        api.MessageAdapter.context = originalContext;
+        api.History.tryLog = originalTryLog;
+        api.UI.toast = originalToast;
+    }
+    assert.ok(settled, 'reply generation must not await an auxiliary history write');
+    assert.equal(failure, undefined);
+    assert.equal(result, true);
+    assert.ok(api.UI.state.reply);
+});
+
 test('manual sent and not-sent reconciliation update campaign, order, and outreach consistently', async () => {
     const sentEnvironment = await loadAssistant();
     installPendingResolutionFixture(sentEnvironment);
@@ -4778,4 +5587,53 @@ test('Message Center sync is single-flight and converts network rejection into v
     assert.equal(requestCalls, 1);
     assert.match(agent.lastError, /central sync offline/);
     assert.equal(agent.syncPromise, null);
+});
+
+test('Message Center queues hydrated and changed-binding syncs behind a shallow sync', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const agent = configureMessageCenter(environment);
+    let releaseFirst;
+    const firstGate = new Promise(resolve => { releaseFirst = resolve; });
+    const calls = [];
+    agent.syncOnce = async options => {
+        calls.push({ hydrated: options.hydrated === true, generation: options.generation, binding: { ...options.binding } });
+        if (calls.length === 1) await firstGate;
+        return true;
+    };
+    const initialBinding = agent.config();
+    const changedBinding = { ...initialBinding, token: 'token-b' };
+    const shallow = agent.syncNow({ hydrated: false, binding: initialBinding, generation: agent.generation });
+    await waitUntil(() => calls.length === 1, 'shallow sync did not start');
+    const hydrated = agent.syncNow({ hydrated: true, binding: initialBinding, generation: agent.generation });
+    const changed = agent.syncNow({ hydrated: false, binding: changedBinding, generation: agent.generation + 1 });
+    releaseFirst();
+    assert.deepEqual(await Promise.all([shallow, hydrated, changed]), [true, true, true]);
+    assert.equal(calls.length, 3);
+    assert.deepEqual(calls.map(call => ({ hydrated: call.hydrated, generation: call.generation, token: call.binding.token })), [
+        { hydrated: false, generation: agent.generation, token: 'token-a' },
+        { hydrated: true, generation: agent.generation, token: 'token-a' },
+        { hydrated: false, generation: agent.generation + 1, token: 'token-b' },
+    ]);
+});
+
+test('history download defers object URL revocation until after the click turn', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const events = [];
+    let scheduled = null;
+    sandbox.URL.createObjectURL = () => 'blob:test-history';
+    sandbox.URL.revokeObjectURL = url => events.push(`revoke:${url}`);
+    sandbox.setTimeout = (callback, delay) => {
+        scheduled = { callback, delay };
+        return 1;
+    };
+    sandbox.document.createElement = () => ({
+        click() { events.push('click'); },
+    });
+
+    api.downloadText('history.json', '{}');
+    assert.deepEqual(events, ['click']);
+    assert.ok(scheduled?.delay >= 1000, 'object URL revocation must be deferred long enough for the download to begin');
+    scheduled.callback();
+    assert.deepEqual(events, ['click', 'revoke:blob:test-history']);
 });
