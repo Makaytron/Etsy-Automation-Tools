@@ -153,6 +153,7 @@ async function loadAssistant(options = {}) {
         DEFAULT_SETTINGS: clone(DEFAULT_SETTINGS),
         DEFAULT_TEMPLATES: clone(DEFAULT_TEMPLATES),
         Store,
+        History,
         TemplateEngine,
         ConfigManager,
         Campaign,
@@ -318,6 +319,62 @@ test('message context reads only the active composer panel and fails closed when
     assert.equal(ambiguous.lastCustomerMessage, '');
 });
 
+test('live message and review bindings distinguish emoji-only content changes', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/emoji-thread';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/emoji-thread';
+    const routeFingerprint = api.Router.routeFingerprint();
+    const first = {
+        conversationId: 'emoji-thread', routeFingerprint,
+        lastCustomerMessage: 'Order 😀',
+    };
+    const changed = { ...first, lastCustomerMessage: 'Order 😁' };
+
+    assert.equal(api.UI.messageContextChanged(changed, first), true);
+    const work = api.UI.beginMessageWork(first);
+    api.MessageAdapter.context = () => changed;
+    assert.equal(api.UI.messageWorkIsCurrent(work), false);
+
+    api.MessageAdapter.getMessages = () => [{ text: first.lastCustomerMessage }];
+    api.MessageAdapter.getTextarea = () => null;
+    const firstFingerprint = api.Router.fingerprint();
+    api.MessageAdapter.getMessages = () => [{ text: changed.lastCustomerMessage }];
+    assert.notEqual(api.Router.fingerprint(), firstFingerprint);
+
+    const reviewWork = api.UI.beginReviewWork({ id: 'review-emoji', text: 'Great 😀' });
+    api.UI.state.selectedReviewId = 'review-emoji';
+    api.UI.state.reviews = [{ id: 'review-emoji', text: 'Great 😁' }];
+    assert.equal(api.UI.reviewWorkIsCurrent(reviewWork), false);
+
+    const publicReview = { id: 'public-emoji', text: 'Public review 😀', customerName: 'Emoji' };
+    api.UI.state.selectedReviewId = publicReview.id;
+    api.UI.state.reviews = [publicReview];
+    const publicBinding = api.UI.beginReviewWork(publicReview);
+    api.UI.state.reviewAnalysisBinding = publicBinding;
+    api.UI.state.reviewAnalysis = { public_reply: 'Public reply 😀' };
+    const originals = {
+        insertPublic: api.ReviewsAdapter.insertPublic,
+        setBusy: api.UI.setBusy,
+        setStatus: api.Store.setStatus,
+    };
+    let statusWrites = 0;
+    api.UI.setBusy = () => {};
+    api.Store.setStatus = async () => { statusWrites += 1; };
+    api.ReviewsAdapter.insertPublic = async (_review, _text, { isCurrent }) => {
+        api.UI.state.reviewAnalysis.public_reply = 'Public reply 😁';
+        assert.equal(isCurrent(), false);
+    };
+    try {
+        await assert.rejects(api.UI.insertReviewPublic(), /Yorum|sayfa|değişti/i);
+        assert.equal(statusWrites, 0);
+    } finally {
+        api.ReviewsAdapter.insertPublic = originals.insertPublic;
+        api.UI.setBusy = originals.setBusy;
+        api.Store.setStatus = originals.setStatus;
+    }
+});
+
 test('message composer resolution rejects a unique unrelated textarea outside an active conversation', async () => {
     const { api, sandbox } = await loadAssistant();
     const unrelatedTextarea = Object.assign(new sandbox.HTMLTextAreaElement(), {
@@ -355,7 +412,8 @@ test('message folders are not conversations and missing trusted composers render
         assert.equal(api.Router.page(), 'messages');
         assert.equal(api.Router.conversationId(), '', `${folder} must remain a message-list folder`);
         const markup = api.UI.renderMessages();
-        assert.match(markup, /Bir konuşma açın/);
+        if (folder === 'all') assert.match(markup, /Etsy konuşmaları|Konuşma bulunamadı/i);
+        else assert.match(markup, /Bir konuşma açın/);
         assert.doesNotMatch(markup, productionActions);
         assert.doesNotMatch(markup, /data-bind="draftTr"|data-message-template-select/);
     }
@@ -368,6 +426,704 @@ test('message folders are not conversations and missing trusted composers render
     const untrustedMarkup = api.UI.renderMessages();
     assert.match(untrustedMarkup, /Bir konuşma açın/);
     assert.doesNotMatch(untrustedMarkup, productionActions);
+});
+
+test('message-list scanner reads safe Etsy DOM rows without mutating the source DOM', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+
+    const nameNode = { textContent: 'Ashley' };
+    const previewNode = { textContent: 'Could you make this in blue?' };
+    const unreadNode = { textContent: '' };
+    const timeNode = { getAttribute: name => name === 'datetime' ? '2026-08-27T12:00:00.000Z' : '' };
+    const scope = {
+        className: 'conversation-row unread',
+        innerText: 'Select this conversation with Ashley from 1 hour ago\nread message\nAshley\nCould you make this in blue?\nUnread',
+        textContent: 'Select this conversation with Ashley from 1 hour ago read message Ashley Could you make this in blue? Unread',
+        querySelectorAll(selector) {
+            return selector.includes('h1,h2,h3,h4,strong') ? [nameNode] : [];
+        },
+        querySelector(selector) {
+            if (selector.includes('aria-label*="unread"')) return unreadNode;
+            if (selector === 'time[datetime]') return timeNode;
+            return null;
+        },
+    };
+    const safeAnchor = {
+        href: 'https://www.etsy.com/messages/thread-1?ref=inbox#row',
+        className: '',
+        textContent: 'Ashley',
+        innerText: 'read message\nAshley\nCould you make this in blue?\n1 hour ago',
+        querySelectorAll: selector => selector.includes('h1,h2,h3,h4') ? [nameNode, previewNode] : [],
+        closest: () => scope,
+        getAttribute: () => '',
+    };
+    const externalAnchor = { ...safeAnchor, href: 'https://evil.example/messages/thread-2' };
+    const reservedAnchor = { ...safeAnchor, href: 'https://www.etsy.com/messages/all' };
+    const cssHiddenAnchor = {
+        ...safeAnchor,
+        href: 'https://www.etsy.com/messages/hidden-css',
+        getClientRects: () => [],
+    };
+    const ariaHiddenParentAnchor = {
+        ...safeAnchor,
+        href: 'https://www.etsy.com/messages/hidden-parent',
+        parentElement: { parentElement: null, getAttribute: name => name === 'aria-hidden' ? 'true' : '' },
+    };
+    const computedHiddenParent = { parentElement: null, getAttribute: () => '' };
+    const computedHiddenAnchor = {
+        ...safeAnchor,
+        href: 'https://www.etsy.com/messages/hidden-computed',
+        parentElement: computedHiddenParent,
+    };
+    sandbox.getComputedStyle = element => ({
+        display: 'block',
+        visibility: element === computedHiddenParent ? 'hidden' : 'visible',
+    });
+    sandbox.document.querySelectorAll = selector => selector.includes('a[href*="/messages/"]')
+        ? [safeAnchor, externalAnchor, reservedAnchor, cssHiddenAnchor, ariaHiddenParentAnchor, computedHiddenAnchor]
+        : [];
+
+    const before = { innerText: scope.innerText, textContent: scope.textContent };
+    const items = api.MessageCenterAgent.scanConversationList();
+    assert.equal(items.length, 1);
+    assert.equal(items[0].conversationId, 'thread-1');
+    assert.equal(items[0].buyerName, 'Ashley');
+    assert.equal(items[0].preview, 'Could you make this in blue?');
+    assert.equal(items[0].unread, true);
+    assert.equal(items[0].conversationUrl, 'https://www.etsy.com/messages/thread-1?ref=inbox');
+    assert.deepEqual({ innerText: scope.innerText, textContent: scope.textContent }, before);
+});
+
+test('message list renders safe local conversations with language controls and no production or network action', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const productionActions = /data-action="(?:ai-polish-reply|ai-auto-reply|free-translate-reply|regenerate-reply|insert-reply|campaign-send-next)"/;
+    let agentRequests = 0;
+    let translationRequests = 0;
+    api.MessageCenterAgent.request = async () => { agentRequests += 1; throw new Error('must not request'); };
+    api.Translator.translate = async () => { translationRequests += 1; throw new Error('must not translate during render'); };
+    api.MessageCenterAgent.scanConversationList = () => [
+        {
+            conversationId: 'thread-1',
+            conversationUrl: 'https://www.etsy.com/messages/thread-1',
+            buyerName: 'Ashley <img data-name-injection>',
+            preview: 'Could you make this in blue? <script data-preview-injection>',
+            unread: true,
+        },
+        {
+            conversationId: 'thread-2',
+            conversationUrl: 'https://www.etsy.com/conversations/with/thread-2',
+            buyerName: 'Morgan', preview: 'Thank you!', unread: false,
+        },
+        {
+            conversationId: 'external',
+            conversationUrl: 'https://evil.example/messages/external',
+            buyerName: 'Unsafe', preview: 'Must be filtered', unread: true,
+        },
+        {
+            conversationId: 'all',
+            conversationUrl: 'https://www.etsy.com/messages/all',
+            buyerName: 'Reserved', preview: 'Must be filtered', unread: false,
+        },
+    ];
+
+    for (const path of ['/messages', '/messages/all']) {
+        sandbox.location.pathname = path;
+        sandbox.location.href = `https://www.etsy.com${path}`;
+        api.UI.state.context = null;
+        const markup = api.UI.renderMessages();
+        assert.match(markup, /Etsy konuşmaları/i);
+        assert.match(markup, /Ashley &lt;img data-name-injection&gt;/);
+        assert.match(markup, /Could you make this in blue\? &lt;script data-preview-injection&gt;/);
+        assert.match(markup, /Morgan/);
+        assert.match(markup, /Okunmadı/);
+        assert.match(markup, /data-message-open-url="https:\/\/www\.etsy\.com\/messages\/thread-1"/);
+        assert.match(markup, /data-message-list-language/);
+        assert.match(markup, /Görüntüleme dili/);
+        assert.match(markup, /data-action="message-list-translate"/);
+        assert.doesNotMatch(markup, /evil\.example|Must be filtered|<img data-name-injection|<script data-preview-injection/);
+        assert.doesNotMatch(markup, productionActions);
+        assert.doesNotMatch(markup, /data-bind="draftTr"|data-message-template-select/);
+    }
+    assert.equal(agentRequests, 0);
+    assert.equal(translationRequests, 0);
+});
+
+test('message-list language controls and rows are width-bounded inside the assistant panel', async () => {
+    const source = readUserscriptSource();
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.MessageCenterAgent.scanConversationList = () => [{
+        conversationId: 'thread-width',
+        conversationUrl: 'https://www.etsy.com/messages/thread-width',
+        buyerName: 'Width check',
+        preview: 'A preview that must remain inside the panel',
+        unread: false,
+    }];
+
+    const markup = api.UI.renderMessages();
+    assert.match(markup, /class="ma-stack ma-message-list-shell"/);
+    assert.match(markup, /class="ma-card ma-message-list-controls"/);
+    assert.match(markup, /class="ma-list-item ma-message-list__item"/);
+    assert.match(source, /\.ma-message-list-controls \.ma-select\{min-width:0;max-width:100%\}/);
+    assert.match(source, /\.ma-message-list-shell>\.ma-list[^{}]*\{min-width:0;max-width:100%\}/);
+    assert.match(source, /\.ma-message-list-shell[^{}]*\{grid-template-columns:minmax\(0,1fr\)\}/);
+    assert.match(source, /\.ma-message-list__item \.ma-disclosure__body\{min-width:0;overflow-wrap:anywhere\}/);
+});
+
+test('message-list open action validates a canonical Etsy conversation URL before navigation', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    const click = value => api.UI.onClick({
+        target: { closest: () => ({ dataset: { messageOpenUrl: value } }) },
+    });
+
+    await click('https://www.etsy.com/messages/thread-1?ref=inbox#unsafe-fragment');
+    assert.equal(sandbox.location.href, 'https://www.etsy.com/messages/thread-1?ref=inbox');
+
+    assert.equal(
+        api.MessageCenterAgent.canonicalConversationUrl('https://www.etsy.com/messages/thread-1?conversation_id=thread-1&ref=inbox'),
+        'https://www.etsy.com/messages/thread-1?conversation_id=thread-1&ref=inbox',
+    );
+    assert.equal(
+        api.MessageCenterAgent.canonicalConversationUrl('https://www.etsy.com/messages?conversation_id=thread-1'),
+        'https://www.etsy.com/messages?conversation_id=thread-1',
+    );
+
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    for (const unsafeUrl of [
+        'https://evil.example/messages/thread-2',
+        'https://www.etsy.com/messages/all',
+        'https://www.etsy.com/messages/all?conversation_id=thread-2',
+        'https://www.etsy.com/messages/thread-1?conversation_id=thread-2',
+        'https://www.etsy.com/messages/thread-1?conversation_id=',
+        'https://www.etsy.com/messages/thread-1?conversation_id=%2F',
+        'https://www.etsy.com/messages?conversation_id=thread-1&conversation_id=thread-2',
+        'https://www.etsy.com/conversations/all?conversation_id=thread-2',
+        'https://www.etsy.com/conversations/with?conversation_id=thread-2',
+        'https://www.etsy.com/conversations/with/thread-1?conversation_id=thread-2',
+        'https://www.etsy.com/messages/thread%2F2',
+        'https://www.etsy.com/messages/%2561ll',
+        'https://www.etsy.com/messages/%25252Fthread-2',
+        'https://www.etsy.com/messages/%252561ll',
+    ]) {
+        await assert.rejects(click(unsafeUrl), /güvenli|Etsy konuşma/i);
+        assert.equal(sandbox.location.href, 'https://www.etsy.com/messages/all');
+    }
+});
+
+test('Message Center conversation matching rejects path/query identity conflicts', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/alice';
+    sandbox.location.search = '?conversation_id=bob';
+    sandbox.location.href = 'https://www.etsy.com/messages/alice?conversation_id=bob';
+
+    assert.equal(api.Router.conversationId(), '');
+    assert.equal(api.MessageCenterAgent.canonicalConversationUrl(sandbox.location.href), '');
+    assert.equal(api.MessageCenterAgent.jobConversationMatches({
+        conversationUrl: 'https://www.etsy.com/messages/alice?conversation_id=bob',
+    }), false);
+
+    sandbox.location.search = '?conversation_id=alice';
+    sandbox.location.href = 'https://www.etsy.com/messages/alice?conversation_id=alice';
+    assert.equal(api.Router.conversationId(), 'alice');
+    assert.equal(api.MessageCenterAgent.jobConversationMatches({
+        conversationUrl: 'https://www.etsy.com/messages/alice',
+    }), true);
+});
+
+test('message-list translations are cache-first, explicit, preserve originals, and report provider failures honestly', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.UI.state.context = null;
+    api.MessageCenterAgent.scanConversationList = () => [
+        {
+            conversationId: 'thread-1', conversationUrl: 'https://www.etsy.com/messages/thread-1',
+            buyerName: 'Ashley', preview: 'Can you make this in blue?', unread: true,
+        },
+        {
+            conversationId: 'thread-2', conversationUrl: 'https://www.etsy.com/messages/thread-2',
+            buyerName: 'Morgan', preview: 'Will this arrive Friday?', unread: false,
+        },
+    ];
+    api.Store.settings.previewLanguage = 'tr';
+    let requests = 0;
+    api.Translator.cached = text => text.startsWith('Can you')
+        ? { text: 'Bunu mavi yapabilir misiniz?', detectedLanguage: 'en', provider: 'google' }
+        : null;
+    api.Translator.translate = async text => {
+        requests += 1;
+        if (text.startsWith('Will this')) throw new Error('injected provider outage');
+        return { text: 'Beklenmeyen', detectedLanguage: 'en', provider: 'google' };
+    };
+
+    const cachedMarkup = api.UI.renderMessages();
+    assert.match(cachedMarkup, /Bunu mavi yapabilir misiniz\?/);
+    assert.match(cachedMarkup, /Can you make this in blue\?/);
+    assert.match(cachedMarkup, /Google/);
+    assert.equal(requests, 0, 'render must never initiate translation network work');
+
+    api.UI.toast = () => {};
+    await api.UI.translateMessageListPreviews();
+    assert.equal(requests, 1, 'only the uncached preview should reach the provider');
+    const failedMarkup = api.UI.renderMessages();
+    assert.match(failedMarkup, /1 önizleme çevrilemedi|çeviri.*başarısız/i);
+    assert.match(failedMarkup, /Will this arrive Friday\?/);
+    assert.match(failedMarkup, /orijinal/i);
+});
+
+test('message-list language selector persists a broad supported target and triggers explicit retranslation', async () => {
+    const { api, sandbox, storage } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.UI.state.context = null;
+    api.MessageCenterAgent.scanConversationList = () => [];
+    const markup = api.UI.renderMessages();
+    const selector = markup.match(/<select[^>]*data-message-list-language[^>]*>([\s\S]*?)<\/select>/)?.[1] || '';
+    assert.equal((selector.match(/<option /g) || []).length, 249, 'every current GTX target should be selectable');
+    for (const code of ['aa', 'bci', 'fa-af', 'hi', 'iu-latn', 'ndc-zw', 'sat-latn', 'sw', 'vi', 'zh-tw', 'zap', 'zu']) {
+        assert.match(selector, new RegExp(`value="${code}"`), `${code} should be selectable`);
+    }
+    for (const compatibilityAlias of ['fil', 'fr-fr', 'he', 'jv', 'pt-br', 'zh']) {
+        assert.doesNotMatch(selector, new RegExp(`value="${compatibilityAlias}"`), `${compatibilityAlias} should not duplicate its canonical target`);
+    }
+    assert.equal(api.Translator.normalizedTarget('zh'), 'zh-cn');
+    assert.equal(api.Translator.normalizedTarget('HE'), 'iw');
+    assert.equal(api.Translator.googleTargetCode('fa-af'), 'fa-AF');
+    assert.equal(api.Translator.googleTargetCode('mni-mtei'), 'mni-Mtei');
+    assert.equal(api.Translator.googleTargetCode('ndc-zw'), 'ndc-ZW');
+    assert.equal(api.Translator.googleTargetCode('zh'), 'zh-CN');
+
+    let translations = 0;
+    api.UI.translateMessageListPreviews = async () => { translations += 1; return true; };
+    const savedShowRiskTags = api.Store.settings.showRiskTags;
+    api.UI.state.settingsDraft = { ...api.Store.settings, shopName: 'Unsaved quick-selector draft', showRiskTags: !savedShowRiskTags };
+    api.UI.state.settingsDirty = true;
+    await api.UI.onChange({ target: { dataset: { messageListLanguage: '' }, value: 'hi' } });
+    assert.equal(api.Store.settings.previewLanguage, 'hi');
+    assert.equal(storage.get(api.KEYS.settings).previewLanguage, 'hi');
+    assert.equal(api.Store.settings.showRiskTags, savedShowRiskTags, 'quick selector must not commit unrelated draft fields');
+    assert.equal(api.UI.state.settingsDraft.previewLanguage, 'hi', 'the open settings draft must follow the persisted quick choice');
+    assert.equal(api.UI.state.settingsDraft.shopName, 'Unsaved quick-selector draft');
+    assert.equal(api.UI.state.settingsDraft.showRiskTags, !savedShowRiskTags);
+    assert.equal(api.UI.state.settingsDirty, true);
+    assert.equal(translations, 1);
+
+    const snapshot = api.ConfigManager.snapshot();
+    snapshot.settings.previewLanguage = 'zu';
+    await api.ConfigManager.importText(JSON.stringify(snapshot));
+    assert.equal(api.Store.settings.previewLanguage, 'zu');
+    const beforeInvalid = copy(api.Store.settings);
+    snapshot.settings.previewLanguage = 'not-a-supported-language';
+    await assert.rejects(api.ConfigManager.importText(JSON.stringify(snapshot)), /config/i);
+    assert.deepEqual(copy(api.Store.settings), beforeInvalid);
+
+    const legacyAliasSnapshot = api.ConfigManager.snapshot();
+    legacyAliasSnapshot.schemaVersion = 6;
+    legacyAliasSnapshot.settings.previewLanguage = 'zh';
+    await api.ConfigManager.importText(JSON.stringify(legacyAliasSnapshot));
+    assert.equal(api.Store.settings.previewLanguage, 'zh');
+    const aliasMarkup = api.UI.renderMessages();
+    assert.match(aliasMarkup, /<option value="zh-cn" selected>/, 'a legacy alias should select its canonical target');
+});
+
+test('DeepL target capability fails clearly or uses the configured Google fallback', async () => {
+    const { api } = await loadAssistant();
+    api.Store.settings.translator = 'deepl';
+    api.Store.settings.deeplApiKey = 'test-key';
+    api.Store.settings.freeFallback = false;
+    api.Translator.cache.clear();
+    await assert.rejects(
+        api.Translator.translate('Unique source without fallback', 'zu'),
+        /DeepL.*Zulu|DeepL.*desteklemiyor/i,
+    );
+
+    let googleCalls = 0;
+    api.Store.settings.freeFallback = true;
+    api.Translator.google = async (_text, target) => {
+        googleCalls += 1;
+        assert.equal(target, 'zu');
+        return { text: 'Google fallback result', detectedLanguage: 'en', provider: 'google' };
+    };
+    const result = await api.Translator.translate('Unique source with fallback', 'zu');
+    assert.equal(result.provider, 'google');
+    assert.equal(googleCalls, 1);
+});
+
+test('message-list retries a transient Google fallback when preferred DeepL is available again', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.translator = 'deepl';
+    api.Store.settings.deeplApiKey = 'test-key';
+    api.Store.settings.freeFallback = true;
+    api.Store.settings.previewLanguage = 'tr';
+    api.Translator.cache.clear();
+    const item = {
+        conversationId: 'retry-deepl', conversationUrl: 'https://www.etsy.com/messages/retry-deepl',
+        buyerName: 'Retry', preview: 'Please translate this once', unread: false,
+    };
+    api.MessageCenterAgent.scanConversationList = () => [item];
+    let deepLCalls = 0;
+    let googleCalls = 0;
+    api.Translator.deepl = async () => {
+        deepLCalls += 1;
+        if (deepLCalls === 1) throw new Error('injected transient DeepL outage');
+        return { text: 'DeepL sonucu', detectedLanguage: 'en', provider: 'deepl' };
+    };
+    api.Translator.google = async () => {
+        googleCalls += 1;
+        return { text: 'Geçici Google sonucu', detectedLanguage: 'en', provider: 'google' };
+    };
+
+    assert.equal(await api.UI.translateMessageListPreviews(), true);
+    assert.equal(api.UI.messageListTranslationFor(item, 'tr').provider, 'google');
+    assert.equal(await api.UI.translateMessageListPreviews(), true);
+    assert.equal(deepLCalls, 2, 'a manual retry must try the preferred provider again');
+    assert.equal(googleCalls, 1);
+    assert.equal(api.UI.messageListTranslationFor(item, 'tr').provider, 'deepl');
+});
+
+test('message-list invalidates local English output when US-English preference changes', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.translator = 'deepl';
+    api.Store.settings.deeplApiKey = 'test-key';
+    api.Store.settings.freeFallback = false;
+    api.Store.settings.previewLanguage = 'en';
+    api.Store.settings.preferUsEnglish = false;
+    const item = {
+        conversationId: 'english-locale', conversationUrl: 'https://www.etsy.com/messages/english-locale',
+        buyerName: 'English', preview: 'Translate to preferred English', unread: false,
+    };
+    api.MessageCenterAgent.scanConversationList = () => [item];
+    const targets = [];
+    api.Translator.cached = () => null;
+    api.Translator.translate = async (_text, target) => {
+        const effective = api.Translator.effectiveTarget(target);
+        targets.push(effective);
+        return { text: effective, detectedLanguage: 'tr', provider: 'deepl' };
+    };
+
+    const gbKey = api.UI.messageListTranslationKey(item, 'en');
+    assert.equal(await api.UI.translateMessageListPreviews(), true);
+    api.Store.settings.preferUsEnglish = true;
+    const usKey = api.UI.messageListTranslationKey(item, 'en');
+    assert.notEqual(usKey, gbKey);
+    assert.equal(await api.UI.translateMessageListPreviews(), true);
+    assert.deepEqual(targets, ['en-gb', 'en-us']);
+    assert.equal(api.UI.messageListTranslationFor(item, 'en').text, 'en-us');
+});
+
+test('message-list discards an in-flight result after provider policy changes', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.translator = 'google';
+    api.Store.settings.previewLanguage = 'tr';
+    const item = {
+        conversationId: 'policy-race', conversationUrl: 'https://www.etsy.com/messages/policy-race',
+        buyerName: 'Policy', preview: 'Deferred provider result', unread: false,
+    };
+    api.MessageCenterAgent.scanConversationList = () => [item];
+    api.Translator.cached = () => null;
+    let release;
+    api.Translator.translate = () => new Promise(resolve => { release = resolve; });
+
+    const oldPolicyKey = api.UI.messageListTranslationKey(item, 'tr');
+    const run = api.UI.translateMessageListPreviews();
+    await new Promise(resolve => setImmediate(resolve));
+    api.Store.settings.translator = 'deepl';
+    api.Store.settings.deeplApiKey = 'new-policy-key';
+    const newPolicyKey = api.UI.messageListTranslationKey(item, 'tr');
+    assert.notEqual(newPolicyKey, oldPolicyKey);
+    release({ text: 'Old Google result', detectedLanguage: 'en', provider: 'google' });
+
+    assert.equal(await run, false);
+    assert.equal(api.UI.state.messageListTranslations.has(newPolicyKey), false);
+    assert.equal(api.UI.state.messageListTranslations.has(oldPolicyKey), false);
+});
+
+test('unsupported DeepL list target is blocked once without preview attempts or history noise', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.translator = 'deepl';
+    api.Store.settings.deeplApiKey = 'test-key';
+    api.Store.settings.freeFallback = false;
+    api.MessageCenterAgent.scanConversationList = () => Array.from({ length: 4 }, (_, index) => ({
+        conversationId: `unsupported-${index}`,
+        conversationUrl: `https://www.etsy.com/messages/unsupported-${index}`,
+        buyerName: `Buyer ${index}`,
+        preview: `Preview ${index}`,
+        unread: false,
+    }));
+    let attempts = 0;
+    api.Translator.translate = async () => { attempts += 1; throw new Error('must not run'); };
+
+    await api.UI.onChange({ target: { dataset: { messageListLanguage: '' }, value: 'zu' } });
+    assert.equal(api.Store.settings.previewLanguage, 'zu');
+    assert.equal(attempts, 0);
+    assert.equal(api.UI.state.messageListTranslationStatus.phase, 'blocked');
+    assert.equal(api.Store.history.filter(item => item.type === 'translated').length, 0);
+    assert.match(api.UI.renderMessages(), /DeepL.*Zulu.*desteklemiyor/i);
+});
+
+test('message-list automatic preview translation is default-on, optional, capped, and bounded', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.MessageCenterAgent.scanConversationList = () => Array.from({ length: 80 }, (_, index) => ({
+        conversationId: `thread-${index}`,
+        conversationUrl: `https://www.etsy.com/messages/thread-${index}`,
+        buyerName: `Buyer ${index}`,
+        preview: `Visible preview ${index}`,
+        unread: false,
+    }));
+    api.Store.settings.autoTurkishPreview = true;
+    api.Store.settings.previewLanguage = 'tr';
+    api.Translator.cached = () => null;
+    let calls = 0;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    api.Translator.translate = async text => {
+        calls += 1;
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise(resolve => setImmediate(resolve));
+        inFlight -= 1;
+        return { text: `TR ${text}`, detectedLanguage: 'en', provider: 'google' };
+    };
+
+    await api.UI.refreshMessages();
+    assert.equal(calls, 50, 'only the capped visible list may be sent to the translator');
+    assert.ok(maxInFlight <= 3, `translation concurrency must be bounded, saw ${maxInFlight}`);
+    assert.equal(api.UI.state.messageListTranslationStatus.phase, 'success');
+    assert.equal(api.UI.state.messageListTranslationStatus.total, 50);
+    const batchHistory = api.Store.history.filter(item => item.type === 'translated');
+    assert.equal(batchHistory.length, 1, 'one list batch must create one history row, not one row per preview');
+    assert.equal(batchHistory[0].detail.previews, 50);
+    assert.equal(batchHistory[0].detail.requests, 50);
+
+    calls = 0;
+    api.Store.settings.autoTurkishPreview = false;
+    api.MessageCenterAgent.scanConversationList = () => [{
+        conversationId: 'manual-only', conversationUrl: 'https://www.etsy.com/messages/manual-only',
+        buyerName: 'Manual', preview: 'Must remain local', unread: false,
+    }];
+    await api.UI.refreshMessages();
+    assert.equal(calls, 0, 'automatic translation must stay off when the preference is disabled');
+    assert.equal(api.UI.state.messageListTranslationStatus.phase, 'idle');
+    assert.equal(api.Store.history.filter(item => item.type === 'translated').length, 1);
+});
+
+test('message-list translation deduplicates identical previews within one batch', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.previewLanguage = 'tr';
+    api.Translator.cached = () => null;
+    api.UI.toast = () => {};
+    api.MessageCenterAgent.scanConversationList = () => [
+        ...Array.from({ length: 3 }, (_, index) => ({
+            conversationId: `duplicate-${index}`,
+            conversationUrl: `https://www.etsy.com/messages/duplicate-${index}`,
+            buyerName: `Duplicate ${index}`,
+            preview: 'The same visible preview',
+            unread: false,
+        })),
+        {
+            conversationId: 'unique', conversationUrl: 'https://www.etsy.com/messages/unique',
+            buyerName: 'Unique', preview: 'A unique visible preview', unread: false,
+        },
+    ];
+    const calls = [];
+    api.Translator.translate = async (text, target, options) => {
+        calls.push({ text, target, options: { ...options } });
+        return { text: `TR ${text}`, detectedLanguage: 'en', provider: 'google' };
+    };
+
+    assert.equal(await api.UI.translateMessageListPreviews(), true);
+    assert.equal(calls.length, 2, 'identical previews should share one provider request');
+    assert.ok(calls.every(call => call.options.logHistory === false));
+    assert.equal(api.UI.state.messageListTranslationStatus.completed, 4);
+    assert.equal(api.UI.state.messageListTranslations.size, 4);
+    const history = api.Store.history.filter(item => item.type === 'translated');
+    assert.equal(history.length, 1);
+    assert.equal(history[0].detail.previews, 4);
+    assert.equal(history[0].detail.requests, 2);
+});
+
+test('message-list keeps distinct astral Unicode previews in cache, dedup, and DOM fingerprints', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.previewLanguage = 'tr';
+    api.Translator.cache.clear();
+    const previews = ['Order 😀', 'Order 😁'];
+    let activePreviews = previews;
+    api.MessageCenterAgent.scanConversationList = () => activePreviews.map((preview, index) => ({
+        conversationId: `emoji-${index}`,
+        conversationUrl: `https://www.etsy.com/messages/emoji-${index}`,
+        buyerName: `Emoji ${index}`,
+        preview,
+        unread: false,
+    }));
+    const calls = [];
+    api.Translator.translate = async text => {
+        calls.push(text);
+        return { text: `TR ${text}`, detectedLanguage: 'en', provider: 'google' };
+    };
+
+    assert.notEqual(api.Translator.cacheKey(previews[0], 'tr'), api.Translator.cacheKey(previews[1], 'tr'));
+    assert.equal(await api.UI.translateMessageListPreviews(), true);
+    assert.deepEqual(calls.sort(), [...previews].sort());
+    assert.equal(api.UI.state.messageListTranslations.size, 2);
+
+    activePreviews = [previews[0]];
+    const firstFingerprint = api.Router.fingerprint();
+    activePreviews = [previews[1]];
+    assert.notEqual(api.Router.fingerprint(), firstFingerprint);
+});
+
+test('a partially successful message-list batch is recorded as partial and failed', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.previewLanguage = 'tr';
+    api.Translator.cached = () => null;
+    api.UI.toast = () => {};
+    api.MessageCenterAgent.scanConversationList = () => [
+        {
+            conversationId: 'success', conversationUrl: 'https://www.etsy.com/messages/success',
+            buyerName: 'Success', preview: 'Successful preview', unread: false,
+        },
+        {
+            conversationId: 'failure', conversationUrl: 'https://www.etsy.com/messages/failure',
+            buyerName: 'Failure', preview: 'Failing preview', unread: false,
+        },
+    ];
+    api.Translator.translate = async (text) => {
+        if (text.startsWith('Failing')) throw new Error('injected mixed-batch outage');
+        return { text: 'Başarılı çeviri', detectedLanguage: 'en', provider: 'google' };
+    };
+
+    assert.equal(await api.UI.translateMessageListPreviews(), false);
+    const history = api.Store.history.filter(item => item.type === 'translated');
+    assert.equal(history.length, 1);
+    assert.equal(history[0].status, 'partial');
+    assert.equal(history[0].detail.previews, 1);
+    assert.equal(history[0].detail.failed, 1);
+    assert.equal(api.History.stats().failed, 1);
+});
+
+test('message-list translation discards results after language or route changes', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const item = {
+        conversationId: 'thread-stale', conversationUrl: 'https://www.etsy.com/messages/thread-stale',
+        buyerName: 'Buyer', preview: 'Deferred preview', unread: false,
+    };
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.previewLanguage = 'tr';
+    api.MessageCenterAgent.scanConversationList = () => [item];
+    api.Translator.cached = () => null;
+    let release;
+    api.Translator.translate = () => new Promise(resolve => { release = resolve; });
+
+    const languageRun = api.UI.translateMessageListPreviews();
+    api.Store.settings.previewLanguage = 'de';
+    api.UI.invalidateMessageListWork({ resetStatus: true });
+    release({ text: 'Eski sonuç', detectedLanguage: 'en', provider: 'google' });
+    assert.equal(await languageRun, false);
+    assert.equal(api.UI.state.messageListTranslations.size, 0);
+    assert.equal(api.UI.state.messageListTranslationStatus.phase, 'idle');
+
+    api.Store.settings.previewLanguage = 'tr';
+    let releaseRoute;
+    api.Translator.translate = () => new Promise(resolve => { releaseRoute = resolve; });
+    const routeRun = api.UI.translateMessageListPreviews();
+    sandbox.location.pathname = '/messages/inbox';
+    sandbox.location.href = 'https://www.etsy.com/messages/inbox';
+    api.UI.invalidateMessageListWork({ resetStatus: true });
+    releaseRoute({ text: 'Eski rota sonucu', detectedLanguage: 'en', provider: 'google' });
+    assert.equal(await routeRun, false);
+    assert.equal(api.UI.state.messageListTranslations.size, 0);
+});
+
+test('message-list stale work releases only its own busy state', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.previewLanguage = 'tr';
+    api.MessageCenterAgent.scanConversationList = () => [{
+        conversationId: 'busy-thread', conversationUrl: 'https://www.etsy.com/messages/busy-thread',
+        buyerName: 'Buyer', preview: 'Busy preview', unread: false,
+    }];
+    api.Translator.cached = () => null;
+    let release;
+    api.Translator.translate = () => new Promise(resolve => { release = resolve; });
+    api.UI.app = {
+        classList: { toggle() {} },
+        setAttribute() {},
+    };
+
+    const run = api.UI.translateMessageListPreviews();
+    assert.equal(api.UI.state.busy, true);
+    assert.ok(api.UI.messageListBusyGeneration > 0);
+    api.UI.invalidateMessageListWork({ resetStatus: true });
+    assert.equal(api.UI.state.busy, false, 'route/language invalidation must immediately release the owned busy state');
+    assert.equal(api.UI.messageListBusyGeneration, 0);
+    release({ text: 'Late result', detectedLanguage: 'en', provider: 'google' });
+    assert.equal(await run, false);
+    assert.equal(api.UI.state.busy, false);
+});
+
+test('an old list-translate click cannot clear a newer automatic batch busy state', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    api.Store.settings.previewLanguage = 'tr';
+    api.MessageCenterAgent.scanConversationList = () => [{
+        conversationId: 'busy-owner', conversationUrl: 'https://www.etsy.com/messages/busy-owner',
+        buyerName: 'Buyer', preview: 'Busy ownership preview', unread: false,
+    }];
+    api.Translator.cached = () => null;
+    const releases = [];
+    api.Translator.translate = () => new Promise(resolve => { releases.push(resolve); });
+    api.UI.app = {
+        classList: { toggle() {} },
+        setAttribute() {},
+    };
+    const event = {
+        target: { closest: () => ({ dataset: { action: 'message-list-translate' } }) },
+    };
+
+    const clickRun = api.UI.onClick(event);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(releases.length, 1);
+    api.UI.invalidateMessageListWork({ resetStatus: true });
+    const automaticRun = api.UI.translateMessageListPreviews({ auto: true });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(releases.length, 2);
+    const newerBusyGeneration = api.UI.messageListBusyGeneration;
+    assert.ok(newerBusyGeneration > 0);
+    assert.equal(api.UI.state.busy, true);
+
+    releases[0]({ text: 'Old result', detectedLanguage: 'en', provider: 'google' });
+    await clickRun;
+    assert.equal(api.UI.messageListBusyGeneration, newerBusyGeneration);
+    assert.equal(api.UI.state.busy, true, 'the stale click finally must not release the newer batch');
+
+    releases[1]({ text: 'New result', detectedLanguage: 'en', provider: 'google' });
+    assert.equal(await automaticRun, true);
+    assert.equal(api.UI.messageListBusyGeneration, 0);
+    assert.equal(api.UI.state.busy, false);
 });
 
 test('message context reads an order only from the unique companion buyer-info scope', async () => {
@@ -1210,7 +1966,7 @@ test('translator preserves formatting and separates cache entries by exact text 
     assert.equal(new URLSearchParams(deepLRequests[0].data).get('text'), trimmedText);
     assert.deepEqual(
         deepLRequests.slice(1).map(request => new URLSearchParams(request.data).get('target_lang')),
-        ['EN-US', 'EN'],
+        ['EN-US', 'EN-GB'],
     );
 });
 
@@ -2000,7 +2756,7 @@ test('schema migration adds the new preset once and preserves existing template 
         JSON.parse(JSON.stringify(migrated.find((item) => item.id === 'tpl-custom'))),
         legacyTemplates[1],
     );
-    assert.equal(api.Store.configMeta.schemaVersion, 6);
+    assert.equal(api.Store.configMeta.schemaVersion, api.APP.configSchema);
     assert.equal(storage.get(api.KEYS.templates).filter((item) => item.id === 'tpl-review-request').length, 1);
 });
 
@@ -2170,7 +2926,7 @@ test('schema-3 Turkish review preset is corrected to English without losing user
     assert.equal(migrated.tone, 'short');
     assert.equal(migrated.shortcut, '/benim-review');
     assert.equal(migrated.archived, true);
-    assert.equal(api.Store.configMeta.schemaVersion, 6);
+    assert.equal(api.Store.configMeta.schemaVersion, api.APP.configSchema);
 });
 
 test('review request rendering resolves order variables without changing the stored preset', async () => {

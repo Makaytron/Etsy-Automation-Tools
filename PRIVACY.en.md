@@ -2,9 +2,9 @@
 
 # Privacy and Data Processing
 
-Last updated: 2026-08-04
+Last updated: 2026-08-27
 
-Etsy Automation Tools consists of Tampermonkey userscripts that run in the browser. All five scripts enable limited, pseudonymous product-usage telemetry by default, show a visible first-use notice, and provide a one-click off switch in Settings. Telemetry does not collect Etsy content or account data. Message Assistant also opens on message pages by default and ships with **Automatic Turkish Preview** enabled. The latest customer message can therefore be sent automatically to Google Translate when a message page opens. To prevent this transfer, open Makaytron settings from the Tampermonkey menu and disable automatic Turkish preview before visiting a message page.
+Etsy Automation Tools consists of Tampermonkey userscripts that run in the browser. All five scripts enable limited, pseudonymous product-usage telemetry by default, show a visible first-use notice, and provide a one-click off switch in Settings. Telemetry does not collect Etsy content or account data. The Message Assistant panel is closed by default and ships with **Automatic Translation Preview** enabled. If the user opens the panel on a conversation list, visible message previews may be sent to the selected translation provider; opening it in one conversation may send the latest customer message. To prevent this transfer, open Makaytron settings from the Tampermonkey menu and disable automatic translation preview before opening the panel.
 
 ## Data processed locally
 
@@ -51,7 +51,7 @@ The first-use notice explains that telemetry is on by default and can be disable
 
 ## Third-party recipients
 
-- Google Translate is the default translation provider. Automatic Turkish preview is enabled by default and may send the latest customer message to `translate.googleapis.com` when a message page opens; manual free translation sends selected text to the same recipient.
+- Google Translate is the default translation provider. Automatic translation preview is enabled by default and may send up to 50 visible message previews to `translate.googleapis.com` when the user opens the panel on a conversation list, or the latest customer message when the panel opens in one conversation. Changing the quick display language resends visible list previews for the new target; manual free translation sends selected text to the same recipient.
 - DeepL sends text and the user's API key to the DeepL API.
 - AI features send relevant message context and instructions to the user-selected OpenAI, Anthropic, Google Gemini, DeepSeek, or OpenRouter API.
 - Listing Analyzer `v1.0.5` makes no network request to an AI provider and stores no AI API key. The user can export or copy an anonymizable request JSON/prompt, then import proposal JSON from an external tool after validation. The user controls what is sent to that external tool.
