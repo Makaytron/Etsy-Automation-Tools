@@ -5,6 +5,28 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.2.0] - 2026-08-27
+
+### Added
+
+- `/messages` ve `/messages/all` ekranlarında Etsy DOM'undaki güvenli konuşmaları panel içinde gösteren, taslak veya gönderim kontrolü açmayan konuşma listesi eklendi.
+- Google GTX sağlayıcısının güncel 249 hedefini Türkçe adlarla sunan, varsayılanı Türkçe ve seçimi kalıcı hızlı görüntüleme dili eklendi; çevrilmiş önizlemenin özgün metni korunur.
+
+### Changed
+
+- Otomatik liste önizlemesi en fazla 50 görünür konuşma ve üç eşzamanlı sağlayıcı isteğiyle sınırlandı; aynı metinler tek istekte birleştirilir ve her batch yalnız bir geçmiş özeti üretir.
+- Geniş dil kataloğunun güvenli config içe/dışa aktarımı için yapılandırma şeması 7'ye yükseltildi; eski dil kodları uyumluluk aliaslarıyla korunur.
+
+### Fixed
+
+- Uzun dil seçeneklerinin paneli yatayda 1600 pikselin üzerine büyütmesi, yalnız konuşma listesine kapsamlı `minmax(0, 1fr)` ve genişlik sınırlarıyla giderildi.
+- Dil/rota değişiminde geç kalan çeviri sonuçlarının veya eski bir tıklama cleanup'ının daha yeni liste çalışmasının durumunu bozması engellendi.
+- CSS ile gizlenmiş Etsy satırlarının liste taramasına ve otomatik çeviriye dahil olması engellendi.
+
+### Security
+
+- Etsy konuşma URL'lerinde path ile `conversation_id` çakışması, yinelenen query kimliği, reserved klasör, encoded ayırıcı, dış origin ve credential içeren adresler fail-closed reddedilir.
+
 ## [1.1.1] - 2026-08-27
 
 ### Changed

@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.1.1
+// @version      1.2.0
 // @description  Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -51,7 +51,7 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.1.1';
+    const APP_VERSION = '1.2.0';
     const CENTRAL_MESSAGE_CENTER_BUILD = true;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
@@ -669,7 +669,7 @@
         id: 'makaytron-etsy-message-assistant',
         prefix: 'mema',
         version: APP_VERSION,
-        configSchema: 6,
+        configSchema: 7,
         historyLimit: 500,
         cacheLimit: 350,
     });
@@ -884,11 +884,280 @@
         },
     ]);
 
-    const LANGUAGE_NAMES = Object.freeze({
-        tr: 'Türkçe', en: 'English (US)', es: 'Español', fr: 'Français', de: 'Deutsch',
-        it: 'Italiano', pt: 'Português', nl: 'Nederlands', pl: 'Polski', ru: 'Русский',
-        uk: 'Українська', ar: 'العربية', ja: '日本語', ko: '한국어', zh: '中文', und: 'Belirsiz',
+    // Scriptin kullandığı GTX hedef kataloğunun Türkçe, sabitlenmiş anlık görüntüsü.
+    // Kaynak: /translate_a/l?client=gtx&alpha=true&hl=tr (2026-08-27, 249 hedef).
+    const GOOGLE_TRANSLATION_LANGUAGE_ENTRIES = Object.freeze(`
+ab|Abhazca
+ace|Açece
+ach|Açolice
+aa|Afarca
+af|Afrikaanca
+de|Almanca
+alz|Alurca
+am|Amharca
+ar|Arapça
+sq|Arnavutça
+as|Assamca
+av|Avarca
+awa|Awadhice
+ay|Aymaraca
+az|Azerbaycan dili
+ban|Balice
+bm|Bambarca
+bci|Baouléce
+eu|Baskça
+ba|Başkurtça
+btx|Batak Karoca
+bts|Batak Simalungunca
+bbc|Batak Tobaca
+bew|Batavice
+be|Belarusça
+bal|Beluçça
+bem|Bembaca
+bn|Bengalce
+bho|Bhojpurice
+bik|Bikolce
+bs|Boşnakça
+br|Bretonca
+bg|Bulgarca
+bua|Buryatça
+jw|Cava dili
+ch|Chamorroce
+chk|Chuukece
+ce|Çeçence
+cs|Çekçe
+ny|Çevaca
+zh-CN|Çince (Basitleştirilmiş)
+zh-TW|Çince (Geleneksel)
+cv|Çuvaşça
+da|Danca
+fa-AF|Darice
+dv|Dhivehice
+din|Dinkaca
+doi|Dogrice
+dov|Dombaca
+dyu|Dyulaca
+dz|Dzongkaca
+id|Endonezce
+hy|Ermenice
+eo|Esperanto
+et|Estonyaca
+ee|Ewece
+fo|Faroece
+fa|Farsça
+nl|Felemenkçe
+fj|Fijice
+tl|Filipince
+fi|Fince
+fon|Fonce
+fr|Fransızca
+fr-CA|Fransızca (Kanada)
+fy|Frizce
+ff|Fulanice
+fur|Furlanca
+gaa|Gaaca
+cy|Galce
+gl|Galiçyaca
+gn|Guarani
+gu|Güceratça
+ka|Gürcüce
+ht|Haiti Kreyolu
+cnh|Hakha Chince
+ha|Hausaca
+haw|Hawaice
+hr|Hırvatça
+hil|Hiligaynonce
+hi|Hintçe
+hmn|Hmongca
+xh|Hosa
+hrx|Hunsrikçe
+ilo|Ilocanoce
+iba|İbanca
+ig|İbo dili
+iw|İbranice
+en|İngilizce
+iu|İnuitçe (Hece yazısı)
+iu-Latn|İnuitçe (Latin)
+ga|İrlandaca
+gd|İskoç Gaelcesi
+es|İspanyolca
+sv|İsveççe
+it|İtalyanca
+is|İzlandaca
+jam|Jamaika lehçesi
+ja|Japonca
+kac|Jingpoca
+kl|Kalaallisutça
+km|Kamboçyaca
+kn|Kannada dili
+yue|Kantonca
+kr|Kanurice
+pam|Kapampanganca
+ca|Katalanca
+kk|Kazakça
+kek|Kekçice
+kha|Khasice
+ky|Kırgızca
+crh|Kırım Tatarcası (Kiril)
+crh-Latn|Kırım Tatarcası (Latin)
+cgg|Kigaca
+ktu|Kitubaca
+trp|Kokborokça
+kv|Komice
+kg|Kongoca
+gom|Konkani dili
+ko|Korece
+co|Korsikaca
+kri|Krioce
+ku|Kürtçe (Kurmançça)
+ckb|Kürtçe (Sorani)
+lo|Laoca
+ltg|Latgalyaca
+la|Latince
+pl|Lehçe
+lv|Letonca
+lij|Liguryaca
+li|Limburgca
+ln|Lingala
+lt|Litvanca
+lmo|Lombardça
+lg|Lugandaca
+luo|Luoca
+lb|Lüksemburgca
+hu|Macarca
+mad|Maduresece
+mai|Maithilice
+mak|Makassarca
+mk|Makedonca
+ml|Malayalam dili
+ms|Malayca
+ms-Arab|Malayca (Javi)
+mg|Malgaşça
+mt|Maltaca
+mam|Mamca
+gv|Manksça
+mi|Maorice
+mr|Marathi
+mh|Marshallca
+mwr|Marwadice
+mni-Mtei|Meiteilonca (Manipuri)
+min|Minangca
+lus|Mizoce
+mn|Moğolca
+mfe|Morisyen Kreolü
+my|Myanmar (Burmaca)
+nhe|Nahuatl (Doğu Huasteca)
+ndc-ZW|Ndauca
+nr|Ndebele (Güney)
+new|Nepalbhasaca (Newari)
+ne|Nepalce
+bm-Nkoo|NKoca
+no|Norveççe
+nus|Nuerca
+or|Odiyaca (Oriya)
+oc|Oksitanca
+om|Oromoca
+os|Osetçe
+chm|Ova Marice
+uz|Özbekçe
+pag|Pangasinanca
+pap|Papiamento
+pa|Pencapça (Gurmukhi)
+pa-Arab|Pencapça (Shahmukhi)
+ps|Peştuca
+pt|Portekizce (Brezilya)
+pt-PT|Portekizce (Portekiz)
+qu|Quechuaca
+rom|Romanca
+ro|Romence
+rw|Ruandaca
+rn|Rundice
+ru|Rusça
+ceb|Sabuanca
+se|Samice (Kuzey)
+sm|Samoaca
+sg|Sangoca
+sa|Sanskritçe
+sat-Latn|Santali (Latince)
+sat|Santali (Ol Chiki)
+nso|Sepedice
+st|Sesotho dili
+crs|Seyşeller Kreolü
+shn|Shanca
+sr|Sırpça
+scn|Sicilyaca
+szl|Silezya dili
+si|Sinhalaca
+sd|Sint
+sk|Slovakça
+sl|Slovence
+so|Somalice
+su|Sunda dili
+sus|Susuca
+sw|Svahili dili
+ss|Swazice
+sn|Şonaca
+tg|Tacikce
+ty|Tahitice
+ber-Latn|Tamazightçe
+ber|Tamazightçe (Tifinag)
+ta|Tamilce
+tt|Tatarca
+th|Tayca
+te|Telugu dili
+tet|Tetumca
+bo|Tibetçe
+ti|Tigrinya dili
+tiv|Tivce
+tpi|Tok Pisince
+to|Tongaca
+lua|Tshilubaca
+ts|Tsongaca
+tn|Tsvanaca
+tcy|Tuluca
+tum|Tumbukaca
+tyv|Tuvaca
+tr|Türkçe
+tk|Türkmence
+ak|Twi dili
+udm|Udmurtça
+uk|Ukraynaca
+ur|Urduca
+ug|Uygurca
+war|Varayca
+ve|Vendaca
+vec|Venedikçe
+vi|Vietnamca
+wo|Wolofça
+sah|Yakutça
+yi|Yidce
+yo|Yorubaca
+yua|Yucatec Mayaca
+el|Yunanca
+zap|Zapotekçe
+zu|Zulu
+    `.trim().split(/\r?\n/).map((line) => {
+        const separator = line.indexOf('|');
+        return [line.slice(0, separator).trim().toLowerCase(), line.slice(separator + 1).trim()];
+    }));
+    const GOOGLE_TRANSLATION_LANGUAGE_NAMES = Object.freeze(Object.fromEntries(GOOGLE_TRANSLATION_LANGUAGE_ENTRIES));
+    const TRANSLATION_LANGUAGE_ALIASES = Object.freeze({
+        fil: 'tl', he: 'iw', jv: 'jw', zh: 'zh-cn', 'fr-fr': 'fr', 'pt-br': 'pt',
     });
+    const LANGUAGE_NAMES = Object.freeze({
+        ...GOOGLE_TRANSLATION_LANGUAGE_NAMES,
+        ...Object.fromEntries(Object.entries(TRANSLATION_LANGUAGE_ALIASES)
+            .map(([alias, canonical]) => [alias, GOOGLE_TRANSLATION_LANGUAGE_NAMES[canonical]])),
+        und: 'Belirsiz',
+    });
+    // DeepL'in statik /v2/languages hedef enumu. Genel UI kataloğundan bilinçli olarak
+    // ayrı tutulur; sağlayıcıya gitmeden önce hedef bu kümeye eşlenip doğrulanır.
+    const DEEPL_TARGET_LANGUAGES = new Set([
+        'ar', 'bg', 'cs', 'da', 'de', 'el', 'en-gb', 'en-us', 'es', 'es-419', 'et', 'fi', 'fr',
+        'he', 'hu', 'id', 'it', 'ja', 'ko', 'lt', 'lv', 'nb', 'nl', 'pl', 'pt-br', 'pt-pt',
+        'ro', 'ru', 'sk', 'sl', 'sv', 'th', 'tr', 'uk', 'vi', 'zh', 'zh-hans', 'zh-hant',
+    ]);
+    const MESSAGE_LIST_UI_LIMIT = 50;
 
     const NAV_ITEMS = Object.freeze([
         ['messages', 'message', 'Mesajlar'],
@@ -906,7 +1175,7 @@
 
     const LAUNCHER_CSS = `.ma-launcher{top:78px;right:var(--ma-s3);bottom:auto;min-width:0;width:120px;height:36px;padding:3px 4px;border:1px solid rgba(23,23,23,.14);border-radius:999px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.98);box-shadow:0 6px 18px rgba(15,23,42,.14);backdrop-filter:blur(10px);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.ma-launcher:hover{transform:translateY(-1px);border-color:rgba(23,23,23,.28);box-shadow:0 9px 22px rgba(15,23,42,.18)}.ma-launcher:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-launcher__mark{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;background:#f5f5f5}.ma-launcher .ma-logo-img{width:24px;height:16px}.ma-launcher__copy{min-width:0;display:block;text-align:left;line-height:1.1}.ma-launcher__title{font-size:11px;font-weight:800;white-space:nowrap}.ma-launcher__state{display:none}.ma-launcher__action{min-width:31px;height:26px;margin-left:auto;padding:0 7px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:10px;font-weight:800}.ma-launcher:hover .ma-launcher__action{background:var(--ma-primary-strong)}.ma-panel-close{min-height:34px;padding:0 10px;border:1px solid var(--ma-line);border-radius:999px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ma-ink);background:#fff;font-size:12px;font-weight:750}.ma-panel-close:hover{border-color:#c9c9c9;background:#f7f7f7}.ma-panel-close:focus-visible{outline:3px solid rgba(23,23,23,.14);outline-offset:2px}@media (max-width:560px){.ma-launcher{top:68px;right:var(--ma-s2);width:112px;height:34px}.ma-launcher__mark{width:26px;height:26px}.ma-launcher__title{font-size:10.5px}.ma-launcher__action{height:24px}}`;
 
-    const UX_CSS = `[hidden]{display:none!important}.ma-list-item,.ma-review-card{width:100%;font:inherit;color:inherit;text-align:left}.ma-switch input:focus-visible+span{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-table tr[data-history-id]{cursor:pointer}.ma-table tr[data-history-id]:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:-3px}.ma-busy{pointer-events:auto;opacity:1}.ma-busy .ma-nav,.ma-busy .ma-view{pointer-events:none}.ma-busy .ma-view{opacity:.58}.ma-busy-status{position:sticky;top:0;z-index:4;min-height:36px;padding:8px 12px;display:none;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:12px;font-weight:750}.ma-busy .ma-busy-status{display:flex}.ma-busy::after{display:none}`;
+    const UX_CSS = `[hidden]{display:none!important}.ma-list-item,.ma-review-card{width:100%;font:inherit;color:inherit;text-align:left}.ma-switch input:focus-visible+span{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-table tr[data-history-id]{cursor:pointer}.ma-table tr[data-history-id]:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:-3px}.ma-busy{pointer-events:auto;opacity:1}.ma-busy .ma-nav,.ma-busy .ma-view{pointer-events:none}.ma-busy .ma-view{opacity:.58}.ma-busy-status{position:sticky;top:0;z-index:4;min-height:36px;padding:8px 12px;display:none;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:12px;font-weight:750}.ma-busy .ma-busy-status{display:flex}.ma-busy::after{display:none}.ma-message-list-shell,.ma-message-list-controls,.ma-message-list-controls .ma-card__body,.ma-message-list-controls .ma-stack,.ma-message-list-controls .ma-field,.ma-message-list-shell>.ma-list,.ma-message-list__item,.ma-message-list__item .ma-list-item__body{min-width:0;max-width:100%}.ma-message-list-shell,.ma-message-list-controls .ma-card__body,.ma-message-list-controls .ma-stack,.ma-message-list-controls .ma-field,.ma-message-list-shell>.ma-list{grid-template-columns:minmax(0,1fr)}.ma-message-list-controls .ma-select{min-width:0;max-width:100%}.ma-message-list__item .ma-disclosure__body{min-width:0;overflow-wrap:anywhere}.ma-message-list__item>[data-message-open-url]{flex:0 0 auto}`;
 
     const GLOBAL_CSS = `.mema-order-badge{margin-inline-start:8px;padding:3.2px 7.2px;border-radius:999px;display:inline-flex;align-items:center;font:700 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;vertical-align:middle}.mema-order-badge[data-status="draft"]{color:#2467d8;background:#eaf2ff}.mema-order-badge[data-status="inserted"]{color:#c35b12;background:#fff1e7}.mema-order-badge[data-status="sent_pending_verification"]{color:#8a4b08;background:#fff4d6}.mema-order-badge[data-status="sent"]{color:#178847;background:#eaf8ef}.mema-order-badge[data-status="error"]{color:#c23b3b;background:#ffeded}.mema-order-badge[data-status="skipped"]{color:#697386;background:#eeeeee}.mema-notify{position:fixed;top:16px;left:50%;z-index:2147483647;transform:translateX(-50%);width:min(360px,calc(100vw - 32px));display:grid;gap:8px;pointer-events:none;font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mema-note{--mema-note:#343a4a;min-height:44px;padding:10px 10px 10px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;color:#fff;background:var(--mema-note);box-shadow:0 8px 24px rgba(24,28,45,.18);opacity:0;transform:translateY(8px);transition:.18s ease;pointer-events:auto}.mema-note.is-on{opacity:1;transform:none}.mema-note[data-type="success"]{--mema-note:#178847}.mema-note[data-type="error"]{--mema-note:#c23b3b}.mema-note[data-type="warning"]{--mema-note:#a85710}.mema-note__mark{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;font-size:11px}.mema-note__text{min-width:0;flex:1;overflow-wrap:anywhere}.mema-note__close{width:28px;height:28px;border:0;border-radius:7px;display:grid;place-items:center;color:inherit;background:transparent;cursor:pointer;opacity:.72}.mema-note__close:hover{opacity:1;background:rgba(255,255,255,.14)}.mema-copy-buffer{position:fixed!important;inset:auto auto 0 -9999px!important;width:1px!important;height:1px!important;opacity:0!important}`;
 
@@ -1077,14 +1346,18 @@
     };
     const hashExactText = (text = '') => {
         let hash = 2166136261;
-        for (const char of String(text)) {
-            hash ^= char.charCodeAt(0);
+        const source = String(text);
+        for (let index = 0; index < source.length; index += 1) {
+            hash ^= source.charCodeAt(index);
             hash = Math.imul(hash, 16777619);
         }
         return (hash >>> 0).toString(36);
     };
     const icon = (name, extra = '') => `<svg class="ma-icon ${extra}" aria-hidden="true"><use href="#ma-i-${name}"></use></svg>`;
-    const langName = (code = 'und') => LANGUAGE_NAMES[String(code).toLowerCase().split('-')[0]] || String(code).toUpperCase();
+    const langName = (code = 'und') => {
+        const normalized = String(code).toLowerCase();
+        return LANGUAGE_NAMES[normalized] || LANGUAGE_NAMES[normalized.split('-')[0]] || String(code).toUpperCase();
+    };
     const SENTIMENT_LABELS = Object.freeze({ positive: 'Olumlu', neutral: 'Nötr', negative: 'Olumsuz' });
     const RISK_LABELS = Object.freeze({ low: 'Düşük', medium: 'Orta', high: 'Yüksek' });
     const INTENT_LABELS = Object.freeze({
@@ -2251,7 +2524,7 @@
                 prepared: events.filter((item) => new Date(item.createdAt).toDateString() === today && ['reply_generated', 'template_prepared'].includes(item.type)).length,
                 inserted: events.filter((item) => item.type === 'reply_inserted').length,
                 verified: events.filter((item) => item.type === 'send_verified').length,
-                failed: events.filter((item) => item.status === 'error').length,
+                failed: events.filter((item) => ['error', 'partial'].includes(item.status)).length,
                 translated: events.filter((item) => item.type === 'translated').length,
             };
         },
@@ -2259,6 +2532,22 @@
 
     const Translator = {
         cache: new Map(),
+        normalizedTarget(target = 'tr') {
+            const normalized = String(target || 'tr').trim().toLowerCase().replace(/_/g, '-');
+            return TRANSLATION_LANGUAGE_ALIASES[normalized] || normalized;
+        },
+        supportsTarget(provider, target) {
+            const normalized = this.normalizedTarget(target);
+            if (provider === 'google') return Object.prototype.hasOwnProperty.call(LANGUAGE_NAMES, normalized) && normalized !== 'und';
+            if (provider !== 'deepl') return false;
+            return Boolean(this.deeplTargetCode(normalized));
+        },
+        effectiveTarget(target = 'tr') {
+            const normalized = this.normalizedTarget(target);
+            return normalized === 'en'
+                ? (Store.settings.preferUsEnglish ? 'en-us' : 'en-gb')
+                : normalized;
+        },
         cachePolicyFingerprint(preferred) {
             if (preferred !== 'deepl') return preferred;
             const credential = String(Store.settings.deeplApiKey || '');
@@ -2272,30 +2561,47 @@
                 `credential:${credentialFingerprint}`,
             ].join(':');
         },
+        cacheKey(text, target = 'tr', options = {}) {
+            const sourceText = String(text ?? '').trim();
+            if (!sourceText) return '';
+            const preferred = String(options.provider || Store.settings.translator || 'google').toLowerCase();
+            const cachePolicy = this.cachePolicyFingerprint(preferred);
+            return `${this.effectiveTarget(target)}:${cachePolicy}:${sourceText.length}:${hashExactText(sourceText)}`;
+        },
+        cached(text, target = 'tr', options = {}) {
+            const key = this.cacheKey(text, target, options);
+            return key && this.cache.has(key) ? this.cache.get(key) : null;
+        },
         async translate(text, target = 'tr', options = {}) {
             const sourceText = String(text ?? '').trim();
             if (!sourceText) return { text: '', detectedLanguage: 'und', provider: 'none' };
-            const targetCode = String(target).toLowerCase();
+            const targetCode = this.normalizedTarget(target);
+            if (!this.supportsTarget('google', targetCode)) {
+                throw new Error(`${langName(targetCode)} geçerli bir çeviri hedef dili değil.`);
+            }
             const preferred = String(options.provider || Store.settings.translator || 'google').toLowerCase();
-            const effectiveTarget = targetCode.startsWith('en')
-                ? (Store.settings.preferUsEnglish ? 'en-us' : 'en')
-                : targetCode;
-            const cachePolicy = this.cachePolicyFingerprint(preferred);
-            const cacheKey = `${effectiveTarget}:${cachePolicy}:${sourceText.length}:${hashExactText(sourceText)}`;
+            const cacheKey = this.cacheKey(sourceText, targetCode, { ...options, provider: preferred });
             if (this.cache.has(cacheKey)) return this.cache.get(cacheKey);
 
             let result;
+            const unsupportedDeepL = preferred === 'deepl' && !this.supportsTarget('deepl', targetCode);
+            if (unsupportedDeepL && !Store.settings.freeFallback) {
+                const error = new Error(`DeepL ${langName(targetCode)} hedef dilini desteklemiyor. Google yedeğini etkinleştirin veya başka bir dil seçin.`);
+                error.code = 'TRANSLATION_TARGET_UNSUPPORTED';
+                throw error;
+            }
+            const primaryProvider = unsupportedDeepL ? 'google' : preferred;
             try {
                 try {
-                    if (preferred === 'deepl') result = await this.deepl(sourceText, targetCode);
+                    if (primaryProvider === 'deepl') result = await this.deepl(sourceText, targetCode);
                     else result = await this.google(sourceText, targetCode);
                 } catch (error) {
-                    if (!Store.settings.freeFallback || preferred === 'google') throw error;
+                    if (!Store.settings.freeFallback || primaryProvider !== 'deepl') throw error;
                     result = await this.google(sourceText, targetCode);
                 }
             } catch (error) {
                 const missingConfiguredKey = preferred === 'deepl' && !Store.settings.deeplApiKey && !Store.settings.freeFallback;
-                if (!missingConfiguredKey) void trackTelemetryError('provider_translation');
+                if (!missingConfiguredKey && error?.code !== 'TRANSLATION_TARGET_UNSUPPORTED') void trackTelemetryError('provider_translation');
                 throw error;
             }
 
@@ -2304,15 +2610,26 @@
                 this.cache.set(cacheKey, result);
                 if (this.cache.size > APP.cacheLimit) this.cache.delete(this.cache.keys().next().value);
             }
-            await History.log('translated', {
-                method: result.provider,
-                status: 'completed',
-                detail: { target: targetCode, detectedLanguage: result.detectedLanguage, characters: sourceText.length },
-            });
+            if (options.logHistory !== false) {
+                await History.log('translated', {
+                    method: result.provider,
+                    status: 'completed',
+                    detail: { target: targetCode, detectedLanguage: result.detectedLanguage, characters: sourceText.length },
+                });
+            }
             return result;
         },
+        googleTargetCode(target) {
+            const normalized = this.normalizedTarget(target);
+            return normalized.split('-').map((part, index) => {
+                if (!index) return part;
+                if (part.length === 2 || /^\d{3}$/.test(part)) return part.toUpperCase();
+                if (part.length === 4) return `${part[0].toUpperCase()}${part.slice(1)}`;
+                return part;
+            }).join('-');
+        },
         async google(text, target) {
-            const googleTarget = target.startsWith('en') ? 'en' : target.split('-')[0];
+            const googleTarget = this.googleTargetCode(target);
             const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(googleTarget)}&dt=t&q=${encodeURIComponent(text)}`;
             const response = await GMX.request({ method: 'GET', url, timeout: 30000 });
             if (response.status && response.status >= 400) throw new Error(`Google çeviri hatası (${response.status}).`);
@@ -2321,10 +2638,21 @@
             if (!translated) throw new Error('Google çeviri yanıtı işlenemedi.');
             return { text: translated, detectedLanguage: String(data?.[2] || 'und').toLowerCase(), provider: 'google' };
         },
+        deeplTargetCode(target) {
+            const normalized = this.normalizedTarget(target);
+            const alias = ({
+                en: Store.settings.preferUsEnglish ? 'en-us' : 'en-gb',
+                pt: 'pt-br', no: 'nb', iw: 'he',
+                'zh-cn': 'zh-hans', 'zh-tw': 'zh-hant',
+            })[normalized] || normalized;
+            return DEEPL_TARGET_LANGUAGES.has(alias) ? alias.toUpperCase() : '';
+        },
         async deepl(text, target) {
+            const targetLang = this.deeplTargetCode(target);
+            if (!targetLang) {
+                throw new Error(`DeepL ${langName(target)} hedef dilini desteklemiyor. Google yedeğini etkinleştirin veya başka bir dil seçin.`);
+            }
             if (!Store.settings.deeplApiKey) throw new Error('DeepL API anahtarı ayarlanmamış.');
-            const map = { tr: 'TR', en: Store.settings.preferUsEnglish ? 'EN-US' : 'EN', es: 'ES', fr: 'FR', de: 'DE', it: 'IT', pt: 'PT-PT', nl: 'NL', pl: 'PL', ru: 'RU', ja: 'JA', ko: 'KO', zh: 'ZH-HANS' };
-            const targetLang = map[target.split('-')[0]] || target.toUpperCase();
             const url = Store.settings.deeplPro ? 'https://api.deepl.com/v2/translate' : 'https://api-free.deepl.com/v2/translate';
             const body = new URLSearchParams({ auth_key: Store.settings.deeplApiKey, text, target_lang: targetLang }).toString();
             const response = await GMX.request({ method: 'POST', url, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, data: body, timeout: 30000 });
@@ -2888,7 +3216,7 @@
     const MESSAGE_LIST_SEGMENTS = new Set([
         'all', 'archive', 'archived', 'custom_requests', 'etsy_notifications',
         'from_potential_buyers', 'inbox', 'order_help_requests', 'spam', 'starred',
-        'sent', 'trash', 'unread',
+        'sent', 'trash', 'unread', 'with',
     ]);
 
     const Router = {
@@ -2899,26 +3227,66 @@
             if (document.querySelector('.dashboard-activity-item') || /^\/your\/shops\/[^/]+\/dashboard\/activity(?:\/|$)/.test(path)) return 'reviews';
             return 'unknown';
         },
+        decodeConversationId(value) {
+            let decoded = String(value || '');
+            for (let pass = 0; pass < 4; pass += 1) {
+                try {
+                    const next = decodeURIComponent(decoded);
+                    if (next === decoded) break;
+                    decoded = next;
+                } catch { return ''; }
+            }
+            decoded = decoded.normalize('NFKC').trim();
+            if (!decoded || decoded.length > 512 || /%[\da-f]{2}|[\/\\?#\u0000-\u001f\u007f]/i.test(decoded)) return '';
+            if (MESSAGE_LIST_SEGMENTS.has(decoded.toLowerCase())) return '';
+            return decoded;
+        },
+        conversationIdentityFromId(value) {
+            return String(value || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+        },
         conversationIdFromUrl(value = location.href) {
             try {
                 const url = new URL(value, location.href);
                 const parts = url.pathname.split('/').filter(Boolean);
-                let raw = url.searchParams.get('conversation_id') || '';
-                if (!raw && parts[0]?.toLowerCase() === 'messages') {
-                    const candidate = parts[1] || '';
-                    raw = MESSAGE_LIST_SEGMENTS.has(candidate.toLowerCase()) ? '' : candidate;
+                const root = parts[0]?.toLowerCase();
+                if (!['messages', 'conversations'].includes(root)) return '';
+                const queryValues = url.searchParams.getAll('conversation_id');
+                if (queryValues.length > 1) return '';
+                const queryPresent = queryValues.length === 1;
+                const queryId = this.decodeConversationId(queryValues[0] || '');
+                if (queryPresent && !queryId) return '';
+                let pathId = '';
+                if (root === 'messages') {
+                    if (parts.length === 1) {
+                        if (!queryPresent) return '';
+                    } else if (parts.length === 2) {
+                        pathId = this.decodeConversationId(parts[1]);
+                        if (!pathId) return '';
+                    } else return '';
                 }
-                if (!raw && parts[0]?.toLowerCase() === 'conversations') {
-                    raw = parts[1]?.toLowerCase() === 'with' ? parts[2] || '' : parts[1] || '';
+                if (root === 'conversations') {
+                    if (parts.length === 2 && parts[1]?.toLowerCase() !== 'with') {
+                        pathId = this.decodeConversationId(parts[1]);
+                    } else if (parts.length === 3 && parts[1]?.toLowerCase() === 'with') {
+                        pathId = this.decodeConversationId(parts[2]);
+                    } else return '';
+                    if (!pathId) return '';
                 }
-                try { return decodeURIComponent(raw); } catch { return raw; }
+                if (queryId && pathId
+                    && this.conversationIdentityFromId(queryId) !== this.conversationIdentityFromId(pathId)) return '';
+                return queryId || pathId;
             } catch { return ''; }
         },
         conversationIdentity(value = location.href) {
-            return this.conversationIdFromUrl(value).normalize('NFKC').trim().toLocaleLowerCase('en-US');
+            return this.conversationIdentityFromId(this.conversationIdFromUrl(value));
         },
         conversationId() {
             return this.conversationIdFromUrl(location.href);
+        },
+        isMessageListPage() {
+            return this.page() === 'messages'
+                && !this.conversationId()
+                && /^\/messages(?:\/all)?\/?$/i.test(location.pathname);
         },
         isCompletedOrdersPage() {
             return /^\/your\/orders\/sold\/completed(?:\/|$)/i.test(location.pathname);
@@ -2933,9 +3301,31 @@
             const page = this.page();
             const route = this.routeFingerprint();
             if (page === 'messages') {
+                if (this.isMessageListPage()) {
+                    try {
+                        const seen = new Set();
+                        const items = [];
+                        for (const item of MessageCenterAgent.scanConversationList()) {
+                            const conversationUrl = MessageCenterAgent.canonicalConversationUrl(item?.conversationUrl || '');
+                            const identity = Router.conversationIdentity(conversationUrl || '');
+                            if (!conversationUrl || !identity || seen.has(identity)) continue;
+                            seen.add(identity);
+                            items.push({ ...item, conversationUrl });
+                            if (items.length >= MESSAGE_LIST_UI_LIMIT) break;
+                        }
+                        const signature = items.map(item => [
+                            Router.conversationIdentity(item.conversationUrl),
+                            item.conversationUrl,
+                            item.buyerName || '',
+                            item.unread ? 1 : 0,
+                            hashExactText(item.preview || ''),
+                        ].join(':')).join('|');
+                        return `${route}|list|${items.length}|${hashExactText(signature)}`;
+                    } catch { return `${route}|list|unavailable`; }
+                }
                 const messages = MessageAdapter.getMessages();
                 const last = messages[messages.length - 1];
-                return `${route}|${messages.length}|${hashText(last?.text || '')}|${MessageAdapter.getTextarea() ? 1 : 0}`;
+                return `${route}|${messages.length}|${hashExactText(last?.text || '')}|${MessageAdapter.getTextarea() ? 1 : 0}`;
             }
             if (page === 'orders') {
                 const rows = document.querySelectorAll('section.order-group-list .panel-body-row, .panel-body-row');
@@ -2946,7 +3336,7 @@
             if (page === 'reviews') {
                 const cards = document.querySelectorAll('.dashboard-activity-item');
                 const last = cards[cards.length - 1];
-                return `${route}|${cards.length}|${hashText(last?.textContent || '')}`;
+                return `${route}|${cards.length}|${hashExactText(last?.textContent || '')}`;
             }
             return route;
         },
@@ -3085,7 +3475,7 @@
                 const bubbleClasses = bubble.className || '';
                 const outgoing = /justify-content-flex-end/.test(rowClasses) || /surface-informational-subtle/.test(bubbleClasses);
                 const text = trimmedMessageText(bubble.innerText || bubble.textContent || '');
-                return text ? { id: bubble.id || `msg-${index}-${hashText(text)}`, role: outgoing ? 'seller' : 'customer', text } : null;
+                return text ? { id: bubble.id || `msg-${index}-${hashExactText(text)}`, role: outgoing ? 'seller' : 'customer', text } : null;
             }).filter(Boolean);
         },
         getBuyerName(resolvedScope = null) {
@@ -3367,12 +3757,36 @@
         canonicalConversationUrl(value) {
             try {
                 const url = new URL(value, location.href);
-                if (url.protocol !== 'https:' || url.hostname !== 'www.etsy.com') return '';
+                if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return '';
                 const id = Router.conversationIdFromUrl(url.href);
                 if (!id) return '';
+                const parts = url.pathname.split('/').filter(Boolean);
+                const root = parts[0]?.toLowerCase();
+                const validMessagesPath = root === 'messages'
+                    && (parts.length === 1 ? url.searchParams.has('conversation_id') : parts.length === 2);
+                const validConversationsPath = root === 'conversations'
+                    && ((parts.length === 2 && parts[1]?.toLowerCase() !== 'with')
+                        || (parts[1]?.toLowerCase() === 'with' && parts.length === 3));
+                if (!validMessagesPath && !validConversationsPath) return '';
                 url.hash = '';
                 return url.href;
             } catch { return ''; }
+        },
+        listElementIsVisible(element) {
+            if (!element) return false;
+            for (let current = element; current; current = current.parentElement) {
+                if (current.hidden || current.getAttribute?.('aria-hidden') === 'true') return false;
+                const inlineDisplay = String(current.style?.display || '').toLowerCase();
+                const inlineVisibility = String(current.style?.visibility || '').toLowerCase();
+                if (inlineDisplay === 'none' || ['hidden', 'collapse'].includes(inlineVisibility)) return false;
+                try {
+                    const computed = typeof getComputedStyle === 'function' ? getComputedStyle(current) : null;
+                    if (computed?.display === 'none' || ['hidden', 'collapse'].includes(computed?.visibility)) return false;
+                } catch { /* non-Element test doubles */ }
+            }
+            if (typeof element.getClientRects === 'function') return element.getClientRects().length > 0;
+            if ('offsetParent' in element) return element.offsetParent !== null;
+            return true;
         },
         extractTime(scope) {
             if (!scope) return '';
@@ -3390,7 +3804,13 @@
         conversationScope(anchor) {
             if (!anchor) return null;
             const direct = anchor.closest('li, [role="listitem"], [data-conversation-id], [data-message-thread-id]');
-            if (direct) return direct;
+            if (direct) {
+                const identities = new Set([...direct.querySelectorAll?.('a[href*="/messages/"], a[href*="/conversations/"]') || []]
+                    .map(link => Router.conversationIdentity(link.href))
+                    .filter(Boolean));
+                if (identities.size > 1) return null;
+                return direct;
+            }
             let current = anchor;
             for (let depth = 0; depth < 6 && current?.parentElement; depth += 1) {
                 current = current.parentElement;
@@ -3402,7 +3822,7 @@
             return anchor.parentElement;
         },
         buyerNameFromScope(scope, anchor) {
-            const ignored = /^(messages?|conversations?|inbox|reply|send|etsy|mark as unread|mark unread)$/i;
+            const ignored = /^(messages?|conversations?|inbox|reply|send|etsy|unread|read|okunmadı|mark as unread|mark unread|\d+\s*(?:m|min|h|hr|d|day)s?\s*ago)$/i;
             const values = [
                 ...[...scope?.querySelectorAll?.('h1,h2,h3,h4,strong,[data-test-id*="name" i],[class*="buyer-name" i]') || []].map(el => normalize(el.textContent)),
                 normalize(anchor?.getAttribute?.('aria-label')),
@@ -3411,37 +3831,56 @@
             ].filter(value => value && value.length <= 90 && !ignored.test(value));
             return values.find(value => /[\p{L}\p{N}]/u.test(value)) || '';
         },
-        previewFromScope(scope, buyerName) {
-            const lines = String(scope?.innerText || '')
-                .split(/\n+/)
-                .map(normalize)
-                .filter(Boolean)
-                .filter(line => line !== buyerName)
-                .filter(line => !/^(unread|read|reply|mark as unread|mark unread|\d+\s*(?:m|min|h|hr|d|day)s?\s*ago)$/i.test(line))
-                .filter(line => line.length <= 320);
-            if (!lines.length) return '';
-            return lines.sort((a, b) => b.length - a.length)[0] || '';
+        previewFromScope(scope, buyerName, anchor = null) {
+            const isCandidate = (value) => {
+                const line = normalize(value);
+                if (!line || line === buyerName || line.length > 2000) return false;
+                return !/^(?:unread|read|read message|unread message|reply|mark as unread|mark unread|help request|from etsy|refunded|you have replied to this message|\d+\s*(?:m|min|h|hr|d|day)s?\s*ago)$/i.test(line);
+            };
+            const semanticNodes = [...anchor?.querySelectorAll?.('h1,h2,h3,h4,[data-test-id*="message" i],[data-test-id*="preview" i],[class*="message-preview" i]') || []];
+            const semantic = semanticNodes
+                .filter(node => this.listElementIsVisible(node))
+                .map(node => normalize(node.innerText || node.textContent || ''))
+                .filter(isCandidate);
+            if (semantic.length) return semantic.sort((a, b) => b.length - a.length)[0] || '';
+
+            for (const source of [anchor?.innerText, scope?.innerText]) {
+                const lines = String(source || '')
+                    .split(/\n+/)
+                    .map(normalize)
+                    .filter(isCandidate)
+                    .filter(line => !/^select this conversation\b/i.test(line));
+                if (lines.length) return lines.sort((a, b) => b.length - a.length)[0] || '';
+            }
+            return '';
         },
         scanConversationList() {
             if (Router.page() !== 'messages') return [];
             const anchors = [...document.querySelectorAll('a[href*="/messages/"], a[href*="/conversations/"]')];
             const items = new Map();
             for (const anchor of anchors) {
+                if (!this.listElementIsVisible(anchor)) continue;
                 const conversationId = Router.conversationIdFromUrl(anchor.href);
                 const identity = Router.conversationIdentity(anchor.href);
                 if (!conversationId || !identity) continue;
                 const url = this.canonicalConversationUrl(anchor.href);
                 if (!url) continue;
                 const scope = this.conversationScope(anchor);
-                if (!scope) continue;
+                if (!scope || !this.listElementIsVisible(scope)) continue;
                 const buyerName = this.buyerNameFromScope(scope, anchor);
-                const preview = this.previewFromScope(scope, buyerName);
+                const preview = this.previewFromScope(scope, buyerName, anchor);
                 const text = normalize(scope.innerText || scope.textContent || '');
                 const classText = `${scope.className || ''} ${anchor.className || ''}`;
+                const ariaUnread = [...scope.querySelectorAll?.('[aria-label]') || []].some(element => {
+                    const label = normalize(element.getAttribute?.('aria-label'));
+                    return /^(?:unread|okunmadı)(?:\b|$)/i.test(label)
+                        && !/^(?:mark|işaretle)/i.test(label);
+                });
                 const unread = Boolean(
-                    scope.querySelector?.('[aria-label*="unread" i],[data-unread="true"],[class*="unread" i]')
-                    || /\bunread\b/i.test(classText)
-                    || /\bunread\b/i.test(text)
+                    scope.querySelector?.('[data-unread="true"]')
+                    || ariaUnread
+                    || /(?:^|\s)(?:is-)?unread(?:\s|$)/i.test(classText)
+                    || String(scope.innerText || '').split(/\n+/).some(line => /^(?:unread|okunmadı)$/i.test(normalize(line)))
                 );
                 const orderId = text.match(/#(\d{8,})/)?.[1] || '';
                 const lastMessageAt = this.extractTime(scope);
@@ -3457,7 +3896,22 @@
                     messages: [],
                     hydrated: false,
                 };
-                if (!existing || candidate.preview.length > existing.preview.length) items.set(identity, candidate);
+                if (!existing) items.set(identity, candidate);
+                else {
+                    const preferCandidatePreview = candidate.preview.length > existing.preview.length;
+                    const newerTimestamp = [existing.lastMessageAt, candidate.lastMessageAt]
+                        .filter(Boolean).sort().at(-1) || '';
+                    items.set(identity, {
+                        ...existing,
+                        buyerName: existing.buyerName === 'Müşteri' && candidate.buyerName !== 'Müşteri'
+                            ? candidate.buyerName
+                            : existing.buyerName,
+                        orderId: existing.orderId || candidate.orderId,
+                        unread: existing.unread || candidate.unread,
+                        preview: preferCandidatePreview ? candidate.preview : existing.preview,
+                        ...(newerTimestamp ? { lastMessageAt: newerTimestamp } : {}),
+                    });
+                }
             }
             return [...items.values()].slice(0, 200);
         },
@@ -3689,7 +4143,9 @@
             await this.assertRunOwned(run);
             const record = (await this.sentLedger(run.binding))[job.id];
             if (!record) return false;
-            const expected = Router.conversationIdentity(job.conversationUrl || '');
+            const canonicalConversationUrl = this.canonicalConversationUrl(job.conversationUrl || '');
+            if (!canonicalConversationUrl) return false;
+            const expected = Router.conversationIdentity(canonicalConversationUrl);
             const recordedIdentity = record.conversationIdentity
                 || String(record.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
             return (!record.configId || record.configId === run.configId)
@@ -3723,8 +4179,10 @@
             return 'navigating';
         },
         jobConversationMatches(job) {
-            const expected = Router.conversationIdentity(job.conversationUrl || '');
-            return Boolean(expected) && expected === Router.conversationIdentity();
+            const expectedUrl = this.canonicalConversationUrl(job.conversationUrl || '');
+            const currentUrl = this.canonicalConversationUrl(location.href);
+            if (!expectedUrl || !currentUrl) return false;
+            return Router.conversationIdentity(expectedUrl) === Router.conversationIdentity(currentUrl);
         },
         async assertActionCurrent(run, job, { textarea = null, button = null } = {}) {
             await this.assertRunOwned(run);
@@ -4090,7 +4548,7 @@
         },
         fromCard(card, index) {
             const reviewLink = card.querySelector('a[href*="/reviews/"]');
-            const id = reviewLink?.href.match(/\/reviews\/(\d+)/)?.[1] || `review-${index}-${hashText(card.textContent)}`;
+            const id = reviewLink?.href.match(/\/reviews\/(\d+)/)?.[1] || `review-${index}-${hashExactText(card.textContent)}`;
             const customerName = normalize(card.querySelector('h4 a[href*="/people/"]')?.textContent || card.querySelector('h4 a')?.textContent);
             const itemTitle = normalize(card.querySelector('p.wt-mb-xs-2.wt-text-body-small')?.textContent);
             const ratingLabel = card.querySelector('[aria-label^="Rating:" i]')?.getAttribute('aria-label') || '';
@@ -5260,6 +5718,7 @@
                 conversationIdentity: claim.route.conversationIdentity,
                 routeFingerprint: claim.route.routeFingerprint,
                 messageHash: claim.messageHash,
+                liveMessageHash: hashExactText(messageText),
                 dispatchObserved: false,
             };
             let claimReleased = false;
@@ -5274,7 +5733,7 @@
                 || Router.conversationIdentity(location.href) !== run.conversationIdentity
                 || Router.routeFingerprint() !== run.routeFingerprint
                 || Router.conversationIdentity(item.messageUrl) !== run.conversationIdentity
-                || hashText(currentText) !== run.messageHash
+                || hashExactText(currentText) !== run.liveMessageHash
                 || !MessageAdapter.getSendButton()) {
                 await releaseClaim();
                 throw new Error('Konuşma veya hazırlanan metin değişti. Etsy Gönder düğmesine basılmadı.');
@@ -5553,6 +6012,7 @@
             if (!this.runIsCurrent(run, 'inserted')) return false;
             const messageHash = hashText(finalText);
             run.messageHash = messageHash;
+            run.liveMessageHash = hashExactText(finalText);
             const prepared = await withCampaignCoordinator(() => Store.transitionOrderOutreachLocked(item.orderId, item.purpose, {
                 expect: (order, outreach) => ['draft', 'inserted'].includes(order?.status)
                     && order.campaignId === run.campaignId
@@ -5619,7 +6079,7 @@
                         || Router.conversationIdentity() !== run.conversationIdentity
                         || Router.conversationIdentity(persistedItem.messageUrl) !== run.conversationIdentity
                         || Router.routeFingerprint() !== run.routeFingerprint
-                        || hashText(String(MessageAdapter.getTextarea()?.value || '').trim()) !== run.messageHash
+                        || hashExactText(String(MessageAdapter.getTextarea()?.value || '').trim()) !== run.liveMessageHash
                         || !MessageAdapter.getSendButton()) return false;
                     const attemptedAt = nowIso();
                     const statusAttempt = await Store.beginSendAttemptLocked(
@@ -5677,7 +6137,7 @@
                         && Router.conversationIdentity() === run.conversationIdentity
                         && Router.conversationIdentity(savedItem.messageUrl) === run.conversationIdentity
                         && Router.routeFingerprint() === run.routeFingerprint
-                        && hashText(currentText) === run.messageHash
+                        && hashExactText(currentText) === run.liveMessageHash
                         && Boolean(button);
                     if (!finalPreflight) {
                         if (!await this.rollbackSendAttemptLocked(attempt)) {
@@ -5936,13 +6396,17 @@
             reviewAnalysis: null,
             reviewAnalysisBinding: null,
             historyDetailId: '',
+            messageListTranslations: new Map(),
+            messageListTranslationStatus: { phase: 'idle', signature: '', target: '', total: 0, completed: 0, failed: 0, error: '' },
         },
         messageWorkGeneration: 0,
+        messageListWorkGeneration: 0,
+        messageListBusyGeneration: 0,
         reviewWorkGeneration: 0,
         messageContextChanged(context, previous = this.state.context) {
             return context.conversationId !== (previous?.conversationId || '')
                 || (context.routeFingerprint || Router.routeFingerprint()) !== (previous?.routeFingerprint || '')
-                || hashText(context.lastCustomerMessage || '') !== hashText(previous?.lastCustomerMessage || '');
+                || hashExactText(context.lastCustomerMessage || '') !== hashExactText(previous?.lastCustomerMessage || '');
         },
         adoptMessageContext(context, previous = this.state.context) {
             const changed = this.messageContextChanged(context, previous);
@@ -5955,7 +6419,7 @@
                 generation: ++this.messageWorkGeneration,
                 conversationId: context.conversationId || '',
                 routeFingerprint: context.routeFingerprint || Router.routeFingerprint(),
-                messageHash: hashText(context.lastCustomerMessage || ''),
+                messageHash: hashExactText(context.lastCustomerMessage || ''),
             };
         },
         invalidateMessageWork() {
@@ -5969,13 +6433,208 @@
         },
         messageWorkIsCurrent(binding) {
             if (!binding || binding.generation !== this.messageWorkGeneration || !this.messageRouteIsCurrent(binding)) return false;
-            return binding.messageHash === hashText(MessageAdapter.context().lastCustomerMessage || '');
+            return binding.messageHash === hashExactText(MessageAdapter.context().lastCustomerMessage || '');
+        },
+        messageListItems() {
+            if (!Router.isMessageListPage()) return [];
+            const seen = new Set();
+            const items = [];
+            for (const raw of MessageCenterAgent.scanConversationList()) {
+                const conversationUrl = MessageCenterAgent.canonicalConversationUrl(raw?.conversationUrl || '');
+                const conversationId = Router.conversationIdentity(conversationUrl || '');
+                if (!conversationUrl || !conversationId || seen.has(conversationId)) continue;
+                seen.add(conversationId);
+                items.push({
+                    conversationId,
+                    conversationUrl,
+                    buyerName: String(raw?.buyerName || 'Etsy kullanıcısı').trim() || 'Etsy kullanıcısı',
+                    preview: String(raw?.preview || '').trim(),
+                    unread: raw?.unread === true,
+                    timestamp: String(raw?.timestamp || ''),
+                });
+                if (items.length >= MESSAGE_LIST_UI_LIMIT) break;
+            }
+            return items;
+        },
+        messageListTranslationKey(item, target = Store.settings.previewLanguage || 'tr', policyOverride = '') {
+            const preview = String(item?.preview || '').trim();
+            if (!preview) return '';
+            const provider = String(Store.settings.translator || 'google').toLowerCase();
+            const policy = policyOverride || Translator.cachePolicyFingerprint(provider);
+            return `${Translator.effectiveTarget(target)}:${policy}:${item.conversationId}:${preview.length}:${hashExactText(preview)}`;
+        },
+        messageListTranslationFor(item, target = Store.settings.previewLanguage || 'tr', { forBatch = false } = {}) {
+            const preview = String(item?.preview || '').trim();
+            if (!preview) return null;
+            const shared = Translator.cached(preview, target);
+            if (shared) return shared;
+            const local = this.state.messageListTranslations.get(this.messageListTranslationKey(item, target)) || null;
+            return forBatch && local?.retryPreferredProvider ? null : local;
+        },
+        messageListSignature(items, target = Store.settings.previewLanguage || 'tr') {
+            const provider = String(Store.settings.translator || 'google');
+            const policy = Translator.cachePolicyFingerprint(provider);
+            return `${Router.routeFingerprint()}|${Translator.effectiveTarget(target)}|${policy}|${items.map(item => [
+                item.conversationId,
+                item.conversationUrl,
+                item.buyerName,
+                item.unread ? 1 : 0,
+                item.preview.length,
+                hashExactText(item.preview),
+            ].join(':')).join('|')}`;
+        },
+        messageListWorkIsCurrent(work) {
+            return Boolean(work
+                && work.generation === this.messageListWorkGeneration
+                && Router.isMessageListPage()
+                && work.routeFingerprint === Router.routeFingerprint()
+                && work.target === Translator.effectiveTarget(Store.settings.previewLanguage || 'tr')
+                && work.policy === Translator.cachePolicyFingerprint(String(Store.settings.translator || 'google').toLowerCase()));
+        },
+        invalidateMessageListWork({ resetStatus = false } = {}) {
+            this.messageListWorkGeneration += 1;
+            if (this.app && this.messageListBusyGeneration) this.setBusy(false);
+            this.messageListBusyGeneration = 0;
+            if (resetStatus) {
+                this.state.messageListTranslationStatus = { phase: 'idle', signature: '', target: '', total: 0, completed: 0, failed: 0, error: '' };
+            }
+        },
+        async translateMessageListPreviews({ auto = false } = {}) {
+            if (!Router.isMessageListPage()) return false;
+            const items = this.messageListItems().filter(item => item.preview);
+            const target = Translator.normalizedTarget(Store.settings.previewLanguage || 'tr');
+            const signature = this.messageListSignature(items, target);
+            const preferred = String(Store.settings.translator || 'google').toLowerCase();
+            if (preferred === 'deepl' && !Translator.supportsTarget('deepl', target) && !Store.settings.freeFallback) {
+                this.invalidateMessageListWork();
+                this.state.messageListTranslationStatus = {
+                    phase: 'blocked', signature, target, total: items.length,
+                    completed: 0, failed: 0, error: '',
+                };
+                if (this.view) this.render();
+                return false;
+            }
+            const previousStatus = this.state.messageListTranslationStatus;
+            if (auto && previousStatus.signature === signature && ['loading', 'success', 'partial', 'error', 'blocked'].includes(previousStatus.phase)) return true;
+
+            const work = {
+                generation: ++this.messageListWorkGeneration,
+                routeFingerprint: Router.routeFingerprint(),
+                target: Translator.effectiveTarget(target),
+                preferred,
+                policy: Translator.cachePolicyFingerprint(preferred),
+                signature,
+            };
+            const pendingByCacheKey = new Map();
+            let completed = 0;
+            for (const item of items) {
+                if (this.messageListTranslationFor(item, target, { forBatch: true })) completed += 1;
+                else {
+                    const cacheKey = Translator.cacheKey(item.preview, target);
+                    const group = pendingByCacheKey.get(cacheKey) || { preview: item.preview, items: [] };
+                    group.items.push(item);
+                    pendingByCacheKey.set(cacheKey, group);
+                }
+            }
+            const pending = [...pendingByCacheKey.values()];
+            this.state.messageListTranslationStatus = {
+                phase: pending.length ? 'loading' : 'success', signature, target,
+                total: items.length, completed, failed: 0, error: '',
+            };
+            if (this.app) {
+                this.messageListBusyGeneration = pending.length ? work.generation : 0;
+                this.setBusy(Boolean(pending.length));
+            }
+            if (this.view) this.render();
+            if (!pending.length) return true;
+
+            let failed = 0;
+            let lastError = '';
+            let cursor = 0;
+            let batchCompleted = 0;
+            let requestCount = 0;
+            let requestCharacters = 0;
+            const batchProviders = new Set();
+            const worker = async () => {
+                while (cursor < pending.length) {
+                    const index = cursor;
+                    cursor += 1;
+                    const group = pending[index];
+                    let result = null;
+                    let errorMessage = '';
+                    requestCount += 1;
+                    requestCharacters += group.preview.length;
+                    try {
+                        result = await Translator.translate(group.preview, target, { logHistory: false });
+                    } catch (error) {
+                        errorMessage = error?.message || 'Çeviri sağlayıcısı önizlemeyi çeviremedi.';
+                    }
+                    if (!this.messageListWorkIsCurrent(work)) return;
+                    if (result?.text) {
+                        const retryPreferredProvider = work.preferred === 'deepl'
+                            && result.provider !== 'deepl'
+                            && Translator.supportsTarget('deepl', target);
+                        const localResult = retryPreferredProvider
+                            ? { ...result, retryPreferredProvider: true }
+                            : result;
+                        for (const item of group.items) {
+                            this.state.messageListTranslations.set(this.messageListTranslationKey(item, target, work.policy), localResult);
+                        }
+                        while (this.state.messageListTranslations.size > APP.cacheLimit) {
+                            this.state.messageListTranslations.delete(this.state.messageListTranslations.keys().next().value);
+                        }
+                        completed += group.items.length;
+                        batchCompleted += group.items.length;
+                        batchProviders.add(result.provider || 'unknown');
+                    } else {
+                        failed += group.items.length;
+                        lastError = errorMessage || lastError;
+                    }
+                    this.state.messageListTranslationStatus = {
+                        phase: 'loading', signature, target, total: items.length,
+                        completed, failed, error: lastError,
+                    };
+                    if (this.view) this.render();
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(3, pending.length) }, () => worker()));
+            if (!this.messageListWorkIsCurrent(work)) {
+                if (this.app && this.messageListBusyGeneration === work.generation) {
+                    this.messageListBusyGeneration = 0;
+                    this.setBusy(false);
+                }
+                return false;
+            }
+            this.state.messageListTranslationStatus = {
+                phase: failed ? (completed ? 'partial' : 'error') : 'success',
+                signature, target, total: items.length, completed, failed, error: lastError,
+            };
+            if (this.app && this.messageListBusyGeneration === work.generation) {
+                this.messageListBusyGeneration = 0;
+                this.setBusy(false);
+            }
+            if (this.view) this.render();
+            try {
+                await History.log('translated', {
+                    source: 'messages',
+                    method: [...batchProviders].sort().join('+') || String(Store.settings.translator || 'google'),
+                    status: failed ? (batchCompleted ? 'partial' : 'error') : 'completed',
+                    title: failed
+                        ? (batchCompleted ? 'Konuşma listesi önizlemeleri kısmen çevrildi' : 'Konuşma listesi önizleme çevirisi başarısız')
+                        : 'Konuşma listesi önizlemeleri çevrildi',
+                    detail: { target, previews: batchCompleted, failed, requests: requestCount, characters: requestCharacters },
+                });
+            } catch (error) {
+                console.error(`[${APP.id}] Konuşma listesi çeviri geçmişi kaydedilemedi.`, error);
+            }
+            if (!auto && failed) this.toast(`${failed} önizleme çevrilemedi. Orijinal metinler korunuyor.`, 'warning', 6000);
+            return failed === 0;
         },
         messageContextMatchesBinding(context, binding = this.state.replyBinding) {
             if (!context || !this.messageRouteIsCurrent(binding)) return false;
             return context.conversationId === binding.conversationId
                 && (context.routeFingerprint || Router.routeFingerprint()) === binding.routeFingerprint
-                && binding.messageHash === hashText(context.lastCustomerMessage || '');
+                && binding.messageHash === hashExactText(context.lastCustomerMessage || '');
         },
         replyIsCurrent(binding = this.state.replyBinding) {
             return this.messageContextMatchesBinding(MessageAdapter.context(), binding);
@@ -5984,7 +6643,7 @@
             return {
                 generation: ++this.reviewWorkGeneration,
                 reviewId: review?.id || '',
-                reviewHash: hashText(review?.text || ''),
+                reviewHash: hashExactText(review?.text || ''),
                 routeFingerprint: Router.routeFingerprint(),
             };
         },
@@ -5995,13 +6654,13 @@
             if (!binding || binding.generation !== this.reviewWorkGeneration) return false;
             if (binding.routeFingerprint !== Router.routeFingerprint() || binding.reviewId !== this.state.selectedReviewId) return false;
             const review = this.state.reviews.find(item => item.id === binding.reviewId);
-            return Boolean(review && binding.reviewHash === hashText(review.text || ''));
+            return Boolean(review && binding.reviewHash === hashExactText(review.text || ''));
         },
         reviewAnalysisIsCurrent(review) {
             const binding = this.state.reviewAnalysisBinding;
             return Boolean(review && binding
                 && binding.reviewId === review.id
-                && binding.reviewHash === hashText(review.text || '')
+                && binding.reviewHash === hashExactText(review.text || '')
                 && binding.routeFingerprint === Router.routeFingerprint());
         },
         selectReview(reviewId) {
@@ -6155,6 +6814,8 @@
         open(page = this.state.page) {
             this.state.open = true;
             this.state.page = page;
+            // Rota değişmişse eski konuşmanın taslak/gönderim kontrollerini bir kare bile göstermeyin.
+            this.render();
             const launcher = this.shadow.querySelector('.ma-launcher');
             this.app.classList.remove('ma-hidden');
             this.app.setAttribute('aria-hidden', 'false');
@@ -6186,6 +6847,19 @@
             this.render();
         },
         async refreshMessages() {
+            if (Router.isMessageListPage()) {
+                this.invalidateMessageWork();
+                this.state.context = null;
+                this.state.reply = null;
+                this.state.replyBinding = null;
+                if (Store.settings.autoTurkishPreview) {
+                    await this.translateMessageListPreviews({ auto: true });
+                } else {
+                    this.invalidateMessageListWork({ resetStatus: true });
+                }
+                return true;
+            }
+            this.invalidateMessageListWork({ resetStatus: true });
             const context = MessageAdapter.context();
             const previous = this.state.context;
             const routeChanged = context.conversationId !== (previous?.conversationId || '')
@@ -6247,7 +6921,7 @@
             this.state.reviews = ReviewsAdapter.scan();
             const selected = this.state.reviews.find(review => review.id === previousId) || this.state.reviews[0] || null;
             const changed = selected?.id !== previousId
-                || (selected && previous && hashText(selected.text || '') !== hashText(previous.text || ''));
+                || (selected && previous && hashExactText(selected.text || '') !== hashExactText(previous.text || ''));
             this.state.selectedReviewId = selected?.id || '';
             if (changed || !this.reviewAnalysisIsCurrent(selected)) {
                 this.invalidateReviewWork();
@@ -6292,7 +6966,60 @@
         renderUnknown() {
             return `${this.renderHead('Bu sayfada doğrudan işlem yok', 'Asistan yalnız doğrulanmış mesaj, teslim edilmiş sipariş ve yorum bağlamlarında işlem yapar.')}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Ne yapmak istiyorsunuz?</h3><p>Doğru Etsy ekranını açın; Şablonlar, Geçmiş ve Ayarlar bölümlerini ise her sayfada kullanabilirsiniz.</p><div class="ma-actions"><button class="ma-btn" data-action="go-messages">Mesajlara Git</button><button class="ma-btn ma-btn--primary" data-action="go-orders">Teslim Edilenlere Git</button><button class="ma-btn" data-action="go-reviews">Yorumlara Git</button></div></div></div>`;
         },
+        renderMessageList() {
+            const items = this.messageListItems();
+            const target = Translator.normalizedTarget(Store.settings.previewLanguage || 'tr');
+            const preferred = String(Store.settings.translator || 'google').toLowerCase();
+            const deepLUnsupported = preferred === 'deepl' && !Translator.supportsTarget('deepl', target);
+            const canTranslate = !deepLUnsupported || Store.settings.freeFallback;
+            const signature = this.messageListSignature(items.filter(item => item.preview), target);
+            const status = this.state.messageListTranslationStatus?.signature === signature
+                ? this.state.messageListTranslationStatus
+                : { phase: 'idle', total: items.filter(item => item.preview).length, completed: 0, failed: 0, error: '' };
+            const languageOptions = Object.entries(GOOGLE_TRANSLATION_LANGUAGE_NAMES)
+                .sort((a, b) => a[1].localeCompare(b[1], 'tr'))
+                .map(([code, label]) => `<option value="${attr(code)}" ${code === target ? 'selected' : ''}>${html(label)} (${html(code)})</option>`)
+                .join('');
+            const providerNotice = deepLUnsupported
+                ? Store.settings.freeFallback
+                    ? `<div class="ma-notice ma-notice--info" role="status">${icon('globe')}<div>DeepL ${html(langName(target))} hedefini desteklemiyor; bu dil için etkin Google yedeği kullanılacak.</div></div>`
+                    : `<div class="ma-notice ma-notice--danger" role="alert">${icon('alert')}<div>DeepL ${html(langName(target))} hedefini desteklemiyor. Google yedeğini etkinleştirin veya başka bir dil seçin.</div></div>`
+                : '';
+            const progressNotice = status.phase === 'loading'
+                ? `<div class="ma-notice ma-notice--info" role="status" aria-live="polite">${icon('globe')}<div>Önizlemeler çevriliyor… ${status.completed}/${status.total}${status.failed ? ` · ${status.failed} başarısız` : ''}</div></div>`
+                : ['partial', 'error'].includes(status.phase)
+                    ? `<div class="ma-notice ${status.phase === 'error' ? 'ma-notice--danger' : ''}" role="status"><div><strong>${status.failed} önizleme çevrilemedi.</strong> Orijinal metinler korunuyor.${status.error ? `<br><span class="ma-small">${html(status.error)}</span>` : ''}</div></div>`
+                    : '';
+            const rows = items.map((item) => {
+                const translated = this.messageListTranslationFor(item, target);
+                const translatedText = String(translated?.text || '').trim();
+                const provider = translated?.provider === 'deepl' ? 'DeepL' : translated?.provider === 'google' ? 'Google' : '';
+                const preview = translatedText || item.preview || 'Mesaj önizlemesi yok';
+                const original = translatedText && item.preview
+                    ? `<details class="ma-disclosure"><summary>Orijinal mesajı göster</summary><div class="ma-disclosure__body"><div class="ma-small ma-muted">${html(item.preview)}</div></div></details>`
+                    : '';
+                return `<div class="ma-list-item ma-message-list__item">
+                    <div class="ma-list-item__body">
+                        <div class="ma-list-item__title">${html(item.buyerName)}</div>
+                        <div class="ma-list-item__desc">${html(preview)}</div>
+                        <div class="ma-pill-row">${item.unread ? '<span class="ma-pill ma-pill--primary">Okunmadı</span>' : ''}${provider ? `<span class="ma-pill">${provider}</span>` : ''}</div>
+                        ${original}
+                    </div>
+                    <button class="ma-btn ma-btn--small" type="button" data-message-open-url="${attr(item.conversationUrl)}" aria-label="${attr(`${item.buyerName} konuşmasını aç`)}">Aç</button>
+                </div>`;
+            }).join('');
+            return `${this.renderHead('Etsy konuşmaları', 'Bu liste Etsy sayfasındaki görünür konuşmaları yerel olarak okur; taslak oluşturmaz veya mesaj göndermez.')}
+                <div class="ma-stack ma-message-list-shell">
+                    <div class="ma-card ma-message-list-controls"><div class="ma-card__body ma-stack">
+                        <div class="ma-field"><label for="ma-message-list-language">Görüntüleme dili</label><select id="ma-message-list-language" class="ma-select" data-message-list-language>${languageOptions}</select><div class="ma-small ma-muted">Önizlemeler seçili çeviri motorunun desteklediği dillere çevrilir. Orijinal Etsy metni değiştirilmez.</div></div>
+                        <div class="ma-actions"><button class="ma-btn ma-btn--primary" type="button" data-action="message-list-translate" ${canTranslate && items.some(item => item.preview) ? '' : 'disabled'}>${icon('globe')}${status.phase === 'loading' ? 'Çevriliyor…' : status.failed ? 'Yeniden dene' : 'Önizlemeleri çevir'}</button><span class="ma-small ma-muted">En fazla ${MESSAGE_LIST_UI_LIMIT} görünür konuşma · ${items.length} bulundu</span></div>
+                        ${providerNotice}${progressNotice}
+                    </div></div>
+                    ${items.length ? `<div class="ma-list">${rows}</div>` : '<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Konuşma bulunamadı</h3><p>Etsy bu sayfada okunabilir bir konuşma satırı göstermedi. Sayfayı yenileyip tekrar deneyin.</p></div></div>'}
+                </div>`;
+        },
         renderMessages() {
+            if (Router.isMessageListPage()) return this.renderMessageList();
             const context = this.state.context || MessageAdapter.context();
             if (!context.conversationId) {
                 const onMessagesPage = Router.page() === 'messages';
@@ -6304,6 +7031,10 @@
             const analysis = this.state.analysis || Heuristics.analyze(original);
             const reply = this.state.reply || '';
             const language = this.state.targetLanguage || this.state.translation?.detectedLanguage || 'en';
+            const normalizedReplyLanguage = Translator.normalizedTarget(language);
+            const selectedReplyLanguage = GOOGLE_TRANSLATION_LANGUAGE_NAMES[normalizedReplyLanguage]
+                ? normalizedReplyLanguage
+                : normalizedReplyLanguage.split('-')[0];
             const campaign = Campaign.current();
             const activeTemplates = TemplateEngine.active();
             const primaryTag = analysis.tags?.[0] || { label: 'Genel Soru', color: 'info' };
@@ -6354,7 +7085,7 @@
                 </div>
                 <details class="ma-disclosure"><summary>${icon('settings')}Dil, ton ve ek talimat</summary><div class="ma-disclosure__body ma-options-grid">
                     <div><div class="ma-label-row"><strong>Ton</strong></div><div class="ma-tone-row">${[['friendly', 'Samimi'], ['professional', 'Profesyonel'], ['short', 'Kısa'], ['detailed', 'Detaylı']].map(([id, label]) => `<button type="button" class="ma-tone ${this.state.tone === id ? 'is-active' : ''}" data-tone="${id}" aria-pressed="${this.state.tone === id}">${label}</button>`).join('')}</div></div>
-                    <div class="ma-field"><label>Gönderilecek Dil</label><select class="ma-select" data-bind="targetLanguage">${Object.entries(LANGUAGE_NAMES).filter(([code]) => code !== 'und').map(([code, name]) => `<option value="${code}" ${language.split('-')[0] === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div>
+                    <div class="ma-field"><label>Gönderilecek Dil</label><select class="ma-select" data-bind="targetLanguage">${Object.entries(GOOGLE_TRANSLATION_LANGUAGE_NAMES).map(([code, name]) => `<option value="${code}" ${selectedReplyLanguage === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div>
                     <div class="ma-field"><label>AI’ye Ek Talimat <span class="ma-muted">(isteğe bağlı)</span></label><input class="ma-input" data-bind="extraInstruction" value="${attr(this.state.extraInstruction)}" placeholder="Örn: Kısa tut; kupon veya tarih sözü verme."></div>
                 </div></details>`;
             const composerCard = reply
@@ -6626,7 +7357,7 @@
                             </div>
                         </div></section>
 
-                        <section class="ma-card"><div class="ma-card__head"><h3>Çeviri Ayarları</h3></div><div class="ma-card__body ma-stack">${switchRow('freeFallback','Ücretsiz Çeviri Yedeğini Kullan','DeepL hatasında Google çeviri devreye girer.')}<div class="ma-grid ma-grid--2"><div class="ma-field"><label>Varsayılan Çeviri Motoru</label><select class="ma-select" data-settings-field="translator"><option value="google" ${s.translator === 'google' ? 'selected' : ''}>Google Ücretsiz</option><option value="deepl" ${s.translator === 'deepl' ? 'selected' : ''}>DeepL</option></select></div><div class="ma-field"><label>Önizleme Dili</label><select class="ma-select" data-settings-field="previewLanguage">${Object.entries(LANGUAGE_NAMES).filter(([code]) => code !== 'und').map(([code,name]) => `<option value="${code}" ${s.previewLanguage === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div></div><div class="ma-field"><label>DeepL API Anahtarı</label><input class="ma-input" type="password" data-settings-field="deeplApiKey" value="${attr(s.deeplApiKey)}" autocomplete="off"></div>${switchRow('deeplPro','DeepL Pro','api.deepl.com endpointini kullanır.')}</div></section>
+                        <section class="ma-card"><div class="ma-card__head"><h3>Çeviri Ayarları</h3></div><div class="ma-card__body ma-stack">${switchRow('freeFallback','Ücretsiz Çeviri Yedeğini Kullan','DeepL hatasında Google çeviri devreye girer.')}<div class="ma-grid ma-grid--2"><div class="ma-field"><label>Varsayılan Çeviri Motoru</label><select class="ma-select" data-settings-field="translator"><option value="google" ${s.translator === 'google' ? 'selected' : ''}>Google Ücretsiz</option><option value="deepl" ${s.translator === 'deepl' ? 'selected' : ''}>DeepL</option></select></div><div class="ma-field"><label>Önizleme Dili</label><select class="ma-select" data-settings-field="previewLanguage">${Object.entries(GOOGLE_TRANSLATION_LANGUAGE_NAMES).map(([code,name]) => `<option value="${code}" ${Translator.normalizedTarget(s.previewLanguage) === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div></div><div class="ma-field"><label>DeepL API Anahtarı</label><input class="ma-input" type="password" data-settings-field="deeplApiKey" value="${attr(s.deeplApiKey)}" autocomplete="off"></div>${switchRow('deeplPro','DeepL Pro','api.deepl.com endpointini kullanır.')}</div></section>
 
                         <section class="ma-card"><div class="ma-card__head"><h3>İmza ve Mağaza</h3></div><div class="ma-card__body ma-stack"><div class="ma-field"><label>Mağaza Adı</label><input class="ma-input" data-settings-field="shopName" value="${attr(s.shopName)}"></div><div class="ma-field"><label>İmza</label><input class="ma-input" data-settings-field="signature" value="${attr(s.signature)}"></div><div class="ma-field"><label>Kalıcı Mağaza Talimatı</label><textarea class="ma-textarea" data-settings-field="storeInstruction">${html(s.storeInstruction)}</textarea></div></div></section>
 
@@ -6669,6 +7400,12 @@
             if (target.dataset.reviewId) { this.selectReview(target.dataset.reviewId); return this.render(); }
             if (target.dataset.historyId) { this.state.historyDetailId = target.dataset.historyId; return this.render(); }
             if (target.dataset.variable) return this.insertVariable(target.dataset.variable);
+            if (Object.prototype.hasOwnProperty.call(target.dataset, 'messageOpenUrl')) {
+                const conversationUrl = MessageCenterAgent.canonicalConversationUrl(target.dataset.messageOpenUrl || '');
+                if (!conversationUrl) throw new Error('Güvenli bir Etsy konuşma bağlantısı doğrulanamadı. Listeyi yenileyip tekrar deneyin.');
+                location.href = conversationUrl;
+                return;
+            }
             if (target.dataset.orderOpen) {
                 const order = this.state.orders.find((item) => item.orderId === target.dataset.orderOpen);
                 if (order?.messageUrl) location.href = order.messageUrl;
@@ -6721,6 +7458,7 @@
                 if (action === 'github-open') GMX.open(RELEASE.repoUrl);
                 if (action === 'github-releases') GMX.open(RELEASE.releasesUrl);
                 if (action === 'setup-complete') await this.completeSetup();
+                if (action === 'message-list-translate') await this.translateMessageListPreviews({ auto: false });
                 if (action === 'translate-last') await this.translateLast();
                 if (action === 'ai-polish-reply') await this.generateReply({ method: 'ai', replyMode: 'polish' });
                 if (action === 'ai-auto-reply') await this.generateReply({ method: 'ai', replyMode: 'auto' });
@@ -6781,7 +7519,9 @@
             } catch (error) {
                 this.reportUiError(error, action);
             } finally {
-                this.setBusy(false);
+                // Liste çevirisinin busy sahipliği generation ile kendi içinde yönetilir;
+                // eski bir click finally bloğu daha yeni auto çalışmayı kapatmamalıdır.
+                if (action !== 'message-list-translate') this.setBusy(false);
                 this.render();
             }
         },
@@ -6823,6 +7563,17 @@
             }
         },
         async onChange(event) {
+            if (Object.prototype.hasOwnProperty.call(event.target.dataset || {}, 'messageListLanguage')) {
+                const previewLanguage = Translator.normalizedTarget(event.target.value);
+                if (!Translator.supportsTarget('google', previewLanguage)) {
+                    throw new Error('Seçilen görüntüleme dili çeviri kataloğunda bulunmuyor.');
+                }
+                this.invalidateMessageListWork({ resetStatus: true });
+                await Store.saveSettings({ ...Store.settings, previewLanguage });
+                if (this.state.settingsDraft) this.state.settingsDraft.previewLanguage = previewLanguage;
+                await this.translateMessageListPreviews({ auto: false });
+                return;
+            }
             if (event.target.dataset.reviewDecision) {
                 const orderId = event.target.dataset.reviewDecision;
                 const choice = event.target.value;
@@ -6931,7 +7682,7 @@ ${result.text || ''}`);
                 if (work.generation !== this.messageWorkGeneration
                     || work.conversationId !== Router.conversationId()
                     || work.routeFingerprint !== Router.routeFingerprint()) return false;
-                work = { ...work, messageHash: hashText(context.lastCustomerMessage || '') };
+                work = { ...work, messageHash: hashExactText(context.lastCustomerMessage || '') };
                 this.adoptMessageContext(context);
                 if (MessageAdapter.contextSelectorFailureIsObservable(context)) void trackTelemetryError('selector_message_context');
             }
@@ -7103,10 +7854,10 @@ ${result.text || ''}`);
             const text = this.reviewAnalysisIsCurrent(review) ? this.state.reviewAnalysis?.public_reply : '';
             if (!review || !text) throw new Error('Public cevap taslağı bulunamadı.');
             const binding = { ...this.state.reviewAnalysisBinding };
-            const replyHash = hashText(text);
+            const replyHash = hashExactText(text);
             const isCurrent = () => this.reviewWorkIsCurrent(binding)
                 && this.state.reviewAnalysisBinding?.generation === binding.generation
-                && hashText(this.state.reviewAnalysis?.public_reply || '') === replyHash;
+                && hashExactText(this.state.reviewAnalysis?.public_reply || '') === replyHash;
             if (!isCurrent()) throw new Error('Yorum veya sayfa değişti; güncel yorum için yeniden taslak hazırlayın.');
             this.setBusy(true);
             await ReviewsAdapter.insertPublic(review, text, { isCurrent });
@@ -7191,6 +7942,7 @@ ${result.text || ''}`);
         async saveSettings({ notify = true } = {}) {
             const next = this.readSettingsForm();
             const providers = clone(this.ensureSettingsDraft().providers);
+            this.invalidateMessageListWork({ resetStatus: true });
             await Store.saveSettings(next);
             await Store.saveProviders(providers);
             await Store.pruneHistory();
@@ -7252,6 +8004,7 @@ ${result.text || ''}`);
                     && !confirm('Config mevcut kaydedilmemiş şablon taslağını değiştirecek. Taslak silinip config şablonları yüklensin mi?')) {
                     return false;
                 }
+                this.invalidateMessageListWork({ resetStatus: true });
                 const payload = await ConfigManager.importText(text);
                 this.state.composeMethod = Store.settings.defaultReplyMethod;
                 this.state.tone = Store.settings.defaultTone;

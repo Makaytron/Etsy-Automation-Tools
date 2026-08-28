@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.1.1`
+Version: `1.2.0`
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
@@ -26,10 +26,11 @@ The script is standalone and does not require another Etsy Automation Tools pack
 - Automatic sending is off by default. Review requests ignore the global auto-send option and always require a per-recipient **Send and Go to Next** click.
 - The panel is closed by default on message pages. It opens only from the **Open** control unless the user explicitly enables **Open Automatically on Message Page**.
 - Conversation lists, individual conversations, Completed Orders, and Recent activity/Reviews are validated as separate contexts; drafting, queue, and insert controls stay hidden on the wrong page.
+- On conversation-list pages, the panel shows Etsy's visible conversations with a Turkish-default quick display-language selector, translated previews with preserved source text, and safe conversation navigation.
 - This is an unofficial userscript, not an Etsy-approved integration. Etsy's [API Terms](https://www.etsy.com/legal/api/) state that automated systems or browser extensions accessing, analysing, or scraping Etsy data require Etsy's express written authorization; keeping the final click manual does not by itself grant that authorization.
 - Etsy's completed-order card does not provide the script with a reliable order-to-review match. Confirm that the buyer has not already reviewed before selecting a review-request recipient; that local confirmation expires after two hours.
 - When an older generic `sent` record cannot prove whether the prior message was a review request, the order remains blocked as ambiguous. Check the Etsy conversation before selecting **Önceki mesaj yorum talebi değildi — onayla (The previous message was not a review request — confirm)**; leave it blocked if you cannot verify that statement.
-- Google Translate is the default provider and automatic Turkish preview is enabled by default, but the preview runs only after you open the panel or explicitly opt in to **Open Automatically on Message Page**. At that point the latest customer message may be sent to Google Translate. Keep the panel closed or disable automatic preview from Makaytron settings before opening it if you do not want that transfer.
+- Google Translate is the default provider and automatic translation preview is enabled by default. Opening the panel on a conversation list may send its visible message previews to the selected translation provider; opening it in one conversation may send the latest customer message. Changing the quick display language retranslates the visible list previews. Keep the panel closed or disable automatic preview from Makaytron settings before opening it if you do not want that transfer.
 - Other translation and AI actions send relevant message context to DeepL, OpenAI, Anthropic, Gemini, DeepSeek, or OpenRouter when the user invokes those configured features.
 - API keys and history are stored locally in Tampermonkey. History defaults to 90 days and at most 500 records.
 - Configuration exports exclude API keys unless the user explicitly opts in.
