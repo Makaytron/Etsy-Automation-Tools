@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.2.1
+// @version      1.2.2
 // @description  Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -51,7 +51,7 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.2.1';
+    const APP_VERSION = '1.2.2';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
@@ -3426,9 +3426,19 @@ zu|Zulu
     const MESSAGE_LIST_SEGMENTS = new Set([
         'all', 'archive', 'archived', 'custom_requests', 'etsy_notifications',
         'from_potential_buyers', 'inbox', 'order_help_requests', 'spam', 'starred',
-        'sent', 'trash', 'unread', 'with',
+        'sent', 'trash', 'unread', 'with', 'new', 'compose',
     ]);
-    const CONVERSATION_ANCHOR_SELECTOR = 'a[href*="/messages/"], a[href*="/messages?"], a[href*="/conversations/"]';
+    const CONVERSATION_ANCHOR_SELECTOR = [
+        'a[href*="/messages/"]',
+        'a[href*="/messages?"]',
+        'a[href*="/conversations/"]',
+        'clg-icon-button[href*="/messages/"]',
+        'clg-icon-button[href*="/messages?"]',
+        'clg-icon-button[href*="/conversations/"]',
+        '[role="link"][href*="/messages/"]',
+        '[role="link"][href*="/messages?"]',
+        '[role="link"][href*="/conversations/"]',
+    ].join(', ');
 
     const Router = {
         page() {
@@ -3449,16 +3459,68 @@ zu|Zulu
             }
             decoded = decoded.normalize('NFKC').trim();
             if (!decoded || decoded.length > 512 || /%[\da-f]{2}|[\/\\?#\u0000-\u001f\u007f]/i.test(decoded)) return '';
-            if (MESSAGE_LIST_SEGMENTS.has(decoded.toLowerCase())) return '';
+            const normalizedId = decoded.toLocaleLowerCase('en-US');
+            if (MESSAGE_LIST_SEGMENTS.has(normalizedId) || normalizedId.startsWith('compose:')) return '';
             return decoded;
         },
         conversationIdentityFromId(value) {
             return String(value || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
         },
+        elementHref(element) {
+            return String(element?.href || element?.getAttribute?.('href') || '').trim();
+        },
+        composeTargetFromUrl(value = location.href) {
+            try {
+                const url = new URL(value, location.href);
+                if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return null;
+                const parts = url.pathname.split('/').filter(Boolean);
+                const root = parts[0]?.toLowerCase();
+                const leaf = parts[1]?.toLowerCase();
+                const rootQueryCompose = root === 'messages'
+                    && parts.length === 1
+                    && (url.searchParams.has('with_id') || url.searchParams.has('recipient_id'));
+                const pathCompose = ['messages', 'conversations'].includes(root)
+                    && parts.length === 2
+                    && ['new', 'compose'].includes(leaf);
+                if (!rootQueryCompose && !pathCompose) return null;
+                if (url.searchParams.has('conversation_id')) return false;
+
+                const withValues = url.searchParams.getAll('with_id');
+                const recipientValues = url.searchParams.getAll('recipient_id');
+                if (withValues.length > 1 || recipientValues.length > 1
+                    || (!withValues.length && !recipientValues.length)) return false;
+                const safeId = (candidate) => {
+                    const decoded = this.decodeConversationId(candidate);
+                    return /^[1-9]\d{0,31}$/.test(decoded) ? decoded : '';
+                };
+                const withId = withValues.length ? safeId(withValues[0]) : '';
+                const explicitRecipientId = recipientValues.length ? safeId(recipientValues[0]) : '';
+                if ((withValues.length && !withId) || (recipientValues.length && !explicitRecipientId)) return false;
+                if (withId && explicitRecipientId && explicitRecipientId !== withId) return false;
+                const recipientId = withId || explicitRecipientId;
+
+                const referringIds = url.searchParams.getAll('referring_id');
+                const referringTypes = url.searchParams.getAll('referring_type');
+                if (referringIds.length > 1 || referringTypes.length > 1) return false;
+                if (referringIds.length !== referringTypes.length) return false;
+                let referringId = '';
+                let referringType = '';
+                if (referringIds.length) {
+                    referringId = safeId(referringIds[0]);
+                    referringType = String(referringTypes[0] || '').normalize('NFKC').trim().toLowerCase();
+                    if (!referringId || referringType !== 'receipt') return false;
+                }
+                const identity = `compose:${recipientId}${referringId ? `:receipt:${referringId}` : ''}`;
+                return { kind: 'compose', id: identity, identity, recipientId, referringId, referringType };
+            } catch { return false; }
+        },
         conversationIdFromUrl(value = location.href) {
             try {
                 const url = new URL(value, location.href);
                 if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return '';
+                const composeTarget = this.composeTargetFromUrl(url.href);
+                if (composeTarget === false) return '';
+                if (composeTarget) return composeTarget.id;
                 const parts = url.pathname.split('/').filter(Boolean);
                 const root = parts[0]?.toLowerCase();
                 if (!['messages', 'conversations'].includes(root)) return '';
@@ -3495,10 +3557,21 @@ zu|Zulu
         conversationId() {
             return this.conversationIdFromUrl(location.href);
         },
-        canonicalConversationUrl(value) {
+        isComposeTarget(value = location.href) {
+            return Boolean(this.composeTargetFromUrl(value));
+        },
+        canonicalConversationUrl(value, options = {}) {
             try {
                 const url = new URL(value, location.href);
                 if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return '';
+                const composeTarget = this.composeTargetFromUrl(url.href);
+                if (composeTarget === false) return '';
+                if (composeTarget) {
+                    const expectedOrderId = String(options.orderId || '').normalize('NFKC').trim();
+                    if (expectedOrderId && composeTarget.referringId !== expectedOrderId) return '';
+                    url.hash = '';
+                    return url.href;
+                }
                 if (!this.conversationIdFromUrl(url.href)) return '';
                 const parts = url.pathname.split('/').filter(Boolean);
                 const root = parts[0]?.toLowerCase();
@@ -3601,7 +3674,7 @@ zu|Zulu
     };
 
     const MessageAdapter = {
-        bubbleSelector: 'div.wt-rounded.wt-text-body-01.wt-display-inline-block.wt-break-word, [data-message-id] [data-message-text], .message-bubble',
+        bubbleSelector: 'div.wt-rounded.wt-text-body-01.wt-display-inline-block.wt-break-word, [data-message-id] [data-message-text], [data-message-id][data-message-text], .message-bubble',
         textareaSelectors: [
             'textarea.new-message-textarea-min-height',
             'textarea[placeholder*="reply" i]',
@@ -3643,7 +3716,7 @@ zu|Zulu
             if (!activeIdentity) return true;
             const links = scope?.querySelectorAll?.(CONVERSATION_ANCHOR_SELECTOR) || [];
             return [...links].some((link) => {
-                const identity = Router.conversationIdentity(link.href);
+                const identity = Router.conversationIdentity(Router.elementHref(link));
                 return identity && identity !== activeIdentity;
             });
         },
@@ -3679,10 +3752,14 @@ zu|Zulu
             if (Router.page() !== 'messages') return null;
             const textarea = this.getTextarea();
             if (!textarea) return null;
-            const scope = textarea.closest('form, #dg-tabs-preact__tab-1--default_wt_tab_panel');
-            if (!scope) return null;
-            const buttons = [...scope.querySelectorAll('button')];
-            const sendLabel = /^(send|send message|send reply|gönder|mesajı gönder|yanıtı gönder)$/i;
+            const conversationScope = this.getConversationScope(textarea);
+            const composerForm = textarea.closest?.('form') || null;
+            if (!conversationScope && !composerForm) return null;
+            const buttons = [...new Set([
+                ...conversationScope?.querySelectorAll?.('button') || [],
+                ...composerForm?.querySelectorAll?.('button') || [],
+            ])];
+            const sendLabel = /^(?:send|send message|send reply|gönder|mesaj(?:ı)? gönder|yanıt(?:ı)? gönder|cevap gönder)$/i;
             const candidates = buttons.filter((button) => {
                 if (button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
                 if (button.hidden || button.closest?.('[hidden], [aria-hidden="true"]')) return false;
@@ -3715,7 +3792,22 @@ zu|Zulu
                 const row = bubble.closest('.wt-grid') || bubble.parentElement?.parentElement;
                 const rowClasses = row?.className || '';
                 const bubbleClasses = bubble.className || '';
-                const outgoing = /justify-content-flex-end/.test(rowClasses) || /surface-informational-subtle/.test(bubbleClasses);
+                const semanticScope = bubble.closest?.([
+                    '[data-message-direction]', '[data-message-sender]', '[data-sender-role]',
+                    '[data-author-role]', '[data-outgoing]',
+                ].join(', ')) || bubble;
+                const semanticValues = [
+                    semanticScope.getAttribute?.('data-message-direction'),
+                    semanticScope.getAttribute?.('data-message-sender'),
+                    semanticScope.getAttribute?.('data-sender-role'),
+                    semanticScope.getAttribute?.('data-author-role'),
+                    semanticScope.getAttribute?.('data-outgoing'),
+                ].map(value => normalize(value).toLowerCase()).filter(Boolean);
+                const semanticOutgoing = semanticValues.some(value => ['outgoing', 'sent', 'seller', 'self', 'me', 'true'].includes(value));
+                const semanticIncoming = semanticValues.some(value => ['incoming', 'received', 'buyer', 'customer', 'other', 'false'].includes(value));
+                const legacyOutgoing = /justify-content-flex-end/.test(rowClasses)
+                    || /surface-informational-subtle/.test(bubbleClasses);
+                const outgoing = !semanticIncoming && (semanticOutgoing || legacyOutgoing);
                 const text = trimmedMessageText(bubble.innerText || bubble.textContent || '');
                 return text ? { id: bubble.id || `msg-${index}-${hashExactText(text)}`, role: outgoing ? 'seller' : 'customer', text } : null;
             }).filter(Boolean);
@@ -3852,9 +3944,9 @@ zu|Zulu
             }
             return this.insert(text, textarea);
         },
-        countOutgoing(text) {
+        countOutgoing(text, resolvedScope = null) {
             const expected = normalize(text);
-            return this.getMessages().filter((message) => message.role === 'seller' && (normalize(message.text) === expected || normalize(message.text).includes(expected.slice(0, 120)))).length;
+            return this.getMessages(resolvedScope).filter((message) => message.role === 'seller' && (normalize(message.text) === expected || normalize(message.text).includes(expected.slice(0, 120)))).length;
         },
         async waitForOutgoing(text, baseline = 0, timeout = 18000, isCurrent = () => true) {
             const started = Date.now();
@@ -4000,7 +4092,8 @@ zu|Zulu
             return payload;
         },
         canonicalConversationUrl(value) {
-            return Router.canonicalConversationUrl(value);
+            const url = Router.canonicalConversationUrl(value);
+            return url && !Router.isComposeTarget(url) ? url : '';
         },
         listElementIsVisible(element) {
             if (!element) return false;
@@ -4036,7 +4129,9 @@ zu|Zulu
             const direct = anchor.closest('li, [role="listitem"], [data-conversation-id], [data-message-thread-id]');
             if (direct) {
                 const identities = new Set([...direct.querySelectorAll?.(CONVERSATION_ANCHOR_SELECTOR) || []]
-                    .map(link => Router.conversationIdentity(link.href))
+                    .map(link => Router.elementHref(link))
+                    .filter(href => href && !Router.isComposeTarget(href))
+                    .map(href => Router.conversationIdentity(href))
                     .filter(Boolean));
                 if (identities.size > 1) return null;
                 return direct;
@@ -4045,8 +4140,9 @@ zu|Zulu
             for (let depth = 0; depth < 6 && current?.parentElement; depth += 1) {
                 current = current.parentElement;
                 const links = [...current.querySelectorAll(CONVERSATION_ANCHOR_SELECTOR)]
-                    .filter(link => Router.conversationIdFromUrl(link.href));
-                const unique = new Set(links.map(link => Router.conversationIdentity(link.href)));
+                    .map(link => Router.elementHref(link))
+                    .filter(href => href && !Router.isComposeTarget(href) && Router.conversationIdFromUrl(href));
+                const unique = new Set(links.map(href => Router.conversationIdentity(href)));
                 if (unique.size === 1 && normalize(current.innerText || current.textContent || '').length <= 1400) return current;
             }
             return anchor.parentElement;
@@ -4132,10 +4228,12 @@ zu|Zulu
             const items = new Map();
             for (const anchor of anchors) {
                 if (!this.listElementIsVisible(anchor)) continue;
-                const conversationId = Router.conversationIdFromUrl(anchor.href);
-                const identity = Router.conversationIdentity(anchor.href);
+                const anchorUrl = Router.elementHref(anchor);
+                if (Router.isComposeTarget(anchorUrl)) continue;
+                const conversationId = Router.conversationIdFromUrl(anchorUrl);
+                const identity = Router.conversationIdentity(anchorUrl);
                 if (!conversationId || !identity) continue;
-                const url = this.canonicalConversationUrl(anchor.href);
+                const url = this.canonicalConversationUrl(anchorUrl);
                 if (!url) continue;
                 const scope = this.conversationScope(anchor);
                 if (!scope || !this.listElementIsVisible(scope)) continue;
@@ -4775,8 +4873,8 @@ zu|Zulu
             const fromLabel = selectLabel.match(/from\s+(.+?)\s+on\s+/i)?.[1];
             const customerName = normalize(fromLabel || row.querySelector('button.btn-link.strong.fs-mask, .btn-link.strong.fs-mask')?.textContent);
             const messageAnchor = [...row.querySelectorAll(CONVERSATION_ANCHOR_SELECTOR)]
-                .find((link) => Router.canonicalConversationUrl(link.href));
-            const messageUrl = Router.canonicalConversationUrl(messageAnchor?.href || '');
+                .find((link) => Router.canonicalConversationUrl(Router.elementHref(link), { orderId }));
+            const messageUrl = Router.canonicalConversationUrl(Router.elementHref(messageAnchor), { orderId });
             const productLink = row.querySelector('a[href*="/transaction/"]');
             const image = productLink?.querySelector('img');
             const itemTitle = normalize(productLink?.getAttribute('title') || image?.alt || '');
@@ -5079,6 +5177,8 @@ zu|Zulu
         activePending: null,
         invalidatedTokens: new Set(),
         sequence: 0,
+        composeHydrationGraceMs: 8000,
+        transitionObservationMs: 6500,
         prepare(text, meta = {}) {
             const context = MessageAdapter.context();
             this.pending = {
@@ -5088,6 +5188,10 @@ zu|Zulu
                 customerName: context.customerName || '',
                 orderId: context.orderId || '',
                 conversationId: context.conversationId,
+                conversationIdentity: Router.conversationIdentity(),
+                sourceWasCompose: Router.isComposeTarget(),
+                sourceComposer: MessageAdapter.getTextarea(),
+                sourceConversationScope: MessageAdapter.getConversationScope(),
                 routeFingerprint: Router.routeFingerprint(),
                 ...meta,
                 verificationId: meta.verificationId || uid('verify'),
@@ -5117,6 +5221,9 @@ zu|Zulu
                 text,
                 baselineMatches: MessageAdapter.countOutgoing(text),
                 startedAt: nowIso(),
+                sendCapturedAt: nowIso(),
+                sourceComposer: this.pending.sourceComposer || textarea,
+                sourceConversationScope: this.pending.sourceConversationScope || MessageAdapter.getConversationScope(textarea),
                 verificationToken: ++this.sequence,
             };
             return true;
@@ -5135,13 +5242,106 @@ zu|Zulu
             if (invalidated) this.sequence += 1;
             return invalidated;
         },
+        composeTransitionState(pending) {
+            if (!pending?.sourceWasCompose || !pending.sendCapturedAt || Router.page() !== 'messages') return 'invalid';
+            if (Router.isComposeTarget() || !Router.conversationId()
+                || Router.routeFingerprint() === pending.routeFingerprint) return 'invalid';
+
+            const routeIdentity = Router.conversationIdentity();
+            if (!routeIdentity || routeIdentity.startsWith('compose:')) return 'invalid';
+            if (pending.transitionBoundIdentity && pending.transitionBoundIdentity !== routeIdentity) return 'invalid';
+
+            const capturedAt = new Date(pending.sendCapturedAt).getTime();
+            const elapsed = Date.now() - capturedAt;
+            if (!pending.transitionBoundIdentity
+                && (!Number.isFinite(capturedAt) || elapsed < -1000 || elapsed > this.composeHydrationGraceMs)) return 'invalid';
+
+            const textarea = MessageAdapter.getTextarea();
+            if (!textarea) return 'hydrating';
+            let context;
+            try { context = MessageAdapter.context(); } catch { return 'hydrating'; }
+            if (!context?.conversationId) return 'hydrating';
+            if (context.conversationId !== Router.conversationId() || !pending.orderId) return 'invalid';
+            const actualOrderId = String(context.orderId || '');
+            if (!actualOrderId) return 'hydrating';
+            if (actualOrderId !== String(pending.orderId)) return 'invalid';
+            const expectedCustomer = normalize(pending.customerName).toLocaleLowerCase('en-US');
+            const actualCustomer = normalize(context.customerName).toLocaleLowerCase('en-US');
+            if (expectedCustomer && !actualCustomer) return 'hydrating';
+            if (expectedCustomer && actualCustomer !== expectedCustomer) return 'invalid';
+            if (textarea === pending.sourceComposer) {
+                const sourceScope = pending.sourceConversationScope;
+                const sameScope = sourceScope && MessageAdapter.getConversationScope(textarea) === sourceScope;
+                const composerCleared = !String(textarea.value || '').trim();
+                const sourceDelta = sameScope && composerCleared
+                    && MessageAdapter.countOutgoing(pending.text, sourceScope) > (pending.baselineMatches || 0);
+                if (!sourceDelta) return 'hydrating';
+                pending.transitionUsesSourceEvidence = true;
+            }
+            pending.transitionBoundIdentity = routeIdentity;
+            return 'bound';
+        },
+        composeTransitionIsCurrent(pending) {
+            return this.composeTransitionState(pending) === 'bound';
+        },
+        composeTransitionMayContinue(pending) {
+            return ['hydrating', 'bound'].includes(this.composeTransitionState(pending));
+        },
         contextIsCurrent(pending) {
-            return pending.conversationId === Router.conversationId()
+            const exact = pending.conversationId === Router.conversationId()
                 && pending.routeFingerprint === Router.routeFingerprint();
+            return exact || this.composeTransitionIsCurrent(pending);
+        },
+        conversationIdForRecord(pending) {
+            return pending?.transitionBoundIdentity || pending?.conversationId || '';
         },
         verificationIsCurrent(pending) {
             return !this.invalidatedTokens.has(pending.verificationToken)
                 && this.contextIsCurrent(pending);
+        },
+        verificationMayContinue(pending) {
+            return !this.invalidatedTokens.has(pending.verificationToken)
+                && (this.contextIsCurrent(pending) || this.composeTransitionMayContinue(pending));
+        },
+        async waitForPendingOutgoing(pending, timeout = 18000) {
+            if (!pending.sourceWasCompose) {
+                return MessageAdapter.waitForOutgoing(
+                    pending.text,
+                    pending.baselineMatches || 0,
+                    timeout,
+                    () => this.verificationIsCurrent(pending),
+                );
+            }
+            const started = Date.now();
+            while (Date.now() - started < timeout) {
+                if (!this.verificationMayContinue(pending)) return false;
+                const transitioned = pending.sourceWasCompose
+                    && Router.routeFingerprint() !== pending.routeFingerprint;
+                if (transitioned) {
+                    const state = this.composeTransitionState(pending);
+                    if (state === 'bound') {
+                        if (pending.transitionUsesSourceEvidence) return true;
+                        const routeFingerprint = Router.routeFingerprint();
+                        const currentMatches = MessageAdapter.countOutgoing(pending.text);
+                        if (pending.transitionBaselineMatches == null) {
+                            pending.transitionBaselineMatches = currentMatches;
+                            pending.transitionBaselineRouteFingerprint = routeFingerprint;
+                            pending.transitionBaselineAt = Date.now();
+                        } else if (pending.transitionBaselineRouteFingerprint !== routeFingerprint) {
+                            return false;
+                        } else if (currentMatches > pending.transitionBaselineMatches) {
+                            return true;
+                        } else if (Date.now() - pending.transitionBaselineAt >= this.transitionObservationMs) {
+                            return false;
+                        }
+                    }
+                } else if (this.contextIsCurrent(pending)
+                    && MessageAdapter.countOutgoing(pending.text) > (pending.baselineMatches || 0)) {
+                    return true;
+                }
+                await sleep(450);
+            }
+            return false;
         },
         async onSendClick() {
             if (this.activePromise) {
@@ -5174,31 +5374,27 @@ zu|Zulu
             if (!this.verificationIsCurrent(pending)) return false;
             if (pending.campaignId && await Campaign.resumeVerifiedPartial(pending)) {
                 if (!this.verificationIsCurrent(pending)) return false;
-                if (pending.conversationId) await Store.setStatus('conversations', pending.conversationId, {
+                const conversationId = this.conversationIdForRecord(pending);
+                if (conversationId) await Store.setStatus('conversations', conversationId, {
                     status: 'sent', messageHash: hashText(pending.text), sentAt: nowIso(),
                 });
                 void History.tryLogOnce('send_verified', `${pending.verificationId}:verified`, {
                     source: 'messages', method: pending.method || 'manual', status: 'completed', customer: pending.customerName,
-                    orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulandı', detail: { text: pending.text },
+                    orderId: pending.orderId, conversationId, title: 'Gönderim doğrulandı', detail: { text: pending.text },
                 }).catch(error => console.error(`[${APP.id}] Doğrulanmış gönderim geçmişe kaydedilemedi.`, error));
                 UI.toast('Mesaj Etsy konuşmasında doğrulandı.', 'success');
                 await Campaign.advanceAfterVerified(pending);
                 void UI.refreshCurrent().catch(error => console.error(`[${APP.id}]`, error));
                 return true;
             }
-            if (!this.verificationIsCurrent(pending)) return false;
+            if (!this.verificationMayContinue(pending)) return false;
             if (pending.campaignId && !await Campaign.markSendPendingVerification(pending)) {
                 throw new Error('Gönderim denemesi güvenli biçimde kaydedilemedi; kampanya yeniden gönderime kapatıldı.');
             }
-            if (!this.verificationIsCurrent(pending)) return false;
+            if (!this.verificationMayContinue(pending)) return false;
             let verified;
             try {
-                verified = await MessageAdapter.waitForOutgoing(
-                    pending.text,
-                    pending.baselineMatches || 0,
-                    18000,
-                    () => this.verificationIsCurrent(pending),
-                );
+                verified = await this.waitForPendingOutgoing(pending, 18000);
             } catch (error) {
                 void trackTelemetryError('runtime_reply_send');
                 throw error;
@@ -5227,11 +5423,12 @@ zu|Zulu
                     });
                     if (!this.verificationIsCurrent(pending)) return false;
                 }
-                if (pending.conversationId) await Store.setStatus('conversations', pending.conversationId, { status: 'sent', messageHash: hashText(pending.text), sentAt: nowIso() });
+                const conversationId = this.conversationIdForRecord(pending);
+                if (conversationId) await Store.setStatus('conversations', conversationId, { status: 'sent', messageHash: hashText(pending.text), sentAt: nowIso() });
                 if (!this.verificationIsCurrent(pending)) return false;
                 void History.tryLogOnce('send_verified', `${pending.verificationId}:verified`, {
                     source: 'messages', method: pending.method || 'manual', status: 'completed', customer: pending.customerName,
-                    orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulandı', detail: { text: pending.text },
+                    orderId: pending.orderId, conversationId, title: 'Gönderim doğrulandı', detail: { text: pending.text },
                 }).catch(error => console.error(`[${APP.id}] Doğrulanmış gönderim geçmişe kaydedilemedi.`, error));
                 UI.toast('Mesaj Etsy konuşmasında doğrulandı.', 'success');
                 if (pending.campaignId) await Campaign.advanceAfterVerified(pending);
@@ -5246,7 +5443,7 @@ zu|Zulu
                 if (!this.verificationIsCurrent(pending)) return false;
                 void History.tryLogOnce('send_verification_failed', `${pending.verificationId}:failed`, {
                     source: 'messages', method: pending.method || 'manual', status: 'error', customer: pending.customerName,
-                    orderId: pending.orderId, conversationId: pending.conversationId, title: 'Gönderim doğrulanamadı', detail: { text: pending.text },
+                    orderId: pending.orderId, conversationId: this.conversationIdForRecord(pending), title: 'Gönderim doğrulanamadı', detail: { text: pending.text },
                 }).catch(error => console.error(`[${APP.id}] Gönderim doğrulama hatası geçmişe kaydedilemedi.`, error));
                 UI.toast('Gönderim Etsy mesaj balonunda doğrulanamadı.', 'error');
             }
@@ -5517,7 +5714,7 @@ zu|Zulu
             return withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
-                if (expected.verificationToken && !Verification.verificationIsCurrent(expected)) return false;
+                if (expected.verificationToken && !Verification.verificationMayContinue(expected)) return false;
                 const campaign = fresh.campaign;
                 const itemIndex = campaign?.items?.findIndex(item => item.id === expected.campaignItemId) ?? -1;
                 const item = itemIndex >= 0 ? campaign.items[itemIndex] : null;
@@ -6068,7 +6265,7 @@ zu|Zulu
             this.invalidateWork();
             const safeOrders = clone(orders).map((order) => ({
                 ...order,
-                messageUrl: Router.canonicalConversationUrl(order?.messageUrl || ''),
+                messageUrl: Router.canonicalConversationUrl(order?.messageUrl || '', { orderId: order?.orderId || '' }),
             }));
             const savedCampaign = await withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
@@ -7156,7 +7353,7 @@ zu|Zulu
             const changed = this.adoptMessageContext(context, previous);
             if (changed) {
                 const work = this.beginMessageWork(context);
-                if (routeChanged) Verification.invalidate();
+                if (routeChanged) Verification.invalidate(pending => !Verification.composeTransitionMayContinue(pending));
                 this.state.translation = null;
                 this.state.analysis = Heuristics.analyze(context.lastCustomerMessage);
                 this.state.reply = null;
@@ -7333,11 +7530,14 @@ zu|Zulu
             const campaignOrderStatus = campaign ? Store.getStatus('orders', campaign.orderId) : null;
             const campaignConversationIdentity = campaign ? Router.conversationIdentity(campaign.messageUrl) : '';
             const activeContextIdentity = String(context.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+            const campaignAwaitingVerification = campaign?.status === CAMPAIGN_SEND_PENDING_STATUS;
             const campaignRouteMatches = Boolean(campaign
                 && campaignConversationIdentity
                 && campaignConversationIdentity === Router.conversationIdentity(location.href)
                 && campaignConversationIdentity === activeContextIdentity
-                && (!context.orderId || String(context.orderId) === String(campaign.orderId)));
+                && (!context.orderId || String(context.orderId) === String(campaign.orderId)))
+                || Boolean(campaignAwaitingVerification
+                    && this.pendingResolutionContextIsCurrent(campaign.orderId));
             const guidedSendReady = Boolean(campaign
                 && campaign.status === 'inserted'
                 && campaignOrderStatus?.status === 'inserted'
@@ -7345,7 +7545,6 @@ zu|Zulu
                 && !Campaign.orderIsBlockedFromSend(campaign, Store.statuses, ['prepared'])
                 && MessageAdapter.getTextarea()
                 && MessageAdapter.getSendButton());
-            const campaignAwaitingVerification = campaign?.status === CAMPAIGN_SEND_PENDING_STATUS;
             const campaignBinding = Store.campaign;
             const campaignActionBinding = campaignBinding && campaign
                 ? `data-campaign-id="${attr(campaignBinding.id)}" data-campaign-item-id="${attr(campaign.id)}" data-campaign-order-id="${attr(campaign.orderId)}" data-campaign-revision="${attr(campaignBinding.revision)}"`
@@ -7673,10 +7872,19 @@ zu|Zulu
             const routeIdentity = Router.conversationIdentity(location.href);
             const context = MessageAdapter.context();
             const contextIdentity = String(context?.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
-            return Boolean(expectedIdentity
+            const exactConversation = Boolean(expectedIdentity
                 && expectedIdentity === routeIdentity
                 && expectedIdentity === contextIdentity
                 && (!context?.orderId || String(context.orderId) === String(orderId)));
+            if (exactConversation) return true;
+            const expectedCustomer = normalize(item.customerName).toLocaleLowerCase('en-US');
+            const actualCustomer = normalize(context?.customerName).toLocaleLowerCase('en-US');
+            return Boolean(Router.isComposeTarget(item.messageUrl)
+                && !Router.isComposeTarget(location.href)
+                && routeIdentity
+                && routeIdentity === contextIdentity
+                && String(context?.orderId || '') === String(orderId)
+                && (!expectedCustomer || (actualCustomer && actualCustomer === expectedCustomer)));
         },
         async onClick(event) {
             const target = event.target.closest('button, [data-template-edit], [data-review-id], [data-history-id]');
@@ -8390,7 +8598,8 @@ ${result.text || ''}`);
                 UI.invalidateMessageWork();
                 UI.invalidateMessageListWork({ resetStatus: true });
                 UI.invalidateReviewWork();
-                Verification.invalidate(pending => pending.routeFingerprint !== fingerprint);
+                Verification.invalidate(pending => pending.routeFingerprint !== fingerprint
+                    && !Verification.composeTransitionMayContinue(pending));
                 if (CONTEXT_PAGES.has(UI.state.page)) UI.state.page = Router.page();
             }
             const autoOpened = this.maybeAutoOpenVerifiedMessage();

@@ -432,6 +432,398 @@ test('hidden or duplicate Etsy Send controls fail closed instead of choosing a b
     assert.equal(api.MessageAdapter.getSendButton(), null, 'ambiguous Send controls must not be actionable');
 });
 
+test('semantic conversation panels resolve a Turkish Send control outside the composer form', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/semantic-send';
+    sandbox.location.href = 'https://www.etsy.com/messages/semantic-send';
+
+    const sendButton = {
+        disabled: false,
+        hidden: false,
+        textContent: 'Mesaj gönder',
+        type: 'button',
+        form: null,
+        getAttribute(name) {
+            if (name === 'aria-label') return 'Mesaj gönder';
+            if (name === 'type') return 'button';
+            return '';
+        },
+        getClientRects: () => [{}],
+        closest: () => null,
+    };
+    const form = {
+        parentElement: null,
+        querySelectorAll(selector) {
+            if (selector.includes('textarea')) return [textarea];
+            return [];
+        },
+    };
+    const panel = {
+        parentElement: null,
+        querySelectorAll(selector) {
+            if (selector.includes('textarea')) return [textarea];
+            if (selector === 'button') return [sendButton];
+            return [];
+        },
+    };
+    form.parentElement = panel;
+    const textarea = Object.assign(new sandbox.HTMLTextAreaElement(), {
+        offsetParent: {},
+        parentElement: form,
+        getClientRects: () => [{}],
+        closest(selector) {
+            if (selector === 'form') return form;
+            if (selector === api.MessageAdapter.conversationScopeSelector) return panel;
+            return null;
+        },
+    });
+    sandbox.document.querySelectorAll = selector => selector.includes('textarea') ? [textarea] : [];
+
+    assert.equal(api.MessageAdapter.getTextarea(), textarea);
+    assert.equal(api.MessageAdapter.getSendButton(), sendButton);
+});
+
+test('send control resolution rejects unrelated submit and Send-to-folder actions', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/send-label-safety';
+    sandbox.location.href = 'https://www.etsy.com/messages/send-label-safety';
+    const makeButton = (label, type = 'button') => ({
+        disabled: false,
+        hidden: false,
+        textContent: label,
+        type,
+        form: null,
+        getAttribute(name) {
+            if (name === 'type') return type;
+            if (name === 'aria-label') return label;
+            return '';
+        },
+        getClientRects: () => [{}],
+        closest: () => null,
+    });
+    const sendButton = makeButton('Mesaj gönder');
+    const previewSubmit = makeButton('Preview', 'submit');
+    const spamButton = makeButton('Send to spam');
+    let buttons = [sendButton, previewSubmit];
+    const panel = {
+        parentElement: null,
+        querySelectorAll(selector) {
+            if (selector.includes('textarea')) return [textarea];
+            if (selector === 'button') return buttons;
+            return [];
+        },
+    };
+    const form = {
+        parentElement: panel,
+        querySelectorAll(selector) {
+            if (selector.includes('textarea')) return [textarea];
+            if (selector === 'button') return buttons.filter(button => button === previewSubmit);
+            return [];
+        },
+    };
+    previewSubmit.form = form;
+    const textarea = Object.assign(new sandbox.HTMLTextAreaElement(), {
+        offsetParent: {},
+        parentElement: form,
+        getClientRects: () => [{}],
+        closest(selector) {
+            if (selector === 'form') return form;
+            if (selector === api.MessageAdapter.conversationScopeSelector) return panel;
+            return null;
+        },
+    });
+    sandbox.document.querySelectorAll = selector => selector.includes('textarea') ? [textarea] : [];
+
+    assert.equal(api.MessageAdapter.getSendButton(), sendButton, 'an unrelated submit must not compete with the labelled Send button');
+    buttons = [previewSubmit];
+    assert.equal(api.MessageAdapter.getSendButton(), null, 'an untrusted submit label must not be clicked');
+    buttons = [spamButton];
+    assert.equal(api.MessageAdapter.getSendButton(), null, 'Send to spam must not be treated as message dispatch');
+});
+
+test('semantic outgoing direction is recognized without legacy Etsy alignment classes', async () => {
+    const { api } = await loadAssistant();
+    const row = { className: '', parentElement: null };
+    const bubble = {
+        id: 'semantic-outgoing',
+        innerText: 'Fixture sent message',
+        textContent: 'Fixture sent message',
+        className: 'message-bubble',
+        parentElement: row,
+        getAttribute: name => name === 'data-message-direction' ? 'outgoing' : '',
+        closest(selector) {
+            if (selector === '.wt-grid') return row;
+            if (selector.includes('[data-message-direction]')) return bubble;
+            return null;
+        },
+    };
+    const scope = {
+        querySelectorAll: selector => selector === api.MessageAdapter.bubbleSelector ? [bubble] : [],
+    };
+
+    assert.deepEqual(copy(api.MessageAdapter.getMessages(scope)), [{
+        id: 'semantic-outgoing', role: 'seller', text: 'Fixture sent message',
+    }]);
+});
+
+test('explicit incoming semantics override legacy outgoing presentation classes', async () => {
+    const { api } = await loadAssistant();
+    const row = { className: 'wt-grid justify-content-flex-end', parentElement: null };
+    const bubble = {
+        id: 'semantic-incoming',
+        innerText: 'Buyer message',
+        textContent: 'Buyer message',
+        className: 'surface-informational-subtle',
+        parentElement: row,
+        getAttribute: name => name === 'data-message-direction' ? 'incoming' : '',
+        closest(selector) {
+            if (selector === '.wt-grid') return row;
+            if (selector.includes('[data-message-direction]')) return bubble;
+            return null;
+        },
+    };
+    const scope = {
+        querySelectorAll: selector => selector === api.MessageAdapter.bubbleSelector ? [bubble] : [],
+    };
+
+    assert.deepEqual(copy(api.MessageAdapter.getMessages(scope)), [{
+        id: 'semantic-incoming', role: 'customer', text: 'Buyer message',
+    }]);
+});
+
+test('new-message Etsy URLs bind identity to recipient and receipt instead of the literal new path', async () => {
+    const { api } = await loadAssistant();
+    const first = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    const second = 'https://www.etsy.com/conversations/new?with_id=222&recipient_id=222&referring_id=10000002&referring_type=receipt';
+    const rootQuery = 'https://www.etsy.com/messages?with_id=333&recipient_id=333';
+    const recipientOnly = 'https://www.etsy.com/messages/new?recipient_id=444&referring_id=10000004&referring_type=receipt';
+
+    assert.equal(api.Router.conversationIdentity(first), 'compose:111:receipt:10000001');
+    assert.equal(api.Router.conversationIdentity(second), 'compose:222:receipt:10000002');
+    assert.notEqual(api.Router.conversationIdentity(first), api.Router.conversationIdentity(second));
+    assert.equal(api.Router.conversationIdentity(rootQuery), 'compose:333');
+    assert.equal(api.Router.conversationIdentity(recipientOnly), 'compose:444:receipt:10000004');
+    assert.equal(api.Router.canonicalConversationUrl(first, { orderId: '10000001' }), first);
+    assert.equal(api.Router.canonicalConversationUrl(first, { orderId: '10000009' }), '');
+    assert.equal(api.Router.canonicalConversationUrl(rootQuery, { orderId: '10000003' }), '', 'order-bound compose URLs require their receipt');
+    assert.equal(api.Router.canonicalConversationUrl(recipientOnly, { orderId: '10000004' }), recipientOnly);
+    const collision = `https://www.etsy.com/messages/${encodeURIComponent(api.Router.conversationIdentity(first))}`;
+    assert.equal(api.Router.conversationIdentity(collision), '', 'thread IDs cannot collide with the compose identity namespace');
+    assert.equal(api.Router.canonicalConversationUrl(collision), '');
+
+    for (const unsafe of [
+        'https://www.etsy.com/messages/new',
+        'https://www.etsy.com/conversations/new?with_id=111&recipient_id=222',
+        'https://www.etsy.com/messages/new?with_id=111&with_id=222',
+        'https://www.etsy.com/messages/new?recipient_id=111&recipient_id=222',
+        'https://www.etsy.com/messages/new?with_id=new-buyer',
+        'https://www.etsy.com/messages/new?with_id=111&referring_id=10000001',
+        'https://www.etsy.com/messages/new?with_id=111&referring_id=10000001&referring_type=shop',
+        'https://www.etsy.com/messages/new?with_id=111&conversation_id=thread-1',
+        'https://evil.example/messages/new?with_id=111',
+    ]) {
+        assert.equal(api.Router.conversationIdentity(unsafe), '', unsafe);
+        assert.equal(api.Router.canonicalConversationUrl(unsafe), '', unsafe);
+    }
+});
+
+test('post-send compose-to-thread verification stays bound to the same order and customer only', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const composeUrl = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    sandbox.location.pathname = '/messages/new';
+    sandbox.location.search = '?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    sandbox.location.href = composeUrl;
+    const sourceComposer = {};
+    const newComposer = {};
+    const pending = {
+        conversationId: api.Router.conversationId(),
+        routeFingerprint: api.Router.routeFingerprint(),
+        sourceWasCompose: true,
+        sourceComposer,
+        sendCapturedAt: new Date().toISOString(),
+        orderId: '10000001',
+        customerName: 'Fixture Buyer',
+    };
+
+    sandbox.location.pathname = '/messages/created-thread';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/created-thread';
+    const originals = {
+        context: api.MessageAdapter.context,
+        getTextarea: api.MessageAdapter.getTextarea,
+    };
+    try {
+        api.MessageAdapter.getTextarea = () => null;
+        assert.equal(api.Verification.composeTransitionState(pending), 'hydrating');
+        assert.equal(api.Verification.verificationMayContinue(pending), true, 'a route-before-DOM transition gets a short hydration grace period');
+        assert.equal(api.Verification.contextIsCurrent(pending), false, 'hydrating alone is never sufficient to finalize a send');
+
+        api.MessageAdapter.getTextarea = () => sourceComposer;
+        assert.equal(api.Verification.composeTransitionState(pending), 'hydrating', 'the stale compose control cannot bind the new route');
+
+        api.MessageAdapter.getTextarea = () => newComposer;
+        api.MessageAdapter.context = () => ({
+            conversationId: 'created-thread', orderId: '', customerName: '',
+        });
+        assert.equal(api.Verification.composeTransitionState(pending), 'hydrating', 'a new composer can appear before its order and buyer context');
+
+        api.MessageAdapter.context = () => ({
+            conversationId: 'created-thread', orderId: '10000001', customerName: 'Fixture Buyer',
+        });
+        assert.equal(api.Verification.contextIsCurrent(pending), true);
+        assert.equal(api.Verification.conversationIdForRecord(pending), 'created-thread');
+
+        api.MessageAdapter.context = () => ({
+            conversationId: 'created-thread', orderId: '10000002', customerName: 'Fixture Buyer',
+        });
+        assert.equal(api.Verification.contextIsCurrent(pending), false, 'a different receipt must invalidate the transition');
+        api.MessageAdapter.context = () => ({
+            conversationId: 'created-thread', orderId: '10000001', customerName: 'Different Buyer',
+        });
+        assert.equal(api.Verification.contextIsCurrent(pending), false, 'a different buyer must invalidate the transition');
+        assert.equal(api.Verification.contextIsCurrent({ ...pending, transitionBoundIdentity: '', sendCapturedAt: '' }), false, 'navigation before Send must not rebind');
+        assert.equal(api.Verification.composeTransitionState({
+            ...pending,
+            transitionBoundIdentity: '',
+            sendCapturedAt: new Date(Date.now() - api.Verification.composeHydrationGraceMs - 1000).toISOString(),
+        }), 'invalid', 'an old send capture cannot rebind to a later conversation');
+    } finally {
+        api.MessageAdapter.context = originals.context;
+        api.MessageAdapter.getTextarea = originals.getTextarea;
+    }
+});
+
+test('compose transition baselines hydrated history before accepting a new matching outgoing bubble', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const composeUrl = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    sandbox.location.pathname = '/messages/new';
+    sandbox.location.search = '?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    sandbox.location.href = composeUrl;
+    const routeFingerprint = api.Router.routeFingerprint();
+    const sourceComposer = {};
+    sandbox.location.pathname = '/messages/created-thread';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/created-thread';
+
+    const originals = {
+        context: api.MessageAdapter.context,
+        getTextarea: api.MessageAdapter.getTextarea,
+        countOutgoing: api.MessageAdapter.countOutgoing,
+        observationMs: api.Verification.transitionObservationMs,
+    };
+    api.MessageAdapter.getTextarea = () => ({});
+    api.MessageAdapter.context = () => ({
+        conversationId: 'created-thread', orderId: '10000001', customerName: 'Fixture Buyer',
+    });
+    api.Verification.transitionObservationMs = 0;
+    const makePending = token => ({
+        text: 'Repeated template text',
+        baselineMatches: 0,
+        conversationId: 'compose:111:receipt:10000001',
+        routeFingerprint,
+        sourceWasCompose: true,
+        sourceComposer,
+        sendCapturedAt: new Date().toISOString(),
+        orderId: '10000001',
+        customerName: 'Fixture Buyer',
+        verificationToken: token,
+    });
+    try {
+        api.MessageAdapter.countOutgoing = () => 1;
+        const oldHistoryOnly = makePending(7001);
+        assert.equal(await api.Verification.waitForPendingOutgoing(oldHistoryOnly, 1000), false);
+        assert.equal(oldHistoryOnly.transitionBaselineMatches, 1, 'the first hydrated thread snapshot is a baseline, not proof of this send');
+
+        let reads = 0;
+        api.MessageAdapter.countOutgoing = () => (++reads === 1 ? 1 : 2);
+        const newBubbleAfterHydration = makePending(7002);
+        assert.equal(await api.Verification.waitForPendingOutgoing(newBubbleAfterHydration, 1000), true);
+        assert.equal(newBubbleAfterHydration.transitionBaselineMatches, 1);
+    } finally {
+        api.MessageAdapter.context = originals.context;
+        api.MessageAdapter.getTextarea = originals.getTextarea;
+        api.MessageAdapter.countOutgoing = originals.countOutgoing;
+        api.Verification.transitionObservationMs = originals.observationMs;
+    }
+});
+
+test('compose transition accepts an outgoing delta in a safely reused original composer scope', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/new';
+    sandbox.location.search = '?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    sandbox.location.href = `https://www.etsy.com/messages/new${sandbox.location.search}`;
+    const routeFingerprint = api.Router.routeFingerprint();
+    const sourceComposer = { value: '' };
+    const sourceScope = {};
+    const pending = {
+        text: 'Fresh outgoing text',
+        baselineMatches: 0,
+        conversationId: api.Router.conversationId(),
+        routeFingerprint,
+        sourceWasCompose: true,
+        sourceComposer,
+        sourceConversationScope: sourceScope,
+        sendCapturedAt: new Date().toISOString(),
+        orderId: '10000001',
+        customerName: 'Fixture Buyer',
+        verificationToken: 7003,
+    };
+    sandbox.location.pathname = '/messages/created-thread';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/created-thread';
+    const originals = {
+        context: api.MessageAdapter.context,
+        getTextarea: api.MessageAdapter.getTextarea,
+        getConversationScope: api.MessageAdapter.getConversationScope,
+        countOutgoing: api.MessageAdapter.countOutgoing,
+    };
+    try {
+        api.MessageAdapter.getTextarea = () => sourceComposer;
+        api.MessageAdapter.getConversationScope = () => sourceScope;
+        api.MessageAdapter.context = () => ({
+            conversationId: 'created-thread', orderId: '10000001', customerName: 'Fixture Buyer',
+        });
+        api.MessageAdapter.countOutgoing = (_text, scope) => scope === sourceScope ? 1 : 0;
+
+        assert.equal(api.Verification.composeTransitionState(pending), 'bound');
+        assert.equal(pending.transitionUsesSourceEvidence, true);
+        assert.equal(await api.Verification.waitForPendingOutgoing(pending, 1000), true);
+    } finally {
+        api.MessageAdapter.context = originals.context;
+        api.MessageAdapter.getTextarea = originals.getTextarea;
+        api.MessageAdapter.getConversationScope = originals.getConversationScope;
+        api.MessageAdapter.countOutgoing = originals.countOutgoing;
+    }
+});
+
+test('campaign resume never reads or writes the composer for a different new-message recipient', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const first = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    const second = 'https://www.etsy.com/messages/new?with_id=222&recipient_id=222&referring_id=10000002&referring_type=receipt';
+    sandbox.location.pathname = '/messages/new';
+    sandbox.location.search = '?with_id=222&recipient_id=222&referring_id=10000002&referring_type=receipt';
+    sandbox.location.href = second;
+    const originals = {
+        current: api.Campaign.current,
+        getTextarea: api.MessageAdapter.getTextarea,
+        claimCurrent: api.Campaign.claimCurrent,
+    };
+    let composerReads = 0;
+    let claims = 0;
+    api.Campaign.current = () => ({ id: 'item-a', orderId: '10000001', messageUrl: first, status: 'pending' });
+    api.MessageAdapter.getTextarea = () => { composerReads += 1; return null; };
+    api.Campaign.claimCurrent = async () => { claims += 1; return null; };
+    try {
+        assert.equal(await api.Campaign.resumeClaimed(), false);
+        assert.equal(composerReads, 0);
+        assert.equal(claims, 0);
+    } finally {
+        api.Campaign.current = originals.current;
+        api.MessageAdapter.getTextarea = originals.getTextarea;
+        api.Campaign.claimCurrent = originals.claimCurrent;
+    }
+});
+
 test('message folders are not conversations and missing trusted composers render no production actions', async () => {
     const { api, sandbox } = await loadAssistant();
     const productionActions = /data-action="(?:ai-polish-reply|ai-auto-reply|free-translate-reply|regenerate-reply|insert-reply|campaign-send-next)"/;
@@ -526,6 +918,21 @@ test('message-list scanner reads safe Etsy DOM rows without mutating the source 
     assert.equal(items[0].unread, true);
     assert.equal(items[0].conversationUrl, 'https://www.etsy.com/messages/thread-1?ref=inbox');
     assert.deepEqual({ innerText: scope.innerText, textContent: scope.textContent }, before);
+});
+
+test('message-list row scoping ignores a compose CTA beside the real thread link', async () => {
+    const { api } = await loadAssistant();
+    const thread = { href: 'https://www.etsy.com/messages/thread-1' };
+    const compose = {
+        href: 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt',
+    };
+    let links = [thread, compose];
+    const row = { querySelectorAll: () => links };
+    const anchor = { closest: () => row, parentElement: row };
+
+    assert.equal(api.MessageCenterAgent.conversationScope(anchor), row);
+    links = [...links, { href: 'https://www.etsy.com/messages/thread-2' }];
+    assert.equal(api.MessageCenterAgent.conversationScope(anchor), null, 'two real thread identities remain ambiguous');
 });
 
 test('message-list scanner accepts Etsy query-form conversation links', async () => {
@@ -638,6 +1045,35 @@ test('orders reject external conversation links while recognizing Turkish delive
     assert.equal(order.delivered, true);
     assert.equal(order.messageUrl, '');
     assert.equal(conversationSelectorRead, true, 'the row conversation-link selector must be exercised');
+});
+
+test('delivered orders accept a receipt-bound compose URL exposed by Etsy custom link controls', async () => {
+    const { api } = await loadAssistant();
+    const orderLink = {
+        href: 'https://www.etsy.com/your/orders/sold/completed?order_id=12345678',
+        parentElement: { textContent: '$24.00' },
+    };
+    const composeUrl = 'https://www.etsy.com/messages/new?with_id=87654321&recipient_id=87654321&referring_id=12345678&referring_type=receipt';
+    const customMessageLink = {
+        getAttribute: name => name === 'href' ? composeUrl : '',
+    };
+    const row = {
+        textContent: 'Teslim edildi',
+        querySelectorAll(selector) {
+            if (selector.includes('order_id=')) return [orderLink];
+            if (selector.includes('/messages') || selector.includes('/conversations')) return [customMessageLink];
+            if (selector === 'h2, .wt-text-title-small') return [{ textContent: 'Teslim edildi' }];
+            return [];
+        },
+        querySelector(selector) {
+            if (selector.includes('btn-link.strong.fs-mask')) return { textContent: 'Compose Buyer' };
+            return null;
+        },
+    };
+
+    const order = api.OrdersAdapter.fromRow(row, 0);
+    assert.equal(order.messageUrl, composeUrl);
+    assert.equal(api.Router.conversationIdentity(order.messageUrl), 'compose:87654321:receipt:12345678');
 });
 
 test('campaign creation retains only canonical Etsy conversation URLs', async () => {
@@ -828,6 +1264,13 @@ test('Message Center conversation matching rejects path/query identity conflicts
     assert.equal(api.MessageCenterAgent.jobConversationMatches({
         conversationUrl: 'https://www.etsy.com/messages/alice',
     }), true);
+
+    const composeUrl = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    assert.equal(api.MessageCenterAgent.canonicalConversationUrl(composeUrl), '', 'remote Message Center jobs cannot target a compose route');
+    sandbox.location.pathname = '/messages/new';
+    sandbox.location.search = '?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    sandbox.location.href = composeUrl;
+    assert.equal(api.MessageCenterAgent.jobConversationMatches({ conversationUrl: composeUrl }), false);
 });
 
 test('message-list translations are cache-first, explicit, preserve originals, and report provider failures honestly', async () => {
@@ -4087,6 +4530,38 @@ test('pending reconciliation controls stay bound to the campaign conversation', 
         api.MessageAdapter.context = originalContext;
         api.Campaign.resolvePendingSend = originalResolve;
         api.UI.toast = originalToast;
+    }
+});
+
+test('pending reconciliation controls follow a receipt-bound compose send to its verified thread', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    installPendingResolutionFixture(environment);
+    const item = api.Store.campaign.items[0];
+    item.messageUrl = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
+    item.customerName = 'Ashley';
+    sandbox.location.pathname = '/messages/created-thread';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/created-thread';
+    const matchingContext = {
+        conversationId: 'created-thread', customerName: 'Ashley', orderId: 'order-1',
+        lastCustomerMessage: '', routeFingerprint: api.Router.routeFingerprint(),
+    };
+    api.UI.state.context = matchingContext;
+    const originalContext = api.MessageAdapter.context;
+    try {
+        api.MessageAdapter.context = () => matchingContext;
+        const matchingMarkup = api.UI.renderMessages();
+        assert.match(matchingMarkup, /data-order-confirm-sent="order-1"/);
+        assert.match(matchingMarkup, /data-order-confirm-not-sent="order-1"/);
+
+        const wrongOrder = { ...matchingContext, orderId: 'order-2' };
+        api.UI.state.context = wrongOrder;
+        api.MessageAdapter.context = () => wrongOrder;
+        const mismatchedMarkup = api.UI.renderMessages();
+        assert.doesNotMatch(mismatchedMarkup, /data-order-confirm-(?:sent|not-sent)=/);
+    } finally {
+        api.MessageAdapter.context = originalContext;
     }
 });
 

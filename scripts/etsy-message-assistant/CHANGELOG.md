@@ -5,6 +5,20 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.2.2] - 2026-08-28
+
+### Fixed
+
+- Teslim edilmiş siparişlerdeki yeni mesaj adresleri artık tüm alıcıları `new` adlı tek konuşma gibi görmez; `with_id`, `recipient_id` ve varsa receipt kimliği tekil ve birbiriyle uyumlu doğrulanarak alıcıya özel hedef oluşturulur.
+- Etsy mesaj kutusu bir formun içindeyken Gönder düğmesinin aynı konuşma panelinde formun kardeşi olması ve Türkçe `Mesaj gönder` / `Yanıt gönder` etiketleri desteklenir; gizli veya birden fazla aday yine güvenli biçimde reddedilir.
+- `clg-icon-button` ve erişilebilir link kontrollerindeki güvenli Etsy mesaj adresleri sipariş kartından okunur; receipt kimliği başka bir siparişi gösteren compose adresleri reddedilir.
+- Semantic outgoing işaretli yeni mesaj balonları doğrulanır. Yeni mesaj gönderildikten sonra Etsy compose adresini gerçek konuşma adresine çevirdiğinde doğrulama geç yüklenen DOM'u bekler, yalnız aynı sipariş ve müşteri bağlamında devam eder ve yeni konuşmadaki eski aynı metni bu gönderim sanmaz.
+- Merkezi Mesaj Agent'ı compose hedeflerini reddeder; gönderim sonrası rota değişiminde aynı işin ikinci kez çalıştırılması engellenir. Doğrulanan gönderim gerçek thread kimliğiyle kaydedilir ve gerektiğinde doğru thread üzerinde manuel uzlaşma kontrolleri gösterilir.
+
+### Tests
+
+- Gerçek DOM olayları kullanan, dış ağı kapalı localhost fixture'ı izole Chrome bağlamında teslim edilmiş sipariş → yorum uygunluğu → taslak → gönderim → outgoing balon → kalıcı `sent` zincirini ve compose → thread rota geçişini doğrular.
+
 ## [1.2.1] - 2026-08-28
 
 ### Fixed

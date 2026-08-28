@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="tr" data-mema-fixture="delivered-order-e2e-v1">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Makaytron Message Assistant — İzole Teslimat Testi</title>
+    <style>
+      body { margin: 0; padding: 2rem; font: 15px/1.5 system-ui, sans-serif; color: #222; background: #fafafa; }
+      .fixture-shell { max-width: 70rem; margin: 0 auto; }
+      .fixture-banner { margin-bottom: 1rem; padding: .8rem 1rem; border: 1px solid #9ab; border-radius: .5rem; background: #eef7ff; }
+      .panel-body-row, [role="tabpanel"] { padding: 1rem; border: 1px solid #ccc; border-radius: .5rem; background: white; }
+      .fixture-actions { display: flex; gap: .75rem; align-items: center; margin-top: 1rem; }
+      .fixture-composer { margin-top: 1rem; display: grid; grid-template-columns: 1fr auto; gap: .75rem; align-items: end; }
+      .fixture-composer form { margin: 0; }
+      textarea { box-sizing: border-box; width: 100%; min-height: 7rem; }
+      .wt-grid { display: flex; margin: .5rem 0; }
+      [data-message-text] { display: block; max-width: 70%; padding: .6rem .8rem; border-radius: .75rem; background: #eee; }
+      [data-message-direction="outgoing"] { margin-left: auto; }
+      [data-message-direction="outgoing"] [data-message-text] { background: #dcecff; }
+    </style>
+    <script src="/fixture.js" defer></script>
+    <script src="/assistant.js" defer></script>
+  </head>
+  <body>
+    <div class="fixture-shell">
+      <div class="fixture-banner" role="status">
+        Yalnız localhost üzerinde çalışan izole Etsy DOM taklidi. Dış ağ ve gerçek Etsy gönderimi kapalıdır.
+        <strong id="fixture-state">hazırlanıyor</strong>
+      </div>
+      <main id="etsy-fixture"></main>
+      <div class="fixture-actions">
+        <span>Yerel Etsy Send tıklaması: <strong id="fixture-send-count">0</strong></span>
+        <span id="fixture-last-result"></span>
+      </div>
+    </div>
+  </body>
+</html>
