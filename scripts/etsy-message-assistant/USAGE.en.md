@@ -66,6 +66,18 @@ In the normal individual workflow, **Insert into Etsy** fills the composer only;
 
 > **Upgrade safeguard:** If an older `sent` record cannot prove whether the previous message was a review request, the control shows an ambiguous state and keeps the order blocked. Inspect the Etsy conversation and choose **Önceki mesaj yorum talebi değildi — onayla (The previous message was not a review request — confirm)** only when that is true; leave the order blocked if you cannot verify it.
 
+## Central Message Panel agent safety
+
+- The agent accepts a job only when its declared conversation ID exactly matches its canonical URL. Reusing a job ID with different text or a different conversation stops before any Etsy composer access.
+- Message Center defers when an active delivery campaign owns the same conversation, so the two workflows cannot race for Etsy's Send control.
+- If the composer contains any user draft—even text identical to the agent job—Message Center leaves it untouched and does not send.
+- The agent cannot advance past a safety stage until the exact SHA-256 send ledger and terminal result envelope are durable. If the server response is lost, it retries only the same result envelope and never clicks Etsy again.
+- A verified native Etsy send keeps a durable cross-tab hold until local status/history finalization finishes. When an exact trusted native receipt exists, Message Center claims that evidence and does not send a duplicate.
+- Unknown, malformed, or future send stages are never cleared automatically; they become a global manual-review hold across every send path.
+- Etsy Send clicks, form submissions, and Ctrl/Command+Enter use the same guarded dispatch path. A different submit control in the same form is never converted into Send.
+- If a new outgoing bubble cannot be verified conclusively, the job remains durably fenced as `ambiguous` and is never clicked again automatically. Open the matching conversation, inspect Etsy's latest bubble, and use **Settings → Central Message Panel Agent → Sent / Not Sent** only after you know the real outcome.
+- Never resend while the outcome is uncertain. Reconciliation controls remain disabled until both the URL and the hydrated DOM conversation identity match the fenced job.
+
 ## Review reply draft
 
 1. Open the **Reviews** filter and review cards in Shop Manager dashboard.

@@ -66,6 +66,18 @@ AI taslak/düzenleme isteği; müşteri adı, konuşma ve sipariş kimlikleri, �
 
 > **Güncelleme koruması:** Eski bir `gönderildi` kaydı önceki mesajın yorum talebi olup olmadığını kanıtlayamıyorsa alan belirsiz görünür ve sipariş kilitli kalır. Etsy konuşmasını inceleyin; yalnız gerçekten doğruysa **Önceki mesaj yorum talebi değildi — onayla** seçeneğini seçin. Doğrulayamıyorsanız siparişi kilitli bırakın.
 
+## Merkezi Mesaj Paneli Agent güvenliği
+
+- Agent yalnız URL'si ile bildirilen konuşma kimliği birebir eşleşen işleri kabul eder. Aynı iş kimliği farklı konuşma veya metinle yeniden kullanılırsa Etsy composer'ına dokunmadan durur.
+- Aynı konuşma aktif teslimat kampanyası tarafından sahiplenilmişse Message Center gönderimi ertelenir; iki akış aynı Gönder düğmesi için yarışmaz.
+- Composer'da size ait herhangi bir taslak varsa — agent mesajıyla birebir aynı olsa bile — Message Center taslağa dokunmaz ve göndermez.
+- Agent işi, exact SHA-256 gönderim ledger'ı ve terminal sonuç zarfı kalıcılaşmadan güvenli aşamayı ilerletmez. Sunucu cevabı kaybolursa Etsy'ye yeniden tıklamak yerine yalnız aynı sonuç zarfını yeniden bildirir.
+- Native Etsy gönderimi doğrulandıktan sonra yerel durum/günlük işlemleri tamamlanana kadar sekmeler arası kalıcı kilit korunur. Aynı mesaj için güvenilir native receipt bulunursa Message Center bunu sahiplenir ve ikinci kez göndermez.
+- Bilinmeyen, bozuk veya gelecekte eklenmiş gönderim aşamaları otomatik olarak silinmez; bütün gönderim yollarını durduran manuel inceleme kaydına çevrilir.
+- Etsy'nin Gönder tıklaması, form submit'i ve Ctrl/Command+Enter kısayolu aynı güvenli doğrulama yolundan geçer. Aynı formdaki başka bir submit düğmesi mesaj göndermeye yönlendirilmez.
+- Giden mesaj balonu kesin doğrulanamazsa iş `ambiguous` olarak kilitlenir ve otomatik olarak tekrar tıklanmaz. İlgili konuşmayı bu sekmede açın, Etsy'deki son balonu gözle kontrol edin ve **Ayarlar → Merkezi Mesaj Paneli Agent** altında yalnız gerçek sonucu **Gönderildi** veya **Gönderilmedi** olarak seçin.
+- Belirsiz sonucu çözmeden aynı mesajı yeniden göndermeyin. URL doğru görünse bile panel butonları hydrate edilmiş DOM konuşma kimliği de eşleşmeden etkinleşmez.
+
 ## Yorum cevabı taslağı
 
 1. Shop Manager dashboard'da **Reviews** filtresini ve yorum kartlarını açın.

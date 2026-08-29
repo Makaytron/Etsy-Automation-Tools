@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { webcrypto } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
@@ -86,6 +87,7 @@ async function loadAssistant(options = {}) {
         RegExp,
         Error,
         TypeError,
+        crypto: webcrypto,
         TextEncoder,
         TextDecoder,
         Uint8Array,
@@ -100,8 +102,9 @@ async function loadAssistant(options = {}) {
         },
         navigator: {
             locks: {
-                request: async (name, _options, operation) => {
+                request: async (name, lockOptions, operation) => {
                     options.requestedLocks?.push(name);
+                    if (lockOptions?.ifAvailable && lockTails.has(name)) return operation(null);
                     const previous = lockTails.get(name) || Promise.resolve();
                     let release = null;
                     const turn = new Promise(resolve => { release = resolve; });
@@ -109,7 +112,7 @@ async function loadAssistant(options = {}) {
                     lockTails.set(name, tail);
                     await previous.catch(() => {});
                     try {
-                        return await operation();
+                        return await operation({ name, mode: lockOptions?.mode || 'exclusive' });
                     } finally {
                         release();
                         if (lockTails.get(name) === tail) lockTails.delete(name);
@@ -175,10 +178,12 @@ async function loadAssistant(options = {}) {
         mergeDefaultTemplates,
         campaignInstructionForTemplate,
         campaignAutoSendAllowed,
+        sendErrorGuidance,
         normalizeStatusState,
         reconcileLegacyReviewOutreach,
         templateFingerprint,
         hashText,
+        sha256Text,
         downloadText,
     });`);
     const context = vm.createContext(sandbox);
@@ -319,6 +324,135 @@ test('message context reads only the active composer panel and fails closed when
     assert.equal(ambiguous.itemTitle, '');
     assert.deepEqual(copy(ambiguous.messages), []);
     assert.equal(ambiguous.lastCustomerMessage, '');
+});
+
+test('a stale composer whose declared thread differs from the route is blocked for every send path', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox, documentListeners } = environment;
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    let captureHandler = null;
+    const button = makeNativeSendButton(() => {}, event => captureHandler?.(event));
+    const panel = {
+        parentElement: sandbox.document.body,
+        hasAttribute: name => name === 'data-conversation-id',
+        getAttribute: name => name === 'data-conversation-id' ? 'conversation-b' : null,
+        querySelector: () => null,
+        querySelectorAll(selector) {
+            if (selector.includes('textarea')) return [textarea];
+            if (selector === 'button') return [button];
+            return [];
+        },
+    };
+    const textarea = Object.assign(new sandbox.HTMLTextAreaElement(), {
+        value: 'Text in the stale conversation B composer',
+        offsetParent: {},
+        parentElement: panel,
+        getClientRects: () => [{}],
+        closest(selector) {
+            if (selector === api.MessageAdapter.conversationScopeSelector) return panel;
+            return null;
+        },
+    });
+    button.closest = selector => {
+        if (selector === 'button') return button;
+        if (selector === api.MessageAdapter.conversationScopeSelector) return panel;
+        return null;
+    };
+    sandbox.document.querySelectorAll = selector => selector.includes('textarea') ? [textarea] : [];
+
+    assert.deepEqual(copy(api.MessageAdapter.composerRouteBinding(textarea)), {
+        declared: true,
+        valid: true,
+        identity: 'conversation-b',
+    });
+    assert.equal(api.MessageAdapter.getConversationScope(textarea), null);
+    assert.equal(api.MessageAdapter.getTextarea(), null);
+    assert.equal(api.MessageAdapter.getSendButton(), null);
+    assert.equal(api.MessageAdapter.context().conversationId, '');
+
+    api.UI.toast = () => {};
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+    button.click();
+    assert.equal(button.clickCount, 0, 'an explicitly labelled native Send in a stale thread must be prevented');
+    const externalForm = { querySelectorAll: () => [] };
+    const externalSend = makeNativeSendButton(() => {}, event => captureHandler?.(event));
+    externalSend.closest = selector => selector === 'button' ? externalSend : (selector === 'form' ? externalForm : null);
+    externalSend.click();
+    assert.equal(externalSend.clickCount, 1, 'an unrelated Send control outside every composer scope must remain untouched');
+
+    const agent = configureMessageCenter(environment);
+    const job = messageCenterJob({ id: 'job-stale-dom-thread' });
+    let contextReads = 0;
+    let insertCalls = 0;
+    const results = [];
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => {
+        contextReads += 1;
+        return api.MessageAdapter.context();
+    };
+    api.MessageAdapter.insert = () => { insertCalls += 1; };
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(contextReads, 1);
+    assert.equal(insertCalls, 0);
+    assert.equal(button.clickCount, 0);
+    assert.equal(results.some(result => result.status === 'sent'), false);
+
+    installGuidedFixture(environment);
+    assert.equal(api.MessageAdapter.getTextarea(), null);
+    await assert.rejects(api.Campaign.sendCurrentByUser(), /gönderilecek metin bulunamadı/i);
+    assert.equal(insertCalls, 0);
+    assert.equal(button.clickCount, 0);
+});
+
+test('a compose panel recipient placeholder remains bound to its exact compose route', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/new';
+    sandbox.location.search = '?with_id=123&referring_id=987&referring_type=receipt';
+    sandbox.location.href = `https://www.etsy.com/messages/new${sandbox.location.search}`;
+    let panelReceiptId = '987';
+    const panel = {
+        parentElement: sandbox.document.body,
+        hasAttribute: name => name === 'data-conversation-id',
+        getAttribute: name => name === 'data-conversation-id' ? 'compose-123' : null,
+        querySelectorAll(selector) {
+            if (selector.includes('textarea')) return [textarea];
+            if (selector === 'a[href*="order_id="]') {
+                return [{ href: `https://www.etsy.com/your/orders/sold?order_id=${panelReceiptId}` }];
+            }
+            return [];
+        },
+    };
+    const textarea = Object.assign(new sandbox.HTMLTextAreaElement(), {
+        value: 'Compose draft',
+        offsetParent: {},
+        parentElement: panel,
+        getClientRects: () => [{}],
+        closest: selector => selector === api.MessageAdapter.conversationScopeSelector ? panel : null,
+    });
+    sandbox.document.querySelectorAll = selector => selector.includes('textarea') ? [textarea] : [];
+
+    assert.equal(api.Router.conversationIdentity(), 'compose:123:receipt:987');
+    assert.deepEqual(copy(api.MessageAdapter.composerRouteBinding(textarea)), {
+        declared: true,
+        valid: true,
+        identity: 'compose:123:receipt:987',
+    });
+    assert.equal(api.MessageAdapter.getTextarea(), textarea);
+    panelReceiptId = '';
+    sandbox.document.body.querySelectorAll = selector => selector === 'a[href*="order_id="]'
+        ? [{ href: 'https://www.etsy.com/your/orders/sold?order_id=555' }]
+        : [];
+    assert.equal(api.MessageAdapter.getTextarea(), textarea, 'an unrelated body/sidebar receipt must not bind the local composer');
+    panelReceiptId = '988';
+    assert.equal(api.MessageAdapter.getTextarea(), null, 'the same recipient cannot bind a composer from another receipt');
 });
 
 test('live message and review bindings distinguish emoji-only content changes', async () => {
@@ -1262,8 +1396,12 @@ test('Message Center conversation matching rejects path/query identity conflicts
     sandbox.location.href = 'https://www.etsy.com/messages/alice?conversation_id=alice';
     assert.equal(api.Router.conversationId(), 'alice');
     assert.equal(api.MessageCenterAgent.jobConversationMatches({
+        conversationId: 'alice',
         conversationUrl: 'https://www.etsy.com/messages/alice',
     }), true);
+    assert.equal(api.MessageCenterAgent.jobConversationMatches({
+        conversationUrl: 'https://www.etsy.com/messages/alice',
+    }), false, 'remote jobs must declare the same canonical conversation identity');
 
     const composeUrl = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
     assert.equal(api.MessageCenterAgent.canonicalConversationUrl(composeUrl), '', 'remote Message Center jobs cannot target a compose route');
@@ -3630,6 +3768,33 @@ function makeNativeSendButton(onClick = () => {}, captureClick = () => {}) {
     };
 }
 
+function installStandaloneNativeDispatchFixture(environment, options = {}) {
+    const { api, sandbox } = environment;
+    const conversationId = options.conversationId || 'conversation-a';
+    const text = options.text || 'Standalone durable native reply';
+    sandbox.location.pathname = `/messages/${conversationId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com/messages/${conversationId}`;
+    const scope = { id: `${conversationId}-scope`, querySelectorAll: () => [] };
+    const textarea = { value: text, offsetParent: {} };
+    const button = makeNativeSendButton(options.onClick || (() => {}));
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({
+        conversationId,
+        customerName: options.customerName || 'Ashley',
+        orderId: options.orderId ?? 'native-order-a',
+    });
+    api.MessageAdapter.countOutgoing = () => Number(options.outgoingMatches || 0);
+    api.Verification.waitForPendingOutgoing = options.waitForPendingOutgoing || (async () => true);
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+    const guard = api.Verification.beginNativeDispatchGuard();
+    assert.ok(guard, 'standalone native fixture must create an exact dispatch guard');
+    return { button, guard, scope, textarea };
+}
+
 function installGuidedFixture(environment, { twoItems = false } = {}) {
     const { api, storage, sandbox } = environment;
     sandbox.location.pathname = '/messages/order-1';
@@ -4866,7 +5031,15 @@ test('guided send clicks Etsy Send once and persists the user-edited text hash',
     const { api } = environment;
     installGuidedFixture(environment);
     let outgoing = false;
-    const button = makeNativeSendButton(() => { outgoing = true; });
+    let capturedAtClick = null;
+    const button = makeNativeSendButton(() => {
+        capturedAtClick = {
+            sendCapturedAt: api.Verification.pending?.sendCapturedAt || '',
+            campaignId: api.Verification.pending?.campaignId || '',
+            campaignItemId: api.Verification.pending?.campaignItemId || '',
+        };
+        outgoing = true;
+    });
     const textarea = { value: 'Edited final text', offsetParent: {} };
     const originals = {
         getTextarea: api.MessageAdapter.getTextarea,
@@ -4887,6 +5060,14 @@ test('guided send clicks Etsy Send once and persists the user-edited text hash',
         const second = api.Campaign.sendCurrentByUser();
         assert.deepEqual(await Promise.all([first, second]), [true, true]);
         assert.equal(button.clickCount, 1);
+        assert.ok(capturedAtClick.sendCapturedAt, 'guided dispatch must capture the exact composer immediately before clicking');
+        assert.deepEqual({
+            campaignId: capturedAtClick.campaignId,
+            campaignItemId: capturedAtClick.campaignItemId,
+        }, {
+            campaignId: 'campaign-1',
+            campaignItemId: 'item-1',
+        });
         const expectedHash = api.hashText('Edited final text');
         assert.equal(api.Store.campaign.status, 'completed');
         assert.equal(api.Store.campaign.items[0].status, 'sent');
@@ -4905,6 +5086,62 @@ test('guided send clicks Etsy Send once and persists the user-edited text hash',
         api.UI.toast = originals.toast;
         api.UI.refreshCurrent = originals.refreshCurrent;
     }
+});
+
+test('campaign draft, guided, automatic, and native sends reject an explicit order or customer mismatch', async () => {
+    const guidedEnvironment = await loadAssistant();
+    const { api, documentListeners } = guidedEnvironment;
+    installGuidedFixture(guidedEnvironment);
+    const textarea = { value: 'Edited final text', offsetParent: {} };
+    let captureHandler = null;
+    let insertCalls = 0;
+    const button = makeNativeSendButton(() => {}, event => captureHandler?.(event));
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => ({ querySelectorAll: () => [] });
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({
+        conversationId: 'order-1', customerName: 'Different Buyer', orderId: 'order-2',
+    });
+    api.MessageAdapter.insert = () => { insertCalls += 1; };
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.UI.toast = () => {};
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+
+    button.click();
+    assert.equal(button.clickCount, 0, 'native Send must be blocked when campaign order/customer context conflicts');
+    await assert.rejects(api.Campaign.sendCurrentByUser(), /güncel kampanya|konuşmayla eşleşmiyor/i);
+    assert.equal(insertCalls, 0);
+    assert.equal(button.clickCount, 0);
+
+    const resumeEnvironment = await loadAssistant();
+    const { api: resumeApi, storage: resumeStorage } = resumeEnvironment;
+    installGuidedFixture(resumeEnvironment);
+    const pendingCampaign = copy(resumeApi.Store.campaign);
+    pendingCampaign.items[0].status = 'pending';
+    delete pendingCampaign.items[0].reservation;
+    const pendingStatuses = copy(resumeApi.Store.statuses);
+    pendingStatuses.orders['order-1'].status = 'draft';
+    pendingStatuses.outreach['order-1'].review_request.workflow = 'queued';
+    resumeStorage.set(resumeApi.KEYS.campaign, copy(pendingCampaign));
+    resumeStorage.set(resumeApi.KEYS.statuses, copy(pendingStatuses));
+    resumeApi.Store.commitCoordinatedState(pendingCampaign, pendingStatuses, { invalidate: false, refresh: false });
+    const emptyTextarea = { value: '', offsetParent: {} };
+    let resumeInserts = 0;
+    let resumeClicks = 0;
+    resumeApi.MessageAdapter.getTextarea = () => emptyTextarea;
+    resumeApi.MessageAdapter.waitForTextarea = async () => emptyTextarea;
+    resumeApi.MessageAdapter.getConversationScope = () => ({ querySelectorAll: () => [] });
+    resumeApi.MessageAdapter.context = () => ({
+        conversationId: 'order-1', customerName: 'Different Buyer', orderId: 'order-2',
+    });
+    resumeApi.MessageAdapter.insert = () => { resumeInserts += 1; };
+    resumeApi.MessageAdapter.getSendButton = () => messageCenterButton(() => { resumeClicks += 1; });
+
+    await assert.rejects(resumeApi.Campaign.resume(), /sipariş veya müşteri.*eşleşmiyor/i);
+    assert.equal(resumeInserts, 0, 'a mismatched campaign context must fail before draft insertion');
+    assert.equal(resumeClicks, 0, 'a mismatched campaign context must fail before automatic dispatch');
 });
 
 test('route drift, an empty composer, and a disabled Send never dispatch', async () => {
@@ -5249,6 +5486,610 @@ test('cancel and skip restore the exact prior non-review order status', async ()
     assert.equal(skippedOutreach.decision, 'ineligible');
     assert.equal(skippedOutreach.reason, 'deferred');
     assert.equal(skippedOutreach.workflow, 'none');
+});
+
+test('a native Etsy campaign Send click is routed through the fenced guided path exactly once', async () => {
+    const environment = await loadAssistant();
+    const { api, documentListeners } = environment;
+    installGuidedFixture(environment);
+    const textarea = { value: 'Edited final text', offsetParent: {} };
+    let outgoing = false;
+    let captureHandler = null;
+    const button = makeNativeSendButton(
+        () => { outgoing = true; },
+        event => captureHandler?.(event),
+    );
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({ conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1' });
+    api.MessageAdapter.countOutgoing = () => outgoing ? 1 : 0;
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+    api.UI.reportUiError = error => { throw error; };
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+
+    button.click();
+    button.click();
+
+    await waitUntil(() => api.Store.statuses.orders['order-1']?.status === 'sent', 'native campaign send did not finish');
+    assert.equal(button.clickCount, 1, 'the intercepted user click and rapid duplicate must produce one Etsy dispatch');
+    assert.equal(api.Store.statuses.outreach['order-1'].review_request.workflow, 'sent');
+});
+
+test('a prepared standalone reply suppresses a rapid duplicate native Send click during verification', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox, documentListeners } = environment;
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    const textarea = { value: 'Standalone prepared reply', offsetParent: {} };
+    let captureHandler = null;
+    let resolveOutgoing;
+    const outgoingReady = new Promise(resolve => { resolveOutgoing = resolve; });
+    const button = makeNativeSendButton(() => {}, event => captureHandler?.(event));
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.getConversationScope = () => ({
+        id: 'conversation-scope',
+        querySelectorAll: () => [],
+    });
+    api.MessageAdapter.context = () => ({ conversationId: 'conversation-a', customerName: 'Ashley', orderId: '' });
+    api.MessageAdapter.countOutgoing = () => 0;
+    api.MessageAdapter.waitForOutgoing = async () => outgoingReady;
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+    api.Verification.prepare(textarea.value, {
+        conversationId: 'conversation-a',
+        routeFingerprint: api.Router.routeFingerprint(),
+        method: 'manual',
+    });
+
+    button.click();
+    button.click();
+    await waitUntil(() => button.clickCount === 1, 'standalone native dispatch did not start');
+    assert.equal(button.clickCount, 1);
+    assert.ok(api.Verification.nativeDispatchGuard);
+
+    resolveOutgoing(true);
+    await api.Verification.activePromise;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(api.Verification.nativeDispatchGuard, null);
+});
+
+test('a Message Center programmatic click never consumes an unrelated standalone verification', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox, documentListeners } = environment;
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    let captureHandler = null;
+    const button = makeNativeSendButton(() => {}, event => captureHandler?.(event));
+    const stalePending = { marker: 'unrelated-verification' };
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.Verification.pending = stalePending;
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+
+    api.MessageCenterAgent.programmaticDispatchActive = true;
+    button.click();
+    api.MessageCenterAgent.programmaticDispatchActive = false;
+
+    assert.equal(button.clickCount, 1);
+    assert.equal(api.Verification.pending, stalePending);
+    assert.equal(api.Verification.activePromise, null);
+    assert.equal(api.Verification.nativeDispatchGuard, null);
+});
+
+test('a coordinated manual send survives composer remount and cannot deadlock campaign creation', async () => {
+    const requestedLocks = [];
+    const environment = await loadAssistant({ requestedLocks });
+    const { api, sandbox, documentListeners } = environment;
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    const scope = { id: 'conversation-scope', querySelectorAll: () => [] };
+    let textarea = { value: 'A manually typed Etsy message', offsetParent: {} };
+    let captureHandler = null;
+    let outgoingWaitStarted = false;
+    let resolveOutgoing;
+    const outgoingReady = new Promise(resolve => { resolveOutgoing = resolve; });
+    const button = makeNativeSendButton(
+        () => { textarea = { value: 'A second draft after remount', offsetParent: {} }; },
+        event => captureHandler?.(event),
+    );
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({
+        conversationId: 'conversation-a', customerName: 'Ashley', orderId: '',
+    });
+    api.MessageAdapter.countOutgoing = () => 0;
+    api.MessageAdapter.waitForOutgoing = async () => {
+        outgoingWaitStarted = true;
+        return outgoingReady;
+    };
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+
+    button.click();
+    await waitUntil(() => outgoingWaitStarted, 'manual outgoing verification did not start');
+    button.click();
+    assert.equal(button.clickCount, 1, 'composer remount must not permit a second dispatch');
+
+    let campaignSettled = false;
+    const campaignCreation = api.Campaign.create([{
+        orderId: 'order-2',
+        customerName: 'Morgan',
+        itemTitle: 'Second item',
+        messageUrl: 'https://www.etsy.com/messages/conversation-b',
+    }], 'tpl-delivered', 'template').finally(() => { campaignSettled = true; });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(campaignSettled, false, 'campaign creation must wait behind the active send fence');
+
+    resolveOutgoing(true);
+    await Promise.race([
+        campaignCreation,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('campaign/send lock deadlock')), 2000)),
+    ]);
+    await waitUntil(() => api.Verification.nativeDispatchGuard === null, 'native send guard was not released');
+    assert.equal(button.clickCount, 1);
+    assert.equal(api.Store.campaign.status, 'active');
+    assert.match(requestedLocks[0], /campaign-status-coordination/);
+    assert.match(requestedLocks[1], /etsy-send-coordination/);
+});
+
+test('a persistent native ambiguity blocks every send path until late evidence is reconciled', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox, documentListeners } = environment;
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    const scope = { id: 'conversation-scope', querySelectorAll: () => [] };
+    const textarea = { value: 'Manual message with uncertain outcome', offsetParent: {} };
+    let captureHandler = null;
+    let outgoingMatches = 0;
+    const button = makeNativeSendButton(() => { textarea.value = ''; }, event => captureHandler?.(event));
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({ conversationId: 'conversation-a', customerName: 'Ashley', orderId: '' });
+    api.MessageAdapter.countOutgoing = () => outgoingMatches;
+    api.MessageAdapter.waitForOutgoing = async () => false;
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+
+    button.click();
+    await waitUntil(() => api.Verification.nativeDispatchGuard === null, 'ambiguous native send did not settle');
+    assert.equal(button.clickCount, 1);
+    const attempts = Object.values(await api.Verification.nativeSendAttempts());
+    assert.equal(attempts.length, 1);
+    assert.equal(attempts[0].stage, 'ambiguous');
+
+    textarea.value = 'Manual message with uncertain outcome';
+    button.click();
+    assert.equal(button.clickCount, 1, 'a local retry must be blocked by the tombstone');
+
+    const agent = configureMessageCenter(environment);
+    const mcJob = messageCenterJob({ id: 'job-native-hold' });
+    const mcResults = [];
+    let contextReads = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: mcJob };
+        if (requestPath.includes('/result')) mcResults.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return api.MessageAdapter.context(); };
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(contextReads, 0);
+    assert.deepEqual(mcResults, [{
+        status: 'failed', retryable: true, error: 'native_send_outcome_hold',
+    }]);
+
+    await assert.rejects(api.Campaign.create([{
+        orderId: 'order-native-hold', customerName: 'Ashley', itemTitle: 'Held item',
+        messageUrl: 'https://www.etsy.com/messages/conversation-a',
+    }], 'tpl-delivered', 'template'), /belirsiz bir manuel Etsy gönderimi/i);
+
+    outgoingMatches = 1;
+    assert.equal(await api.Verification.resolveNativeManualReview('not_sent', {
+        attemptId: attempts[0].id,
+        ambiguityId: attempts[0].ambiguityId,
+    }), 'sent');
+    assert.deepEqual(await api.Verification.nativeSendAttempts(), {});
+    assert.equal(api.Store.statuses.conversations['conversation-a'].status, 'sent');
+});
+
+test('a native verification exception retains a tombstone and manual resolution clears stale ownership', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox, documentListeners } = environment;
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    const scope = { id: 'conversation-scope', querySelectorAll: () => [] };
+    const textarea = { value: 'Manual message before verifier failure', offsetParent: {} };
+    let captureHandler = null;
+    const button = makeNativeSendButton(() => { textarea.value = ''; }, event => captureHandler?.(event));
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({ conversationId: 'conversation-a', customerName: 'Ashley', orderId: '' });
+    api.MessageAdapter.countOutgoing = () => 0;
+    api.MessageAdapter.waitForOutgoing = async () => { throw new Error('injected outgoing verifier failure'); };
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+
+    button.click();
+    await waitUntil(() => api.Verification.nativeDispatchGuard === null, 'failed native verifier did not release its local guard');
+    const attempt = Object.values(await api.Verification.nativeSendAttempts())[0];
+    assert.equal(attempt.stage, 'ambiguous');
+    assert.ok(api.Verification.pending, 'failed verification must retain exact local ownership');
+
+    assert.equal(await api.Verification.resolveNativeManualReview('not_sent', {
+        attemptId: attempt.id,
+        ambiguityId: attempt.ambiguityId,
+    }), 'not_sent');
+    assert.equal(api.Verification.pending, null);
+    assert.equal(api.Verification.hasSendOwnership('conversation-a'), false);
+    assert.deepEqual(await api.Verification.nativeSendAttempts(), {});
+});
+
+test('a receipt-bound compose ambiguity is actionable and can be resolved without a thread transition', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox, documentListeners } = environment;
+    const composeUrl = 'https://www.etsy.com/messages/new?with_id=12345&referring_id=98765&referring_type=receipt';
+    sandbox.location.pathname = '/messages/new';
+    sandbox.location.search = '?with_id=12345&referring_id=98765&referring_type=receipt';
+    sandbox.location.href = composeUrl;
+    const scope = { id: 'compose-scope', querySelectorAll: () => [] };
+    const textarea = { value: 'Compose message with uncertain outcome', offsetParent: {} };
+    let captureHandler = null;
+    const button = makeNativeSendButton(() => { textarea.value = ''; }, event => captureHandler?.(event));
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({
+        conversationId: api.Router.conversationId(), customerName: 'Ashley', orderId: '98765',
+    });
+    api.MessageAdapter.countOutgoing = () => 0;
+    api.MessageAdapter.waitForOutgoing = async () => false;
+    api.Verification.waitForPendingOutgoing = async () => false;
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+
+    button.click();
+    await waitUntil(() => api.Verification.nativeDispatchGuard === null, 'compose ambiguity did not settle');
+    const attempt = Object.values(await api.Verification.nativeSendAttempts())[0];
+    assert.match(attempt.conversationIdentity, /^compose:/);
+    assert.equal(api.Verification.nativeManualReviewContextIsCurrent(attempt), true);
+    const markup = api.UI.renderSettings();
+    assert.match(markup, /data-action="native-send-confirm-not-sent"[^>]*data-native-attempt-id/);
+
+    assert.equal(await api.Verification.resolveNativeManualReview('not_sent', {
+        attemptId: attempt.id,
+        ambiguityId: attempt.ambiguityId,
+    }), 'not_sent');
+    assert.deepEqual(await api.Verification.nativeSendAttempts(), {});
+});
+
+test('compose ambiguity rebind requires the exact receipt and baselines existing thread history', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    const scope = { id: 'thread-scope', querySelectorAll: () => [] };
+    const textarea = { value: '', offsetParent: {} };
+    let outgoingMatches = 1;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.context = () => ({
+        conversationId: 'conversation-a', customerName: 'Ashley', orderId: '98765',
+    });
+    api.MessageAdapter.countOutgoing = () => outgoingMatches;
+
+    const baseAttempt = {
+        stage: 'dispatched',
+        text: 'Historically repeated compose text',
+        textDigest: await api.sha256Text('Historically repeated compose text'),
+        textDigestVersion: 'sha256-utf8-v1',
+        baselineMatches: 0,
+        customerName: 'Ashley',
+        conversationId: 'compose:12345:receipt:98765',
+        conversationUrl: 'https://www.etsy.com/messages/new?with_id=12345&referring_id=98765&referring_type=receipt',
+        createdAt: new Date().toISOString(),
+    };
+    await api.Verification.persistNativeSendAttempt({
+        ...baseAttempt,
+        id: 'native-mismatched-receipt',
+        ambiguityId: 'native-mismatched-ambiguity',
+        orderId: '98765',
+        conversationIdentity: 'compose:12345:receipt:99999',
+    });
+    assert.equal(await api.Verification.rebindNativeComposeHoldToCurrent(), false);
+    assert.equal((await api.Verification.nativeSendAttempts())['native-mismatched-receipt'].conversationIdentity, 'compose:12345:receipt:99999');
+    await api.Verification.clearNativeSendAttempt('native-mismatched-receipt');
+
+    await api.Verification.persistNativeSendAttempt({
+        ...baseAttempt,
+        id: 'native-correct-receipt',
+        ambiguityId: 'native-correct-ambiguity',
+        orderId: '98765',
+        conversationIdentity: 'compose:12345:receipt:98765',
+    });
+    assert.equal(await api.Verification.rebindNativeComposeHoldToCurrent(), true);
+    const rebound = (await api.Verification.nativeSendAttempts())['native-correct-receipt'];
+    assert.equal(rebound.conversationIdentity, 'conversation-a');
+    assert.equal(rebound.baselineMatches, 1);
+
+    assert.equal(await api.Verification.resolveNativeManualReview('not_sent', {
+        attemptId: rebound.id,
+        ambiguityId: rebound.ambiguityId,
+    }), 'not_sent');
+    assert.equal(outgoingMatches, 1);
+    assert.deepEqual(await api.Verification.nativeSendAttempts(), {});
+});
+
+test('a second tab drops a native click instead of queueing it behind another send', async () => {
+    const shared = {
+        storage: new Map(), lockTails: new Map(), valueListeners: new Map(),
+    };
+    const first = await loadAssistant(shared);
+    const second = await loadAssistant(shared);
+    let resolveFirstOutgoing;
+    let firstWaitStarted = false;
+    const firstOutgoing = new Promise(resolve => { resolveFirstOutgoing = resolve; });
+
+    function bindNative(environment, waitForOutgoing) {
+        const { api, sandbox, documentListeners } = environment;
+        sandbox.location.pathname = '/messages/conversation-a';
+        sandbox.location.search = '';
+        sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+        const scope = { id: 'scope', querySelectorAll: () => [] };
+        const textarea = { value: 'Cross-tab native message', offsetParent: {} };
+        let captureHandler = null;
+        const button = makeNativeSendButton(() => { textarea.value = ''; }, event => captureHandler?.(event));
+        api.MessageAdapter.getTextarea = () => textarea;
+        api.MessageAdapter.getConversationScope = () => scope;
+        api.MessageAdapter.getSendButton = () => button;
+        api.MessageAdapter.context = () => ({ conversationId: 'conversation-a', customerName: 'Ashley', orderId: '' });
+        api.MessageAdapter.countOutgoing = () => 0;
+        api.MessageAdapter.waitForOutgoing = waitForOutgoing;
+        api.MessageAdapter.isSendButton = target => target === button;
+        api.UI.toast = () => {};
+        api.UI.refreshCurrent = async () => {};
+        api.UI.shadow = { addEventListener() {} };
+        api.UI.bind();
+        captureHandler = documentListeners.get('click')?.at(-1);
+        return button;
+    }
+
+    const firstButton = bindNative(first, async () => {
+        firstWaitStarted = true;
+        return firstOutgoing;
+    });
+    const secondButton = bindNative(second, async () => true);
+    firstButton.click();
+    await waitUntil(() => firstWaitStarted, 'first tab did not acquire the send fence');
+    secondButton.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(secondButton.clickCount, 0);
+
+    resolveFirstOutgoing(true);
+    await waitUntil(() => first.api.Verification.nativeDispatchGuard === null, 'first send did not finish');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(firstButton.clickCount, 1);
+    assert.equal(secondButton.clickCount, 0, 'the losing click must not replay after the lock becomes free');
+});
+
+test('a verified native send keeps its durable postprocessing hold until finalization finishes', async () => {
+    const shared = {
+        storage: new Map(), lockTails: new Map(), valueListeners: new Map(),
+    };
+    const first = await loadAssistant(shared);
+    const second = await loadAssistant(shared);
+    const messageCenterTab = await loadAssistant(shared);
+    configureMessageCenter(first);
+    const agent = configureMessageCenter(messageCenterTab);
+    const firstFixture = installStandaloneNativeDispatchFixture(first);
+    const secondFixture = installStandaloneNativeDispatchFixture(second);
+    const originalSetStatus = first.api.Store.setStatus;
+    let finalizationStarted = false;
+    let releaseFinalization;
+    const finalizationGate = new Promise(resolve => { releaseFinalization = resolve; });
+    first.api.Store.setStatus = async function (...args) {
+        if (!finalizationStarted) {
+            finalizationStarted = true;
+            await finalizationGate;
+        }
+        return originalSetStatus.apply(this, args);
+    };
+
+    const firstSend = first.api.Verification.dispatchNativeSend(firstFixture.button, firstFixture.guard);
+    await waitUntil(() => finalizationStarted, 'native postprocessing did not begin');
+    const held = Object.values(await first.api.Verification.nativeSendAttempts());
+    assert.equal(held.length, 1);
+    assert.equal(held[0].stage, 'postprocessing');
+    assert.ok(held[0].outgoingVerifiedAt);
+    assert.equal(Object.keys(await first.api.Verification.nativeSentReceipts()).length, 1);
+
+    const job = messageCenterJob({ id: 'job-native-postprocessing-race', text: firstFixture.textarea.value });
+    const messageCenterResults = [];
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) messageCenterResults.push(copy(body));
+        return {};
+    };
+    assert.equal(await agent.processNextJob(), true);
+    assert.equal(firstFixture.button.clickCount, 1, 'exact native receipt must prevent a Message Center replay');
+    assert.equal(messageCenterResults.length, 1);
+    assert.equal(messageCenterResults[0].status, 'sent');
+    assert.equal(messageCenterResults[0].duplicatePrevented, true);
+    assert.equal(messageCenterResults[0].recoveredFromNativeReceipt, true);
+    assert.equal((await first.api.Verification.nativeSendAttempts())[held[0].id].stage, 'postprocessing');
+
+    assert.equal(
+        await second.api.Verification.dispatchNativeSend(secondFixture.button, secondFixture.guard),
+        false,
+        'another tab must not dispatch while verified native finalization is pending',
+    );
+    assert.equal(secondFixture.button.clickCount, 0);
+    assert.equal((await first.api.Verification.nativeSendAttempts())[held[0].id].stage, 'postprocessing');
+
+    releaseFinalization();
+    assert.equal(await firstSend, true);
+    first.api.Store.setStatus = originalSetStatus;
+    first.api.Verification.releaseNativeDispatchGuard(firstFixture.guard);
+    second.api.Verification.releaseNativeDispatchGuard(secondFixture.guard);
+    assert.equal(firstFixture.button.clickCount, 1);
+    assert.deepEqual(await first.api.Verification.nativeSendAttempts(), {});
+});
+
+test('a postprocessing failure preserves verified evidence and not-sent resolution cannot downgrade it', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    configureMessageCenter(environment);
+    const fixture = installStandaloneNativeDispatchFixture(environment);
+    const originalSetStatus = api.Store.setStatus;
+    api.Store.setStatus = async () => { throw new Error('injected native postprocessing failure'); };
+    try {
+        await assert.rejects(
+            api.Verification.dispatchNativeSend(fixture.button, fixture.guard),
+            /injected native postprocessing failure/,
+        );
+    } finally {
+        api.Store.setStatus = originalSetStatus;
+        api.Verification.releaseNativeDispatchGuard(fixture.guard);
+    }
+    const attempt = Object.values(await api.Verification.nativeSendAttempts())[0];
+    const receipt = (await api.Verification.nativeSentReceipts())[attempt.id];
+    assert.equal(attempt.stage, 'ambiguous');
+    assert.ok(attempt.outgoingVerifiedAt);
+    assert.equal(receipt.textDigest, attempt.textDigest);
+    assert.equal(await api.Verification.resolveNativeManualReview('not_sent', {
+        attemptId: attempt.id,
+        ambiguityId: attempt.ambiguityId,
+    }), 'sent');
+    assert.deepEqual(await api.Verification.nativeSendAttempts(), {});
+    assert.equal(api.Store.statuses.orders['native-order-a'].status, 'sent');
+});
+
+test('durable outgoing verification prevents a not-sent downgrade even without Message Center receipt', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const fixture = installStandaloneNativeDispatchFixture(environment, {
+        text: 'Verified native reply without agent configuration',
+    });
+    const originalSetStatus = api.Store.setStatus;
+    api.Store.setStatus = async () => { throw new Error('injected receipt-free finalization failure'); };
+    try {
+        await assert.rejects(
+            api.Verification.dispatchNativeSend(fixture.button, fixture.guard),
+            /injected receipt-free finalization failure/,
+        );
+    } finally {
+        api.Store.setStatus = originalSetStatus;
+        api.Verification.releaseNativeDispatchGuard(fixture.guard);
+    }
+    const attempt = Object.values(await api.Verification.nativeSendAttempts())[0];
+    assert.equal(attempt.stage, 'ambiguous');
+    assert.ok(attempt.outgoingVerifiedAt);
+    assert.deepEqual(await api.Verification.nativeSentReceipts(), {});
+    assert.equal(await api.Verification.resolveNativeManualReview('not_sent', {
+        attemptId: attempt.id,
+        ambiguityId: attempt.ambiguityId,
+    }), 'sent');
+    assert.equal(api.Store.statuses.orders['native-order-a'].status, 'sent');
+});
+
+test('native dispatch fails before click when its durable attempt write is silently dropped', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const fixture = installStandaloneNativeDispatchFixture(environment);
+    const originalSet = api.GMX.set;
+    api.GMX.set = async (key, value) => {
+        if (String(key).endsWith(':native-send-attempts:v1')) return undefined;
+        return originalSet(key, value);
+    };
+    try {
+        await assert.rejects(
+            api.Verification.dispatchNativeSend(fixture.button, fixture.guard),
+            /güvenlik kaydı kalıcılaştırılamadı/i,
+        );
+    } finally {
+        api.GMX.set = originalSet;
+        api.Verification.releaseNativeDispatchGuard(fixture.guard);
+    }
+    assert.equal(fixture.button.clickCount, 0);
+    assert.deepEqual(await api.Verification.nativeSendAttempts(), {});
+});
+
+test('unknown native hold lookup is read-only and cannot erase a concurrent tombstone', async () => {
+    const shared = {
+        storage: new Map(), lockTails: new Map(), valueListeners: new Map(),
+    };
+    const first = await loadAssistant(shared);
+    const second = await loadAssistant(shared);
+    const unknownText = 'Unknown future native state';
+    await first.api.Verification.persistNativeSendAttempt({
+        id: 'native-future-a',
+        stage: 'future_post_dispatch',
+        conversationIdentity: 'conversation-a',
+        text: unknownText,
+        textDigest: await first.api.sha256Text(unknownText),
+        textDigestVersion: 'sha256-utf8-v1',
+        createdAt: new Date().toISOString(),
+    });
+    let lookupWrites = 0;
+    const originalSet = first.api.GMX.set;
+    first.api.GMX.set = async (...args) => {
+        lookupWrites += 1;
+        return originalSet(...args);
+    };
+    const view = await first.api.Verification.activeNativeSendHold('conversation-b');
+    first.api.GMX.set = originalSet;
+    assert.equal(view.stage, 'ambiguous');
+    assert.equal(view.globalHold, true);
+    assert.equal(lookupWrites, 0, 'hold lookup must never mutate shared tombstone storage');
+
+    const secondText = 'Concurrent durable native state';
+    await second.api.Verification.persistNativeSendAttempt({
+        id: 'native-dispatched-b',
+        ambiguityId: 'native-ambiguity-b',
+        stage: 'dispatched',
+        conversationIdentity: 'conversation-b',
+        text: secondText,
+        textDigest: await second.api.sha256Text(secondText),
+        textDigestVersion: 'sha256-utf8-v1',
+        createdAt: new Date().toISOString(),
+    });
+    const records = await first.api.Verification.nativeSendAttempts();
+    assert.deepEqual(Object.keys(records).sort(), ['native-dispatched-b', 'native-future-a']);
+    assert.equal(records['native-future-a'].stage, 'future_post_dispatch');
 });
 
 test('a native Etsy Send click during guided preparation is suppressed before the one guided dispatch', async () => {
@@ -5645,6 +6486,20 @@ function messageCenterJob(overrides = {}) {
     };
 }
 
+function fencedMessageCenterPending(agent, binding, job, stage, extra = {}) {
+    return {
+        job: copy(job),
+        stage,
+        leasedAt: new Date().toISOString(),
+        ownerId: 'expired-owner',
+        fenceToken: 'expired-fence',
+        configId: agent.configId(binding),
+        leaseExpiresAt: new Date(0).toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...extra,
+    };
+}
+
 function messageCenterButton(onClick) {
     const listeners = new Set();
     return {
@@ -5656,6 +6511,36 @@ function messageCenterButton(onClick) {
             onClick();
         },
     };
+}
+
+function installMessageCenterConversationFixture(environment, options = {}) {
+    const { api } = environment;
+    const textarea = options.textarea || { value: '', offsetParent: {} };
+    const scope = options.scope || {
+        id: 'conversation-scope',
+        querySelectorAll: () => [],
+    };
+    let clicks = 0;
+    const button = options.button || messageCenterButton(() => {
+        clicks += 1;
+        options.onClick?.(textarea);
+    });
+    const readContext = options.context || (() => ({
+        conversationId: 'conversation-a',
+        pageUrl: 'https://www.etsy.com/messages/conversation-a',
+    }));
+    api.MessageAdapter.waitForContext = async () => readContext();
+    api.MessageAdapter.context = () => readContext();
+    api.MessageAdapter.waitForTextarea = async () => textarea;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.insert = (text, target) => { target.value = text; };
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.countOutgoing = options.countOutgoing || (() => 0);
+    api.MessageAdapter.waitForOutgoing = options.waitForOutgoing || (async () => true);
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+    return { textarea, scope, button, get clicks() { return clicks; } };
 }
 
 async function runInvalidMessageCenterJob(job) {
@@ -5800,6 +6685,136 @@ test('Message Center keeps a legacy rejection fenced and retries it after a resu
     assert.equal(clickCalls, 0);
 });
 
+test('Message Center retries an accepted rejection after a lost response without returning to Etsy DOM', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-rejection-response-lost' });
+    const results = [];
+    let resultAttempts = 0;
+    let ownerConflict = true;
+    let nextJobReads = 0;
+    let contextReads = 0;
+    let composerReads = 0;
+    let clickCalls = 0;
+
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) {
+            nextJobReads += 1;
+            return { job };
+        }
+        if (requestPath.includes('/result')) {
+            resultAttempts += 1;
+            results.push(copy(body));
+            if (resultAttempts === 1) throw new Error('result accepted but response was lost');
+        }
+        return {};
+    };
+    api.Campaign.persistedSendOwnership = async () => ownerConflict;
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+    api.MessageAdapter.context = () => { contextReads += 1; return null; };
+    api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+    api.MessageAdapter.getTextarea = () => { composerReads += 1; return null; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clickCalls += 1; });
+
+    assert.equal(await agent.processNextJob(), false);
+    const rejected = storage.get(agent.pendingKey(binding));
+    assert.equal(rejected.stage, 'rejected');
+    assert.deepEqual(rejected.rejectionResult, {
+        status: 'failed',
+        retryable: true,
+        error: 'etsy_send_owner_conflict',
+    });
+    assert.equal(resultAttempts, 1);
+
+    ownerConflict = false;
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(resultAttempts, 2);
+    assert.deepEqual(results, [
+        { status: 'failed', retryable: true, error: 'etsy_send_owner_conflict' },
+        { status: 'failed', retryable: true, error: 'etsy_send_owner_conflict' },
+    ]);
+    assert.equal(nextJobReads, 1, 'a rejected pending job must not lease a new Message Center job');
+    assert.equal(contextReads, 0, 'a rejected pending job must never return to Etsy context discovery');
+    assert.equal(composerReads, 0, 'a rejected pending job must never return to the Etsy composer');
+    assert.equal(clickCalls, 0, 'a rejected pending job must never click Etsy Send');
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+});
+
+test('Message Center fences a pre-dispatch failure before reporting and never re-enters Etsy after a lost response', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-pre-dispatch-response-lost' });
+    const textarea = { value: '', offsetParent: {} };
+    const results = [];
+    let resultAttempts = 0;
+    let nextJobReads = 0;
+    let composerAvailable = false;
+    let contextReads = 0;
+    let composerReads = 0;
+    let insertCalls = 0;
+    let clickCalls = 0;
+
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) {
+            nextJobReads += 1;
+            return { job };
+        }
+        if (requestPath.includes('/result')) {
+            resultAttempts += 1;
+            results.push(copy(body));
+            if (resultAttempts === 1) throw new Error('pre-dispatch result accepted but response was lost');
+        }
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => {
+        contextReads += 1;
+        return { conversationId: 'conversation-a' };
+    };
+    api.MessageAdapter.waitForTextarea = async () => {
+        composerReads += 1;
+        return composerAvailable ? textarea : null;
+    };
+    api.MessageAdapter.getTextarea = () => {
+        composerReads += 1;
+        return composerAvailable ? textarea : null;
+    };
+    api.MessageAdapter.insert = (text, target) => { insertCalls += 1; target.value = text; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clickCalls += 1; });
+
+    assert.equal(await agent.processNextJob(), false);
+    const rejected = storage.get(agent.pendingKey(binding));
+    assert.equal(rejected.stage, 'rejected');
+    assert.deepEqual(rejected.rejectionResult, {
+        status: 'failed',
+        retryable: true,
+        error: 'Etsy cevap alanı bulunamadı.',
+    });
+    assert.equal(contextReads, 1);
+    assert.equal(composerReads, 1);
+    assert.equal(insertCalls, 0);
+    assert.equal(clickCalls, 0);
+
+    composerAvailable = true;
+    contextReads = 0;
+    composerReads = 0;
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(resultAttempts, 2);
+    assert.deepEqual(results, [
+        { status: 'failed', retryable: true, error: 'Etsy cevap alanı bulunamadı.' },
+        { status: 'failed', retryable: true, error: 'Etsy cevap alanı bulunamadı.' },
+    ]);
+    assert.equal(nextJobReads, 1, 'the rejected pending failure must be retried before leasing any other job');
+    assert.equal(contextReads, 0, 'the rejected failure retry must not rediscover Etsy context');
+    assert.equal(composerReads, 0, 'the rejected failure retry must not inspect the now-available composer');
+    assert.equal(insertCalls, 0, 'the rejected failure retry must not insert into Etsy');
+    assert.equal(clickCalls, 0, 'the rejected failure retry must not click Etsy Send');
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+});
+
 test('Message Center never inserts or clicks after the active conversation changes while resolving the composer', async () => {
     const environment = await loadAssistant();
     const { api, sandbox } = environment;
@@ -5821,6 +6836,10 @@ test('Message Center never inserts or clicks after the active conversation chang
         return {};
     };
     api.MessageAdapter.waitForContext = async () => ({ conversationId: 'conversation-a' });
+    api.MessageAdapter.context = () => ({
+        conversationId: 'conversation-a',
+        pageUrl: 'https://www.etsy.com/messages/conversation-a',
+    });
     api.MessageAdapter.waitForTextarea = async () => { waitingForTextarea = true; return textareaReady; };
     api.MessageAdapter.getTextarea = () => activeTextarea;
     api.MessageAdapter.insert = (text, textarea) => { insertCalls += 1; textarea.value = text; };
@@ -5914,6 +6933,686 @@ test('Message Center serializes tabs and uses its sent ledger to prevent a dupli
     assert.equal(results.filter(result => result.status === 'sent').length, 2);
     assert.equal(results.some(result => result.duplicatePrevented === true), true);
     assert.equal(shared.requestedLocks.filter(name => /message-center.*processor/i.test(name)).length, 2);
+});
+
+test('Message Center rejects a reused sent job id whose conversation or text changed', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ text: 'A different reply must never be sent.' });
+    storage.set(agent.sentLedgerKey(binding), {
+        [job.id]: {
+            at: new Date().toISOString(),
+            conversationIdentity: 'conversation-a',
+            textDigest: await api.sha256Text('The reply that was originally sent.'),
+            textDigestVersion: 'sha256-utf8-v1',
+            authorityId: agent.authorityId(binding),
+            configId: agent.configId(binding),
+        },
+    });
+    const results = [];
+    let composerLookups = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: copy(job) };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForTextarea = async () => { composerLookups += 1; return null; };
+
+    const processed = await agent.processNextJob();
+
+    assert.equal(processed, false);
+    assert.equal(composerLookups, 0, 'a conflicting sent job id must be rejected before any composer access');
+    assert.deepEqual(results, [{
+        status: 'failed',
+        retryable: false,
+        error: 'sent_ledger_job_conflict',
+    }]);
+    assert.match(agent.lastError, /aynı iş kimliğini farklı/i);
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+});
+
+test('Message Center rejects a blank conversation URL instead of binding it to the current Etsy page', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const agent = configureMessageCenter(environment);
+    const job = messageCenterJob({ conversationUrl: '' });
+    const results = [];
+    let contextReads = 0;
+    let composerReads = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+    api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(contextReads, 0);
+    assert.equal(composerReads, 0);
+    assert.deepEqual(results, [{
+        status: 'failed',
+        retryable: false,
+        error: 'unsafe_conversation_url',
+    }]);
+});
+
+test('Message Center fails before all Etsy DOM access when strong text digests are unavailable', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    const agent = configureMessageCenter(environment);
+    const job = messageCenterJob({ id: 'job-no-crypto' });
+    const results = [];
+    let contextReads = 0;
+    let composerReads = 0;
+    let clicks = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+    api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clicks += 1; });
+    sandbox.crypto = undefined;
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(contextReads, 0);
+    assert.equal(composerReads, 0);
+    assert.equal(clicks, 0);
+    assert.deepEqual(results, [{
+        status: 'failed',
+        retryable: false,
+        error: 'strong_text_digest_unavailable',
+    }]);
+});
+
+test('Message Center never clears post-click evidence on ledger conflict or digest loss', async () => {
+    const conflictEnvironment = await loadAssistant();
+    const { api: conflictApi, storage: conflictStorage } = conflictEnvironment;
+    const conflictAgent = configureMessageCenter(conflictEnvironment);
+    const conflictBinding = conflictAgent.config();
+    const conflictJob = messageCenterJob({ id: 'job-recover-ledger-conflict' });
+    conflictStorage.set(conflictAgent.sentLedgerKey(conflictBinding), {
+        [conflictJob.id]: {
+            conversationIdentity: 'conversation-a',
+            textDigest: await conflictApi.sha256Text('Different previously sent text'),
+            textDigestVersion: 'sha256-utf8-v1',
+            authorityId: conflictAgent.authorityId(conflictBinding),
+            configId: conflictAgent.configId(conflictBinding),
+        },
+    });
+    conflictStorage.set(conflictAgent.pendingKey(conflictBinding), fencedMessageCenterPending(
+        conflictAgent,
+        conflictBinding,
+        conflictJob,
+        'dispatched',
+        { baselineMatches: 0, dispatchedAt: new Date().toISOString() },
+    ));
+    const conflictResults = [];
+    let conflictDomReads = 0;
+    conflictAgent.request = async (_method, requestPath, body) => {
+        if (requestPath.includes('/result')) conflictResults.push(copy(body));
+        return {};
+    };
+    conflictApi.MessageAdapter.waitForContext = async () => { conflictDomReads += 1; return null; };
+    conflictApi.MessageAdapter.waitForTextarea = async () => { conflictDomReads += 1; return null; };
+    assert.equal(await conflictAgent.processNextJob(), false);
+    const conflictPending = conflictStorage.get(conflictAgent.pendingKey(conflictBinding));
+    assert.equal(conflictPending.stage, 'ambiguous');
+    assert.equal(conflictPending.ambiguityCode, 'recovering_sent_ledger_conflict_manual_review');
+    assert.equal(conflictPending.globalHold, true);
+    assert.equal(conflictDomReads, 0);
+    assert.equal(conflictResults[0].manualReviewRequired, true);
+
+    const digestEnvironment = await loadAssistant();
+    const { api: digestApi, sandbox: digestSandbox, storage: digestStorage } = digestEnvironment;
+    const digestAgent = configureMessageCenter(digestEnvironment);
+    const digestBinding = digestAgent.config();
+    const digestJob = messageCenterJob({ id: 'job-recover-no-digest' });
+    digestStorage.set(digestAgent.pendingKey(digestBinding), fencedMessageCenterPending(
+        digestAgent,
+        digestBinding,
+        digestJob,
+        'recovering',
+        { baselineMatches: 0, dispatchedAt: new Date().toISOString() },
+    ));
+    const digestResults = [];
+    let digestDomReads = 0;
+    digestAgent.request = async (_method, requestPath, body) => {
+        if (requestPath.includes('/result')) digestResults.push(copy(body));
+        return {};
+    };
+    digestApi.MessageAdapter.waitForContext = async () => { digestDomReads += 1; return null; };
+    digestApi.MessageAdapter.waitForTextarea = async () => { digestDomReads += 1; return null; };
+    digestSandbox.crypto = undefined;
+    assert.equal(await digestAgent.processNextJob(), false);
+    const digestPending = digestStorage.get(digestAgent.pendingKey(digestBinding));
+    assert.equal(digestPending.stage, 'ambiguous');
+    assert.equal(digestPending.ambiguityCode, 'recovering_strong_digest_unavailable_manual_review');
+    assert.equal(digestPending.globalHold, true);
+    assert.equal(digestDomReads, 0);
+    assert.equal(digestResults[0].manualReviewRequired, true);
+});
+
+test('Message Center SHA-256 ledger separates astral emoji that collide under the legacy hash', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-emoji-ledger', text: 'Order 😁' });
+    storage.set(agent.sentLedgerKey(binding), {
+        [job.id]: {
+            at: new Date().toISOString(),
+            conversationIdentity: 'conversation-a',
+            textDigest: await api.sha256Text('Order 😀'),
+            textDigestVersion: 'sha256-utf8-v1',
+            authorityId: agent.authorityId(binding),
+            configId: agent.configId(binding),
+        },
+    });
+    const results = [];
+    let composerReads = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(composerReads, 0);
+    assert.deepEqual(results, [{
+        status: 'failed', retryable: false, error: 'sent_ledger_job_conflict',
+    }]);
+});
+
+test('Message Center can send a new job whose exact text already exists in conversation history', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const agent = configureMessageCenter(environment);
+    const job = messageCenterJob({ id: 'job-repeated-historical-text' });
+    const results = [];
+    let outgoingMatches = 1;
+    const fixture = installMessageCenterConversationFixture(environment, {
+        countOutgoing: () => outgoingMatches,
+        onClick: () => { outgoingMatches = 2; },
+        waitForOutgoing: async (_text, baseline) => outgoingMatches > baseline,
+    });
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+
+    assert.equal(await agent.processNextJob(), true);
+    assert.equal(fixture.clicks, 1);
+    assert.equal(results.at(-1).status, 'sent');
+    assert.equal(results.at(-1).duplicatePrevented, undefined);
+});
+
+test('Message Center never prunes older sent job tombstones when recording a new send', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const ledger = {};
+    for (let index = 0; index < 300; index += 1) {
+        ledger[`historical-job-${index}`] = {
+            at: new Date(1_600_000_000_000 + index * 1000).toISOString(),
+            conversationIdentity: 'conversation-a',
+            textDigest: await api.sha256Text(`historical-text-${index}`),
+            textDigestVersion: 'sha256-utf8-v1',
+            authorityId: agent.authorityId(binding),
+            configId: agent.configId(binding),
+        };
+    }
+    storage.set(agent.sentLedgerKey(binding), ledger);
+    const job = messageCenterJob({ id: 'job-after-large-ledger' });
+    installMessageCenterConversationFixture(environment);
+    agent.request = async (method, requestPath) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        return {};
+    };
+
+    assert.equal(await agent.processNextJob(), true);
+    const updated = storage.get(agent.sentLedgerKey(binding));
+    assert.equal(Object.keys(updated).length, 301);
+    assert.ok(updated['historical-job-0']);
+    assert.ok(updated[job.id]);
+});
+
+test('Message Center keeps an ambiguous send fenced across job replay until manual resolution', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob();
+    const textarea = { value: '', offsetParent: {} };
+    let clicks = 0;
+    const button = messageCenterButton(() => { clicks += 1; });
+    const results = [];
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: copy(job) };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => ({ conversationId: 'conversation-a' });
+    api.MessageAdapter.context = () => ({
+        conversationId: 'conversation-a',
+        pageUrl: 'https://www.etsy.com/messages/conversation-a',
+    });
+    api.MessageAdapter.waitForTextarea = async () => textarea;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => ({
+        id: 'conversation-scope',
+        querySelectorAll: () => [],
+    });
+    api.MessageAdapter.insert = (text, target) => { target.value = text; };
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.waitForOutgoing = async () => false;
+    api.UI.toast = () => {};
+    api.UI.refreshCurrent = async () => {};
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(clicks, 1);
+    const ambiguous = storage.get(agent.pendingKey(binding));
+    assert.equal(ambiguous.stage, 'ambiguous');
+    assert.equal(ambiguous.ambiguityCode, 'send_verification_failed_manual_check_required');
+    assert.equal(agent.manualReview.job.id, job.id);
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(clicks, 1, 'replaying an ambiguous job must never click Etsy Send again');
+    assert.equal(results.filter(result => result.error === 'send_verification_failed_manual_check_required').length, 1);
+
+    api.MessageAdapter.context = () => ({
+        conversationId: 'conversation-b',
+        pageUrl: 'https://www.etsy.com/messages/conversation-b',
+    });
+    await assert.rejects(agent.resolveManualReview('not_sent'), /aktif Etsy konuşmasına ait değil/i);
+    assert.equal(storage.get(agent.pendingKey(binding)).stage, 'ambiguous');
+    assert.equal(results.at(-1).error, 'send_verification_failed_manual_check_required');
+
+    api.MessageAdapter.context = () => ({
+        conversationId: 'conversation-a',
+        pageUrl: 'https://www.etsy.com/messages/conversation-a',
+    });
+    assert.equal(await agent.resolveManualReview('not_sent'), 'not_sent');
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+    assert.equal(agent.manualReview, null);
+    assert.equal(results.at(-1).error, 'manual_confirmed_not_sent');
+    assert.equal(results.at(-1).retryable, true);
+});
+
+test('Message Center recovers from a post-ledger sync failure without a second Etsy click', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-sync-recovery' });
+    const results = [];
+    const fixture = installMessageCenterConversationFixture(environment);
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    let syncCalls = 0;
+    agent.syncNow = async () => {
+        syncCalls += 1;
+        throw new Error('injected sync failure after sent ledger');
+    };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(fixture.clicks, 1);
+    assert.equal(syncCalls, 1);
+    assert.equal(storage.get(agent.pendingKey(binding)).stage, 'dispatched');
+    assert.ok(storage.get(agent.sentLedgerKey(binding))[job.id].textDigest);
+
+    assert.equal(await agent.processNextJob(), true);
+    assert.equal(fixture.clicks, 1, 'ledger recovery must never click Etsy again');
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+    assert.deepEqual(results, [{
+        status: 'sent',
+        sentAt: results[0].sentAt,
+        duplicatePrevented: true,
+        recoveredFromLedger: true,
+    }]);
+});
+
+test('Message Center retries one ambiguous result report without DOM replay or report spam', async () => {
+    const environment = await loadAssistant();
+    const { storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-ambiguity-report-retry' });
+    const fixture = installMessageCenterConversationFixture(environment, {
+        waitForOutgoing: async () => false,
+    });
+    const resultBodies = [];
+    let resultAttempts = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) {
+            resultAttempts += 1;
+            resultBodies.push(copy(body));
+            if (resultAttempts === 1) throw new Error('injected result outage');
+        }
+        return {};
+    };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(fixture.clicks, 1);
+    assert.equal(resultAttempts, 1);
+    assert.equal(storage.get(agent.pendingKey(binding)).resultReportedAt, '');
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(fixture.clicks, 1);
+    assert.equal(resultAttempts, 2);
+    assert.ok(storage.get(agent.pendingKey(binding)).resultReportedAt);
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(fixture.clicks, 1);
+    assert.equal(resultAttempts, 2, 'an acknowledged ambiguity must not report on every poll');
+    assert.equal(resultBodies.every(body => body.manualReviewRequired === true), true);
+});
+
+test('late Etsy outgoing evidence overrides an unsafe not-sent Message Center decision', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-late-outgoing' });
+    let outgoingMatches = 0;
+    const fixture = installMessageCenterConversationFixture(environment, {
+        countOutgoing: () => outgoingMatches,
+        waitForOutgoing: async () => false,
+    });
+    const results = [];
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(fixture.clicks, 1);
+    const pending = storage.get(agent.pendingKey(binding));
+    outgoingMatches = 1;
+
+    assert.equal(await agent.resolveManualReview('not_sent', {
+        jobId: job.id,
+        ambiguityId: pending.ambiguityId,
+    }), 'sent');
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+    assert.equal(results.at(-1).status, 'sent');
+    assert.equal(results.at(-1).outgoingConfirmed, true);
+    assert.equal(results.some(result => result.error === 'manual_confirmed_not_sent'), false);
+});
+
+test('a stale Message Center ambiguity control cannot resolve a newer pending job', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const newerJob = messageCenterJob({ id: 'job-newer-ambiguity' });
+    storage.set(agent.pendingKey(binding), {
+        job: newerJob,
+        stage: 'ambiguous',
+        ambiguityId: 'ambiguity-new',
+        ambiguityCode: 'send_outcome_ambiguous_manual_check_required',
+        resultReportedAt: new Date().toISOString(),
+        baselineMatches: 0,
+        ownerId: '',
+        fenceToken: 'new-fence',
+        configId: agent.configId(binding),
+        leaseExpiresAt: new Date(0).toISOString(),
+    });
+    const results = [];
+    agent.request = async (_method, requestPath, body) => {
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.getTextarea = () => null;
+
+    await assert.rejects(
+        agent.resolveManualReview('sent', { jobId: 'job-old', ambiguityId: 'ambiguity-old' }),
+        /artık güncel değil/i,
+    );
+    assert.equal(storage.get(agent.pendingKey(binding)).job.id, newerJob.id);
+    assert.equal(agent.manualReview.job.id, newerJob.id);
+    assert.deepEqual(results, []);
+});
+
+test('Message Center rejects a declared conversation id that conflicts with its URL before DOM access', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const agent = configureMessageCenter(environment);
+    const job = messageCenterJob({ conversationId: 'conversation-b' });
+    const results = [];
+    let contextReads = 0;
+    let composerReads = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: copy(job) };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+    api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(contextReads, 0);
+    assert.equal(composerReads, 0);
+    assert.deepEqual(results, [{
+        status: 'failed',
+        retryable: false,
+        error: 'conversation_identity_conflict',
+    }]);
+});
+
+test('Message Center defers without DOM access when a campaign owns the same conversation', async () => {
+    const environment = await loadAssistant();
+    const { api } = environment;
+    const agent = configureMessageCenter(environment);
+    installGuidedFixture(environment);
+    const job = messageCenterJob({
+        conversationId: 'order-1',
+        conversationUrl: 'https://www.etsy.com/messages/order-1',
+        text: 'Edited final text',
+    });
+    const results = [];
+    let contextReads = 0;
+    let composerReads = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: copy(job) };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+    api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(contextReads, 0);
+    assert.equal(composerReads, 0);
+    assert.deepEqual(results, [{
+        status: 'failed',
+        retryable: true,
+        error: 'etsy_send_owner_conflict',
+    }]);
+    assert.equal(api.Store.campaign.items[0].status, 'inserted');
+    assert.equal(api.Store.statuses.orders['order-1'].status, 'inserted');
+});
+
+test('Message Center reads persisted campaign ownership when another tab cache is stale', async () => {
+    const shared = {
+        storage: new Map(),
+        lockTails: new Map(),
+        valueListeners: new Map(),
+    };
+    const campaignTab = await loadAssistant(shared);
+    const messageCenterTab = await loadAssistant(shared);
+    installGuidedFixture(campaignTab);
+    const { api } = messageCenterTab;
+    const agent = configureMessageCenter(messageCenterTab);
+    assert.equal(api.Store.campaign, null, 'the second tab intentionally starts with a stale campaign cache');
+    const job = messageCenterJob({
+        id: 'job-stale-campaign-cache',
+        conversationId: 'order-1',
+        conversationUrl: 'https://www.etsy.com/messages/order-1',
+        text: 'Edited final text',
+    });
+    const results = [];
+    let contextReads = 0;
+    let composerReads = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+    api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(contextReads, 0);
+    assert.equal(composerReads, 0);
+    assert.deepEqual(results, [{
+        status: 'failed', retryable: true, error: 'etsy_send_owner_conflict',
+    }]);
+});
+
+test('a persistent Message Center hold blocks only the matching campaign conversation', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const pending = {
+        job: messageCenterJob({ id: 'job-campaign-hold' }),
+        stage: 'ambiguous',
+        ambiguityId: 'ambiguity-campaign-hold',
+        ownerId: 'other-tab',
+        fenceToken: 'hold-fence',
+        configId: agent.configId(binding),
+        leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    storage.set(agent.pendingKey(binding), copy(pending));
+    const statusesBefore = copy(api.Store.statuses);
+
+    await assert.rejects(api.Campaign.create([{
+        orderId: 'order-a', customerName: 'Ashley', itemTitle: 'Item A',
+        messageUrl: 'https://www.etsy.com/messages/conversation-a',
+    }], 'tpl-delivered', 'template'), /bekleyen Message Center/i);
+    assert.equal(api.Store.campaign, null);
+    assert.deepEqual(copy(api.Store.statuses), statusesBefore);
+
+    const allowed = await api.Campaign.create([{
+        orderId: 'order-b', customerName: 'Morgan', itemTitle: 'Item B',
+        messageUrl: 'https://www.etsy.com/messages/conversation-b',
+    }], 'tpl-delivered', 'template');
+    assert.equal(allowed.status, 'active');
+    assert.equal(allowed.items[0].orderId, 'order-b');
+});
+
+test('Message Center configuration import cannot orphan a pending ambiguous send', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const pending = {
+        job: messageCenterJob({ id: 'job-config-guard' }),
+        stage: 'ambiguous',
+        ambiguityId: 'ambiguity-config-guard',
+        ownerId: 'other-tab',
+        fenceToken: 'config-fence',
+        configId: agent.configId(binding),
+        leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    storage.set(agent.pendingKey(binding), copy(pending));
+    agent.manualReview = copy(pending);
+    const beforeSettings = copy(api.Store.settings);
+    const snapshot = api.ConfigManager.snapshot(true);
+    snapshot.settings.messageCenterEnabled = false;
+    snapshot.settings.messageCenterUrl = 'https://messages-b.example';
+    snapshot.settings.messageCenterStoreId = 'shop-b';
+    snapshot.settings.messageCenterAgentToken = 'token-b';
+
+    await assert.rejects(
+        api.ConfigManager.importText(JSON.stringify(snapshot)),
+        /Bekleyen Message Center gönderimi çözülmeden/i,
+    );
+    assert.deepEqual(copy(api.Store.settings), beforeSettings);
+    assert.equal(storage.get(agent.pendingKey(binding)).job.id, pending.job.id);
+    assert.equal(agent.manualReview.job.id, pending.job.id);
+});
+
+test('manual review navigation preserves a draft and only opens the canonical Etsy conversation', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    const agent = configureMessageCenter(environment);
+    sandbox.location.pathname = '/messages/conversation-b';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-b';
+    const textarea = { value: 'Do not lose this Etsy draft', offsetParent: {} };
+    api.MessageAdapter.getTextarea = () => textarea;
+    agent.manualReview = {
+        stage: 'ambiguous',
+        ambiguityId: 'ambiguity-open',
+        job: messageCenterJob({ id: 'job-open-review' }),
+    };
+
+    await assert.rejects(
+        async () => agent.openManualReviewConversation(),
+        /gönderilmemiş manuel taslak/i,
+    );
+    assert.equal(sandbox.location.href, 'https://www.etsy.com/messages/conversation-b');
+
+    textarea.value = '';
+    assert.equal(agent.openManualReviewConversation(), true);
+    assert.equal(sandbox.location.href, 'https://www.etsy.com/messages/conversation-a');
+
+    agent.manualReview.job.conversationUrl = 'https://evil.example/messages/conversation-a';
+    await assert.rejects(async () => agent.openManualReviewConversation(), /güvenli bir Etsy konuşma/i);
+    assert.equal(sandbox.location.href, 'https://www.etsy.com/messages/conversation-a');
+});
+
+test('send errors provide actionable retry and reconciliation guidance', async () => {
+    const { api } = await loadAssistant();
+    const ambiguous = api.sendErrorGuidance(new Error('Gönderim doğrulanamadı'));
+    const missingButton = api.sendErrorGuidance(new Error('Etkin Etsy Gönder düğmesi bulunamadı.'));
+    const changedContext = api.sendErrorGuidance(new Error('Konuşma veya hazırlanan metin değişti.'));
+    const conflictError = new Error('ledger conflict');
+    conflictError.code = 'MESSAGE_CENTER_SENT_LEDGER_CONFLICT';
+    const conflict = api.sendErrorGuidance(conflictError);
+
+    assert.equal(ambiguous.code, 'send_result_ambiguous');
+    assert.match(ambiguous.message, /yeniden göndermeyin/i);
+    assert.match(ambiguous.message, /son mesaj balonunu kontrol/i);
+    assert.doesNotMatch(ambiguous.message, /Gönderildi.*Gönderilmedi/i);
+    assert.equal(missingButton.code, 'send_button_unavailable');
+    assert.match(missingButton.message, /Hiçbir gönderim yapılmadı/i);
+    assert.equal(changedContext.code, 'send_context_changed');
+    assert.match(changedContext.message, /doğru siparişi yeniden aç/i);
+    assert.equal(conflict.code, 'message_center_job_conflict');
+    assert.match(conflict.message, /gönderim engellendi/i);
+});
+
+test('settings render durable Message Center ambiguity controls only for the matching conversation', async () => {
+    const { api } = await loadAssistant();
+    api.MessageCenterAgent.manualReview = {
+        stage: 'ambiguous',
+        ambiguityId: 'ambiguity-1',
+        job: messageCenterJob(),
+    };
+    api.MessageCenterAgent.manualReviewContextIsCurrent = () => true;
+    const matchingMarkup = api.UI.renderSettings();
+    assert.match(matchingMarkup, /Message Center gönderim sonucu belirsiz/);
+    assert.match(matchingMarkup, /data-action="message-center-confirm-sent"(?! disabled)/);
+    assert.match(matchingMarkup, /data-action="message-center-confirm-not-sent"(?! disabled)/);
+
+    api.MessageCenterAgent.manualReviewContextIsCurrent = () => false;
+    const otherConversationMarkup = api.UI.renderSettings();
+    assert.match(otherConversationMarkup, /<button[^>]*data-action="message-center-confirm-sent"[^>]*\sdisabled(?:\s|>)/);
+    assert.match(otherConversationMarkup, /ilgili Etsy konuşmasını bu sekmede açın/);
 });
 
 test('Message Center fenced clear cannot delete another tab owner pending record', async () => {
@@ -6090,6 +7789,707 @@ test('Message Center queues hydrated and changed-binding syncs behind a shallow 
         { hydrated: true, generation: agent.generation, token: 'token-a' },
         { hydrated: false, generation: agent.generation + 1, token: 'token-b' },
     ]);
+});
+
+test('Message Center sent tombstones are scoped by server and survive token rotation for one authority', async () => {
+    const changedServerEnvironment = await loadAssistant();
+    const changedServerAgent = configureMessageCenter(changedServerEnvironment);
+    const changedServerJob = messageCenterJob({ id: 'job-authority-scope' });
+    const changedServerFixture = installMessageCenterConversationFixture(changedServerEnvironment);
+    const changedServerResults = [];
+    changedServerAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: copy(changedServerJob) };
+        if (requestPath.includes('/result')) changedServerResults.push(copy(body));
+        return {};
+    };
+    const authorityA = changedServerAgent.config();
+    assert.equal(await changedServerAgent.processNextJob(), true);
+    changedServerFixture.textarea.value = '';
+    changedServerEnvironment.api.Store.settings.messageCenterUrl = 'https://messages-b.example';
+    changedServerEnvironment.api.Store.settings.messageCenterAgentToken = 'token-b';
+    const authorityB = changedServerAgent.config();
+    assert.notEqual(changedServerAgent.sentLedgerKey(authorityA), changedServerAgent.sentLedgerKey(authorityB));
+    assert.equal(await changedServerAgent.processNextJob(), true);
+    assert.equal(changedServerFixture.clicks, 2, 'a different server authority must not inherit a sent tombstone');
+    assert.equal(changedServerResults.at(-1).duplicatePrevented, undefined);
+
+    const rotatedEnvironment = await loadAssistant();
+    const rotatedAgent = configureMessageCenter(rotatedEnvironment);
+    const rotatedJob = messageCenterJob({ id: 'job-token-rotation' });
+    const rotatedFixture = installMessageCenterConversationFixture(rotatedEnvironment);
+    const rotatedResults = [];
+    rotatedAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: copy(rotatedJob) };
+        if (requestPath.includes('/result')) rotatedResults.push(copy(body));
+        return {};
+    };
+    const beforeRotation = rotatedAgent.config();
+    assert.equal(await rotatedAgent.processNextJob(), true);
+    rotatedFixture.textarea.value = '';
+    rotatedEnvironment.api.Store.settings.messageCenterAgentToken = 'rotated-token';
+    const afterRotation = rotatedAgent.config();
+    assert.equal(rotatedAgent.sentLedgerKey(beforeRotation), rotatedAgent.sentLedgerKey(afterRotation));
+    assert.equal(await rotatedAgent.processNextJob(), true);
+    assert.equal(rotatedFixture.clicks, 1, 'token rotation must retain the same authority tombstone');
+    assert.equal(rotatedResults.at(-1).duplicatePrevented, true);
+});
+
+test('Message Center migrates only an exact legacy ledger binding and fences unknown legacy authority', async () => {
+    const exactEnvironment = await loadAssistant();
+    const exactAgent = configureMessageCenter(exactEnvironment);
+    const exactBinding = exactAgent.config();
+    const exactJob = messageCenterJob({ id: 'job-legacy-exact' });
+    exactEnvironment.storage.set(exactAgent.legacySentLedgerKey(exactBinding), {
+        [exactJob.id]: {
+            conversationIdentity: 'conversation-a',
+            textDigest: await exactEnvironment.api.sha256Text(exactJob.text),
+            textDigestVersion: 'sha256-utf8-v1',
+            configId: exactAgent.configId(exactBinding),
+        },
+    });
+    const exactFixture = installMessageCenterConversationFixture(exactEnvironment);
+    const exactResults = [];
+    exactAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: exactJob };
+        if (requestPath.includes('/result')) exactResults.push(copy(body));
+        return {};
+    };
+    assert.equal(await exactAgent.processNextJob(), true);
+    assert.equal(exactFixture.clicks, 0);
+    assert.equal(exactResults[0].duplicatePrevented, true);
+    assert.equal(
+        exactEnvironment.storage.get(exactAgent.sentLedgerKey(exactBinding))[exactJob.id].authorityId,
+        exactAgent.authorityId(exactBinding),
+    );
+
+    const unknownEnvironment = await loadAssistant();
+    const unknownAgent = configureMessageCenter(unknownEnvironment, { messageCenterAgentToken: 'new-token' });
+    const unknownBinding = unknownAgent.config();
+    const oldBinding = { ...unknownBinding, token: 'old-token' };
+    const unknownJob = messageCenterJob({ id: 'job-legacy-unknown-authority' });
+    unknownEnvironment.storage.set(unknownAgent.legacySentLedgerKey(unknownBinding), {
+        [unknownJob.id]: {
+            conversationIdentity: 'conversation-a',
+            textDigest: await unknownEnvironment.api.sha256Text(unknownJob.text),
+            textDigestVersion: 'sha256-utf8-v1',
+            configId: unknownAgent.configId(oldBinding),
+        },
+    });
+    const unknownFixture = installMessageCenterConversationFixture(unknownEnvironment);
+    const unknownResults = [];
+    unknownAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: unknownJob };
+        if (requestPath.includes('/result')) unknownResults.push(copy(body));
+        return {};
+    };
+    assert.equal(await unknownAgent.processNextJob(), false);
+    assert.equal(unknownFixture.clicks, 0);
+    assert.deepEqual(unknownResults, [{ status: 'failed', retryable: false, error: 'sent_ledger_job_conflict' }]);
+});
+
+test('Message Center retries an acknowledged sent-ledger result loss with the exact durable envelope and no DOM replay', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-ledger-result-loss' });
+    storage.set(agent.sentLedgerKey(binding), {
+        [job.id]: {
+            at: new Date().toISOString(),
+            conversationIdentity: 'conversation-a',
+            textDigest: await api.sha256Text(job.text),
+            textDigestVersion: 'sha256-utf8-v1',
+            authorityId: agent.authorityId(binding),
+            configId: agent.configId(binding),
+        },
+    });
+    const resultBodies = [];
+    let resultAttempts = 0;
+    let contextReads = 0;
+    let composerReads = 0;
+    let clicks = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) {
+            resultBodies.push(copy(body));
+            resultAttempts += 1;
+            if (resultAttempts === 1) throw new Error('sent result accepted but response lost');
+        }
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+    api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clicks += 1; });
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(storage.get(agent.pendingKey(binding)).stage, 'result_pending');
+    assert.equal(await agent.processNextJob(), true);
+    assert.deepEqual(resultBodies, [resultBodies[0], resultBodies[0]]);
+    assert.equal(contextReads, 0);
+    assert.equal(composerReads, 0);
+    assert.equal(clicks, 0);
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+});
+
+test('Message Center retries a completed hydrate result loss without repeating sync or Etsy discovery', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-hydrate-result-loss', type: 'hydrate', text: undefined });
+    let payloadReads = 0;
+    let syncCalls = 0;
+    let resultAttempts = 0;
+    const resultBodies = [];
+    agent.currentConversationPayload = async () => {
+        payloadReads += 1;
+        return {
+            conversationId: 'conversation-a',
+            conversationUrl: 'https://www.etsy.com/messages/conversation-a',
+            buyerName: 'Buyer A',
+            messages: [],
+            hydrated: true,
+        };
+    };
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.endsWith('/sync')) syncCalls += 1;
+        if (requestPath.includes('/result')) {
+            resultBodies.push(copy(body));
+            resultAttempts += 1;
+            if (resultAttempts === 1) throw new Error('hydrate result accepted but response lost');
+        }
+        return {};
+    };
+
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(storage.get(agent.pendingKey(binding)).stage, 'result_pending');
+    assert.equal(await agent.processNextJob(), true);
+    assert.equal(payloadReads, 1);
+    assert.equal(syncCalls, 1);
+    assert.deepEqual(resultBodies, [resultBodies[0], resultBodies[0]]);
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+    assert.equal(api.Router.conversationIdentity(), 'conversation-a');
+});
+
+test('Message Center clears only its exact inserted draft on pre-click failure and preserves a pre-existing identical draft', async () => {
+    const cleanEnvironment = await loadAssistant();
+    const cleanAgent = configureMessageCenter(cleanEnvironment);
+    const cleanJob = messageCenterJob({ id: 'job-safe-composer-cleanup' });
+    const cleanTextarea = { value: '', offsetParent: {} };
+    const cleanResults = [];
+    cleanAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: cleanJob };
+        if (requestPath.includes('/result')) cleanResults.push(copy(body));
+        return {};
+    };
+    cleanEnvironment.api.MessageAdapter.waitForContext = async () => ({
+        conversationId: 'conversation-a', pageUrl: 'https://www.etsy.com/messages/conversation-a',
+    });
+    cleanEnvironment.api.MessageAdapter.waitForTextarea = async () => cleanTextarea;
+    cleanEnvironment.api.MessageAdapter.getTextarea = () => cleanTextarea;
+    cleanEnvironment.api.MessageAdapter.insert = (text, target) => { target.value = text; };
+    cleanEnvironment.api.MessageAdapter.waitForSendButton = async () => null;
+    cleanEnvironment.api.MessageAdapter.getSendButton = () => null;
+    assert.equal(await cleanAgent.processNextJob(), false);
+    assert.equal(cleanTextarea.value, '');
+    assert.deepEqual(cleanResults, [{ status: 'failed', retryable: true, error: 'send_button_unavailable' }]);
+    assert.equal(cleanEnvironment.storage.has(cleanAgent.pendingKey(cleanAgent.config())), false);
+
+    const preservedEnvironment = await loadAssistant();
+    const preservedAgent = configureMessageCenter(preservedEnvironment);
+    const preservedJob = messageCenterJob({ id: 'job-preserve-identical-draft' });
+    const preservedTextarea = { value: preservedJob.text, offsetParent: {} };
+    const preservedResults = [];
+    preservedAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: preservedJob };
+        if (requestPath.includes('/result')) preservedResults.push(copy(body));
+        return {};
+    };
+    preservedEnvironment.api.MessageAdapter.waitForContext = async () => ({
+        conversationId: 'conversation-a', pageUrl: 'https://www.etsy.com/messages/conversation-a',
+    });
+    preservedEnvironment.api.MessageAdapter.waitForTextarea = async () => preservedTextarea;
+    preservedEnvironment.api.MessageAdapter.getTextarea = () => preservedTextarea;
+    preservedEnvironment.api.MessageAdapter.insert = (text, target) => { target.value = text; };
+    preservedEnvironment.api.MessageAdapter.waitForSendButton = async () => null;
+    preservedEnvironment.api.MessageAdapter.getSendButton = () => null;
+    assert.equal(await preservedAgent.processNextJob(), false);
+    assert.equal(preservedTextarea.value, preservedJob.text);
+    assert.equal(preservedEnvironment.storage.has(preservedAgent.pendingKey(preservedAgent.config())), false);
+    assert.deepEqual(preservedResults, [{ status: 'failed', retryable: true, error: 'composer_occupied' }]);
+});
+
+test('Message Center quarantines unknown and prepared reply stages without Etsy DOM access', async () => {
+    for (const stage of ['future_post_dispatch', 'prepared']) {
+        const environment = await loadAssistant();
+        const { api, storage } = environment;
+        const agent = configureMessageCenter(environment);
+        const binding = agent.config();
+        const job = messageCenterJob({ id: `job-stage-${stage}` });
+        storage.set(agent.pendingKey(binding), fencedMessageCenterPending(agent, binding, job, stage));
+        let contextReads = 0;
+        let composerReads = 0;
+        let inserts = 0;
+        let clicks = 0;
+        let gets = 0;
+        const results = [];
+        agent.request = async (method, requestPath, body) => {
+            if (method === 'GET') gets += 1;
+            if (requestPath.includes('/result')) results.push(copy(body));
+            return {};
+        };
+        api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+        api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+        api.MessageAdapter.insert = () => { inserts += 1; };
+        api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clicks += 1; });
+        assert.equal(await agent.processNextJob(), false);
+        const pending = storage.get(agent.pendingKey(binding));
+        assert.equal(pending.stage, 'ambiguous');
+        assert.equal(results[0].manualReviewRequired, true);
+        assert.equal(contextReads, 0);
+        assert.equal(composerReads, 0);
+        assert.equal(inserts, 0);
+        assert.equal(clicks, 0);
+        assert.equal(gets, 0);
+    }
+});
+
+test('Message Center claims only a fresh exact native receipt from the same server authority', async () => {
+    async function seedReceipt(environment, agent, { id, text, authority, dispatchedAt = new Date().toISOString() }) {
+        return environment.api.Verification.persistNativeSentReceipt({
+            id,
+            text,
+            textDigest: await environment.api.sha256Text(text),
+            textDigestVersion: 'sha256-utf8-v1',
+            conversationIdentity: 'conversation-a',
+            conversationId: 'conversation-a',
+            conversationUrl: 'https://www.etsy.com/messages/conversation-a',
+            messageCenterAuthorityId: agent.authorityId(authority),
+            dispatchedAt,
+        });
+    }
+
+    const exactEnvironment = await loadAssistant();
+    const exactAgent = configureMessageCenter(exactEnvironment);
+    const exactAuthority = exactAgent.config();
+    const exactJob = messageCenterJob({ id: 'job-native-receipt-exact' });
+    await seedReceipt(exactEnvironment, exactAgent, {
+        id: 'native-receipt-exact', text: exactJob.text, authority: exactAuthority,
+    });
+    exactEnvironment.api.Store.settings.messageCenterAgentToken = 'rotated-token';
+    const exactFixture = installMessageCenterConversationFixture(exactEnvironment);
+    const exactResults = [];
+    exactAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: exactJob };
+        if (requestPath.includes('/result')) exactResults.push(copy(body));
+        return {};
+    };
+    assert.equal(await exactAgent.processNextJob(), true);
+    assert.equal(exactFixture.clicks, 0);
+    assert.equal(exactResults[0].duplicatePrevented, true);
+    assert.equal(exactResults[0].recoveredFromNativeReceipt, true);
+    const exactReceipt = (await exactEnvironment.api.Verification.nativeSentReceipts())['native-receipt-exact'];
+    assert.equal(exactReceipt.messageCenterJobId, exactJob.id);
+    assert.equal(exactReceipt.messageCenterAuthorityId, exactAgent.authorityId(exactAgent.config()));
+
+    const differentTextEnvironment = await loadAssistant();
+    const differentTextAgent = configureMessageCenter(differentTextEnvironment);
+    const differentTextAuthority = differentTextAgent.config();
+    const differentTextJob = messageCenterJob({ id: 'job-native-receipt-different', text: 'A second, different central reply' });
+    await seedReceipt(differentTextEnvironment, differentTextAgent, {
+        id: 'native-receipt-different', text: 'A native reply sent during the lease race', authority: differentTextAuthority,
+    });
+    const differentTextFixture = installMessageCenterConversationFixture(differentTextEnvironment);
+    const differentTextResults = [];
+    differentTextAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: differentTextJob };
+        if (requestPath.includes('/result')) differentTextResults.push(copy(body));
+        return {};
+    };
+    assert.equal(await differentTextAgent.processNextJob(), false);
+    assert.equal(differentTextFixture.clicks, 0, 'a concurrent different native reply must fence the central reply');
+    assert.equal(
+        differentTextEnvironment.storage.get(differentTextAgent.pendingKey(differentTextAuthority)).ambiguityCode,
+        'overlapping_native_receipt_manual_review',
+    );
+    assert.equal(differentTextResults[0].manualReviewRequired, true);
+
+    const otherAuthorityEnvironment = await loadAssistant();
+    const otherAuthorityAgent = configureMessageCenter(otherAuthorityEnvironment);
+    const authorityA = otherAuthorityAgent.config();
+    const otherAuthorityJob = messageCenterJob({ id: 'job-native-receipt-other-server' });
+    await seedReceipt(otherAuthorityEnvironment, otherAuthorityAgent, {
+        id: 'native-receipt-other-server', text: otherAuthorityJob.text, authority: authorityA,
+    });
+    otherAuthorityEnvironment.api.Store.settings.messageCenterUrl = 'https://messages-b.example';
+    otherAuthorityEnvironment.api.Store.settings.messageCenterAgentToken = 'token-b';
+    const otherAuthorityFixture = installMessageCenterConversationFixture(otherAuthorityEnvironment);
+    const otherAuthorityResults = [];
+    otherAuthorityAgent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: otherAuthorityJob };
+        if (requestPath.includes('/result')) otherAuthorityResults.push(copy(body));
+        return {};
+    };
+    assert.equal(await otherAuthorityAgent.processNextJob(), true);
+    assert.equal(otherAuthorityFixture.clicks, 1, 'another server must not claim authority A native evidence');
+    assert.equal(otherAuthorityResults.at(-1).duplicatePrevented, undefined);
+
+    const oldEnvironment = await loadAssistant();
+    const oldAgent = configureMessageCenter(oldEnvironment);
+    const oldAuthority = oldAgent.config();
+    const oldJob = messageCenterJob({ id: 'job-native-receipt-old' });
+    await seedReceipt(oldEnvironment, oldAgent, {
+        id: 'native-receipt-old',
+        text: oldJob.text,
+        authority: oldAuthority,
+        dispatchedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    });
+    const oldFixture = installMessageCenterConversationFixture(oldEnvironment);
+    oldAgent.request = async (method, requestPath) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job: oldJob };
+        return {};
+    };
+    assert.equal(await oldAgent.processNextJob(), true);
+    assert.equal(oldFixture.clicks, 1, 'old same-text evidence must not satisfy a newly leased job');
+});
+
+test('an unknown native attempt is quarantined as a global hold for native, Message Center, and campaign sends', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox, documentListeners } = environment;
+    const agent = configureMessageCenter(environment);
+    const unknownText = 'Future native attempt text';
+    await api.Verification.persistNativeSendAttempt({
+        id: 'native-unknown-stage',
+        stage: 'future_post_dispatch',
+        conversationIdentity: 'conversation-b',
+        conversationId: 'conversation-b',
+        conversationUrl: 'https://www.etsy.com/messages/conversation-b',
+        text: unknownText,
+        textDigest: await api.sha256Text(unknownText),
+        textDigestVersion: 'sha256-utf8-v1',
+        dispatchedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+    });
+    const hold = await api.Verification.activeNativeSendHold('conversation-a');
+    assert.equal(hold.stage, 'ambiguous');
+    assert.equal(hold.globalHold, true);
+    assert.equal(hold.quarantinedStage, 'future_post_dispatch');
+
+    const job = messageCenterJob({ id: 'job-unknown-native-global' });
+    const results = [];
+    let contextReads = 0;
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(contextReads, 0);
+    assert.deepEqual(results, [{ status: 'failed', retryable: true, error: 'native_send_outcome_hold' }]);
+
+    await assert.rejects(api.Campaign.create([{
+        orderId: 'order-global-hold', customerName: 'Morgan', itemTitle: 'Held item',
+        messageUrl: 'https://www.etsy.com/messages/conversation-a',
+    }], 'tpl-delivered', 'template'), /belirsiz bir manuel Etsy gönderimi/i);
+
+    const scope = { id: 'conversation-a-scope', querySelectorAll: () => [] };
+    const textarea = { value: 'Manual retry while unknown hold exists', offsetParent: {} };
+    let captureHandler = null;
+    const button = makeNativeSendButton(() => {}, event => captureHandler?.(event));
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({ conversationId: 'conversation-a', customerName: 'Ashley', orderId: '' });
+    api.MessageAdapter.countOutgoing = () => 0;
+    api.MessageAdapter.isPotentialSendButton = target => target === button;
+    api.MessageAdapter.isSendButton = target => target === button;
+    api.UI.toast = () => {};
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    captureHandler = documentListeners.get('click')?.at(-1);
+    button.click();
+    assert.equal(button.clickCount, 0);
+    assert.equal(sandbox.location.href, 'https://www.etsy.com/messages/conversation-a');
+});
+
+test('a rejected Message Center result remains a cross-path hold until its exact result is acknowledged', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-rejected-cross-hold' });
+    storage.set(agent.pendingKey(binding), fencedMessageCenterPending(agent, binding, job, 'rejected', {
+        rejectionCode: 'etsy_send_owner_conflict',
+        rejectionRetryable: true,
+        rejectionResult: { status: 'failed', retryable: true, error: 'etsy_send_owner_conflict' },
+    }));
+    assert.equal((await agent.activeSendHold('conversation-a')).stage, 'rejected');
+
+    const textarea = { value: 'Manual message blocked by rejected result', offsetParent: {} };
+    const scope = { id: 'conversation-a-scope', querySelectorAll: () => [] };
+    let nativeClicks = 0;
+    const button = messageCenterButton(() => { nativeClicks += 1; });
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.getSendButton = () => button;
+    api.MessageAdapter.context = () => ({ conversationId: 'conversation-a', customerName: 'Ashley', orderId: '' });
+    api.MessageAdapter.countOutgoing = () => 0;
+    api.UI.toast = () => {};
+    const guard = api.Verification.beginNativeDispatchGuard();
+    assert.equal(await api.Verification.dispatchNativeSend(button, guard), false);
+    api.Verification.releaseNativeDispatchGuard(guard);
+    assert.equal(nativeClicks, 0);
+    await assert.rejects(api.Campaign.create([{
+        orderId: 'order-rejected-hold', customerName: 'Ashley', itemTitle: 'Held item',
+        messageUrl: 'https://www.etsy.com/messages/conversation-a',
+    }], 'tpl-delivered', 'template'), /bekleyen Message Center/i);
+
+    const results = [];
+    agent.request = async (_method, requestPath, body) => {
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    assert.equal(await agent.processNextJob(), false);
+    assert.deepEqual(results, [{ status: 'failed', retryable: true, error: 'etsy_send_owner_conflict' }]);
+    assert.equal(storage.has(agent.pendingKey(binding)), false);
+    assert.equal(await agent.activeSendHold('conversation-a'), null);
+});
+
+test('unknown campaign item and order states fail closed across all send paths', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const campaign = {
+        id: 'campaign-future-state',
+        revision: 1,
+        status: 'active',
+        currentIndex: 0,
+        items: [{
+            id: 'item-future-state', campaignId: 'campaign-future-state', orderId: 'order-future-state',
+            customerName: 'Ashley', messageUrl: 'https://www.etsy.com/messages/conversation-a',
+            purpose: 'delivery_followup', templateId: 'tpl-delivered', templateHash: 'future-hash',
+            method: 'template', status: 'future_post_dispatch',
+        }],
+    };
+    const statuses = copy(api.Store.statuses);
+    statuses.orders['order-future-state'] = { status: 'future_order_state' };
+    storage.set(api.KEYS.campaign, copy(campaign));
+    storage.set(api.KEYS.statuses, copy(statuses));
+    api.Store.campaign = copy(campaign);
+    api.Store.statuses = copy(statuses);
+    assert.equal(api.Campaign.campaignOwnsConversation(campaign, 'conversation-a'), true);
+    assert.equal(api.Campaign.orderCanEnterCampaign('order-future-state', statuses), false);
+    assert.equal(api.Campaign.orderIsBlockedFromSend(campaign.items[0], statuses), true);
+
+    const job = messageCenterJob({ id: 'job-future-campaign-state' });
+    const fixture = installMessageCenterConversationFixture(environment);
+    const results = [];
+    agent.request = async (method, requestPath, body) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) results.push(copy(body));
+        return {};
+    };
+    assert.equal(await agent.processNextJob(), false);
+    assert.equal(fixture.clicks, 0);
+    assert.deepEqual(results, [{ status: 'failed', retryable: true, error: 'etsy_send_owner_conflict' }]);
+
+    fixture.textarea.value = 'Manual message while campaign state is unknown';
+    let nativeClicks = 0;
+    const nativeButton = messageCenterButton(() => { nativeClicks += 1; });
+    api.MessageAdapter.getSendButton = () => nativeButton;
+    const guard = api.Verification.beginNativeDispatchGuard();
+    assert.equal(await api.Verification.dispatchNativeSend(nativeButton, guard), false);
+    api.Verification.releaseNativeDispatchGuard(guard);
+    assert.equal(nativeClicks, 0);
+    await assert.rejects(api.Campaign.create([{
+        orderId: 'order-new', customerName: 'Morgan', itemTitle: 'New item',
+        messageUrl: 'https://www.etsy.com/messages/conversation-b',
+    }], 'tpl-delivered', 'template'), /Devam eden kampanya/i);
+});
+
+test('a failed campaign initialization cannot become an active ghost or touch the composer', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox, storage } = environment;
+    sandbox.location.pathname = '/messages/conversation-a';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/conversation-a';
+    const statusesBefore = copy(api.Store.statuses);
+    const originalSaveCampaignLocked = api.Store.saveCampaignLocked;
+    const originalMutateStatusesLocked = api.Store.mutateStatusesLocked;
+    let saveCalls = 0;
+    api.Store.saveCampaignLocked = async (...args) => {
+        saveCalls += 1;
+        if (saveCalls === 1) return originalSaveCampaignLocked.apply(api.Store, args);
+        throw new Error('injected cancellation save failure');
+    };
+    api.Store.mutateStatusesLocked = async () => { throw new Error('injected status binding failure'); };
+    try {
+        await assert.rejects(api.Campaign.create([{
+            orderId: 'order-ghost', customerName: 'Ashley', itemTitle: 'Ghost item',
+            messageUrl: 'https://www.etsy.com/messages/conversation-a',
+        }], 'tpl-delivered', 'template'), /injected status binding failure/);
+    } finally {
+        api.Store.saveCampaignLocked = originalSaveCampaignLocked;
+        api.Store.mutateStatusesLocked = originalMutateStatusesLocked;
+    }
+    const persisted = storage.get(api.KEYS.campaign);
+    assert.equal(persisted.status, 'initializing');
+    assert.equal(api.Campaign.current(), null);
+    assert.equal(api.Campaign.campaignOwnsConversation(persisted, 'conversation-a'), true);
+    assert.deepEqual(copy(api.Store.statuses), statusesBefore);
+    let inserts = 0;
+    let clicks = 0;
+    api.MessageAdapter.insert = () => { inserts += 1; };
+    api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clicks += 1; });
+    assert.equal(await api.Campaign.resume(), false);
+    assert.equal(inserts, 0);
+    assert.equal(clicks, 0);
+});
+
+test('campaign compose context rejects an item bound to a different receipt even without DOM order text', async () => {
+    const { api } = await loadAssistant();
+    const item = {
+        orderId: '11111111',
+        customerName: 'Ashley',
+        messageUrl: 'https://www.etsy.com/messages/new?with_id=123&referring_id=22222222&referring_type=receipt',
+    };
+    assert.equal(api.Campaign.contextMatchesItem({
+        conversationId: 'compose:123:receipt:22222222',
+        customerName: 'Ashley',
+        orderId: '',
+    }, item, 'compose:123:receipt:22222222'), false);
+});
+
+test('post-mutation Message Center stages quarantine before malformed payload validation', async () => {
+    async function runCase({ id, stage, jobPatch }) {
+        const environment = await loadAssistant();
+        const { api, storage } = environment;
+        const agent = configureMessageCenter(environment);
+        const binding = agent.config();
+        const job = messageCenterJob({ id, ...jobPatch });
+        storage.set(agent.pendingKey(binding), fencedMessageCenterPending(agent, binding, job, stage, {
+            baselineMatches: 3,
+        }));
+        let contextReads = 0;
+        let composerReads = 0;
+        let clicks = 0;
+        const results = [];
+        agent.request = async (_method, requestPath, body) => {
+            if (requestPath.includes('/result')) results.push(copy(body));
+            return {};
+        };
+        api.MessageAdapter.waitForContext = async () => { contextReads += 1; return null; };
+        api.MessageAdapter.waitForTextarea = async () => { composerReads += 1; return null; };
+        api.MessageAdapter.getSendButton = () => messageCenterButton(() => { clicks += 1; });
+
+        assert.equal(await agent.processNextJob(), false);
+        const quarantined = storage.get(agent.pendingKey(binding));
+        assert.equal(quarantined.stage, 'ambiguous');
+        assert.equal(quarantined.quarantinedStage, stage);
+        assert.equal(quarantined.suppressOutgoingAutoConfirmation, true);
+        assert.equal(contextReads, 0);
+        assert.equal(composerReads, 0);
+        assert.equal(clicks, 0);
+        assert.equal(results.length, 1);
+        assert.equal(results[0].manualReviewRequired, true);
+        assert.ok(await agent.activeSendHold('unrelated-conversation'), 'malformed risky record must be a global send hold');
+        await assert.rejects(api.Campaign.create([{
+            orderId: `order-${id}`,
+            customerName: 'Morgan',
+            itemTitle: 'Held item',
+            messageUrl: 'https://www.etsy.com/messages/unrelated-conversation',
+        }], 'tpl-delivered', 'template'), /bekleyen Message Center/i);
+
+        assert.equal(await agent.processNextJob(), false);
+        assert.equal(results.length, 1, 'quarantined retry must not report or clear the exact tombstone again');
+        assert.equal(storage.get(agent.pendingKey(binding)).stage, 'ambiguous');
+    }
+
+    await runCase({
+        id: 'job-prepared-invalid-url',
+        stage: 'prepared',
+        jobPatch: { conversationUrl: 'https://evil.example/messages/conversation-a' },
+    });
+    await runCase({
+        id: 'job-future-missing-type',
+        stage: 'future_post_dispatch',
+        jobPatch: { type: undefined, conversationUrl: '', conversationId: '' },
+    });
+});
+
+test('Message Center result outbox write loss cannot report or replay Etsy work', async () => {
+    const environment = await loadAssistant();
+    const { api, storage } = environment;
+    const agent = configureMessageCenter(environment);
+    const binding = agent.config();
+    const job = messageCenterJob({ id: 'job-result-outbox-write-loss' });
+    storage.set(agent.sentLedgerKey(binding), {
+        [job.id]: {
+            at: new Date().toISOString(),
+            conversationIdentity: 'conversation-a',
+            textDigest: await api.sha256Text(job.text),
+            textDigestVersion: 'sha256-utf8-v1',
+            authorityId: agent.authorityId(binding),
+            configId: agent.configId(binding),
+        },
+    });
+    let resultCalls = 0;
+    let domReads = 0;
+    agent.request = async (method, requestPath) => {
+        if (method === 'GET' && requestPath.endsWith('/jobs/next')) return { job };
+        if (requestPath.includes('/result')) resultCalls += 1;
+        return {};
+    };
+    api.MessageAdapter.waitForContext = async () => { domReads += 1; return null; };
+    api.MessageAdapter.waitForTextarea = async () => { domReads += 1; return null; };
+    const pendingKey = agent.pendingKey(binding);
+    const originalSet = api.GMX.set;
+    api.GMX.set = async (key, value) => {
+        if (key === pendingKey && value?.stage === 'result_pending') return undefined;
+        return originalSet(key, value);
+    };
+    assert.equal(await agent.processNextJob(), false);
+    api.GMX.set = originalSet;
+    assert.equal(storage.get(pendingKey).stage, 'leased');
+    assert.equal(resultCalls, 0, 'terminal result must not be posted before its exact outbox envelope is durable');
+    assert.equal(domReads, 0);
+
+    assert.equal(await agent.processNextJob(), true);
+    assert.equal(resultCalls, 1);
+    assert.equal(domReads, 0);
+    assert.equal(storage.has(pendingKey), false);
+});
+
+test('composer form never routes a different submitter through Etsy Send', async () => {
+    const environment = await loadAssistant();
+    const { api, documentListeners } = environment;
+    const form = { id: 'composer-form' };
+    const saveDraft = { id: 'save-draft', type: 'submit' };
+    let sendClicks = 0;
+    const sendButton = { id: 'send', click() { sendClicks += 1; } };
+    const warnings = [];
+    api.MessageAdapter.potentialComposerForm = target => target === form ? form : null;
+    api.MessageAdapter.currentComposerFormIsExact = target => target === form;
+    api.MessageAdapter.getSendButton = () => sendButton;
+    api.UI.toast = message => warnings.push(message);
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    const handler = documentListeners.get('submit')?.at(-1);
+    const event = {
+        target: form,
+        submitter: saveDraft,
+        defaultPrevented: false,
+        immediatePropagationStopped: false,
+        preventDefault() { this.defaultPrevented = true; },
+        stopImmediatePropagation() { this.immediatePropagationStopped = true; },
+    };
+    handler(event);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(event.immediatePropagationStopped, true);
+    assert.equal(sendClicks, 0);
+    assert.match(warnings[0], /farklı bir işlem düğmesi/i);
 });
 
 test('history download defers object URL revocation until after the click turn', async () => {

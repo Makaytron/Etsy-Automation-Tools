@@ -705,11 +705,16 @@
         update: `${APP.prefix}:update`,
     });
     const CAMPAIGN_COORDINATION_LOCK = `${APP.prefix}:campaign-status-coordination:v1`;
+    const ETSY_SEND_COORDINATION_LOCK = `${APP.prefix}:etsy-send-coordination:v1`;
+    const NATIVE_SEND_ATTEMPTS_KEY = `${APP.prefix}:native-send-attempts:v1`;
+    const NATIVE_SENT_RECEIPTS_KEY = `${APP.prefix}:native-sent-receipts:v1`;
     const HISTORY_COORDINATION_LOCK = `${APP.prefix}:history-coordination:v1`;
     const CONFIG_COORDINATION_LOCK = `${APP.prefix}:config-coordination:v1`;
     const CAMPAIGN_RESERVATION_TTL_MS = 120000;
     const CAMPAIGN_SEND_PENDING_STATUS = 'sent_pending_verification';
     const CAMPAIGN_INELIGIBLE_ORDER_STATUSES = new Set(['skipped', 'sent', CAMPAIGN_SEND_PENDING_STATUS]);
+    const CAMPAIGN_KNOWN_ORDER_STATUSES = new Set(['', 'none', 'draft', 'inserted', 'error', 'skipped', 'sent', CAMPAIGN_SEND_PENDING_STATUS]);
+    const CAMPAIGN_TERMINAL_ITEM_STATUSES = new Set(['sent', 'skipped']);
     const STATUS_SCHEMA_VERSION = 2;
     const REVIEW_ELIGIBILITY_TTL_MS = 2 * 60 * 60 * 1000;
     const OUTREACH_DECISIONS = new Set(['unknown', 'eligible', 'ineligible']);
@@ -1341,6 +1346,42 @@ zu|Zulu
     const uid = (prefix = 'id') => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const CAMPAIGN_TAB_ID = uid('campaign-tab');
     const normalize = (text = '') => String(text).replace(/\s+/g, ' ').trim();
+    function sendErrorGuidance(error, fallback = 'Beklenmeyen hata.') {
+        const rawMessage = normalize(error?.message || error || fallback) || fallback;
+        const errorCode = normalize(error?.code || '').toUpperCase();
+        const normalizedMessage = rawMessage.toLocaleLowerCase('tr-TR');
+        if (errorCode === 'MESSAGE_CENTER_SENT_LEDGER_CONFLICT') {
+            return {
+                code: 'message_center_job_conflict',
+                message: 'Message Center aynı iş kimliğini farklı bir konuşma veya metinle yeniden kullandı. Güvenlik için gönderim engellendi; merkezi iş kaydını kontrol edin. Etsy Gönder düğmesine basılmadı.',
+            };
+        }
+        if (/doğrulanamadı|doğrulaması tamamlanamadı|manual[_ ]check[_ ]required|verification failed/.test(normalizedMessage)) {
+            return {
+                code: 'send_result_ambiguous',
+                message: 'Gönderim sonucu kesin olarak doğrulanamadı. Aynı mesajı yeniden göndermeyin; Etsy konuşmasındaki son mesaj balonunu kontrol edin ve kesin sonucu belirlemeden yeni deneme başlatmayın.',
+            };
+        }
+        if (/başka bir etsy sekmesinde|başka bir sekmede|pending ownership|koordine edilemiyor|coordinator unavailable/.test(normalizedMessage)) {
+            return {
+                code: 'send_busy_elsewhere',
+                message: 'Bu gönderim başka bir Etsy sekmesinde işleniyor veya sekmeler arası güvenli kilit kullanılamıyor. Diğer sekmedeki sonucu kontrol edin; bu sekmede yeniden Gönder’e basmayın.',
+            };
+        }
+        if (/gönder düğmesi bulunamadı|send button/.test(normalizedMessage)) {
+            return {
+                code: 'send_button_unavailable',
+                message: 'Etsy’nin tek ve etkin Gönder düğmesi doğrulanamadı. Mesaj alanının açık ve düğmenin etkin olduğunu kontrol edip sayfayı yenileyin. Hiçbir gönderim yapılmadı.',
+            };
+        }
+        if (/konuşma.*değiş|metin.*değiş|konuşmayla eşleşmiyor|doğru etsy konuşması|conversation changed|composer changed/.test(normalizedMessage)) {
+            return {
+                code: 'send_context_changed',
+                message: 'Müşteri, konuşma veya hazırlanan metin işlem sırasında değişti. Güvenlik için Etsy Gönder düğmesine basılmadı; doğru siparişi yeniden açıp taslağı tekrar doğrulayın.',
+            };
+        }
+        return { code: errorCode ? errorCode.toLocaleLowerCase('en-US') : 'unexpected', message: rawMessage };
+    }
     const trimmedMessageText = (text = '') => String(text ?? '')
         .trim()
         .replace(/^Message:[^\S\r\n]*/i, '')
@@ -1375,6 +1416,16 @@ zu|Zulu
         }
         return (hash >>> 0).toString(36);
     };
+    async function sha256Text(text = '') {
+        if (!globalThis.crypto?.subtle || typeof globalThis.TextEncoder !== 'function') {
+            const error = new Error('Tarayıcı güvenli mesaj özeti üretemiyor; gönderim kimliği doğrulanamadı.');
+            error.code = 'STRONG_TEXT_DIGEST_UNAVAILABLE';
+            throw error;
+        }
+        const bytes = new TextEncoder().encode(String(text));
+        const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+        return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('');
+    }
     const icon = (name, extra = '') => `<svg class="ma-icon ${extra}" aria-hidden="true"><use href="#ma-i-${name}"></use></svg>`;
     const langName = (code = 'und') => {
         const normalized = String(code).toLowerCase();
@@ -1619,7 +1670,7 @@ zu|Zulu
         return Boolean(globalThis.navigator?.locks && typeof globalThis.navigator.locks.request === 'function');
     }
 
-    async function withCampaignCoordinator(operation) {
+    async function withCampaignCoordinator(operation, { ifAvailable = false } = {}) {
         if (!campaignCoordinatorAvailable()) {
             const error = new Error('Kampanya sekmeler arası güvenli biçimde koordine edilemiyor. Otomatik işlem durduruldu.');
             error.code = 'CAMPAIGN_COORDINATOR_UNAVAILABLE';
@@ -1627,8 +1678,21 @@ zu|Zulu
         }
         return globalThis.navigator.locks.request(
             CAMPAIGN_COORDINATION_LOCK,
-            { mode: 'exclusive' },
-            operation,
+            { mode: 'exclusive', ...(ifAvailable ? { ifAvailable: true } : {}) },
+            lock => lock ? operation() : false,
+        );
+    }
+
+    async function withEtsySendCoordinator(operation, { ifAvailable = false } = {}) {
+        if (!campaignCoordinatorAvailable()) {
+            const error = new Error('Etsy gönderimleri sekmeler arasında güvenli biçimde koordine edilemiyor. Gönderim durduruldu.');
+            error.code = 'ETSY_SEND_COORDINATOR_UNAVAILABLE';
+            throw error;
+        }
+        return globalThis.navigator.locks.request(
+            ETSY_SEND_COORDINATION_LOCK,
+            { mode: 'exclusive', ...(ifAvailable ? { ifAvailable: true } : {}) },
+            lock => lock ? operation() : false,
         );
     }
 
@@ -3095,12 +3159,12 @@ zu|Zulu
                 const current = nextProviders[id] || {};
                 nextProviders[id] = { ...current, ...imported, apiKey: imported.apiKey || current.apiKey || '' };
             }
-            await Store.saveConfigBundle({
+            await MessageCenterAgent.withSafeConfigurationChange(nextSettings, () => Store.saveConfigBundle({
                 settings: nextSettings,
                 providers: nextProviders,
                 ...(importedTemplates?.length ? { templates: importedTemplates } : {}),
                 ...(importedOnboarding ? { onboarding: importedOnboarding } : {}),
-            });
+            }));
             return payload;
         },
     };
@@ -3561,6 +3625,7 @@ zu|Zulu
             return Boolean(this.composeTargetFromUrl(value));
         },
         canonicalConversationUrl(value, options = {}) {
+            if (!String(value || '').trim()) return '';
             try {
                 const url = new URL(value, location.href);
                 if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return '';
@@ -3707,6 +3772,74 @@ zu|Zulu
             const textarea = this.getComposerCandidate();
             return textarea && this.getConversationScope(textarea) ? textarea : null;
         },
+        composerRouteBinding(resolvedTextarea) {
+            const identities = new Set();
+            let declared = false;
+            let invalid = false;
+            const activeCompose = Router.composeTargetFromUrl();
+            const activeIdentity = Router.conversationIdentity();
+            let current = resolvedTextarea;
+            for (let depth = 0; current && depth < 20; depth += 1) {
+                for (const attribute of ['data-conversation-id', 'data-message-thread-id']) {
+                    const raw = current.getAttribute?.(attribute);
+                    const present = typeof current.hasAttribute === 'function'
+                        ? current.hasAttribute(attribute)
+                        : raw !== null && raw !== undefined && String(raw).trim() !== '';
+                    if (!present) continue;
+                    declared = true;
+                    const normalizedRaw = String(raw || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
+                    const composeAliases = activeCompose ? new Set([
+                        activeCompose.identity,
+                        activeCompose.recipientId,
+                        `compose-${activeCompose.recipientId}`,
+                        ...(activeCompose.referringId ? [
+                            `compose-${activeCompose.recipientId}-receipt-${activeCompose.referringId}`,
+                        ] : []),
+                    ]) : null;
+                    if (composeAliases?.has(normalizedRaw)) {
+                        identities.add(activeIdentity);
+                        continue;
+                    }
+                    const decoded = Router.decodeConversationId(raw);
+                    const identity = Router.conversationIdentityFromId(decoded);
+                    if (!decoded || !identity) invalid = true;
+                    else identities.add(identity);
+                }
+                if (current === document.body || current === document.documentElement) break;
+                current = current.parentElement;
+            }
+            return {
+                declared,
+                valid: !invalid && identities.size <= 1,
+                identity: identities.size === 1 ? [...identities][0] : '',
+            };
+        },
+        composerRouteBindingIsCurrent(resolvedTextarea) {
+            const activeIdentity = Router.conversationIdentity();
+            if (!activeIdentity) return false;
+            const binding = this.composerRouteBinding(resolvedTextarea);
+            return binding.valid && (!binding.declared || binding.identity === activeIdentity);
+        },
+        composerReceiptBindingIsCurrent(resolvedTextarea) {
+            const compose = Router.composeTargetFromUrl();
+            if (!compose?.referringId) return true;
+            let current = resolvedTextarea?.parentElement || null;
+            for (let depth = 0; current && depth < 20; depth += 1) {
+                if (current === document.body || current === document.documentElement) break;
+                const orderIds = [...current.querySelectorAll?.('a[href*="order_id="]') || []]
+                    .map((link) => {
+                        try { return new URL(link.href, location.href).searchParams.get('order_id') || ''; }
+                        catch { return ''; }
+                    })
+                    .filter(Boolean);
+                if (orderIds.length) {
+                    const unique = [...new Set(orderIds)];
+                    return unique.length === 1 && unique[0] === compose.referringId;
+                }
+                current = current.parentElement;
+            }
+            return true;
+        },
         scopeHasOnlyComposer(scope, textarea) {
             const candidates = this.composerCandidates(scope);
             return candidates.length === 1 && candidates[0] === textarea;
@@ -3723,7 +3856,9 @@ zu|Zulu
         getConversationScope(resolvedTextarea = null) {
             if (Router.page() !== 'messages' || !Router.conversationId()) return null;
             const textarea = resolvedTextarea || this.getComposerCandidate();
-            if (!textarea) return null;
+            if (!textarea
+                || !this.composerRouteBindingIsCurrent(textarea)
+                || !this.composerReceiptBindingIsCurrent(textarea)) return null;
 
             const semanticScope = textarea.closest?.(this.conversationScopeSelector) || null;
             let current = textarea.parentElement;
@@ -3759,7 +3894,6 @@ zu|Zulu
                 ...conversationScope?.querySelectorAll?.('button') || [],
                 ...composerForm?.querySelectorAll?.('button') || [],
             ])];
-            const sendLabel = /^(?:send|send message|send reply|gönder|mesaj(?:ı)? gönder|yanıt(?:ı)? gönder|cevap gönder)$/i;
             const candidates = buttons.filter((button) => {
                 if (button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
                 if (button.hidden || button.closest?.('[hidden], [aria-hidden="true"]')) return false;
@@ -3768,22 +3902,62 @@ zu|Zulu
                     if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
                     if (typeof button.getClientRects === 'function' && button.getClientRects().length === 0) return false;
                 } catch { /* görünürlük bilgisi yoksa etiket doğrulamasına devam et */ }
-                const labels = [
-                    button.textContent,
-                    button.getAttribute('aria-label'),
-                    button.getAttribute('name'),
-                    button.getAttribute('value'),
-                    button.getAttribute('title'),
-                ].map(value => normalize(value).replace(/[_-]+/g, ' ')).filter(Boolean);
-                return labels.some(label => sendLabel.test(label));
+                return this.hasExplicitSendLabel(button);
             });
             return candidates.length === 1 ? candidates[0] : null;
         },
+        hasExplicitSendLabel(element) {
+            const sendLabel = /^(?:send|send message|send reply|gönder|mesaj(?:ı)? gönder|yanıt(?:ı)? gönder|cevap gönder)$/i;
+            const labels = [
+                element?.textContent,
+                element?.getAttribute?.('aria-label'),
+                element?.getAttribute?.('name'),
+                element?.getAttribute?.('value'),
+                element?.getAttribute?.('title'),
+            ].map(value => normalize(value).replace(/[_-]+/g, ' ')).filter(Boolean);
+            return labels.some(label => sendLabel.test(label));
+        },
+        potentialSendButton(element) {
+            if (Router.page() !== 'messages' || !Router.conversationId()) return null;
+            const button = element?.closest?.('button') || element;
+            if (!this.hasExplicitSendLabel(button)) return null;
+            if (this.getSendButton() === button) return button;
+            const scope = button?.closest?.(this.conversationScopeSelector)
+                || button?.closest?.('form')
+                || null;
+            return scope && this.composerCandidates(scope).length === 1 ? button : null;
+        },
+        isPotentialSendButton(element) {
+            return Boolean(this.potentialSendButton(element));
+        },
         isSendButton(element) {
             if (!element) return false;
-            const button = element.closest?.('button');
+            const button = this.potentialSendButton(element);
             const sendButton = this.getSendButton();
             return !!button && !!sendButton && button === sendButton;
+        },
+        composerFromEventTarget(element) {
+            if (!element || Router.page() !== 'messages' || !Router.conversationId()) return null;
+            for (const selector of this.textareaSelectors) {
+                try {
+                    if (element.matches?.(selector) && this.isVisible(element)) return element;
+                    const closest = element.closest?.(selector);
+                    if (closest && this.isVisible(closest)) return closest;
+                } catch { /* invalid/non-DOM test doubles are not composer intents */ }
+            }
+            return null;
+        },
+        potentialComposerForm(element) {
+            if (Router.page() !== 'messages' || !Router.conversationId()) return null;
+            const form = element?.matches?.('form') ? element : element?.closest?.('form');
+            if (!form || this.composerCandidates(form).length !== 1) return null;
+            return form;
+        },
+        currentComposerFormIsExact(form) {
+            const textarea = this.getTextarea();
+            const button = this.getSendButton();
+            return Boolean(form && textarea && button && textarea.closest?.('form') === form
+                && (button.closest?.('form') === form || form.contains?.(button)));
         },
         getMessages(resolvedScope = null) {
             const scope = resolvedScope || this.getConversationScope();
@@ -3923,6 +4097,15 @@ zu|Zulu
             }
             return textarea;
         },
+        async waitForSendButton(timeout = 2000) {
+            const started = Date.now();
+            let button = this.getSendButton();
+            while (!button && Date.now() - started < timeout && Router.page() === 'messages' && Router.conversationId()) {
+                await sleep(100);
+                button = this.getSendButton();
+            }
+            return button;
+        },
         insert(text, resolvedTextarea = null) {
             const textarea = resolvedTextarea || this.getTextarea();
             if (!textarea) {
@@ -3988,6 +4171,9 @@ zu|Zulu
         pollTimer: null,
         routeTimer: null,
         lastError: '',
+        manualReview: null,
+        programmaticDispatchActive: false,
+        sendHoldStages: new Set(['leased', 'navigating', 'preparing', 'prepared', 'dispatched', 'recovering', 'ambiguous', 'native_receipt_claimed', 'rejected', 'result_pending']),
         lastHeartbeatAt: '',
         lastSyncAt: '',
         pendingKey(binding = this.config()) {
@@ -3998,15 +4184,24 @@ zu|Zulu
             const storeId = String(binding?.storeId || '').trim().toLowerCase();
             return `${APP.prefix}:message-center:legacy-pending-quarantine:${storeId || 'unset'}`;
         },
-        sentLedgerKey(binding = this.config()) {
+        authorityId(binding = this.config()) {
+            return JSON.stringify([
+                String(binding?.serverUrl || '').trim().replace(/\/+$/, ''),
+                String(binding?.storeId || '').trim().toLowerCase(),
+            ]);
+        },
+        legacySentLedgerKey(binding = this.config()) {
             const storeId = String(binding?.storeId || '').trim().toLowerCase();
             return `${APP.prefix}:message-center:sent-ledger:${storeId || 'unset'}`;
         },
-        config() {
-            const enabled = Store.settings.messageCenterEnabled === true;
-            const storeId = String(Store.settings.messageCenterStoreId || '').trim().toLowerCase();
-            const token = String(Store.settings.messageCenterAgentToken || '').trim();
-            const rawUrl = String(Store.settings.messageCenterUrl || '').trim().replace(/\/+$/, '');
+        sentLedgerKey(binding = this.config()) {
+            return `${APP.prefix}:message-center:sent-ledger:v2:${encodeURIComponent(this.authorityId(binding))}`;
+        },
+        config(settings = Store.settings) {
+            const enabled = settings?.messageCenterEnabled === true;
+            const storeId = String(settings?.messageCenterStoreId || '').trim().toLowerCase();
+            const token = String(settings?.messageCenterAgentToken || '').trim();
+            const rawUrl = String(settings?.messageCenterUrl || '').trim().replace(/\/+$/, '');
             let serverUrl = '';
             try {
                 const parsed = new URL(rawUrl);
@@ -4019,8 +4214,8 @@ zu|Zulu
                 storeId,
                 token,
                 serverUrl,
-                syncSeconds: Math.max(5, Math.min(120, Number(Store.settings.messageCenterSyncSeconds) || 10)),
-                pollSeconds: Math.max(2, Math.min(60, Number(Store.settings.messageCenterPollSeconds) || 3)),
+                syncSeconds: Math.max(5, Math.min(120, Number(settings?.messageCenterSyncSeconds) || 10)),
+                pollSeconds: Math.max(2, Math.min(60, Number(settings?.messageCenterPollSeconds) || 3)),
             };
         },
         configId(binding = this.config()) {
@@ -4065,6 +4260,7 @@ zu|Zulu
         statusText() {
             if (!Store.settings.messageCenterEnabled) return 'Kapalı';
             if (!this.isConfigured()) return 'Eksik ayar';
+            if (this.manualReview?.stage === 'ambiguous') return 'Manuel gönderim kontrolü gerekli';
             if (this.lastError) return `Hata: ${this.lastError}`;
             if (this.lastHeartbeatAt) return `Bağlı · ${formatDate(this.lastHeartbeatAt)}`;
             return 'Bağlantı bekleniyor';
@@ -4385,8 +4581,24 @@ zu|Zulu
             }
         },
         async sentLedger(binding = this.config()) {
-            const value = await GMX.get(this.sentLedgerKey(binding), {});
-            return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+            const key = this.sentLedgerKey(binding);
+            const value = await GMX.get(key, {});
+            const ledger = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+            const legacyValue = await GMX.get(this.legacySentLedgerKey(binding), {});
+            const legacy = legacyValue && typeof legacyValue === 'object' && !Array.isArray(legacyValue)
+                ? legacyValue
+                : {};
+            const authorityId = this.authorityId(binding);
+            const configId = this.configId(binding);
+            let migrated = false;
+            for (const [jobId, record] of Object.entries(legacy)) {
+                if (!jobId || ledger[jobId] || !record || typeof record !== 'object'
+                    || String(record.configId || '') !== configId) continue;
+                ledger[jobId] = { ...record, authorityId, migratedFromLegacyAt: nowIso() };
+                migrated = true;
+            }
+            if (migrated) await GMX.set(key, ledger);
+            return ledger;
         },
         pendingMatchesRun(pending, run) {
             return Boolean(pending?.job?.id
@@ -4464,8 +4676,11 @@ zu|Zulu
             };
             await GMX.set(key, pending);
             const run = this.makeRun(pending, binding, generation);
-            if (!await this.ownsPending(run)) throw this.staleRunError('Message Center pending claim was lost.');
-            return { pending, run, blocked: false };
+            const readback = await GMX.get(key, null);
+            if (!this.pendingMatchesRun(readback, run) || JSON.stringify(readback) !== JSON.stringify(pending)) {
+                throw this.staleRunError('Message Center pending claim was lost.');
+            }
+            return { pending: readback, run, blocked: false };
         },
         async createPending(job, binding, generation) {
             this.ensureBindingCurrent(binding, generation);
@@ -4474,6 +4689,7 @@ zu|Zulu
             const pending = {
                 job,
                 stage: 'leased',
+                leasedAt: nowIso(),
                 ownerId: this.tabId,
                 fenceToken: uid('mc-fence'),
                 configId: this.configId(binding),
@@ -4482,8 +4698,11 @@ zu|Zulu
             };
             await GMX.set(key, pending);
             const run = this.makeRun(pending, binding, generation);
-            if (!await this.ownsPending(run)) throw this.staleRunError('Message Center pending create was lost.');
-            return { pending, run, blocked: false };
+            const readback = await GMX.get(key, null);
+            if (!this.pendingMatchesRun(readback, run) || JSON.stringify(readback) !== JSON.stringify(pending)) {
+                throw this.staleRunError('Message Center pending create was lost.');
+            }
+            return { pending: readback, run, blocked: false };
         },
         async persistPending(job, stage = 'leased', extra = {}, run) {
             const current = await this.assertRunOwned(run);
@@ -4499,46 +4718,255 @@ zu|Zulu
                 updatedAt: nowIso(),
             };
             await GMX.set(run.pendingKey, pending);
-            if (!await this.ownsPending(run)) throw this.staleRunError('Message Center pending write was lost.');
+            const readback = await GMX.get(run.pendingKey, null);
+            if (!this.pendingMatchesRun(readback, run) || JSON.stringify(readback) !== JSON.stringify(pending)) {
+                throw this.staleRunError('Message Center pending write was lost.');
+            }
             this.ensureBindingCurrent(run.binding, run.generation);
-            return pending;
+            return readback;
         },
         async clearPending(run) {
             if (!run?.pendingKey) return false;
             const pending = await GMX.get(run.pendingKey, null);
             if (!this.pendingMatchesRun(pending, run)) return false;
             await GMX.del(run.pendingKey);
+            if (this.pendingMatchesRun(await GMX.get(run.pendingKey, null), run)) return false;
+            if (String(this.manualReview?.job?.id || '') === String(run.jobId || '')) this.manualReview = null;
             return true;
         },
-        async markSent(job, run) {
+        jobConversationBinding(job) {
+            if (!job || !String(job.conversationUrl || '').trim() || !String(job.conversationId || '').trim()) {
+                return {
+                    conversationUrl: '',
+                    identity: '',
+                    declaredIdentity: '',
+                    valid: false,
+                    conflict: false,
+                };
+            }
+            const conversationUrl = this.canonicalConversationUrl(job?.conversationUrl || '');
+            const identity = Router.conversationIdentity(conversationUrl || '');
+            const declaredId = Router.decodeConversationId(job?.conversationId || '');
+            const declaredIdentity = Router.conversationIdentityFromId(declaredId);
+            return {
+                conversationUrl,
+                identity,
+                declaredIdentity,
+                valid: Boolean(conversationUrl && identity && !identity.startsWith('compose:')),
+                conflict: Boolean(identity && (!declaredIdentity || declaredIdentity !== identity)),
+            };
+        },
+        pendingConversationIdentity(pending) {
+            if (!pending?.job) return '';
+            return this.jobConversationBinding(pending?.job).identity || '';
+        },
+        async activeSendHold(conversationIdentity = '', binding = this.config()) {
+            const pending = await this.loadPending(binding);
+            if (!pending?.job?.id) return null;
+            const jobType = String(pending.job.type || '').trim().toLowerCase();
+            const stage = String(pending.stage || '');
+            const safeHydrateStages = new Set(['leased', 'navigating', 'rejected', 'result_pending']);
+            if (jobType === 'hydrate' && safeHydrateStages.has(stage)) return null;
+            const pendingIdentity = this.pendingConversationIdentity(pending);
+            // A well-formed reply can be scoped to its conversation. Any missing,
+            // future or incompatible job type/stage is a global hold because it may
+            // represent post-composer or post-click evidence from a newer version.
+            if (jobType === 'reply' && pending.globalHold !== true
+                && conversationIdentity && pendingIdentity && pendingIdentity !== conversationIdentity) return null;
+            return pending;
+        },
+        localSendHoldIsCurrent(conversationIdentity = Router.conversationIdentity()) {
+            const pending = this.manualReview;
+            return Boolean(conversationIdentity
+                && pending?.job?.id
+                && this.sendHoldStages.has(String(pending.stage || ''))
+                && this.pendingConversationIdentity(pending) === conversationIdentity);
+        },
+        openManualReviewConversation() {
+            const pending = this.manualReview;
+            const binding = this.jobConversationBinding(pending?.job);
+            if (pending?.stage !== 'ambiguous' || !binding.valid || binding.conflict) {
+                throw new Error('Manuel kontrol için güvenli bir Etsy konuşma adresi bulunamadı.');
+            }
+            const currentIdentity = Router.conversationIdentity();
+            if (Router.page() === 'messages' && currentIdentity && currentIdentity !== binding.identity) {
+                const manualText = String(MessageAdapter.getTextarea()?.value || '').trim();
+                if (manualText) {
+                    throw new Error('Açık Etsy konuşmasında gönderilmemiş manuel taslak var. Taslak korunarak gezinme durduruldu; önce metni kaydedin veya temizleyin.');
+                }
+            }
+            location.href = binding.conversationUrl;
+            return true;
+        },
+        configurationChangesBinding(nextSettings) {
+            const current = this.config(Store.settings);
+            const next = this.config(nextSettings);
+            return current.enabled !== next.enabled || this.configId(current) !== this.configId(next);
+        },
+        async withSafeConfigurationChange(nextSettings, operation) {
+            if (typeof operation !== 'function') throw new TypeError('Message Center config operation is required.');
+            if (!this.configurationChangesBinding(nextSettings)) return operation();
+            const current = this.config(Store.settings);
+            const next = this.config(nextSettings);
+            const guarded = async () => {
+                const bindings = [];
+                const keys = new Set();
+                for (const binding of [current, next]) {
+                    const key = this.pendingKey(binding);
+                    if (keys.has(key)) continue;
+                    keys.add(key);
+                    bindings.push(binding);
+                }
+                for (const binding of bindings) {
+                    const pending = await this.loadPending(binding);
+                    if (!pending?.job?.id) continue;
+                    if (pending.stage === 'ambiguous') this.manualReview = clone(pending);
+                    const error = new Error('Bekleyen Message Center gönderimi çözülmeden agent bağlantısı kapatılamaz veya değiştirilemez. Önce mevcut ayarlarla gönderim sonucunu doğrulayın.');
+                    error.code = 'MESSAGE_CENTER_PENDING_CONFIGURATION_CHANGE';
+                    throw error;
+                }
+                return operation();
+            };
+            if (this.coordinatorAvailable()) return this.withProcessorLock(guarded);
+            if (this.isConfigured(current)) {
+                const error = new Error('Message Center bağlantısı sekmeler arası güvenli kilit olmadan değiştirilemez.');
+                error.code = 'MESSAGE_CENTER_COORDINATOR_UNAVAILABLE';
+                throw error;
+            }
+            return guarded();
+        },
+        manualReviewContextIsCurrent(pending = this.manualReview) {
+            const job = pending?.job;
+            const binding = this.jobConversationBinding(job);
+            if (pending?.stage !== 'ambiguous' || !binding.valid || binding.conflict) return false;
+            if (!this.jobConversationMatches(job) || Router.page() !== 'messages') return false;
+            try {
+                const currentBinding = this.config();
+                if (String(pending.configId || '') !== this.configId(currentBinding)) return false;
+                const textarea = MessageAdapter.getTextarea();
+                const scope = MessageAdapter.getConversationScope(textarea);
+                const context = MessageAdapter.context();
+                const contextIdentity = Router.conversationIdentityFromId(
+                    Router.decodeConversationId(context?.conversationId || ''),
+                );
+                return Boolean(textarea && scope && contextIdentity && contextIdentity === binding.identity);
+            } catch { return false; }
+        },
+        async resolveManualReview(outcome, expected = {}) {
+            if (!['sent', 'not_sent'].includes(outcome)) throw new Error('Geçerli bir Message Center gönderim sonucu seçin.');
+            return this.withProcessorLock(() => withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
+                const binding = Object.freeze({ ...this.config() });
+                const generation = this.generation;
+                if (!this.isConfigured(binding)) throw new Error('Mesaj Merkezi agent ayarları eksik.');
+                const claimed = await this.claimPending(binding, generation);
+                if (claimed.blocked || !claimed.pending || !claimed.run) {
+                    throw new Error('Belirsiz gönderim başka bir sekmede inceleniyor. Diğer sekmedeki sonucu kontrol edin.');
+                }
+                const pending = claimed.pending;
+                const run = claimed.run;
+                if (pending.stage !== 'ambiguous') throw new Error('Manuel kontrol bekleyen bir Message Center gönderimi bulunamadı.');
+                if ((expected.jobId && String(expected.jobId) !== String(pending.job?.id || ''))
+                    || (expected.ambiguityId && String(expected.ambiguityId) !== String(pending.ambiguityId || ''))) {
+                    this.manualReview = clone(pending);
+                    throw new Error('Manuel kontrol kartı artık güncel değil. Yeni belirsiz gönderimi inceleyip yeniden seçim yapın.');
+                }
+                if (await Verification.activeNativeSendHold(this.pendingConversationIdentity(pending))) {
+                    throw new Error('Bu konuşmada ayrıca belirsiz bir manuel Etsy gönderimi var. Önce manuel gönderim kartındaki sonucu çözün; Message Center sonucu değiştirilmedi.');
+                }
+                if (!this.manualReviewContextIsCurrent(pending)) {
+                    throw new Error('Bu sonuç aktif Etsy konuşmasına ait değil. Doğru konuşmayı açıp yeniden deneyin.');
+                }
+                const job = pending.job;
+                await this.assertActionCurrent(run, job);
+                if (!this.manualReviewContextIsCurrent(pending)) {
+                    throw new Error('Etsy konuşma alanı manuel kontrol sırasında değişti. Sonuç kaydedilmedi.');
+                }
+                const ledgerState = await this.sentLedgerState(job, run);
+                if (ledgerState === 'conflict') {
+                    const error = new Error('Message Center sent ledger conflicts with the manually reviewed job.');
+                    error.code = 'MESSAGE_CENTER_SENT_LEDGER_CONFLICT';
+                    throw error;
+                }
+                const outgoingConfirmed = pending.suppressOutgoingAutoConfirmation !== true
+                    && MessageAdapter.countOutgoing(job.text) > Number(pending.baselineMatches || 0);
+                const resolvedOutcome = ledgerState === 'sent' || outgoingConfirmed ? 'sent' : outcome;
+                let resultEnvelope;
+                if (resolvedOutcome === 'sent') {
+                    if (ledgerState !== 'sent') await this.markSent(job, run);
+                    resultEnvelope = {
+                        status: 'sent',
+                        sentAt: nowIso(),
+                        manuallyConfirmed: outcome === 'sent',
+                        ledgerConfirmed: ledgerState === 'sent',
+                        outgoingConfirmed,
+                    };
+                } else {
+                    resultEnvelope = {
+                        status: 'failed',
+                        retryable: true,
+                        error: 'manual_confirmed_not_sent',
+                    };
+                }
+                await this.finalizePendingResult(job, resultEnvelope, run, {
+                    resolvedAmbiguityId: pending.ambiguityId || '',
+                    resolvedOutcome,
+                });
+                this.manualReview = null;
+                return resolvedOutcome;
+            })));
+        },
+        async markSent(job, run, preparedDigest = '') {
+            await this.assertRunOwned(run);
+            const conversationBinding = this.jobConversationBinding(job);
+            const textDigest = preparedDigest || await sha256Text(String(job.text || ''));
             await this.assertRunOwned(run);
             const ledger = await this.sentLedger(run.binding);
             ledger[job.id] = {
                 at: nowIso(),
                 conversationId: job.conversationId,
-                conversationIdentity: Router.conversationIdentity(job.conversationUrl || ''),
-                textHash: hashText(job.text || ''),
+                conversationIdentity: conversationBinding.identity,
+                textDigest,
+                textDigestVersion: 'sha256-utf8-v1',
+                authorityId: this.authorityId(run.binding),
                 configId: run.configId,
                 fenceToken: run.fenceToken,
             };
-            const entries = Object.entries(ledger)
-                .sort((a, b) => new Date(b[1]?.at || 0) - new Date(a[1]?.at || 0))
-                .slice(0, 300);
-            await GMX.set(this.sentLedgerKey(run.binding), Object.fromEntries(entries));
+            await GMX.set(this.sentLedgerKey(run.binding), ledger);
+            const persisted = (await this.sentLedger(run.binding))[job.id];
+            if (!persisted
+                || persisted.textDigest !== textDigest
+                || persisted.conversationIdentity !== conversationBinding.identity
+                || persisted.authorityId !== this.authorityId(run.binding)) {
+                throw this.staleRunError('Message Center sent ledger write was lost.');
+            }
             await this.assertRunOwned(run);
         },
-        async alreadySent(job, run) {
+        async sentLedgerState(job, run) {
             await this.assertRunOwned(run);
             const record = (await this.sentLedger(run.binding))[job.id];
-            if (!record) return false;
-            const canonicalConversationUrl = this.canonicalConversationUrl(job.conversationUrl || '');
-            if (!canonicalConversationUrl) return false;
-            const expected = Router.conversationIdentity(canonicalConversationUrl);
+            if (!record) {
+                const legacyValue = await GMX.get(this.legacySentLedgerKey(run.binding), {});
+                const legacy = legacyValue && typeof legacyValue === 'object' && !Array.isArray(legacyValue)
+                    ? legacyValue
+                    : {};
+                return legacy[job.id] ? 'conflict' : 'missing';
+            }
+            const binding = this.jobConversationBinding(job);
+            if (!binding.valid || binding.conflict) return 'conflict';
+            if (record.textDigestVersion !== 'sha256-utf8-v1'
+                || typeof record.textDigest !== 'string'
+                || String(record.authorityId || '') !== this.authorityId(run.binding)) return 'conflict';
+            const textDigest = await sha256Text(String(job.text || ''));
+            await this.assertRunOwned(run);
             const recordedIdentity = record.conversationIdentity
                 || String(record.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
-            return (!record.configId || record.configId === run.configId)
-                && record.textHash === hashText(job.text || '')
-                && (!expected || recordedIdentity === expected);
+            return record.textDigest === textDigest
+                && recordedIdentity === binding.identity
+                ? 'sent'
+                : 'conflict';
+        },
+        async alreadySent(job, run) {
+            return await this.sentLedgerState(job, run) === 'sent';
         },
         async reportResult(job, payload, run) {
             await this.assertRunOwned(run);
@@ -4549,6 +4977,115 @@ zu|Zulu
                 run.binding,
             );
             this.ensureBindingCurrent(run.binding, run.generation);
+        },
+        pendingResultEnvelope(pending) {
+            const envelope = pending?.resultEnvelope;
+            if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope)
+                || !['sent', 'completed', 'failed'].includes(String(envelope.status || ''))) {
+                const error = new Error('Message Center kalıcı sonuç zarfı geçersiz; Etsy alanına dönmeden manuel inceleme için tutuldu.');
+                error.code = 'MESSAGE_CENTER_RESULT_ENVELOPE_INVALID';
+                throw error;
+            }
+            return clone(envelope);
+        },
+        async deliverPendingResult(pending, run) {
+            const job = pending?.job;
+            if (!job?.id) return false;
+            const envelope = this.pendingResultEnvelope(pending);
+            await this.reportResult(job, envelope, run);
+            if (!await this.clearPending(run)) {
+                throw this.staleRunError('Message Center terminal result pending record changed before cleanup.');
+            }
+            this.lastError = '';
+            return ['sent', 'completed'].includes(String(envelope.status || ''));
+        },
+        async finalizePendingResult(job, envelope, run, extra = {}) {
+            const pending = await this.persistPending(job, 'result_pending', {
+                resultEnvelope: clone(envelope),
+                resultPreparedAt: nowIso(),
+                ...extra,
+            }, run);
+            return this.deliverPendingResult(pending, run);
+        },
+        async quarantinePendingForManualReview(job, ambiguityCode, message, run, extra = {}) {
+            const ambiguous = await this.persistPending(job, 'ambiguous', {
+                ambiguityId: uid('mc-ambiguity'),
+                ambiguityCode,
+                ambiguousAt: nowIso(),
+                ambiguityReportPending: true,
+                resultReportedAt: '',
+                ...extra,
+            }, run);
+            this.manualReview = clone(ambiguous);
+            this.lastError = message;
+            await this.reportAmbiguous(job, ambiguous, run);
+            void UI.refreshCurrent().catch(error => console.error(`[${APP.id}]`, error));
+            return false;
+        },
+        async clearExactInsertedComposer(job, run, textarea, insertedRaw) {
+            try {
+                await this.assertActionCurrent(run, job, { textarea });
+                if (!insertedRaw || String(textarea?.value || '') !== insertedRaw) return false;
+                MessageAdapter.insert('', textarea);
+                await this.assertActionCurrent(run, job, { textarea });
+                return String(textarea.value || '').trim() === '';
+            } catch {
+                return false;
+            }
+        },
+        async handlePreDispatchComposerFailure(job, run, textarea, error, baselineMatches = 0, insertedRaw = '') {
+            const guidance = sendErrorGuidance(error, 'Etsy gönderim hazırlığı tamamlanamadı.');
+            if (insertedRaw && await this.clearExactInsertedComposer(job, run, textarea, insertedRaw)) {
+                return this.failPendingJob(job, guidance.code, guidance.message, run, { retryable: true });
+            }
+            return this.quarantinePendingForManualReview(
+                job,
+                'pre_dispatch_composer_cleanup_required',
+                'Message Center metni Etsy alanına aktardı ancak gönderimden önce alanı güvenle temizleyemedi. Aynı mesajı yeniden göndermeyin; taslağı ve son mesaj balonunu manuel kontrol edin.',
+                run,
+                {
+                    baselineMatches: Number(baselineMatches || 0),
+                    suppressOutgoingAutoConfirmation: true,
+                    preDispatchError: guidance.code,
+                },
+            );
+        },
+        async completeClaimedNativeReceipt(job, pending, run) {
+            const preparedDigest = String(pending?.preparedDigest || '');
+            const binding = this.jobConversationBinding(job);
+            if (!binding.valid || binding.conflict || !/^[a-f0-9]{64}$/.test(preparedDigest)) {
+                return this.quarantinePendingForManualReview(
+                    job,
+                    'native_receipt_binding_invalid_manual_review',
+                    'Message Center manuel gönderim receipt bağını doğrulayamadı; Etsy alanına dokunmadan manuel incelemeye aldı.',
+                    run,
+                    { suppressOutgoingAutoConfirmation: true },
+                );
+            }
+            const receipt = await Verification.claimNativeSentReceipt(
+                binding.identity,
+                preparedDigest,
+                job.id,
+                this.authorityId(run.binding),
+                pending,
+            );
+            if (!receipt || (pending.nativeReceiptId && receipt.id !== pending.nativeReceiptId)) {
+                return this.quarantinePendingForManualReview(
+                    job,
+                    'native_receipt_missing_manual_review',
+                    'Message Center tarafından sahiplenilen manuel gönderim receipt kaydı değişti. Yeniden gönderim kapatıldı ve manuel kontrol gerekiyor.',
+                    run,
+                    { suppressOutgoingAutoConfirmation: true },
+                );
+            }
+            await this.markSent(job, run, preparedDigest);
+            await this.syncNow({ hydrated: true, binding: run.binding, generation: run.generation });
+            return this.finalizePendingResult(job, {
+                status: 'sent',
+                sentAt: receipt.verifiedAt || nowIso(),
+                duplicatePrevented: true,
+                recoveredFromNativeReceipt: true,
+            }, run, { nativeReceiptId: receipt.id });
         },
         async navigateForJob(job, stage = 'navigating', run) {
             await this.assertRunOwned(run);
@@ -4567,10 +5104,10 @@ zu|Zulu
             return 'navigating';
         },
         jobConversationMatches(job) {
-            const expectedUrl = this.canonicalConversationUrl(job.conversationUrl || '');
+            const binding = this.jobConversationBinding(job);
             const currentUrl = this.canonicalConversationUrl(location.href);
-            if (!expectedUrl || !currentUrl) return false;
-            return Router.conversationIdentity(expectedUrl) === Router.conversationIdentity(currentUrl);
+            if (!binding.valid || binding.conflict || !currentUrl) return false;
+            return binding.identity === Router.conversationIdentity(currentUrl);
         },
         async assertActionCurrent(run, job, { textarea = null, button = null } = {}) {
             await this.assertRunOwned(run);
@@ -4592,12 +5129,26 @@ zu|Zulu
             if (!expected || actual !== expected) throw new Error('Hydrate payload does not match the active Etsy conversation.');
             await this.request('POST', `/api/agent/${encodeURIComponent(run.binding.storeId)}/sync`, { conversations: [payload] }, run.binding);
             await this.assertActionCurrent(run, job);
-            await this.reportResult(job, { status: 'completed', completedAt: nowIso() }, run);
-            await this.clearPending(run);
-            this.lastError = '';
-            return true;
+            return this.finalizePendingResult(job, { status: 'completed', completedAt: nowIso() }, run);
         },
-        async recoverDispatched(job, pending, run) {
+        async reportAmbiguous(job, pending, run) {
+            if (pending?.resultReportedAt) return pending;
+            const errorCode = String(pending?.ambiguityCode || 'send_outcome_ambiguous_manual_check_required');
+            await this.reportResult(job, {
+                status: 'failed',
+                retryable: false,
+                error: errorCode,
+                manualReviewRequired: true,
+            }, run);
+            const updated = await this.persistPending(job, 'ambiguous', {
+                ambiguityCode: errorCode,
+                ambiguityReportPending: false,
+                resultReportedAt: nowIso(),
+            }, run);
+            this.manualReview = clone(updated);
+            return updated;
+        },
+        async recoverDispatched(job, pending, run, preparedDigest) {
             if (!this.jobConversationMatches(job)) return this.navigateForJob(job, 'recovering', run);
             await this.assertActionCurrent(run, job);
             const baseline = Number(pending.baselineMatches || 0);
@@ -4609,70 +5160,266 @@ zu|Zulu
             );
             await this.assertActionCurrent(run, job);
             if (verified || MessageAdapter.countOutgoing(job.text) > baseline) {
-                await this.markSent(job, run);
+                await this.markSent(job, run, preparedDigest);
                 await this.syncNow({ hydrated: true, binding: run.binding, generation: run.generation });
-                await this.reportResult(job, { status: 'sent', sentAt: nowIso(), recovered: true }, run);
-                await this.clearPending(run);
-                return true;
+                return this.finalizePendingResult(job, { status: 'sent', sentAt: nowIso(), recovered: true }, run);
             }
-            await this.reportResult(job, {
-                status: 'failed',
-                retryable: false,
-                error: 'send_outcome_ambiguous_manual_check_required',
+            const ambiguous = await this.persistPending(job, 'ambiguous', {
+                baselineMatches: baseline,
+                ambiguityId: pending.ambiguityId || uid('mc-ambiguity'),
+                ambiguityCode: 'send_outcome_ambiguous_manual_check_required',
+                ambiguousAt: nowIso(),
+                ambiguityReportPending: true,
+                resultReportedAt: '',
             }, run);
-            await this.clearPending(run);
+            this.manualReview = clone(ambiguous);
+            this.lastError = sendErrorGuidance('Gönderim doğrulanamadı').message;
+            UI.toast(`${this.lastError} Sonucu Ayarlar > Merkezi Mesaj Paneli Agent bölümünden çözün.`, 'warning', 12000);
+            await this.reportAmbiguous(job, ambiguous, run);
+            void UI.refreshCurrent().catch(error => console.error(`[${APP.id}]`, error));
             return false;
         },
         async sendReplyJob(job, pending, run) {
-            if (!this.jobConversationMatches(job)) return this.navigateForJob(job, 'navigating', run);
-            if (pending?.stage === 'dispatched') return this.recoverDispatched(job, pending, run);
-            await this.assertActionCurrent(run, job);
-            if (await this.alreadySent(job, run)) {
-                await this.reportResult(job, { status: 'sent', sentAt: nowIso(), duplicatePrevented: true }, run);
-                await this.clearPending(run);
-                return true;
+            return withCampaignCoordinator(() => withEtsySendCoordinator(() => this.sendReplyJobLocked(job, pending, run)));
+        },
+        async sendReplyJobLocked(job, pending, run) {
+            const recoveringDispatch = ['dispatched', 'recovering'].includes(String(pending?.stage || ''));
+            let ledgerState;
+            try {
+                ledgerState = await this.sentLedgerState(job, run);
+            } catch (error) {
+                if (error?.code !== 'STRONG_TEXT_DIGEST_UNAVAILABLE') throw error;
+                if (recoveringDispatch) {
+                    return this.quarantinePendingForManualReview(
+                        job,
+                        'recovering_strong_digest_unavailable_manual_review',
+                        'Message Center tıklama-sonrası kaydın güçlü metin özetini doğrulayamadı. Olası gönderim kanıtı korunarak manuel incelemeye alındı.',
+                        run,
+                        {
+                            baselineMatches: Number(pending.baselineMatches || 0),
+                            suppressOutgoingAutoConfirmation: true,
+                            globalHold: true,
+                        },
+                    );
+                }
+                return this.failPendingJob(
+                    job,
+                    'strong_text_digest_unavailable',
+                    error.message,
+                    run,
+                );
             }
+            if (ledgerState === 'conflict') {
+                const conflict = new Error('Message Center sent ledger conflicts with the reused job identifier.');
+                conflict.code = 'MESSAGE_CENTER_SENT_LEDGER_CONFLICT';
+                const guidance = sendErrorGuidance(conflict);
+                if (recoveringDispatch) {
+                    return this.quarantinePendingForManualReview(
+                        job,
+                        'recovering_sent_ledger_conflict_manual_review',
+                        'Message Center tıklama-sonrası kaydı mevcut sent ledger ile çelişiyor. Olası gönderim kanıtı temizlenmeden manuel incelemeye alındı.',
+                        run,
+                        {
+                            baselineMatches: Number(pending.baselineMatches || 0),
+                            suppressOutgoingAutoConfirmation: true,
+                            globalHold: true,
+                        },
+                    );
+                }
+                return this.failPendingJob(job, 'sent_ledger_job_conflict', guidance.message, run);
+            }
+            if (ledgerState === 'sent') {
+                return this.finalizePendingResult(job, {
+                    status: 'sent',
+                    sentAt: nowIso(),
+                    duplicatePrevented: true,
+                    ...(recoveringDispatch ? { recoveredFromLedger: true } : {}),
+                }, run);
+            }
+            let preparedDigest;
+            try {
+                preparedDigest = await sha256Text(String(job.text || ''));
+            } catch (error) {
+                if (error?.code === 'STRONG_TEXT_DIGEST_UNAVAILABLE') {
+                    if (recoveringDispatch) {
+                        return this.quarantinePendingForManualReview(
+                            job,
+                            'recovering_strong_digest_unavailable_manual_review',
+                            'Message Center tıklama-sonrası kaydın güçlü metin özetini doğrulayamadı. Olası gönderim kanıtı korunarak manuel incelemeye alındı.',
+                            run,
+                            {
+                                baselineMatches: Number(pending.baselineMatches || 0),
+                                suppressOutgoingAutoConfirmation: true,
+                                globalHold: true,
+                            },
+                        );
+                    }
+                    return this.failPendingJob(
+                        job,
+                        'strong_text_digest_unavailable',
+                        error.message,
+                        run,
+                    );
+                }
+                throw error;
+            }
+            await this.assertRunOwned(run);
+            const conversationIdentity = this.jobConversationBinding(job).identity;
+            if (!recoveringDispatch) {
+                let nativeReceipt = null;
+                try {
+                    nativeReceipt = await Verification.claimNativeSentReceipt(
+                        conversationIdentity,
+                        preparedDigest,
+                        job.id,
+                        this.authorityId(run.binding),
+                        pending,
+                    );
+                } catch (error) {
+                    this.lastError = error.message || 'Manuel gönderim receipt kaydı okunamadı.';
+                    return false;
+                }
+                if (nativeReceipt) {
+                    let receiptPending;
+                    try {
+                        receiptPending = await this.persistPending(job, 'native_receipt_claimed', {
+                            nativeReceiptId: nativeReceipt.id,
+                            preparedDigest,
+                            nativeReceiptClaimedAt: nowIso(),
+                        }, run);
+                    } catch (error) {
+                        this.lastError = error.message || 'Manuel gönderim receipt sahipliği kaydedilemedi.';
+                        return false;
+                    }
+                    return this.completeClaimedNativeReceipt(job, receiptPending, run);
+                }
+            }
+            const nativeSendHold = await Verification.activeNativeSendHold(conversationIdentity);
+            if (!recoveringDispatch && nativeSendHold) {
+                return this.failPendingJob(
+                    job,
+                    'native_send_outcome_hold',
+                    'Bu Etsy konuşmasında sonucu belirsiz bir manuel gönderim var. Message Center hiçbir alanı değiştirmedi; önce Etsy mesaj balonunu kontrol edip manuel sonucu çözün.',
+                    run,
+                    { retryable: true },
+                );
+            }
+            if (recoveringDispatch && nativeSendHold) {
+                const ambiguous = await this.persistPending(job, 'ambiguous', {
+                    baselineMatches: Number(pending.baselineMatches || 0),
+                    ambiguityId: pending.ambiguityId || uid('mc-ambiguity'),
+                    ambiguityCode: 'overlapping_native_send_requires_manual_review',
+                    ambiguityReportPending: true,
+                    resultReportedAt: '',
+                    ambiguousAt: nowIso(),
+                    overlappingNativeAttemptId: nativeSendHold.id,
+                    suppressOutgoingAutoConfirmation: true,
+                }, run);
+                this.manualReview = clone(ambiguous);
+                this.lastError = 'Message Center ve manuel Etsy gönderim sonuçları çakışıyor. İki kayıt da yeniden gönderime kapatıldı; önce manuel gönderim sonucunu çözün.';
+                await this.reportAmbiguous(job, ambiguous, run);
+                return false;
+            }
+            if (!recoveringDispatch) {
+                const overlappingReceipt = await Verification.overlappingNativeSentReceipt(
+                    conversationIdentity,
+                    this.authorityId(run.binding),
+                    pending,
+                );
+                if (overlappingReceipt) {
+                    return this.quarantinePendingForManualReview(
+                        job,
+                        'overlapping_native_receipt_manual_review',
+                        'Bu Message Center işiyle aynı anda aynı Etsy konuşmasında farklı veya başka bir işe bağlanmış manuel gönderim doğrulandı. İkinci mesaj gönderilmedi; iki metni manuel kontrol edin.',
+                        run,
+                        {
+                            overlappingNativeReceiptId: overlappingReceipt.id,
+                            suppressOutgoingAutoConfirmation: true,
+                        },
+                    );
+                }
+            }
+            if (!recoveringDispatch && (await Campaign.persistedSendOwnership(conversationIdentity)
+                || Verification.hasSendOwnership(conversationIdentity))) {
+                return this.failPendingJob(
+                    job,
+                    'etsy_send_owner_conflict',
+                    'Bu Etsy konuşmasındaki gönderim başka bir güvenli asistan akışı tarafından işleniyor. Message Center hiçbir alanı değiştirmedi ve Gönder düğmesine basmadı.',
+                    run,
+                    { retryable: true },
+                );
+            }
+            if (!this.jobConversationMatches(job)) {
+                return this.navigateForJob(job, recoveringDispatch ? 'recovering' : 'navigating', run);
+            }
+            if (recoveringDispatch) return this.recoverDispatched(job, pending, run, preparedDigest);
+            await this.assertActionCurrent(run, job);
 
             const context = await MessageAdapter.waitForContext(5000);
             await this.assertActionCurrent(run, job);
             const expectedIdentity = Router.conversationIdentity(job.conversationUrl || '');
-            const contextIdentity = Router.conversationIdentity(context?.pageUrl || '')
-                || String(context?.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
-            if (!context?.conversationId || !expectedIdentity || contextIdentity !== expectedIdentity) {
+            const contextIdentity = Router.conversationIdentityFromId(
+                Router.decodeConversationId(context?.conversationId || ''),
+            );
+            const contextUrlIdentity = context?.pageUrl
+                ? Router.conversationIdentity(context.pageUrl)
+                : expectedIdentity;
+            if (!contextIdentity || !expectedIdentity || contextIdentity !== expectedIdentity
+                || contextUrlIdentity !== expectedIdentity) {
                 throw new Error('Doğru Etsy konuşması doğrulanamadı.');
             }
             const textarea = await MessageAdapter.waitForTextarea(5000);
             if (!textarea) throw new Error('Etsy cevap alanı bulunamadı.');
             await this.assertActionCurrent(run, job, { textarea });
             const currentComposer = String(textarea.value || '').trim();
-            if (currentComposer && normalize(currentComposer) !== normalize(job.text || '')) {
-                throw new Error('Etsy cevap alanında kullanıcıya ait başka bir metin var; otomatik üzerine yazılmadı.');
+            if (currentComposer) {
+                return this.failPendingJob(
+                    job,
+                    'composer_occupied',
+                    'Etsy cevap alanında kullanıcıya ait gönderilmemiş bir taslak var. Message Center taslağa dokunmadı ve Gönder düğmesine basmadı.',
+                    run,
+                    { retryable: true },
+                );
             }
+            const composerWasEmpty = true;
             const baselineMatches = MessageAdapter.countOutgoing(job.text);
-            await this.assertActionCurrent(run, job, { textarea });
-            MessageAdapter.insert(job.text, textarea);
-            await this.assertActionCurrent(run, job, { textarea });
-            const inserted = String(textarea.value || '').trim();
-            if (normalize(inserted) !== normalize(job.text || '')) {
-                throw new Error('Mesaj Etsy cevap alanına güvenli biçimde aktarılamadı.');
+            let button = null;
+            let insertedRaw = '';
+            try {
+                await this.persistPending(job, 'preparing', { baselineMatches, composerWasEmpty }, run);
+                await this.assertActionCurrent(run, job, { textarea });
+                if (composerWasEmpty) {
+                    MessageAdapter.insert(job.text, textarea);
+                    insertedRaw = String(textarea.value || '');
+                }
+                await this.assertActionCurrent(run, job, { textarea });
+                const inserted = String(textarea.value || '').trim();
+                if (normalize(inserted) !== normalize(job.text || '')) {
+                    throw new Error('Mesaj Etsy cevap alanına güvenli biçimde aktarılamadı.');
+                }
+                button = await MessageAdapter.waitForSendButton(2000);
+                if (!button) throw new Error('Etkin Etsy Gönder düğmesi bulunamadı.');
+                await this.assertActionCurrent(run, job, { textarea, button });
+                await this.persistPending(job, 'prepared', { baselineMatches }, run);
+                await this.assertActionCurrent(run, job, { textarea, button });
+                await this.persistPending(job, 'dispatched', { baselineMatches, dispatchedAt: nowIso() }, run);
+                await this.assertActionCurrent(run, job, { textarea, button });
+            } catch (error) {
+                return this.handlePreDispatchComposerFailure(job, run, textarea, error, baselineMatches, insertedRaw);
             }
-            const button = MessageAdapter.getSendButton();
-            if (!button) throw new Error('Etkin Etsy Gönder düğmesi bulunamadı.');
-            await this.assertActionCurrent(run, job, { textarea, button });
-            await this.persistPending(job, 'prepared', { baselineMatches }, run);
             let dispatchObserved = false;
             const observeDispatch = () => { dispatchObserved = true; };
             button.addEventListener('click', observeDispatch, { capture: true, once: true });
-            await this.persistPending(job, 'dispatched', { baselineMatches, dispatchedAt: nowIso() }, run);
             try {
-                await this.assertActionCurrent(run, job, { textarea, button });
+                this.programmaticDispatchActive = true;
                 button.click();
             } finally {
+                this.programmaticDispatchActive = false;
                 button.removeEventListener('click', observeDispatch, true);
             }
             if (!dispatchObserved) {
-                await this.persistPending(job, 'prepared', { baselineMatches }, run);
-                throw new Error('Etsy Gönder tıklaması tarayıcıya iletilemedi.');
+                const dispatchedPending = await this.assertRunOwned(run);
+                return this.recoverDispatched(job, dispatchedPending, run, preparedDigest);
             }
             const verified = await MessageAdapter.waitForOutgoing(
                 job.text,
@@ -4682,33 +5429,40 @@ zu|Zulu
             );
             await this.assertActionCurrent(run, job);
             if (!verified) {
-                await this.reportResult(job, {
-                    status: 'failed',
-                    retryable: false,
-                    error: 'send_verification_failed_manual_check_required',
+                const ambiguous = await this.persistPending(job, 'ambiguous', {
+                    baselineMatches,
+                    ambiguityId: pending.ambiguityId || uid('mc-ambiguity'),
+                    ambiguityCode: 'send_verification_failed_manual_check_required',
+                    ambiguousAt: nowIso(),
+                    ambiguityReportPending: true,
+                    resultReportedAt: '',
                 }, run);
-                await this.clearPending(run);
+                this.manualReview = clone(ambiguous);
+                this.lastError = sendErrorGuidance('Gönderim doğrulanamadı').message;
+                UI.toast(`${this.lastError} Sonucu Ayarlar > Merkezi Mesaj Paneli Agent bölümünden çözün.`, 'warning', 12000);
+                await this.reportAmbiguous(job, ambiguous, run);
+                void UI.refreshCurrent().catch(error => console.error(`[${APP.id}]`, error));
                 return false;
             }
-            await this.markSent(job, run);
+            await this.markSent(job, run, preparedDigest);
             await this.syncNow({ hydrated: true, binding: run.binding, generation: run.generation });
-            await this.reportResult(job, { status: 'sent', sentAt: nowIso() }, run);
-            await this.clearPending(run);
-            this.lastError = '';
-            return true;
+            return this.finalizePendingResult(job, { status: 'sent', sentAt: nowIso() }, run);
         },
-        async failPendingJob(job, errorCode, message, run) {
+        async failPendingJob(job, errorCode, message, run, options = {}) {
             await this.assertRunOwned(run);
             this.lastError = message;
+            const rejectionResult = {
+                status: 'failed',
+                retryable: options.retryable === true,
+                error: errorCode,
+            };
             await this.persistPending(job, 'rejected', {
                 rejectionCode: errorCode,
+                rejectionRetryable: rejectionResult.retryable,
+                rejectionResult,
                 rejectedAt: nowIso(),
             }, run);
-            await this.reportResult(job, {
-                status: 'failed',
-                retryable: false,
-                error: errorCode,
-            }, run);
+            await this.reportResult(job, rejectionResult, run);
             if (!await this.clearPending(run)) {
                 throw this.staleRunError('Message Center failed job pending record changed before cleanup.');
             }
@@ -4717,7 +5471,63 @@ zu|Zulu
         async executePending(pending, run) {
             const job = pending?.job;
             if (!job?.id) return false;
-            if (pending.legacyBlocked === true || pending.stage === 'legacy_blocked') {
+            const stage = String(pending.stage || '');
+            if (stage === 'result_pending') return this.deliverPendingResult(pending, run);
+            if (stage === 'native_receipt_claimed') return this.completeClaimedNativeReceipt(job, pending, run);
+            if (stage === 'rejected') {
+                const rejectionCode = String(pending.rejectionResult?.error || pending.rejectionCode || 'rejected_job');
+                const legacyRetryable = ['native_send_outcome_hold', 'etsy_send_owner_conflict'].includes(rejectionCode);
+                const rejectionResult = {
+                    status: 'failed',
+                    retryable: typeof pending.rejectionResult?.retryable === 'boolean'
+                        ? pending.rejectionResult.retryable
+                        : (typeof pending.rejectionRetryable === 'boolean'
+                            ? pending.rejectionRetryable
+                            : legacyRetryable),
+                    error: rejectionCode,
+                };
+                await this.reportResult(job, rejectionResult, run);
+                if (!await this.clearPending(run)) {
+                    throw this.staleRunError('Message Center rejected job pending record changed before cleanup.');
+                }
+                return false;
+            }
+            if (stage === 'ambiguous') {
+                if (!pending.ambiguityId) {
+                    pending = await this.persistPending(job, 'ambiguous', {
+                        ambiguityId: uid('mc-ambiguity'),
+                    }, run);
+                }
+                this.manualReview = clone(pending);
+                this.lastError = sendErrorGuidance('Gönderim doğrulanamadı').message;
+                const ledgerState = await this.sentLedgerState(job, run);
+                if (ledgerState === 'conflict') {
+                    const conflictPending = await this.persistPending(job, 'ambiguous', {
+                        ambiguityId: pending.ambiguityId || uid('mc-ambiguity'),
+                        ambiguityCode: 'ambiguous_sent_ledger_conflict_manual_review',
+                        ambiguousAt: pending.ambiguousAt || nowIso(),
+                        ambiguityReportPending: !pending.resultReportedAt,
+                        resultReportedAt: pending.resultReportedAt || '',
+                        suppressOutgoingAutoConfirmation: true,
+                        globalHold: true,
+                    }, run);
+                    this.manualReview = clone(conflictPending);
+                    this.lastError = 'Message Center belirsiz gönderim kaydı mevcut sent ledger ile çelişiyor. Kayıt temizlenmedi; manuel inceleme gerekiyor.';
+                    if (!conflictPending.resultReportedAt) await this.reportAmbiguous(job, conflictPending, run);
+                    return false;
+                }
+                if (ledgerState === 'sent') {
+                    return this.finalizePendingResult(job, {
+                        status: 'sent',
+                        sentAt: nowIso(),
+                        duplicatePrevented: true,
+                        recoveredFromLedger: true,
+                    }, run);
+                }
+                if (!pending.resultReportedAt) await this.reportAmbiguous(job, pending, run);
+                return false;
+            }
+            if (pending.legacyBlocked === true || stage === 'legacy_blocked') {
                 return this.failPendingJob(
                     job,
                     'legacy_pending_requires_manual_review',
@@ -4725,8 +5535,52 @@ zu|Zulu
                     run,
                 );
             }
+            const knownExecutionStages = new Set(['leased', 'navigating', 'preparing', 'prepared', 'dispatched', 'recovering']);
+            const postMutationStages = new Set(['preparing', 'prepared', 'dispatched', 'recovering']);
+            if (['preparing', 'prepared'].includes(stage)) {
+                return this.quarantinePendingForManualReview(
+                    job,
+                    'prepared_pending_requires_manual_review',
+                    'Message Center daha önce Etsy alanına metin hazırlamış ancak Gönder tıklamasından önce durmuş. Yeniden gönderim kapatıldı; taslağı ve mesaj balonunu manuel kontrol edin.',
+                    run,
+                    {
+                        baselineMatches: Number(pending.baselineMatches || 0),
+                        suppressOutgoingAutoConfirmation: true,
+                        quarantinedStage: stage,
+                        globalHold: true,
+                    },
+                );
+            }
+            if (!knownExecutionStages.has(stage)) {
+                return this.quarantinePendingForManualReview(
+                    job,
+                    'unknown_pending_stage_manual_review',
+                    `Message Center bilinmeyen “${stage || 'boş'}” aşamasını güvenlik için otomatik yürütmedi. Etsy alanına dokunulmadı; manuel kontrol gerekiyor.`,
+                    run,
+                    { suppressOutgoingAutoConfirmation: true, quarantinedStage: stage || 'empty', globalHold: true },
+                );
+            }
+            const mutationRisk = postMutationStages.has(stage);
+            const quarantineInvalidMutationRecord = (ambiguityCode, message) => this.quarantinePendingForManualReview(
+                job,
+                ambiguityCode,
+                message,
+                run,
+                {
+                    baselineMatches: Number(pending.baselineMatches || 0),
+                    suppressOutgoingAutoConfirmation: true,
+                    quarantinedStage: stage,
+                    globalHold: true,
+                },
+            );
             const jobType = String(job.type || '').trim().toLowerCase();
             if (!['hydrate', 'reply'].includes(jobType)) {
+                if (mutationRisk) {
+                    return quarantineInvalidMutationRecord(
+                        'post_mutation_job_type_invalid_manual_review',
+                        'Message Center gönderim güvenlik kaydının iş türü bozuk veya desteklenmiyor. Olası Etsy alanı/tıklama kanıtı korunarak manuel incelemeye alındı.',
+                    );
+                }
                 return this.failPendingJob(
                     job,
                     'unsupported_job_type',
@@ -4735,11 +5589,52 @@ zu|Zulu
                 );
             }
             if (jobType === 'reply' && (typeof job.text !== 'string' || !job.text.trim())) {
+                if (mutationRisk) {
+                    return quarantineInvalidMutationRecord(
+                        'post_mutation_reply_text_invalid_manual_review',
+                        'Message Center gönderim güvenlik kaydının mesaj metni eksik. Olası Etsy alanı/tıklama kanıtı korunarak manuel incelemeye alındı.',
+                    );
+                }
                 return this.failPendingJob(
                     job,
                     'empty_reply_text',
                     'Message Center rejected an empty reply job.',
                     run,
+                );
+            }
+            const conversationBinding = this.jobConversationBinding(job);
+            if (!conversationBinding.valid) {
+                if (mutationRisk) {
+                    return quarantineInvalidMutationRecord(
+                        'post_mutation_conversation_invalid_manual_review',
+                        'Message Center gönderim güvenlik kaydının konuşma adresi doğrulanamadı. Olası Etsy alanı/tıklama kanıtı korunarak manuel incelemeye alındı.',
+                    );
+                }
+                return this.failPendingJob(
+                    job,
+                    'unsafe_conversation_url',
+                    'Message Center güvenli ve tekil bir Etsy konuşma adresi doğrulayamadı. Hiçbir gönderim yapılmadı.',
+                    run,
+                );
+            }
+            if (conversationBinding.conflict) {
+                if (mutationRisk) {
+                    return quarantineInvalidMutationRecord(
+                        'post_mutation_conversation_conflict_manual_review',
+                        'Message Center gönderim güvenlik kaydının konuşma kimliği URL ile çelişiyor. Olası Etsy alanı/tıklama kanıtı korunarak manuel incelemeye alındı.',
+                    );
+                }
+                return this.failPendingJob(
+                    job,
+                    'conversation_identity_conflict',
+                    'Message Center işindeki konuşma kimliği URL ile eşleşmiyor. Güvenlik için hiçbir gönderim yapılmadı.',
+                    run,
+                );
+            }
+            if (jobType === 'hydrate' && ['dispatched', 'recovering'].includes(stage)) {
+                return quarantineInvalidMutationRecord(
+                    'hydrate_post_mutation_stage_manual_review',
+                    'Message Center hydrate işi gönderim-sonrası bir aşamada bulundu. Olası tıklama kanıtı korunarak manuel incelemeye alındı.',
                 );
             }
             if (jobType === 'hydrate') return this.completeHydrate(job, run);
@@ -4783,15 +5678,16 @@ zu|Zulu
                 const owned = run && await this.ownsPending(run).catch(() => false)
                     ? await GMX.get(run.pendingKey, null).catch(() => null)
                     : null;
-                if (owned?.job?.id && !['navigating', 'recovering', 'dispatched', 'legacy_blocked', 'rejected'].includes(owned.stage)) {
+                if (owned?.job?.id && ['leased', 'navigating'].includes(String(owned.stage || ''))) {
                     const retryable = !/manual_check_required|başka bir metin|güvenli Etsy konuşma URL/i.test(this.lastError);
                     try {
-                        await this.reportResult(owned.job, {
-                            status: 'failed',
-                            retryable,
-                            error: this.lastError,
-                        }, run);
-                        await this.clearPending(run);
+                        await this.failPendingJob(
+                            owned.job,
+                            this.lastError,
+                            this.lastError,
+                            run,
+                            { retryable },
+                        );
                     } catch { /* keep local pending for recovery */ }
                 }
                 console.error(`[${APP.id}] Message Center agent`, error);
@@ -4842,6 +5738,8 @@ zu|Zulu
         },
         async reconfigure() {
             this.generation += 1;
+            const pending = await this.loadPending().catch(() => null);
+            if (pending?.stage === 'ambiguous') this.manualReview = clone(pending);
             this.schedule();
             if (!this.isConfigured()) {
                 this.lastError = '';
@@ -5175,10 +6073,454 @@ zu|Zulu
         pending: null,
         activePromise: null,
         activePending: null,
+        nativeDispatchGuard: null,
+        programmaticNativeDispatchActive: false,
+        manualNativeReview: null,
+        nativeSendHoldStages: new Set(['dispatched', 'postprocessing', 'ambiguous']),
         invalidatedTokens: new Set(),
         sequence: 0,
         composeHydrationGraceMs: 8000,
         transitionObservationMs: 6500,
+        async nativeSendAttempts() {
+            const value = await GMX.get(NATIVE_SEND_ATTEMPTS_KEY, {});
+            return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        },
+        async nativeSentReceipts() {
+            const value = await GMX.get(NATIVE_SENT_RECEIPTS_KEY, {});
+            return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+        },
+        async persistNativeSentReceipt(attempt, pending = null) {
+            const id = String(attempt?.id || '');
+            const conversationIdentity = String(pending?.transitionBoundIdentity || attempt?.conversationIdentity || '');
+            const textDigest = String(attempt?.textDigest || '');
+            const nativeMessageCenterAuthorityId = String(attempt?.messageCenterAuthorityId || '');
+            if (!id || !conversationIdentity || conversationIdentity.startsWith('compose:')
+                || !nativeMessageCenterAuthorityId
+                || attempt?.textDigestVersion !== 'sha256-utf8-v1' || !/^[a-f0-9]{64}$/.test(textDigest)) {
+                throw new Error('Doğrulanmış manuel gönderim için kalıcı ve tekil bir receipt oluşturulamadı.');
+            }
+            if (await sha256Text(String(attempt?.text || '')) !== textDigest) {
+                throw new Error('Doğrulanmış manuel gönderim receipt metin özetiyle eşleşmiyor.');
+            }
+            const receipts = await this.nativeSentReceipts();
+            const previous = receipts[id] && typeof receipts[id] === 'object' ? receipts[id] : {};
+            if (previous.id && (previous.conversationIdentity !== conversationIdentity
+                || previous.textDigest !== textDigest
+                || previous.textDigestVersion !== 'sha256-utf8-v1'
+                || previous.nativeMessageCenterAuthorityId !== nativeMessageCenterAuthorityId)) {
+                throw new Error('Mevcut manuel gönderim receipt kaydı farklı bir kanıtla değiştirilemez.');
+            }
+            const receipt = {
+                ...previous,
+                id,
+                conversationIdentity,
+                textDigest,
+                textDigestVersion: 'sha256-utf8-v1',
+                nativeMessageCenterAuthorityId,
+                nativeDispatchedAt: String(previous.nativeDispatchedAt || attempt.dispatchedAt || ''),
+                verifiedAt: previous.verifiedAt || nowIso(),
+                updatedAt: nowIso(),
+            };
+            receipts[id] = receipt;
+            await GMX.set(NATIVE_SENT_RECEIPTS_KEY, receipts);
+            const readback = (await this.nativeSentReceipts())[id];
+            if (!readback
+                || readback.id !== receipt.id
+                || readback.conversationIdentity !== receipt.conversationIdentity
+                || readback.textDigest !== receipt.textDigest
+                || readback.nativeMessageCenterAuthorityId !== receipt.nativeMessageCenterAuthorityId
+                || readback.textDigestVersion !== receipt.textDigestVersion
+                || readback.nativeDispatchedAt !== receipt.nativeDispatchedAt
+                || readback.verifiedAt !== receipt.verifiedAt
+                || readback.updatedAt !== receipt.updatedAt) {
+                throw new Error('Doğrulanmış manuel gönderim receipt kaydı kalıcılaştırılamadı.');
+            }
+            return readback;
+        },
+        nativeReceiptOverlapsPending(receipt, pending) {
+            if (!pending?.leasedAt || !receipt?.nativeDispatchedAt || !receipt?.verifiedAt) return false;
+            const leasedAt = new Date(pending?.leasedAt || 0).getTime();
+            const dispatchedAt = new Date(receipt?.nativeDispatchedAt || 0).getTime();
+            const verifiedAt = new Date(receipt?.verifiedAt || 0).getTime();
+            if (![leasedAt, dispatchedAt, verifiedAt].every(Number.isFinite)) return false;
+            const overlapWindowMs = 2 * 60 * 1000;
+            return dispatchedAt >= leasedAt - overlapWindowMs
+                && dispatchedAt <= leasedAt + overlapWindowMs
+                && verifiedAt >= dispatchedAt
+                && verifiedAt - dispatchedAt <= overlapWindowMs
+                && verifiedAt >= leasedAt - overlapWindowMs
+                && verifiedAt <= leasedAt + overlapWindowMs;
+        },
+        async overlappingNativeSentReceipt(conversationIdentity, authorityId, pending) {
+            if (!conversationIdentity || !authorityId || !pending?.leasedAt) return null;
+            const receipts = await this.nativeSentReceipts();
+            return Object.values(receipts)
+                .filter(receipt => receipt?.id
+                    && receipt.conversationIdentity === conversationIdentity
+                    && receipt.nativeMessageCenterAuthorityId === authorityId
+                    && receipt.textDigestVersion === 'sha256-utf8-v1'
+                    && this.nativeReceiptOverlapsPending(receipt, pending))
+                .sort((left, right) => new Date(right.verifiedAt || 0) - new Date(left.verifiedAt || 0))[0]
+                || null;
+        },
+        async claimNativeSentReceipt(conversationIdentity, textDigest, jobId, authorityId, pending) {
+            if (!conversationIdentity || !jobId || !authorityId || !/^[a-f0-9]{64}$/.test(String(textDigest || ''))
+                || !pending?.leasedAt) return null;
+            const receipts = await this.nativeSentReceipts();
+            const candidates = Object.values(receipts)
+                .filter(receipt => receipt?.id
+                    && receipt.conversationIdentity === conversationIdentity
+                    && receipt.nativeMessageCenterAuthorityId === authorityId
+                    && receipt.textDigestVersion === 'sha256-utf8-v1'
+                    && receipt.textDigest === textDigest
+                    && this.nativeReceiptOverlapsPending(receipt, pending)
+                    && (!receipt.messageCenterJobId
+                        || (receipt.messageCenterJobId === String(jobId)
+                            && receipt.messageCenterAuthorityId === authorityId)))
+                .sort((left, right) => new Date(right.verifiedAt || 0) - new Date(left.verifiedAt || 0));
+            const receipt = candidates[0];
+            if (!receipt) return null;
+            const claimed = {
+                ...receipt,
+                messageCenterJobId: String(jobId),
+                messageCenterAuthorityId: authorityId,
+                messageCenterClaimedAt: receipt.messageCenterClaimedAt || nowIso(),
+                updatedAt: nowIso(),
+            };
+            receipts[claimed.id] = claimed;
+            await GMX.set(NATIVE_SENT_RECEIPTS_KEY, receipts);
+            const readback = (await this.nativeSentReceipts())[claimed.id];
+            if (readback?.messageCenterJobId !== claimed.messageCenterJobId
+                || readback?.messageCenterAuthorityId !== claimed.messageCenterAuthorityId
+                || readback?.conversationIdentity !== conversationIdentity
+                || readback?.textDigest !== textDigest) {
+                throw new Error('Manuel gönderim receipt sahipliği kalıcılaştırılamadı.');
+            }
+            return readback;
+        },
+        async removeUnclaimedNativeSentReceipt(attemptId) {
+            const id = String(attemptId || '');
+            if (!id) return false;
+            const receipts = await this.nativeSentReceipts();
+            if (!receipts[id] || receipts[id].messageCenterJobId) return false;
+            delete receipts[id];
+            await GMX.set(NATIVE_SENT_RECEIPTS_KEY, receipts);
+            return !(await this.nativeSentReceipts())[id];
+        },
+        async persistNativeSendAttempt(attempt) {
+            const attempts = await this.nativeSendAttempts();
+            const updated = { ...attempt, updatedAt: nowIso() };
+            attempts[updated.id] = updated;
+            await GMX.set(NATIVE_SEND_ATTEMPTS_KEY, attempts);
+            const readback = (await this.nativeSendAttempts())[updated.id];
+            if (!readback
+                || String(readback.id || '') !== String(updated.id || '')
+                || String(readback.stage || '') !== String(updated.stage || '')
+                || String(readback.conversationIdentity || '') !== String(updated.conversationIdentity || '')
+                || String(readback.textDigest || '') !== String(updated.textDigest || '')
+                || String(readback.ambiguityId || '') !== String(updated.ambiguityId || '')) {
+                throw new Error('Manuel gönderim güvenlik kaydı kalıcılaştırılamadı; Etsy Gönder düğmesine basılmadı.');
+            }
+            this.manualNativeReview = clone(readback);
+            return readback;
+        },
+        async clearNativeSendAttempt(attemptId, expected = {}) {
+            const id = String(attemptId || '');
+            if (!id) return false;
+            const attempts = await this.nativeSendAttempts();
+            const current = attempts[id];
+            if (!current) return false;
+            for (const field of ['stage', 'updatedAt', 'verificationId', 'textDigest']) {
+                if (Object.hasOwn(expected, field)
+                    && String(current[field] || '') !== String(expected[field] || '')) return false;
+            }
+            delete attempts[id];
+            await GMX.set(NATIVE_SEND_ATTEMPTS_KEY, attempts);
+            if ((await this.nativeSendAttempts())[id]) return false;
+            if (String(this.manualNativeReview?.id || '') === id) this.manualNativeReview = null;
+            return true;
+        },
+        async activeNativeSendHold(conversationIdentity = '') {
+            const attempts = await this.nativeSendAttempts();
+            const matches = Object.values(attempts)
+                .filter(attempt => attempt?.id
+                    && (!this.nativeSendHoldStages.has(String(attempt.stage || ''))
+                        || attempt.globalHold === true
+                        || !conversationIdentity
+                        || !attempt.conversationIdentity
+                        || attempt.conversationIdentity === conversationIdentity
+                        || String(attempt.conversationIdentity || '').startsWith('compose:')))
+                .sort((left, right) => new Date(right.updatedAt || 0) - new Date(left.updatedAt || 0));
+            let hold = matches[0] || null;
+            if (hold && !this.nativeSendHoldStages.has(String(hold.stage || ''))) {
+                // Lookup paths run outside the cross-tab send coordinator. Do not
+                // perform a read/modify/write here: it could overwrite a tombstone
+                // created by another tab between the read and write. Present a
+                // deterministic fail-closed view and persist it only from the
+                // coordinated manual-resolution path.
+                hold = {
+                    ...hold,
+                    stage: 'ambiguous',
+                    ambiguityId: hold.ambiguityId || `native-quarantine:${hold.id}`,
+                    ambiguityCode: 'unknown_native_attempt_stage_manual_review',
+                    quarantinedStage: String(hold.stage || 'empty'),
+                    globalHold: true,
+                    ambiguousAt: hold.ambiguousAt || nowIso(),
+                };
+            }
+            if (hold) this.manualNativeReview = clone(hold);
+            return hold;
+        },
+        async refreshNativeSendHold() {
+            const currentIdentity = Router.conversationIdentity();
+            const current = currentIdentity ? await this.activeNativeSendHold(currentIdentity) : null;
+            this.manualNativeReview = clone(current || await this.activeNativeSendHold() || null);
+            return this.manualNativeReview;
+        },
+        async rebindNativeComposeHoldToCurrent() {
+            const currentIdentity = Router.conversationIdentity();
+            if (Router.page() !== 'messages' || !currentIdentity || currentIdentity.startsWith('compose:')) return false;
+            const textarea = MessageAdapter.getTextarea();
+            const scope = MessageAdapter.getConversationScope(textarea);
+            let context;
+            try { context = MessageAdapter.context(); } catch { return false; }
+            const contextIdentity = Router.conversationIdentityFromId(context?.conversationId || '');
+            const currentOrderId = String(context?.orderId || '').normalize('NFKC').trim();
+            if (!textarea || !scope || contextIdentity !== currentIdentity || !currentOrderId) return false;
+            return withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
+                if (Router.conversationIdentity() !== currentIdentity
+                    || MessageAdapter.getTextarea() !== textarea
+                    || MessageAdapter.getConversationScope(textarea) !== scope) return false;
+                const freshContext = MessageAdapter.context();
+                if (Router.conversationIdentityFromId(freshContext?.conversationId || '') !== currentIdentity
+                    || String(freshContext?.orderId || '').normalize('NFKC').trim() !== currentOrderId) return false;
+                const attempts = await this.nativeSendAttempts();
+                const candidates = Object.values(attempts).filter((attempt) => {
+                    if (!attempt?.id || !this.nativeSendHoldStages.has(String(attempt.stage || ''))
+                        || !String(attempt.conversationIdentity || '').startsWith('compose:')) return false;
+                    const receiptId = String(attempt.conversationIdentity)
+                        .match(/:receipt:([1-9]\d{0,31})$/)?.[1] || '';
+                    const attemptOrderId = String(attempt.orderId || '').normalize('NFKC').trim();
+                    if (!receiptId || (attemptOrderId && attemptOrderId !== receiptId)) return false;
+                    if (receiptId !== currentOrderId) return false;
+                    const expectedCustomer = normalize(attempt.customerName).toLocaleLowerCase('en-US');
+                    const actualCustomer = normalize(freshContext?.customerName).toLocaleLowerCase('en-US');
+                    return !expectedCustomer || (actualCustomer && expectedCustomer === actualCustomer);
+                });
+                if (candidates.length !== 1) return false;
+                const rebound = await this.persistNativeSendAttempt({
+                    ...candidates[0],
+                    stage: 'ambiguous',
+                    conversationId: Router.conversationId(),
+                    conversationIdentity: currentIdentity,
+                    conversationUrl: Router.canonicalConversationUrl(location.href),
+                    baselineMatches: MessageAdapter.countOutgoing(candidates[0].text),
+                    ambiguityCode: 'native_send_outcome_ambiguous',
+                    ambiguousAt: candidates[0].ambiguousAt || nowIso(),
+                    reboundFromComposeAt: nowIso(),
+                });
+                this.manualNativeReview = clone(rebound);
+                return true;
+            }));
+        },
+        localNativeSendHoldIsCurrent(conversationIdentity = Router.conversationIdentity()) {
+            return Boolean(conversationIdentity
+                && this.manualNativeReview?.id
+                && (this.manualNativeReview.globalHold === true
+                    || !this.manualNativeReview.conversationIdentity
+                    || this.manualNativeReview.conversationIdentity === conversationIdentity
+                    || String(this.manualNativeReview.conversationIdentity || '').startsWith('compose:')));
+        },
+        nativeManualReviewContextIsCurrent(attempt = this.manualNativeReview) {
+            if (!attempt?.id || !this.nativeSendHoldStages.has(String(attempt.stage || ''))
+                || !attempt.conversationIdentity || Router.page() !== 'messages'
+                || Router.conversationIdentity() !== attempt.conversationIdentity) return false;
+            try {
+                const textarea = MessageAdapter.getTextarea();
+                const scope = MessageAdapter.getConversationScope(textarea);
+                const context = MessageAdapter.context();
+                const contextIdentity = Router.conversationIdentityFromId(context?.conversationId || '');
+                return Boolean(textarea && scope && contextIdentity === attempt.conversationIdentity);
+            } catch { return false; }
+        },
+        async createNativeSendAttempt(guard, pending) {
+            const existing = await this.activeNativeSendHold(guard?.conversationIdentity || '');
+            if (existing) return { blocked: existing, attempt: null };
+            const textDigest = await sha256Text(String(guard?.text || ''));
+            const messageCenterBinding = MessageCenterAgent.config();
+            const messageCenterAuthorityId = MessageCenterAgent.isConfigured(messageCenterBinding)
+                ? MessageCenterAgent.authorityId(messageCenterBinding)
+                : '';
+            const conversationUrl = Router.canonicalConversationUrl(location.href);
+            if (!conversationUrl || !guard?.conversationIdentity) {
+                throw new Error('Manuel gönderim için güvenli konuşma kimliği kalıcılaştırılamadı.');
+            }
+            const attempt = await this.persistNativeSendAttempt({
+                id: uid('native-attempt'),
+                ambiguityId: uid('native-ambiguity'),
+                stage: 'dispatched',
+                conversationId: Router.conversationId(),
+                conversationIdentity: guard.conversationIdentity,
+                conversationUrl,
+                text: guard.text,
+                textDigest,
+                textDigestVersion: 'sha256-utf8-v1',
+                messageCenterAuthorityId,
+                baselineMatches: Number(pending?.baselineMatches ?? guard.baselineMatches ?? 0),
+                orderId: String(pending?.orderId || ''),
+                customerName: String(pending?.customerName || ''),
+                method: String(pending?.method || 'manual'),
+                verificationId: String(pending?.verificationId || ''),
+                dispatchedAt: nowIso(),
+                createdAt: nowIso(),
+            });
+            return { blocked: null, attempt };
+        },
+        async markNativeSendAmbiguous(attempt, pending, error = null) {
+            const transitionedIdentity = pending?.transitionBoundIdentity || '';
+            const transitionedUrl = transitionedIdentity
+                ? Router.canonicalConversationUrl(location.href)
+                : '';
+            return this.persistNativeSendAttempt({
+                ...attempt,
+                stage: 'ambiguous',
+                conversationId: transitionedIdentity ? Router.conversationId() : attempt.conversationId,
+                conversationIdentity: transitionedIdentity || attempt.conversationIdentity,
+                conversationUrl: transitionedUrl || attempt.conversationUrl,
+                baselineMatches: transitionedIdentity
+                    ? Number(pending?.transitionBaselineMatches ?? MessageAdapter.countOutgoing(attempt.text))
+                    : Number(attempt.baselineMatches || 0),
+                ambiguityId: attempt.ambiguityId || uid('native-ambiguity'),
+                ambiguityCode: 'native_send_outcome_ambiguous',
+                ambiguousAt: nowIso(),
+                error: normalize(error?.message || error || ''),
+            });
+        },
+        async markNativeSendPostprocessing(attempt, pending) {
+            const transitionedIdentity = pending?.transitionBoundIdentity || '';
+            const transitionedUrl = transitionedIdentity
+                ? Router.canonicalConversationUrl(location.href)
+                : '';
+            return this.persistNativeSendAttempt({
+                ...attempt,
+                stage: 'postprocessing',
+                conversationId: transitionedIdentity ? Router.conversationId() : attempt.conversationId,
+                conversationIdentity: transitionedIdentity || attempt.conversationIdentity,
+                conversationUrl: transitionedUrl || attempt.conversationUrl,
+                outgoingVerifiedAt: attempt.outgoingVerifiedAt || nowIso(),
+                postprocessingAt: attempt.postprocessingAt || nowIso(),
+            });
+        },
+        openNativeManualReviewConversation() {
+            const attempt = this.manualNativeReview;
+            const conversationUrl = Router.canonicalConversationUrl(attempt?.conversationUrl || '');
+            const identity = Router.conversationIdentity(conversationUrl || '');
+            if (!attempt?.id || !conversationUrl || !identity || identity !== attempt.conversationIdentity) {
+                throw new Error('Manuel gönderim kontrolü için güvenli bir Etsy konuşma adresi bulunamadı.');
+            }
+            const currentIdentity = Router.conversationIdentity();
+            if (Router.page() === 'messages' && currentIdentity && currentIdentity !== identity
+                && String(MessageAdapter.getTextarea()?.value || '').trim()) {
+                throw new Error('Açık Etsy konuşmasında gönderilmemiş manuel taslak var. Taslak korunarak gezinme durduruldu.');
+            }
+            location.href = conversationUrl;
+            return true;
+        },
+        async resolveNativeManualReview(outcome, expected = {}) {
+            if (!['sent', 'not_sent'].includes(outcome)) throw new Error('Geçerli bir manuel gönderim sonucu seçin.');
+            const resolution = await withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
+                const attempts = await this.nativeSendAttempts();
+                let attempt = attempts[String(expected.attemptId || '')];
+                if (attempt?.id && !this.nativeSendHoldStages.has(String(attempt.stage || ''))) {
+                    const ambiguityId = attempt.ambiguityId || `native-quarantine:${attempt.id}`;
+                    if (expected.ambiguityId && String(expected.ambiguityId) !== ambiguityId) {
+                        await this.refreshNativeSendHold();
+                        throw new Error('Manuel gönderim kontrol kartı artık güncel değil. Güncel belirsiz sonucu yeniden inceleyin.');
+                    }
+                    attempt = await this.persistNativeSendAttempt({
+                        ...attempt,
+                        stage: 'ambiguous',
+                        ambiguityId,
+                        ambiguityCode: 'unknown_native_attempt_stage_manual_review',
+                        quarantinedStage: String(attempt.stage || 'empty'),
+                        globalHold: true,
+                        ambiguousAt: attempt.ambiguousAt || nowIso(),
+                    });
+                }
+                if (!attempt?.id || !this.nativeSendHoldStages.has(String(attempt.stage || ''))
+                    || (expected.ambiguityId && String(expected.ambiguityId) !== String(attempt.ambiguityId || ''))) {
+                    await this.refreshNativeSendHold();
+                    throw new Error('Manuel gönderim kontrol kartı artık güncel değil. Güncel belirsiz sonucu yeniden inceleyin.');
+                }
+                this.manualNativeReview = clone(attempt);
+                if (attempt.textDigestVersion !== 'sha256-utf8-v1'
+                    || await sha256Text(String(attempt.text || '')) !== attempt.textDigest) {
+                    throw new Error('Manuel gönderim kontrol kaydının metin özeti uyuşmuyor. Sonuç güvenli biçimde çözülemedi.');
+                }
+                if (!this.nativeManualReviewContextIsCurrent(attempt)) {
+                    throw new Error('Bu manuel gönderim sonucu aktif Etsy konuşmasına ait değil. Doğru konuşmayı açıp yeniden deneyin.');
+                }
+                const outgoingConfirmed = MessageAdapter.countOutgoing(attempt.text)
+                    > Number(attempt.baselineMatches || 0);
+                const durableReceipt = (await this.nativeSentReceipts())[attempt.id];
+                const durableReceiptConfirmed = Boolean(durableReceipt
+                    && durableReceipt.textDigestVersion === 'sha256-utf8-v1'
+                    && durableReceipt.textDigest === attempt.textDigest
+                    && durableReceipt.conversationIdentity === attempt.conversationIdentity);
+                const durableVerifiedAttempt = Boolean(attempt.outgoingVerifiedAt)
+                    && (attempt.stage === 'postprocessing'
+                        || attempt.ambiguityCode === 'native_send_outcome_ambiguous');
+                const resolvedOutcome = durableReceiptConfirmed || durableVerifiedAttempt || outgoingConfirmed || outcome === 'sent'
+                    ? 'sent'
+                    : 'not_sent';
+                if (resolvedOutcome === 'sent') {
+                    const sentAt = nowIso();
+                    if (attempt.orderId) await Store.setStatusLocked('orders', attempt.orderId, {
+                        status: 'sent',
+                        messageHash: hashText(attempt.text),
+                        sentAt,
+                        sendAttemptToken: '',
+                        previousOrderStatus: null,
+                    });
+                    if (attempt.conversationId) await Store.setStatusLocked('conversations', attempt.conversationId, {
+                        status: 'sent',
+                        messageHash: hashText(attempt.text),
+                        sentAt,
+                    });
+                    if (!durableReceiptConfirmed
+                        && attempt.messageCenterAuthorityId
+                        && attempt.conversationIdentity
+                        && !String(attempt.conversationIdentity).startsWith('compose:')) {
+                        await this.persistNativeSentReceipt(attempt);
+                    }
+                } else {
+                    await this.removeUnclaimedNativeSentReceipt(attempt.id);
+                }
+                if (!await this.clearNativeSendAttempt(attempt.id)) {
+                    throw new Error('Manuel gönderim kontrol kaydı başka bir sekmede değişti. Sonuç temizlenmedi.');
+                }
+                this.invalidate(candidate => candidate?.nativeAttemptId === attempt.id
+                    || (attempt.verificationId && candidate?.verificationId === attempt.verificationId));
+                return { outcome: resolvedOutcome, attempt, outgoingConfirmed };
+            }));
+            if (resolution?.outcome === 'sent') {
+                void History.tryLogOnce('send_verified', `${resolution.attempt.verificationId || resolution.attempt.id}:manual-resolved`, {
+                    source: 'messages',
+                    method: resolution.attempt.method || 'manual',
+                    status: 'completed',
+                    customer: resolution.attempt.customerName || '',
+                    orderId: resolution.attempt.orderId || '',
+                    conversationId: resolution.attempt.conversationId || '',
+                    title: 'Manuel gönderim doğrulandı',
+                    detail: {
+                        text: resolution.attempt.text,
+                        outgoingConfirmed: resolution.outgoingConfirmed === true,
+                        manuallyConfirmed: outcome === 'sent',
+                    },
+                }).catch(error => console.error(`[${APP.id}] Manuel gönderim çözümü geçmişe kaydedilemedi.`, error));
+            }
+            return resolution?.outcome || false;
+        },
         prepare(text, meta = {}) {
             const context = MessageAdapter.context();
             this.pending = {
@@ -5227,6 +6569,208 @@ zu|Zulu
                 verificationToken: ++this.sequence,
             };
             return true;
+        },
+        beginNativeDispatchGuard() {
+            const textarea = MessageAdapter.getTextarea();
+            const text = String(textarea?.value || '').trim();
+            if (!textarea || !text) return null;
+            const sourceConversationScope = MessageAdapter.getConversationScope(textarea);
+            if (!sourceConversationScope) return null;
+            const guard = {
+                token: uid('native-send'),
+                textarea,
+                text,
+                baselineMatches: MessageAdapter.countOutgoing(text, sourceConversationScope),
+                sourceConversationScope,
+                routeFingerprint: Router.routeFingerprint(),
+                conversationIdentity: Router.conversationIdentity(),
+                textHash: hashExactText(text),
+            };
+            this.nativeDispatchGuard = guard;
+            return guard;
+        },
+        nativeDispatchGuardMatches(guard = this.nativeDispatchGuard, { requireText = false } = {}) {
+            if (!guard) return false;
+            const textarea = MessageAdapter.getTextarea();
+            return textarea === guard.textarea
+                && Router.routeFingerprint() === guard.routeFingerprint
+                && Router.conversationIdentity() === guard.conversationIdentity
+                && (!requireText || hashExactText(String(textarea?.value || '').trim()) === guard.textHash);
+        },
+        nativeDispatchGuardIsCurrent() {
+            return this.nativeDispatchGuardMatches(this.nativeDispatchGuard);
+        },
+        hasSendOwnership(conversationIdentity = Router.conversationIdentity()) {
+            if (!conversationIdentity) return false;
+            const pendingOwnership = [this.pending, this.activePending].some(candidate => candidate
+                && !this.invalidatedTokens.has(candidate.verificationToken)
+                && candidate.conversationIdentity === conversationIdentity);
+            return pendingOwnership || Boolean(this.nativeDispatchGuard
+                && this.nativeDispatchGuard.conversationIdentity === conversationIdentity
+                && this.nativeDispatchGuardIsCurrent());
+        },
+        async dispatchNativeSend(button, guard, { verifyCaptured = false } = {}) {
+            let acquired = false;
+            let postprocessingAttempt = null;
+            let postprocessingPending = null;
+            const result = await withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
+                acquired = true;
+                const conversationIdentity = guard?.conversationIdentity || '';
+                if (!button
+                    || MessageAdapter.getSendButton() !== button
+                    || !this.nativeDispatchGuardMatches(guard, { requireText: true })) {
+                    UI.toast('Konuşma, mesaj alanı veya metin değişti. Etsy Gönder düğmesine basılmadı.', 'warning', 6000);
+                    return false;
+                }
+                if (await MessageCenterAgent.activeSendHold(conversationIdentity)) {
+                    UI.toast('Bu konuşmada bekleyen bir Message Center gönderimi var. Önce o sonucu çözün; yeni mesaj gönderilmedi.', 'warning', 7000);
+                    return false;
+                }
+                if (await Campaign.persistedSendOwnership(conversationIdentity)) {
+                    UI.toast('Bu konuşma kontrollü kampanya tarafından işleniyor. Gönderimi paneldeki güvenli düğmeden tamamlayın.', 'warning', 7000);
+                    return false;
+                }
+                if (MessageAdapter.getSendButton() !== button
+                    || !this.nativeDispatchGuardMatches(guard, { requireText: true })) {
+                    UI.toast('Gönderim kilidi alınırken konuşma veya metin değişti. Hiçbir gönderim yapılmadı.', 'warning', 6000);
+                    return false;
+                }
+                if (!verifyCaptured) {
+                    if (this.pending || this.activePending || this.activePromise) {
+                        UI.toast('Başka bir mesaj sonucu doğrulanıyor. Bu metin gönderilmedi; mevcut sonucu bekleyin.', 'warning', 7000);
+                        return false;
+                    }
+                    this.prepare(guard.text, { method: 'manual' });
+                    verifyCaptured = this.captureComposerAtSend();
+                    if (!verifyCaptured) {
+                        this.invalidate(candidate => candidate?.text === guard.text
+                            && candidate?.conversationIdentity === guard.conversationIdentity);
+                        UI.toast('Manuel mesaj gönderim öncesinde güvenli biçimde doğrulanamadı. Etsy Gönder düğmesine basılmadı.', 'warning', 7000);
+                        return false;
+                    }
+                }
+                const nativeAttemptState = await this.createNativeSendAttempt(guard, this.pending);
+                if (nativeAttemptState.blocked) {
+                    UI.toast('Bu konuşmada sonucu belirsiz önceki bir manuel gönderim var. Etsy mesaj balonunu kontrol edip Ayarlar bölümünden sonucu çözün.', 'warning', 9000);
+                    return false;
+                }
+                const nativeAttempt = nativeAttemptState.attempt;
+                if (this.pending) this.pending.nativeAttemptId = nativeAttempt.id;
+                let dispatchObserved = false;
+                let clickError = null;
+                const observeDispatch = () => { dispatchObserved = true; };
+                button.addEventListener('click', observeDispatch, { capture: true, once: true });
+                this.programmaticNativeDispatchActive = true;
+                try { button.click(); } catch (error) { clickError = error; }
+                finally {
+                    this.programmaticNativeDispatchActive = false;
+                    button.removeEventListener('click', observeDispatch, true);
+                }
+                if (!dispatchObserved) {
+                    const uncertain = clickError || new Error('Etsy Gönder tıklamasının sonucu tarayıcı olayıyla doğrulanamadı.');
+                    await this.markNativeSendAmbiguous(nativeAttempt, this.pending, uncertain);
+                    throw uncertain;
+                }
+                const pending = this.pending;
+                if (!pending) throw new Error('Gönderim doğrulama kaydı tıklamadan önce kayboldu.');
+                let verified = false;
+                try {
+                    verified = await this.waitForPendingOutgoing(pending, 18000);
+                } catch (error) {
+                    await this.markNativeSendAmbiguous(nativeAttempt, pending, error);
+                    throw error;
+                }
+                if (verified) {
+                    try {
+                        postprocessingAttempt = await this.markNativeSendPostprocessing(nativeAttempt, pending);
+                        postprocessingPending = pending;
+                    } catch (error) {
+                        await this.markNativeSendAmbiguous(nativeAttempt, pending, error);
+                        throw error;
+                    }
+                    const receiptIdentity = String(pending.transitionBoundIdentity || nativeAttempt.conversationIdentity || '');
+                    if (nativeAttempt.messageCenterAuthorityId
+                        && receiptIdentity && !receiptIdentity.startsWith('compose:')) {
+                        try {
+                            await this.persistNativeSentReceipt(postprocessingAttempt, pending);
+                        } catch (error) {
+                            await this.markNativeSendAmbiguous(postprocessingAttempt, pending, error);
+                            throw error;
+                        }
+                    }
+                } else await this.markNativeSendAmbiguous(nativeAttempt, pending);
+                pending.nativeOutgoingObservationComplete = true;
+                pending.nativeOutgoingObserved = verified === true;
+                pending.nativeClickError = clickError || null;
+                return true;
+            }, { ifAvailable: true }), { ifAvailable: true });
+            if (!acquired) {
+                UI.toast('Başka bir güvenli gönderim işlemi sürüyor. Bu tıklama gönderilmedi; mevcut sonucu bekleyin.', 'warning', 7000);
+            }
+            if (!result) return false;
+            const clickError = this.pending?.nativeClickError || null;
+            let verified = false;
+            try {
+                verified = await this.onSendClick();
+            } catch (error) {
+                if (postprocessingAttempt) {
+                    try {
+                        await withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
+                            const attempts = await this.nativeSendAttempts();
+                            const current = attempts[postprocessingAttempt.id];
+                            if (current?.stage === 'postprocessing'
+                                && current.updatedAt === postprocessingAttempt.updatedAt) {
+                                await this.markNativeSendAmbiguous(current, postprocessingPending, error);
+                            }
+                        }));
+                    } catch { /* the durable postprocessing hold remains fail-closed */ }
+                }
+                throw error;
+            }
+            if (postprocessingAttempt) {
+                if (!verified) {
+                    try {
+                        await withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
+                            const attempts = await this.nativeSendAttempts();
+                            const current = attempts[postprocessingAttempt.id];
+                            if (current?.stage === 'postprocessing'
+                                && current.updatedAt === postprocessingAttempt.updatedAt) {
+                                await this.markNativeSendAmbiguous(
+                                    current,
+                                    postprocessingPending,
+                                    new Error('Doğrulanmış Etsy gönderiminin yerel sonuç işlemleri tamamlanamadı.'),
+                                );
+                            }
+                        }));
+                    } catch { /* retain the durable postprocessing hold */ }
+                } else {
+                    const cleared = await withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
+                        const attempts = await this.nativeSendAttempts();
+                        const current = attempts[postprocessingAttempt.id];
+                        if (!current) return true;
+                        return this.clearNativeSendAttempt(postprocessingAttempt.id, {
+                            stage: 'postprocessing',
+                            updatedAt: postprocessingAttempt.updatedAt,
+                            verificationId: postprocessingAttempt.verificationId,
+                            textDigest: postprocessingAttempt.textDigest,
+                        });
+                    }));
+                    if (!cleared) {
+                        throw new Error('Doğrulanmış manuel gönderim güvenlik kaydı son işlemden sonra temizlenemedi; yeniden göndermeyin ve manuel sonucu kontrol edin.');
+                    }
+                }
+            }
+            if (clickError && !verified) throw clickError;
+            return verified;
+        },
+        suppressDuplicateNativeSend(event) {
+            if (!this.nativeDispatchGuard) return false;
+            event?.preventDefault?.();
+            event?.stopImmediatePropagation?.();
+            return true;
+        },
+        releaseNativeDispatchGuard(guard) {
+            if (guard?.token && this.nativeDispatchGuard?.token === guard.token) this.nativeDispatchGuard = null;
         },
         invalidate(predicate = () => true) {
             let invalidated = false;
@@ -5394,7 +6938,9 @@ zu|Zulu
             if (!this.verificationMayContinue(pending)) return false;
             let verified;
             try {
-                verified = await this.waitForPendingOutgoing(pending, 18000);
+                verified = pending.nativeOutgoingObservationComplete
+                    ? pending.nativeOutgoingObserved === true
+                    : await this.waitForPendingOutgoing(pending, 18000);
             } catch (error) {
                 void trackTelemetryError('runtime_reply_send');
                 throw error;
@@ -5445,7 +6991,10 @@ zu|Zulu
                     source: 'messages', method: pending.method || 'manual', status: 'error', customer: pending.customerName,
                     orderId: pending.orderId, conversationId: this.conversationIdForRecord(pending), title: 'Gönderim doğrulanamadı', detail: { text: pending.text },
                 }).catch(error => console.error(`[${APP.id}] Gönderim doğrulama hatası geçmişe kaydedilemedi.`, error));
-                UI.toast('Gönderim Etsy mesaj balonunda doğrulanamadı.', 'error');
+                const guidance = sendErrorGuidance('Gönderim Etsy mesaj balonunda doğrulanamadı.').message;
+                UI.toast(pending.campaignId
+                    ? `${guidance} Sonucu panelde “Gönderildi” veya “Gönderilmedi” olarak çözün.`
+                    : guidance, 'error', 9000);
             }
             void UI.refreshCurrent().catch(error => console.error(`[${APP.id}]`, error));
             return verified;
@@ -5459,6 +7008,65 @@ zu|Zulu
         programmaticDispatchActive: false,
         reservation: null,
         workGeneration: 0,
+        campaignOwnsConversation(campaign, conversationIdentity) {
+            if (!conversationIdentity || !this.isNonterminal(campaign) || !Array.isArray(campaign.items)) return false;
+            return campaign.items.some(item => Router.conversationIdentity(item?.messageUrl || '') === conversationIdentity
+                && (!CAMPAIGN_TERMINAL_ITEM_STATUSES.has(String(item?.status || '').toLowerCase())
+                    || this.reservationIsActive(item?.reservation)));
+        },
+        async persistedSendOwnership(conversationIdentity) {
+            if (!conversationIdentity) return false;
+            const campaign = normalizeCampaignState(await GMX.get(KEYS.campaign, null));
+            return this.campaignOwnsConversation(campaign, conversationIdentity);
+        },
+        async assertNoMessageCenterSendHold(conversationIdentity) {
+            const hold = await MessageCenterAgent.activeSendHold(conversationIdentity);
+            if (!hold) return true;
+            const error = new Error('Bu konuşmada bekleyen bir Message Center gönderimi var. Kampanya hiçbir mesaj alanını değiştirmedi; önce belirsiz veya bekleyen sonucu çözün.');
+            error.code = 'MESSAGE_CENTER_SEND_HOLD';
+            throw error;
+        },
+        async assertNoNativeSendHold(conversationIdentity) {
+            const hold = await Verification.activeNativeSendHold(conversationIdentity);
+            if (!hold) return true;
+            const error = new Error('Bu konuşmada sonucu belirsiz bir manuel Etsy gönderimi var. Kampanya hiçbir mesaj alanını değiştirmedi; önce Etsy mesaj balonunu kontrol edip sonucu çözün.');
+            error.code = 'NATIVE_SEND_OUTCOME_HOLD';
+            throw error;
+        },
+        contextMatchesItem(context, item, expectedIdentity = Router.conversationIdentity()) {
+            if (!context || !item) return false;
+            const itemIdentity = Router.conversationIdentity(item.messageUrl || '');
+            const composeReceiptId = itemIdentity.startsWith('compose:')
+                ? itemIdentity.match(/:receipt:([1-9]\d{0,31})$/)?.[1] || ''
+                : '';
+            const declaredConversationId = String(context.conversationId || '').trim();
+            const normalizedDeclaredIdentity = Router.conversationIdentityFromId(declaredConversationId);
+            const contextIdentity = expectedIdentity?.startsWith('compose:')
+                && normalizedDeclaredIdentity === expectedIdentity
+                ? expectedIdentity
+                : Router.conversationIdentityFromId(Router.decodeConversationId(declaredConversationId));
+            if (declaredConversationId && (!contextIdentity || (expectedIdentity && contextIdentity !== expectedIdentity))) {
+                return false;
+            }
+            const expectedOrderId = String(item.orderId || '').normalize('NFKC').trim();
+            if (itemIdentity.startsWith('compose:') && (!composeReceiptId || composeReceiptId !== expectedOrderId)) return false;
+            const actualOrderId = String(context.orderId || '').normalize('NFKC').trim();
+            if (expectedOrderId && actualOrderId && expectedOrderId !== actualOrderId) return false;
+            const expectedCustomer = normalize(item.customerName).toLocaleLowerCase('en-US');
+            const actualCustomer = normalize(context.customerName).toLocaleLowerCase('en-US');
+            if (expectedCustomer && actualCustomer && expectedCustomer !== actualCustomer) return false;
+            return true;
+        },
+        activeCampaignContextConflicts() {
+            const campaign = Store.campaign;
+            const item = campaign?.items?.[campaign.currentIndex];
+            const currentIdentity = Router.conversationIdentity();
+            if (campaign?.status !== 'active' || !item || !currentIdentity
+                || currentIdentity !== Router.conversationIdentity(item.messageUrl)) return false;
+            try {
+                return !this.contextMatchesItem(MessageAdapter.context(), item, currentIdentity);
+            } catch { return true; }
+        },
         isNonterminal(campaign = Store.campaign) {
             return Boolean(campaign) && !['completed', 'cancelled'].includes(String(campaign.status || '').toLowerCase());
         },
@@ -5471,6 +7079,29 @@ zu|Zulu
             event?.preventDefault?.();
             event?.stopImmediatePropagation?.();
             return true;
+        },
+        shouldRouteNativeSendThroughGuided() {
+            if (this.programmaticDispatchActive || this.manualDispatchActive) return false;
+            const campaign = Store.campaign;
+            const item = campaign?.items?.[campaign.currentIndex];
+            const order = item?.orderId ? Store.getStatus('orders', item.orderId) : null;
+            const textarea = MessageAdapter.getTextarea();
+            const currentIdentity = Router.conversationIdentity();
+            let contextMatches = false;
+            try { contextMatches = this.contextMatchesItem(MessageAdapter.context(), item, currentIdentity); }
+            catch { contextMatches = false; }
+            return Boolean(campaign?.status === 'active'
+                && item?.status === 'inserted'
+                && order?.status === 'inserted'
+                && order.campaignId === campaign.id
+                && order.campaignItemId === item.id
+                && currentIdentity
+                && currentIdentity === Router.conversationIdentity(item.messageUrl)
+                && contextMatches
+                && String(textarea?.value || '').trim());
+        },
+        hasActiveSendOwnership(conversationIdentity = Router.conversationIdentity()) {
+            return this.campaignOwnsConversation(Store.campaign, conversationIdentity);
         },
         runIsCurrent(run, expectedStatus = 'pending') {
             const campaign = Store.campaign;
@@ -5494,13 +7125,16 @@ zu|Zulu
             return Boolean(item?.orderId) && Store.getStatus('orders', item.orderId).status === 'skipped';
         },
         orderStatusBlocksCampaign(status) {
-            return CAMPAIGN_INELIGIBLE_ORDER_STATUSES.has(String(status || '').toLowerCase());
+            const normalized = String(status || '').toLowerCase();
+            return !CAMPAIGN_KNOWN_ORDER_STATUSES.has(normalized)
+                || CAMPAIGN_INELIGIBLE_ORDER_STATUSES.has(normalized);
         },
         orderCanEnterCampaign(orderId, statuses = Store.statuses, purpose = 'delivery_followup') {
             if (!orderId) return false;
             if (purpose === 'review_request') {
                 const status = String(statuses.orders?.[orderId]?.status || '').toLowerCase();
-                if (status === 'skipped' || status === CAMPAIGN_SEND_PENDING_STATUS) return false;
+                if (!CAMPAIGN_KNOWN_ORDER_STATUSES.has(status)
+                    || status === 'skipped' || status === CAMPAIGN_SEND_PENDING_STATUS) return false;
                 return Outreach.canQueue(orderId, purpose, statuses);
             }
             return !this.orderStatusBlocksCampaign(statuses.orders?.[orderId]?.status);
@@ -5508,9 +7142,27 @@ zu|Zulu
         orderIsBlockedFromSend(item, statuses = Store.statuses, expectedWorkflows = ['queued', 'prepared']) {
             if (!item?.orderId) return false;
             const status = String(statuses.orders?.[item.orderId]?.status || '').toLowerCase();
+            if (!CAMPAIGN_KNOWN_ORDER_STATUSES.has(status)) return true;
             if (status === 'skipped' || status === 'sent' || status === CAMPAIGN_SEND_PENDING_STATUS) return true;
             if (item.purpose === 'review_request') return !Outreach.itemCanProceed(item, statuses, expectedWorkflows);
             return this.orderStatusBlocksCampaign(status);
+        },
+        itemBindingIsCurrent(item, statuses, expectedOrderStatus, expectedOutreachWorkflow = '') {
+            if (!item?.orderId || !item?.campaignId || !item?.id) return false;
+            const order = statuses?.orders?.[item.orderId];
+            if (order?.status !== expectedOrderStatus
+                || order.campaignId !== item.campaignId
+                || order.campaignItemId !== item.id
+                || String(order.purpose || '') !== String(item.purpose || '')
+                || String(order.templateId || '') !== String(item.templateId || '')
+                || String(order.templateHash || '') !== String(item.templateHash || '')) return false;
+            if (item.purpose !== 'review_request') return true;
+            const outreach = normalizeOutreachRecord(statuses?.outreach?.[item.orderId]?.[item.purpose]);
+            return outreach.workflow === expectedOutreachWorkflow
+                && outreach.campaignId === item.campaignId
+                && outreach.campaignItemId === item.id
+                && outreach.templateId === item.templateId
+                && outreach.templateHash === item.templateHash;
         },
         pendingVerificationTuple(fresh, expected = {}) {
             const attemptToken = String(expected.reservationToken || '');
@@ -5989,7 +7641,10 @@ zu|Zulu
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
                 const campaign = fresh.campaign;
                 const item = campaign?.items?.[campaign.currentIndex];
-                if (!campaign || campaign.status !== 'active' || !item || item.status !== 'pending') return null;
+                if (!campaign || campaign.status !== 'active' || !item || item.status !== 'pending'
+                    || !this.itemBindingIsCurrent(item, fresh.statuses, 'draft', 'queued')) return null;
+                await this.assertNoMessageCenterSendHold(Router.conversationIdentity(item.messageUrl));
+                await this.assertNoNativeSendHold(Router.conversationIdentity(item.messageUrl));
                 const persistedOrderStatus = item.orderId ? fresh.statuses.orders?.[item.orderId]?.status : '';
                 if (this.orderIsBlockedFromSend(item, fresh.statuses, ['queued'])) {
                     return { blocked: true, skipped: persistedOrderStatus === 'skipped', item: clone(item) };
@@ -6033,6 +7688,9 @@ zu|Zulu
                     conversationIdentity: currentIdentity,
                     routeFingerprint: Router.routeFingerprint(),
                 };
+                let contextMatches = false;
+                try { contextMatches = this.contextMatchesItem(MessageAdapter.context(), item, currentIdentity); }
+                catch { contextMatches = false; }
                 if (!campaign
                     || campaign.status !== 'active'
                     || !item
@@ -6040,9 +7698,13 @@ zu|Zulu
                     || orderStatus?.status !== 'inserted'
                     || orderStatus.campaignId !== campaign.id
                     || orderStatus.campaignItemId !== item.id
+                    || !this.itemBindingIsCurrent(item, fresh.statuses, 'inserted', 'prepared')
                     || !currentIdentity
                     || currentIdentity !== itemIdentity
+                    || !contextMatches
                     || this.orderIsBlockedFromSend(item, fresh.statuses, ['prepared'])) return null;
+                await this.assertNoMessageCenterSendHold(currentIdentity);
+                await this.assertNoNativeSendHold(currentIdentity);
                 if (this.reservationIsActive(item.reservation)
                     && item.reservation.ownerId !== CAMPAIGN_TAB_ID) {
                     throw new Error('Bu taslak başka bir Etsy sekmesinde işleniyor. Gönderim yapılmadı.');
@@ -6267,7 +7929,7 @@ zu|Zulu
                 ...order,
                 messageUrl: Router.canonicalConversationUrl(order?.messageUrl || '', { orderId: order?.orderId || '' }),
             }));
-            const savedCampaign = await withCampaignCoordinator(async () => {
+            const savedCampaign = await withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
                 if (this.isNonterminal(fresh.campaign)) {
@@ -6289,9 +7951,22 @@ zu|Zulu
                         method, status: 'pending', createdAt: nowIso(),
                     }));
                 if (!items.length) throw new Error('Seçilen siparişlerde yeni kampanyaya uygun, gönderilmemiş bir konuşma bulunamadı.');
+                const messageCenterHold = await MessageCenterAgent.activeSendHold();
+                const heldIdentity = MessageCenterAgent.pendingConversationIdentity(messageCenterHold);
+                const globalMessageCenterHold = Boolean(messageCenterHold
+                    && (messageCenterHold.globalHold === true
+                        || !heldIdentity
+                        || String(messageCenterHold.job?.type || '').trim().toLowerCase() !== 'reply'));
+                if (globalMessageCenterHold
+                    || (heldIdentity && items.some(item => Router.conversationIdentity(item.messageUrl) === heldIdentity))) {
+                    throw new Error('Seçilen konuşmalardan birinde bekleyen Message Center gönderimi var. Önce o sonucu çözmeden kampanya oluşturulamaz.');
+                }
+                for (const item of items) {
+                    await this.assertNoNativeSendHold(Router.conversationIdentity(item.messageUrl));
+                }
                 const campaign = {
                     id: campaignId,
-                    status: 'active',
+                    status: 'initializing',
                     purpose,
                     templateId,
                     templateHash: frozenTemplateHash,
@@ -6336,7 +8011,16 @@ zu|Zulu
                             }
                         }
                     }, 'Kampanya siparişleri ve yorum talebi kuyruğu birlikte kaydedilemedi.');
-                    return persisted;
+                    const activated = clone(persisted);
+                    activated.status = 'active';
+                    activated.initializedAt = nowIso();
+                    try {
+                        return await Store.saveCampaignLocked(activated, { expectedRevision: persisted.revision });
+                    } catch (activationError) {
+                        const current = normalizeCampaignState(await GMX.get(KEYS.campaign, null).catch(() => null));
+                        if (current?.id === persisted.id && current.status === 'active') return current;
+                        throw activationError;
+                    }
                 } catch (error) {
                     if (persisted) {
                         try {
@@ -6348,7 +8032,7 @@ zu|Zulu
                     }
                     throw error;
                 }
-            });
+            }));
             void History.tryLog('campaign_created', { source: 'orders', method, title: 'Teslimat mesaj kampanyası oluşturuldu', detail: { count: savedCampaign.items.length, templateId, purpose } })
                 .catch(error => console.error(`[${APP.id}] Kampanya geçmişe kaydedilemedi.`, error));
             return savedCampaign;
@@ -6428,6 +8112,10 @@ zu|Zulu
             }
             const context = MessageAdapter.context();
             if (!MessageAdapter.getTextarea()) return;
+            if (!this.contextMatchesItem(context, item, run.conversationIdentity)) {
+                await this.releasePendingReservation(run);
+                throw new Error('Etsy konuşmasındaki sipariş veya müşteri kampanya alıcısıyla eşleşmiyor. Taslak aktarılmadı.');
+            }
             const template = TemplateEngine.get(item.templateId);
             if (!template || template.archived
                 || Outreach.purposeForTemplate(template) !== item.purpose
@@ -6466,6 +8154,11 @@ zu|Zulu
             if (String(textarea.value || '').trim()) {
                 await this.releasePendingReservation(run);
                 throw this.composerOccupiedError();
+            }
+            const freshContext = MessageAdapter.context();
+            if (!this.contextMatchesItem(freshContext, item, run.conversationIdentity)) {
+                await this.releasePendingReservation(run);
+                throw new Error('Etsy konuşma bağlamı taslak hazırlanırken değişti. Yanlış siparişe mesaj aktarılmadı.');
             }
             MessageAdapter.insert(finalText, textarea);
             Verification.prepare(finalText, {
@@ -6543,13 +8236,16 @@ zu|Zulu
         async autoSendIfCurrent(run, item) {
             if (!campaignCoordinatorAvailable()) return false;
             try {
-                return await withCampaignCoordinator(async () => {
+                return await withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
                     const fresh = await Store.readCoordinatedStateLocked();
                     Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
                     const campaign = fresh.campaign;
                     const persistedItem = campaign?.items?.[campaign.currentIndex];
                     const orderStatusRecord = item.orderId ? fresh.statuses.orders?.[item.orderId] : null;
                     const orderStatus = orderStatusRecord?.status || '';
+                    let contextMatches = false;
+                    try { contextMatches = this.contextMatchesItem(MessageAdapter.context(), persistedItem, run.conversationIdentity); }
+                    catch { contextMatches = false; }
                     if (this.reservation !== run
                         || run.generation !== this.workGeneration
                         || campaign?.id !== run.campaignId
@@ -6560,6 +8256,7 @@ zu|Zulu
                         || persistedItem.reservation?.ownerId !== CAMPAIGN_TAB_ID
                         || persistedItem.reservation?.token !== run.reservationToken
                         || orderStatus !== 'inserted'
+                        || !this.itemBindingIsCurrent(persistedItem, fresh.statuses, 'inserted', 'prepared')
                         || (run.messageHash && orderStatusRecord?.messageHash !== run.messageHash)
                         || this.orderIsBlockedFromSend(persistedItem, fresh.statuses, ['prepared'])
                         || Router.page() !== 'messages'
@@ -6567,8 +8264,11 @@ zu|Zulu
                         || Router.conversationIdentity() !== run.conversationIdentity
                         || Router.conversationIdentity(persistedItem.messageUrl) !== run.conversationIdentity
                         || Router.routeFingerprint() !== run.routeFingerprint
+                        || !contextMatches
                         || hashExactText(String(MessageAdapter.getTextarea()?.value || '').trim()) !== run.liveMessageHash
                         || !MessageAdapter.getSendButton()) return false;
+                    await this.assertNoMessageCenterSendHold(run.conversationIdentity);
+                    await this.assertNoNativeSendHold(run.conversationIdentity);
                     const attemptedAt = nowIso();
                     const statusAttempt = await Store.beginSendAttemptLocked(
                         persistedItem,
@@ -6613,6 +8313,9 @@ zu|Zulu
                     const savedItem = savedCampaign.items?.[savedCampaign.currentIndex];
                     const currentText = String(MessageAdapter.getTextarea()?.value || '').trim();
                     const button = MessageAdapter.getSendButton();
+                    let finalContextMatches = false;
+                    try { finalContextMatches = this.contextMatchesItem(MessageAdapter.context(), savedItem, run.conversationIdentity); }
+                    catch { finalContextMatches = false; }
                     const finalPreflight = this.reservation === run
                         && run.generation === this.workGeneration
                         && savedCampaign.id === run.campaignId
@@ -6625,11 +8328,26 @@ zu|Zulu
                         && Router.conversationIdentity() === run.conversationIdentity
                         && Router.conversationIdentity(savedItem.messageUrl) === run.conversationIdentity
                         && Router.routeFingerprint() === run.routeFingerprint
+                        && finalContextMatches
                         && hashExactText(currentText) === run.liveMessageHash
                         && Boolean(button);
                     if (!finalPreflight) {
                         if (!await this.rollbackSendAttemptLocked(attempt)) {
                             throw new Error('Gönderim öncesi konuşma değişti ve deneme kaydı güvenli biçimde geri alınamadı.');
+                        }
+                        return false;
+                    }
+                    const composerCaptured = Verification.captureComposerAtSend();
+                    const capturedVerification = Verification.pending;
+                    if (!composerCaptured
+                        || capturedVerification?.campaignId !== run.campaignId
+                        || capturedVerification?.campaignItemId !== run.itemId
+                        || capturedVerification?.reservationToken !== run.reservationToken
+                        || capturedVerification?.conversationIdentity !== run.conversationIdentity
+                        || capturedVerification?.routeFingerprint !== run.routeFingerprint
+                        || hashExactText(capturedVerification?.text || '') !== run.liveMessageHash) {
+                        if (!await this.rollbackSendAttemptLocked(attempt)) {
+                            throw new Error('Gönderim anındaki konuşma ve composer bağlamı doğrulanamadı; deneme kaydı geri alınamadı.');
                         }
                         return false;
                     }
@@ -6656,10 +8374,11 @@ zu|Zulu
                     }
                     if (clickError) throw clickError;
                     return true;
-                });
+                }));
             } catch (error) {
                 if (error?.code === 'CAMPAIGN_COORDINATOR_UNAVAILABLE'
-                    || error?.code === 'CAMPAIGN_REVISION_CONFLICT') return false;
+                    || error?.code === 'CAMPAIGN_REVISION_CONFLICT'
+                    || error?.code === 'ETSY_SEND_COORDINATOR_UNAVAILABLE') return false;
                 throw error;
             }
         },
@@ -7282,19 +9001,112 @@ zu|Zulu
                 }
             });
             document.addEventListener('click', (event) => {
-                if (MessageAdapter.isSendButton(event.target)) {
+                if (MessageAdapter.isPotentialSendButton(event.target)) {
+                    if (!MessageAdapter.isSendButton(event.target)) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        UI.toast('Etsy konuşma kimliği, composer alanı veya Gönder düğmesi aktif rota ile eşleşmiyor. Mesaj gönderilmedi; sayfanın yüklenmesini bekleyip yeniden kontrol edin.', 'warning', 8000);
+                        return;
+                    }
+                    const nativeButton = MessageAdapter.getSendButton();
+                    if (MessageCenterAgent.programmaticDispatchActive
+                        || Verification.programmaticNativeDispatchActive) return;
+                    if (MessageCenterAgent.localSendHoldIsCurrent()) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        UI.toast('Bu konuşmadaki Message Center gönderim sonucu çözülmeden yeni mesaj gönderilemez.', 'warning', 7000);
+                        return;
+                    }
+                    if (Verification.localNativeSendHoldIsCurrent()) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        UI.toast('Bu konuşmadaki önceki manuel gönderim sonucu çözülmeden yeni mesaj gönderilemez.', 'warning', 7000);
+                        return;
+                    }
+                    if (Campaign.programmaticDispatchActive) return;
+                    if (Campaign.activeCampaignContextConflicts()) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        UI.toast('Açık Etsy konuşmasındaki sipariş veya müşteri aktif kampanya alıcısıyla eşleşmiyor. Mesaj gönderilmedi.', 'warning', 8000);
+                        return;
+                    }
+                    if (Campaign.shouldRouteNativeSendThroughGuided()) {
+                        event.preventDefault();
+                        event.stopImmediatePropagation();
+                        void Campaign.sendCurrentByUser().catch(error => this.reportUiError(error, 'campaign-native-send'));
+                        return;
+                    }
                     if (Campaign.suppressConcurrentNativeSend(event)) {
                         UI.toast('Panel gönderimi hazırlanıyor; ikinci Etsy Gönder tıklaması engellendi.', 'warning', 5000);
                         return;
                     }
-                    Verification.captureComposerAtSend();
-                    void Verification.onSendClick().catch(error => {
-                        void trackTelemetryError('runtime_reply_send');
-                        console.error(`[${APP.id}] Gönderim doğrulaması tamamlanamadı.`, error);
-                        UI.toast('Gönderim doğrulaması tamamlanamadı; doğrulama kaydı korunarak işlem durduruldu.', 'error', 6000);
-                    });
+                    if (!Campaign.programmaticDispatchActive && Verification.suppressDuplicateNativeSend(event)) {
+                        UI.toast('İlk gönderim sonucu doğrulanıyor; aynı mesajın ikinci kez gönderilmesi engellendi.', 'warning', 6000);
+                        return;
+                    }
+                    const captured = Verification.captureComposerAtSend();
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    const nativeGuard = Verification.beginNativeDispatchGuard();
+                    if (!nativeGuard) {
+                        UI.toast('Gönderilecek metin ve konuşma güvenli biçimde doğrulanamadı. Etsy Gönder düğmesine basılmadı.', 'warning', 6000);
+                        return;
+                    }
+                    void Verification.dispatchNativeSend(nativeButton, nativeGuard, { verifyCaptured: captured })
+                        .catch(error => {
+                            void trackTelemetryError('runtime_reply_send');
+                            console.error(`[${APP.id}] Güvenli gönderim tamamlanamadı.`, error);
+                            UI.toast(sendErrorGuidance(error, 'Güvenli gönderim tamamlanamadı.').message, 'error', 9000);
+                        })
+                        .finally(() => Verification.releaseNativeDispatchGuard(nativeGuard));
                 }
             }, true);
+            document.addEventListener('submit', (event) => {
+                const form = MessageAdapter.potentialComposerForm(event.target);
+                if (!form) return;
+                const programmatic = MessageCenterAgent.programmaticDispatchActive
+                    || Verification.programmaticNativeDispatchActive
+                    || Campaign.programmaticDispatchActive;
+                const exactForm = MessageAdapter.currentComposerFormIsExact(form);
+                const nativeButton = exactForm ? MessageAdapter.getSendButton() : null;
+                const submitter = event.submitter || null;
+                if (submitter && submitter !== nativeButton) {
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    UI.toast('Etsy mesaj formundaki farklı bir işlem düğmesi Gönder olarak çalıştırılmadı.', 'warning', 7000);
+                    return;
+                }
+                if (programmatic && exactForm && nativeButton) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                if (programmatic || !exactForm) {
+                    UI.toast('Etsy form gönderimi aktif ve doğrulanmış konuşma alanıyla eşleşmiyor. Mesaj gönderilmedi.', 'warning', 7000);
+                    return;
+                }
+                if (!nativeButton) {
+                    UI.toast('Etsy formundaki tek ve etkin Gönder düğmesi doğrulanamadı. Mesaj gönderilmedi.', 'warning', 7000);
+                    return;
+                }
+                nativeButton.click();
+            }, true);
+            const interceptComposerShortcut = (event) => {
+                if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey) || event.shiftKey) return;
+                const composer = MessageAdapter.composerFromEventTarget(event.target);
+                if (!composer) return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                if (event.type !== 'keydown' || event.repeat) return;
+                const textarea = MessageAdapter.getTextarea();
+                const nativeButton = MessageAdapter.getSendButton();
+                if (composer !== textarea || !nativeButton) {
+                    UI.toast('Klavye gönderimi aktif Etsy konuşma alanıyla güvenli biçimde eşleşmiyor. Mesaj gönderilmedi.', 'warning', 7000);
+                    return;
+                }
+                nativeButton.click();
+            };
+            document.addEventListener('keydown', interceptComposerShortcut, true);
+            document.addEventListener('keypress', interceptComposerShortcut, true);
+            document.addEventListener('keyup', interceptComposerShortcut, true);
         },
         open(page = this.state.page) {
             this.state.open = true;
@@ -7772,6 +9584,43 @@ zu|Zulu
             const providerOptions = Object.entries(AI_PROVIDERS).map(([id, item]) => `<option value="${id}" ${providerId === id ? 'selected' : ''}>${html(item.name)}</option>`).join('');
             const modelOptions = models.map((model) => `<option value="${attr(model)}"></option>`).join('');
             const lastModelSync = profile.modelsFetchedAt ? formatDate(profile.modelsFetchedAt) : 'Henüz yenilenmedi';
+            const agentManualReview = MessageCenterAgent.manualReview?.stage === 'ambiguous'
+                ? MessageCenterAgent.manualReview
+                : null;
+            const agentManualReviewCurrent = agentManualReview
+                && MessageCenterAgent.manualReviewContextIsCurrent(agentManualReview);
+            const agentManualReviewBinding = MessageCenterAgent.jobConversationBinding(agentManualReview?.job);
+            const agentManualReviewPreview = String(agentManualReview?.job?.text || '').trim().slice(0, 140);
+            const agentManualReviewJobId = String(agentManualReview?.job?.id || '');
+            const agentManualReviewAmbiguityId = String(agentManualReview?.ambiguityId || '');
+            const agentManualReviewActionable = Boolean(agentManualReviewCurrent
+                && agentManualReviewJobId
+                && agentManualReviewAmbiguityId);
+            const agentManualReviewActionBinding = `data-message-center-job-id="${attr(agentManualReviewJobId)}" data-message-center-ambiguity-id="${attr(agentManualReviewAmbiguityId)}"`;
+            const agentManualReviewNotice = agentManualReview
+                ? `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Message Center gönderim sonucu belirsiz.</strong><br>Aynı mesajı yeniden göndermeyin. ${agentManualReviewCurrent
+                    ? 'Etsy konuşmasındaki son mesaj balonunu kontrol edip sonucu seçin.'
+                    : 'Sonucu çözmek için ilgili Etsy konuşmasını bu sekmede açın.'}${agentManualReviewPreview ? `<div class="ma-small ma-muted">Mesaj özeti: ${html(agentManualReviewPreview)}${String(agentManualReview?.job?.text || '').trim().length > 140 ? '…' : ''}</div>` : ''}<div class="ma-actions"><button class="ma-btn ma-btn--small" data-action="message-center-open-review-conversation" ${agentManualReviewBinding.valid && !agentManualReviewBinding.conflict ? '' : 'disabled'}>İlgili Etsy konuşmasını aç</button><button class="ma-btn ma-btn--small" data-action="message-center-confirm-sent" ${agentManualReviewActionBinding} ${agentManualReviewActionable ? '' : 'disabled'}>Gönderildi</button><button class="ma-btn ma-btn--small" data-action="message-center-confirm-not-sent" ${agentManualReviewActionBinding} ${agentManualReviewActionable ? '' : 'disabled'}>Gönderilmedi</button></div></div></div>`
+                : '';
+            const nativeManualReview = Verification.manualNativeReview
+                && Verification.nativeSendHoldStages.has(String(Verification.manualNativeReview.stage || ''))
+                ? Verification.manualNativeReview
+                : null;
+            const nativeManualReviewCurrent = nativeManualReview
+                && Verification.nativeManualReviewContextIsCurrent(nativeManualReview);
+            const nativeManualReviewUrl = Router.canonicalConversationUrl(nativeManualReview?.conversationUrl || '');
+            const nativeManualReviewPreview = String(nativeManualReview?.text || '').trim().slice(0, 140);
+            const nativeManualReviewAttemptId = String(nativeManualReview?.id || '');
+            const nativeManualReviewAmbiguityId = String(nativeManualReview?.ambiguityId || '');
+            const nativeManualReviewActionable = Boolean(nativeManualReviewCurrent
+                && nativeManualReviewAttemptId
+                && nativeManualReviewAmbiguityId);
+            const nativeManualReviewActionBinding = `data-native-attempt-id="${attr(nativeManualReviewAttemptId)}" data-native-ambiguity-id="${attr(nativeManualReviewAmbiguityId)}"`;
+            const nativeManualReviewNotice = nativeManualReview
+                ? `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Manuel Etsy gönderim sonucu belirsiz.</strong><br>Aynı mesajı yeniden göndermeyin. ${nativeManualReviewCurrent
+                    ? 'Son mesaj balonunu kontrol edip kesin sonucu seçin.'
+                    : 'İlgili Etsy konuşmasını açıp mesaj balonunu kontrol edin.'}${nativeManualReviewPreview ? `<div class="ma-small ma-muted">Mesaj özeti: ${html(nativeManualReviewPreview)}${String(nativeManualReview?.text || '').trim().length > 140 ? '…' : ''}</div>` : ''}<div class="ma-actions"><button class="ma-btn ma-btn--small" data-action="native-send-open-review-conversation" ${nativeManualReviewUrl ? '' : 'disabled'}>İlgili Etsy konuşmasını aç</button><button class="ma-btn ma-btn--small" data-action="native-send-confirm-sent" ${nativeManualReviewActionBinding} ${nativeManualReviewActionable ? '' : 'disabled'}>Gönderildi</button><button class="ma-btn ma-btn--small" data-action="native-send-confirm-not-sent" ${nativeManualReviewActionBinding} ${nativeManualReviewActionable ? '' : 'disabled'}>Gönderilmedi</button></div></div></div>`
+                : '';
             return `${this.renderHead('Ayarlar', 'Makaytron sunucusu olmadan kendi AI sağlayıcınızı, config yedeğinizi ve GitHub güncellemelerini yönetin.', actions)}
                 <div class="ma-stack">
                     <section class="ma-card">
@@ -7834,6 +9683,8 @@ zu|Zulu
                                         <div class="ma-field"><label>Gönderim Kuyruğu (sn)</label><input class="ma-input" type="number" min="2" max="60" data-settings-field="messageCenterPollSeconds" value="${attr(s.messageCenterPollSeconds || 3)}"></div>
                                     </div>
                                 </div>
+                                ${agentManualReviewNotice}
+                                ${nativeManualReviewNotice}
                                 <div class="ma-notice ma-notice--info">${icon('send')}<div>VPS’de bir Etsy <strong>Messages</strong> sekmesini açık bırakın. Agent konuşma listesini panele taşır; panelden gelen cevabı doğru konuşmayı açıp Etsy balonunda gerçekten göründükten sonra “gönderildi” sayar.</div></div>
                             </div>
                         </section>
@@ -7856,11 +9707,12 @@ zu|Zulu
         },
         reportUiError(error, action = 'ui-action') {
             console.error(`[${APP.id}]`, error);
-            this.toast(error?.message || 'Beklenmeyen hata.', 'error', 6000);
+            const guidance = sendErrorGuidance(error);
+            this.toast(guidance.message, 'error', 9000);
             void History.tryLog('ui_error', {
                 status: 'error',
                 title: 'İşlem hatası',
-                detail: { action, message: error?.message || String(error) },
+                detail: { action, code: guidance.code, message: error?.message || String(error) },
             }).catch(historyError => console.error(`[${APP.id}] UI hata kaydı saklanamadı.`, historyError));
         },
         pendingResolutionContextIsCurrent(orderId) {
@@ -7951,6 +9803,62 @@ zu|Zulu
                     this.ensureSettingsDraft().settings.messageCenterAgentToken = '';
                     this.markSettingsDirty();
                     this.toast('Agent token taslaktan silindi; kalıcılaştırmak için Kaydet’e basın.', 'warning', 5000);
+                }
+                if (action === 'message-center-confirm-sent') {
+                    if (!confirm('Mesajın doğru Etsy konuşmasında gerçekten gönderildiğini doğruluyor musunuz?')) return;
+                    await MessageCenterAgent.resolveManualReview('sent', {
+                        jobId: target.dataset.messageCenterJobId || '',
+                        ambiguityId: target.dataset.messageCenterAmbiguityId || '',
+                    });
+                    this.toast('Message Center gönderimi kullanıcı tarafından doğrulandı.', 'success', 6000);
+                    return this.refreshCurrent();
+                }
+                if (action === 'message-center-confirm-not-sent') {
+                    if (!confirm('Mesajın Etsy konuşmasında gönderilmediğini kontrol ettiniz mi? İş yeniden denenebilir duruma getirilecek.')) return;
+                    const resolvedOutcome = await MessageCenterAgent.resolveManualReview('not_sent', {
+                        jobId: target.dataset.messageCenterJobId || '',
+                        ambiguityId: target.dataset.messageCenterAmbiguityId || '',
+                    });
+                    this.toast(
+                        resolvedOutcome === 'sent'
+                            ? 'Yerel gönderim kaydı mesajın zaten gönderildiğini kanıtladı; iş yeniden denemeye açılmadı.'
+                            : 'Message Center işi güvenli biçimde yeniden denemeye açıldı.',
+                        resolvedOutcome === 'sent' ? 'success' : 'warning',
+                        7000,
+                    );
+                    return this.refreshCurrent();
+                }
+                if (action === 'message-center-open-review-conversation') {
+                    MessageCenterAgent.openManualReviewConversation();
+                    return;
+                }
+                if (action === 'native-send-confirm-sent') {
+                    if (!confirm('Mesajın doğru Etsy konuşmasında gerçekten gönderildiğini doğruluyor musunuz?')) return;
+                    await Verification.resolveNativeManualReview('sent', {
+                        attemptId: target.dataset.nativeAttemptId || '',
+                        ambiguityId: target.dataset.nativeAmbiguityId || '',
+                    });
+                    this.toast('Manuel Etsy gönderimi kullanıcı tarafından doğrulandı.', 'success', 6000);
+                    return this.refreshCurrent();
+                }
+                if (action === 'native-send-confirm-not-sent') {
+                    if (!confirm('Mesajın Etsy konuşmasında gönderilmediğini kesin olarak kontrol ettiniz mi?')) return;
+                    const resolvedOutcome = await Verification.resolveNativeManualReview('not_sent', {
+                        attemptId: target.dataset.nativeAttemptId || '',
+                        ambiguityId: target.dataset.nativeAmbiguityId || '',
+                    });
+                    this.toast(
+                        resolvedOutcome === 'sent'
+                            ? 'Etsy mesaj balonu gönderimi kanıtladı; yeni denemeye izin verilmedi.'
+                            : 'Manuel gönderim sonucu gönderilmedi olarak çözüldü; yeni deneme yapılabilir.',
+                        resolvedOutcome === 'sent' ? 'success' : 'warning',
+                        7000,
+                    );
+                    return this.refreshCurrent();
+                }
+                if (action === 'native-send-open-review-conversation') {
+                    Verification.openNativeManualReviewConversation();
+                    return;
                 }
                 if (action === 'deepl-key-clear') {
                     this.ensureSettingsDraft().settings.deeplApiKey = '';
@@ -8462,7 +10370,10 @@ ${result.text || ''}`);
             const draftGeneration = this.state.settingsDraftGeneration;
             this.invalidateMessageListWork({ resetStatus: true });
             this.setBusy(true);
-            await Store.saveConfigBundle({ settings: clone(next), providers: clone(providers) });
+            await MessageCenterAgent.withSafeConfigurationChange(next, () => Store.saveConfigBundle({
+                settings: clone(next),
+                providers: clone(providers),
+            }));
             await Store.pruneHistory();
             this.state.composeMethod = Store.settings.defaultReplyMethod;
             this.state.tone = Store.settings.defaultTone;
@@ -8566,6 +10477,7 @@ ${result.text || ''}`);
         async init() {
             await Store.load();
             await Store.ensureCoordinationListeners();
+            await Verification.refreshNativeSendHold();
             await ensureTelemetryInstallationIdListener();
             BRAND_LOGO_URL = await GMX.resource('makaytronLogo', RELEASE.logoUrl);
             UI.mount();
@@ -8593,6 +10505,10 @@ ${result.text || ''}`);
         },
         async onRoute() {
             const fingerprint = Router.routeFingerprint();
+            await Verification.rebindNativeComposeHoldToCurrent().catch(error => {
+                console.error(`[${APP.id}] Compose gönderim kontrolü yeni konuşmaya bağlanamadı.`, error);
+            });
+            await Verification.refreshNativeSendHold();
             if (fingerprint !== this.routeFingerprint) {
                 this.routeFingerprint = fingerprint;
                 UI.invalidateMessageWork();

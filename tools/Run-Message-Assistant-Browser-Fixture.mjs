@@ -4,7 +4,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HOST = '127.0.0.1';
-const PORT = 8766;
+const configuredPort = Number.parseInt(process.env.MEMA_FIXTURE_PORT || '8766', 10);
+const PORT = Number.isInteger(configuredPort) && configuredPort >= 0 && configuredPort <= 65535
+    ? configuredPort
+    : 8766;
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fixtureRoot = path.join(repoRoot, 'tools', 'fixtures', 'message-assistant-delivered');
 const userscriptPath = path.join(
@@ -34,6 +37,7 @@ async function instrumentedUserscript() {
         Verification,
         MessageAdapter,
         OrdersAdapter,
+        MessageCenterAgent,
         GMX,
         Router,
         UI,
@@ -101,7 +105,9 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(PORT, HOST, () => {
-    process.stdout.write(`Message Assistant browser fixture: http://${HOST}:${PORT}/\n`);
+    const address = server.address();
+    const listeningPort = typeof address === 'object' && address ? address.port : PORT;
+    process.stdout.write(`Message Assistant browser fixture: http://${HOST}:${listeningPort}/\n`);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM']) {

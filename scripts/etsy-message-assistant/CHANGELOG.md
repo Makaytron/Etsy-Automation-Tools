@@ -5,7 +5,12 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
-## [1.2.2] - 2026-08-28
+## [1.2.2] - 2026-08-29
+
+### Added
+
+- Salt-okunur GitHub Actions kapısı; userscript davranış testlerini, izole Chrome fixture senaryolarını, dağıtım doğrulamasını ve deterministik iki dosyalı standalone paketlemeyi her push/PR üzerinde çalıştırır. Workflow tag veya release oluşturmaz ve yayın yapmaz.
+- Tek sipariş, tek onay ve tek tıklama sınırlarını zorunlu tutan Türkçe/İngilizce kontrollü canlı smoke-test listeleri ile doğrulanmış userscript ve `SHA256SUMS.txt` üreten standalone paketleyici eklendi.
 
 ### Fixed
 
@@ -14,10 +19,22 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `clg-icon-button` ve erişilebilir link kontrollerindeki güvenli Etsy mesaj adresleri sipariş kartından okunur; receipt kimliği başka bir siparişi gösteren compose adresleri reddedilir.
 - Semantic outgoing işaretli yeni mesaj balonları doğrulanır. Yeni mesaj gönderildikten sonra Etsy compose adresini gerçek konuşma adresine çevirdiğinde doğrulama geç yüklenen DOM'u bekler, yalnız aynı sipariş ve müşteri bağlamında devam eder ve yeni konuşmadaki eski aynı metni bu gönderim sanmaz.
 - Merkezi Mesaj Agent'ı compose hedeflerini reddeder; gönderim sonrası rota değişiminde aynı işin ikinci kez çalıştırılması engellenir. Doğrulanan gönderim gerçek thread kimliğiyle kaydedilir ve gerektiğinde doğru thread üzerinde manuel uzlaşma kontrolleri gösterilir.
+- Message Center aynı iş kimliğini farklı konuşma veya metinle yeniden kullanırsa DOM'a dokunmadan non-retryable çatışma kaydı üretir; URL ile bildirilen konuşma kimliği birebir uyuşmadığında da gönderim başlamaz.
+- Message Center sonucu kesinleşmeyen gönderimi kalıcı `ambiguous` fence ile durdurur. Aynı iş yeniden kiralansa bile ikinci kez tıklamaz; yalnız aynı URL ve hydrate edilmiş konuşma bağlamında Ayarlar'daki açık **Gönderildi / Gönderilmedi** uzlaştırması fence'i kaldırabilir.
+- Message Center artık gönderim öncesi, tıklama sonrası ve sonuç-bildirimi aşamalarını ayrı kalıcı outbox/tombstone kayıtlarıyla korur. Bilinmeyen veya bozuk gelecek aşamalar otomatik temizlenmez; Etsy alanına dokunmadan global manuel inceleme kilidine alınır.
+- Gönderilmiş iş ledger'ı sunucu + mağaza otoritesine bağlanır, token yenilemelerinde korunur ve terminal sonuç zarfı sunucuya bildirilmeden önce birebir kalıcılaştırılır. Sonuç yanıtı kaybolursa yalnız aynı zarf yeniden bildirilir; Etsy DOM'u ve Gönder düğmesi tekrar kullanılmaz.
+- Kullanıcının mevcut composer taslağı — Message Center metniyle aynı olsa bile — korunur ve agent gönderimi durur. Agent'ın kendisinin eklediği metin yalnız aynı textarea, rota ve ham değer hâlâ birebir eşleşiyorsa güvenle temizlenebilir.
+- Doğrulanmış native Etsy gönderimleri, yerel son işlemler bitene kadar `postprocessing` tombstone'u olarak bütün sekmeleri kilitler. Aynı otoritedeki Message Center işi exact SHA-256 receipt'i sahiplenerek sonucu `sent` sayar; ikinci Etsy tıklaması yapmaz ve **Gönderilmedi** seçimi kalıcı gönderim kanıtını geri alamaz.
+- Message Center gönderimi kampanya koordinatörüyle aynı sekmeler-arası kilidi kullanır ve aynı konuşmanın aktif kampanya tarafından sahiplenildiğini görürse composer'a dokunmadan ertelenebilir hata döndürür.
+- Aktif kampanya taslağında Etsy'nin kendi Gönder düğmesine basmak da atomik rehberli gönderim yoluna yönlendirilir. Kampanya dışı hazırlanmış taslakta ilk doğrulama sürerken hızlı ikinci native tıklama aynı mesajın tekrar gönderilmesini engeller.
+- Etsy'nin form submit'i ile Ctrl/Command+Enter kısayolları aynı doğrulanmış gönderim yoluna alınır. Formdaki farklı bir submit kontrolü (ör. taslak kaydetme) hiçbir zaman Gönder'e çevrilmez; hızlı tekrarlanan kısayol tek tıklamada kalır.
+- Kampanya oluşturma önce fail-closed `initializing` kaydıyla sahiplik kurar; kısmi durum yazımı, bilinmeyen campaign/item/order aşaması veya receipt'i uyuşmayan compose rotası composer'a ya da Gönder'e erişemez.
+- Gönderim hataları; hiçbir tıklama yapılmayan bağlam/düğme sorunlarını, başka sekme sahipliğini ve sonucu belirsiz gönderimleri ayrı, eyleme dönük Türkçe yönlendirmelerle açıklar.
 
 ### Tests
 
 - Gerçek DOM olayları kullanan, dış ağı kapalı localhost fixture'ı izole Chrome bağlamında teslim edilmiş sipariş → yorum uygunluğu → taslak → gönderim → outgoing balon → kalıcı `sent` zincirini ve compose → thread rota geçişini doğrular.
+- İzole Chrome regresyonları Türkçe/İngilizce düğmeleri, çift tıklama, devre dışı düğme, yanlış sipariş/müşteri, route-before-DOM hydration, trusted Ctrl/Command+Enter, `requestSubmit`, farklı submitter engeli ve Message Center job → tek gönderim → ledger → duplicate-prevention zincirini kapsar; her target, geçici profil ve localhost sunucusu test sonunda kapatılır.
 
 ## [1.2.1] - 2026-08-28
 

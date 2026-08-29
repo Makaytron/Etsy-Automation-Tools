@@ -1,0 +1,633 @@
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import test from 'node:test';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const fixtureServerPath = path.join(repoRoot, 'tools', 'Run-Message-Assistant-Browser-Fixture.mjs');
+const TIMEOUT_MS = 30_000;
+const LOCAL_FETCH_TIMEOUT_MS = 2_000;
+
+const delay = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+async function fetchLocal(url, options = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), LOCAL_FETCH_TIMEOUT_MS);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+async function waitUntil(operation, label, timeout = 10_000) {
+    const started = Date.now();
+    let lastError = null;
+    while (Date.now() - started < timeout) {
+        try {
+            const result = await operation();
+            if (result) return result;
+        } catch (error) { lastError = error; }
+        await delay(50);
+    }
+    throw new Error(`Timed out waiting for ${label}.${lastError ? ` ${lastError.message}` : ''}`);
+}
+
+function chromeExecutable() {
+    const candidates = [
+        process.env.CHROME_PATH,
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe'),
+        process.platform === 'darwin' && '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        process.platform === 'linux' && '/usr/bin/google-chrome',
+        process.platform === 'linux' && '/usr/bin/google-chrome-stable',
+        process.platform === 'linux' && '/usr/bin/chromium',
+    ].filter(Boolean);
+    return candidates;
+}
+
+async function findChrome() {
+    const { access } = await import('node:fs/promises');
+    for (const candidate of chromeExecutable()) {
+        try {
+            await access(candidate);
+            return candidate;
+        } catch { /* try the next standard location */ }
+    }
+    throw new Error('Google Chrome was not found. Set CHROME_PATH to run the isolated browser fixture.');
+}
+
+class CdpConnection {
+    constructor(socket) {
+        this.socket = socket;
+        this.nextId = 1;
+        this.pending = new Map();
+        this.listeners = new Map();
+        socket.addEventListener('message', event => this.receive(event.data));
+        socket.addEventListener('close', () => {
+            for (const { reject } of this.pending.values()) reject(new Error('Chrome DevTools connection closed.'));
+            this.pending.clear();
+        });
+    }
+
+    static async connect(url) {
+        const socket = new WebSocket(url);
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error('Chrome DevTools WebSocket timed out.')), 10_000);
+            socket.addEventListener('open', () => {
+                clearTimeout(timeout);
+                resolve();
+            }, { once: true });
+            socket.addEventListener('error', () => {
+                clearTimeout(timeout);
+                reject(new Error('Chrome DevTools WebSocket failed.'));
+            }, { once: true });
+        });
+        return new CdpConnection(socket);
+    }
+
+    receive(raw) {
+        const message = JSON.parse(String(raw));
+        if (message.id) {
+            const pending = this.pending.get(message.id);
+            if (!pending) return;
+            this.pending.delete(message.id);
+            if (message.error) pending.reject(new Error(message.error.message || 'Chrome DevTools command failed.'));
+            else pending.resolve(message.result || {});
+            return;
+        }
+        for (const listener of this.listeners.get(message.method) || []) listener(message.params || {});
+    }
+
+    send(method, params = {}, timeoutMs = 30_000) {
+        const id = this.nextId++;
+        const promise = new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                this.pending.delete(id);
+                reject(new Error(`Chrome DevTools command timed out: ${method}`));
+            }, timeoutMs);
+            this.pending.set(id, {
+                resolve(value) { clearTimeout(timeout); resolve(value); },
+                reject(error) { clearTimeout(timeout); reject(error); },
+            });
+        });
+        try {
+            this.socket.send(JSON.stringify({ id, method, params }));
+        } catch (error) {
+            this.pending.get(id)?.reject(error);
+            this.pending.delete(id);
+        }
+        return promise;
+    }
+
+    on(method, listener) {
+        const listeners = this.listeners.get(method) || [];
+        listeners.push(listener);
+        this.listeners.set(method, listeners);
+    }
+
+    close() {
+        if (this.socket.readyState < WebSocket.CLOSING) this.socket.close();
+    }
+}
+
+async function startFixtureServer() {
+    const child = spawn(process.execPath, [fixtureServerPath], {
+        cwd: repoRoot,
+        env: { ...process.env, MEMA_FIXTURE_PORT: '0' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+    });
+    let output = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', chunk => { output += chunk; });
+    child.stderr.on('data', chunk => { output += chunk; });
+    try {
+        const url = await waitUntil(() => {
+            if (child.exitCode !== null) throw new Error(`Fixture server exited with code ${child.exitCode}.`);
+            return output.match(/http:\/\/127\.0\.0\.1:\d+\//)?.[0];
+        }, 'fixture server', 10_000);
+        return { child, url, get output() { return output; } };
+    } catch (error) {
+        try { await stopChild(child); } catch (cleanupError) { error.cleanupError = cleanupError; }
+        if (output) error.fixtureServerOutput = output;
+        throw error;
+    }
+}
+
+async function waitForChildExit(child, timeoutMs) {
+    if (!child || child.exitCode !== null || child.signalCode !== null) return true;
+    return Promise.race([
+        new Promise(resolve => child.once('exit', () => resolve(true))),
+        delay(timeoutMs).then(() => false),
+    ]);
+}
+
+async function stopChild(child) {
+    if (!child || child.exitCode !== null || child.signalCode !== null) return;
+    child.kill('SIGTERM');
+    if (await waitForChildExit(child, 3_000)) return;
+    child.kill('SIGKILL');
+    if (!await waitForChildExit(child, 3_000)) throw new Error(`Child process ${child.pid || 'unknown'} did not exit after SIGKILL.`);
+}
+
+async function startBlackholeProxy() {
+    const sockets = new Set();
+    const server = createServer(socket => {
+        sockets.add(socket);
+        socket.once('close', () => sockets.delete(socket));
+        socket.destroy();
+    });
+    await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
+    });
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Blackhole proxy did not bind to an isolated local port.');
+    return { server, sockets, port: address.port };
+}
+
+async function stopBlackholeProxy(proxy) {
+    if (!proxy?.server) return;
+    for (const socket of proxy.sockets || []) socket.destroy();
+    if (!proxy.server.listening) return;
+    await new Promise((resolve, reject) => proxy.server.close(error => error ? reject(error) : resolve()));
+}
+
+async function removeChromeProfile(profile) {
+    if (!profile) return;
+    const resolvedProfile = path.resolve(profile);
+    assert.ok(resolvedProfile.startsWith(path.resolve(os.tmpdir()) + path.sep), 'Chrome profile cleanup stays inside the OS temp directory.');
+    await rm(resolvedProfile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
+}
+
+async function startChrome(proxyPort) {
+    const executable = await findChrome();
+    const profile = await mkdtemp(path.join(os.tmpdir(), 'mema-chrome-fixture-'));
+    let child = null;
+    let browser = null;
+    try {
+        child = spawn(executable, [
+        '--headless=new',
+        '--disable-background-networking',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-extensions',
+        '--disable-features=OptimizationHints,MediaRouter',
+        '--disable-quic',
+        '--disable-sync',
+        '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost',
+        '--metrics-recording-only',
+        '--no-default-browser-check',
+        '--no-first-run',
+        '--password-store=basic',
+        `--proxy-server=http://127.0.0.1:${proxyPort}`,
+        '--proxy-bypass-list=127.0.0.1;localhost;[::1]',
+        '--remote-debugging-port=0',
+        `--user-data-dir=${profile}`,
+        'about:blank',
+        ], {
+            stdio: ['ignore', 'ignore', 'pipe'],
+            windowsHide: true,
+        });
+        let stderr = '';
+        child.stderr.setEncoding('utf8');
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        const activePortPath = path.join(profile, 'DevToolsActivePort');
+        const port = await waitUntil(async () => {
+            if (child.exitCode !== null) throw new Error(`Isolated Chrome exited with code ${child.exitCode}.`);
+            const content = await readFile(activePortPath, 'utf8');
+            return Number.parseInt(content.split(/\r?\n/)[0], 10) || 0;
+        }, 'isolated Chrome DevTools port', 15_000);
+        const version = await waitUntil(async () => {
+            if (child.exitCode !== null) throw new Error(`Isolated Chrome exited with code ${child.exitCode}.`);
+            const response = await fetchLocal(`http://127.0.0.1:${port}/json/version`);
+            return response.ok ? response.json() : null;
+        }, 'isolated Chrome DevTools endpoint', 10_000);
+        browser = await CdpConnection.connect(version.webSocketDebuggerUrl);
+        return { browser, child, port, profile, get stderr() { return stderr; } };
+    } catch (error) {
+        try { await stopChrome({ browser, child, profile }); } catch (cleanupError) { error.cleanupError = cleanupError; }
+        throw error;
+    }
+}
+
+async function stopChrome(chrome) {
+    if (!chrome) return;
+    let failure = null;
+    try { if (chrome.browser) await chrome.browser.send('Browser.close', {}, 3_000); } catch (error) { failure = error; }
+    try { chrome.browser?.close(); } catch (error) { failure ||= error; }
+    try { await stopChild(chrome.child); } catch (error) { failure ||= error; }
+    try { await removeChromeProfile(chrome.profile); } catch (error) { failure ||= error; }
+    if (failure) throw failure;
+}
+
+async function pageSocketUrl(port, targetId) {
+    return waitUntil(async () => {
+        const response = await fetchLocal(`http://127.0.0.1:${port}/json/list`);
+        const targets = await response.json();
+        return targets.find(target => target.id === targetId)?.webSocketDebuggerUrl || '';
+    }, `Chrome page target ${targetId}`, 10_000);
+}
+
+async function evaluate(page, expression) {
+    const response = await page.send('Runtime.evaluate', {
+        expression,
+        awaitPromise: true,
+        returnByValue: true,
+        userGesture: true,
+    });
+    if (response.exceptionDetails) {
+        const description = response.exceptionDetails.exception?.description
+            || response.exceptionDetails.text
+            || 'Browser fixture evaluation failed.';
+        throw new Error(description);
+    }
+    return response.result?.value;
+}
+
+async function waitForFixtureInteraction(page, label = 'fixture interaction readiness') {
+    await waitUntil(
+        () => evaluate(page, 'globalThis.__MEMA_FIXTURE__?.interactionReady === true'),
+        label,
+        5_000,
+    );
+}
+
+async function dispatchTrustedModifiedEnter(page, { count = 1, modifier = 'ctrl' } = {}) {
+    const isMeta = modifier === 'meta';
+    const modifiers = isMeta ? 4 : 2;
+    const modifierKey = isMeta ? 'Meta' : 'Control';
+    const modifierCode = isMeta ? 'MetaLeft' : 'ControlLeft';
+    const modifierVirtualKey = isMeta ? 91 : 17;
+    await page.send('Input.dispatchKeyEvent', {
+        type: 'rawKeyDown',
+        modifiers,
+        windowsVirtualKeyCode: modifierVirtualKey,
+        nativeVirtualKeyCode: modifierVirtualKey,
+        key: modifierKey,
+        code: modifierCode,
+    });
+    try {
+        for (let index = 0; index < count; index += 1) {
+            await page.send('Input.dispatchKeyEvent', {
+                type: 'rawKeyDown',
+                modifiers,
+                windowsVirtualKeyCode: 13,
+                nativeVirtualKeyCode: 13,
+                key: 'Enter',
+                code: 'Enter',
+            });
+            await page.send('Input.dispatchKeyEvent', {
+                type: 'keyUp',
+                modifiers,
+                windowsVirtualKeyCode: 13,
+                nativeVirtualKeyCode: 13,
+                key: 'Enter',
+                code: 'Enter',
+            });
+        }
+    } finally {
+        await page.send('Input.dispatchKeyEvent', {
+            type: 'keyUp',
+            modifiers: 0,
+            windowsVirtualKeyCode: modifierVirtualKey,
+            nativeVirtualKeyCode: modifierVirtualKey,
+            key: modifierKey,
+            code: modifierCode,
+        });
+    }
+}
+
+async function requestFixtureFormSubmit(page, submitterId = '') {
+    await evaluate(page, `(() => {
+        const form = document.getElementById('fixture-message-form');
+        if (!form) throw new Error('Fixture composer form is missing.');
+        const submitterId = ${JSON.stringify(submitterId)};
+        const submitter = submitterId ? document.getElementById(submitterId) : null;
+        if (submitterId && !submitter) throw new Error('Fixture submitter is missing.');
+        if (submitter) form.requestSubmit(submitter);
+        else form.requestSubmit();
+        return true;
+    })()`);
+}
+
+async function runBrowserScenario(chrome, fixtureUrl, query, method, interaction = null) {
+    let targetId = null;
+    let page = null;
+    const requests = [];
+    const blockedRequests = [];
+    const externalSockets = [];
+    const consoleErrors = [];
+    let interceptionError = null;
+    const allowedOrigin = new URL(fixtureUrl).origin;
+    try {
+        ({ targetId } = await chrome.browser.send('Target.createTarget', { url: 'about:blank' }));
+        page = await CdpConnection.connect(await pageSocketUrl(chrome.port, targetId));
+        page.on('Network.requestWillBeSent', event => requests.push(event.request?.url || ''));
+        page.on('Network.webSocketCreated', event => externalSockets.push(event.url || ''));
+        page.on('Network.webTransportCreated', event => externalSockets.push(event.url || ''));
+        page.on('Runtime.consoleAPICalled', event => {
+            if (event.type === 'error') consoleErrors.push(event.args?.map(argument => argument.value || argument.description || '').join(' ') || 'console.error');
+        });
+        page.on('Fetch.requestPaused', event => {
+            const requestUrl = event.request?.url || '';
+            let isAllowed = false;
+            try { isAllowed = new URL(requestUrl).origin === allowedOrigin; } catch { /* fail closed below */ }
+            const command = isAllowed ? 'Fetch.continueRequest' : 'Fetch.failRequest';
+            const params = isAllowed
+                ? { requestId: event.requestId }
+                : { requestId: event.requestId, errorReason: 'BlockedByClient' };
+            if (!isAllowed) blockedRequests.push(requestUrl);
+            void page.send(command, params).catch(error => { interceptionError = error; });
+        });
+        await page.send('Network.enable');
+        await page.send('Runtime.enable');
+        await page.send('Page.enable');
+        await page.send('Fetch.enable', {
+            patterns: [
+                { urlPattern: 'http://*', requestStage: 'Request' },
+                { urlPattern: 'https://*', requestStage: 'Request' },
+            ],
+        });
+        const targetUrl = new URL(query, fixtureUrl).href;
+        await page.send('Page.navigate', { url: targetUrl });
+        await waitUntil(
+            async () => evaluate(page, `Boolean(
+                globalThis.__MEMA_FIXTURE__?.api?.UI?.shadow
+                && document.getElementById('fixture-state')?.textContent === 'hazır'
+            )`),
+            `${method} fixture readiness`,
+            15_000,
+        );
+        const resultPromise = evaluate(page, `(async () => globalThis.__MEMA_FIXTURE__.${method}())()`);
+        void resultPromise.catch(() => {});
+        if (interaction) await interaction(page);
+        const result = await resultPromise;
+        await delay(250);
+        if (interceptionError) throw interceptionError;
+        const externalRequests = requests.filter(url => url
+            && url !== 'about:blank'
+            && !url.startsWith(`${allowedOrigin}/`)
+            && !url.startsWith('data:'));
+        assert.deepEqual(externalRequests, [], `${method} must not issue an external browser request.`);
+        assert.deepEqual(blockedRequests, [], `${method} attempted a blocked external browser request.`);
+        assert.deepEqual(externalSockets, [], `${method} attempted an external WebSocket or WebTransport request.`);
+        assert.deepEqual(result?.externalNetworkAttempts || [], [], `${method} attempted fixture-blocked navigation or network access.`);
+        return { result, requests, blockedRequests, externalSockets, consoleErrors };
+    } finally {
+        try {
+            page?.close();
+        } finally {
+            if (targetId) await chrome.browser.send('Target.closeTarget', { targetId }, 3_000).catch(() => false);
+        }
+    }
+}
+
+test('Message Assistant isolated Chrome regression fixture', { timeout: 540_000 }, async t => {
+    let server = null;
+    let chrome = null;
+    let proxy = null;
+    let failure = null;
+    try {
+        proxy = await startBlackholeProxy();
+        server = await startFixtureServer();
+        chrome = await startChrome(proxy.port);
+
+        await t.test('route-before-DOM hydration and double click send exactly once in Turkish', { timeout: TIMEOUT_MS }, async () => {
+            const { result } = await runBrowserScenario(chrome, server.url, '/?transition=1&label=tr&double=1', 'runScenario');
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.doubleClick, true);
+            assert.equal(result.after.sendLanguage, 'tr');
+            assert.equal(result.after.campaignStatus, 'completed');
+        });
+
+        await t.test('English Send label resolves and verifies', { timeout: TIMEOUT_MS }, async () => {
+            const { result } = await runBrowserScenario(chrome, server.url, '/?label=en', 'runScenario');
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.sendLanguage, 'en');
+            assert.equal(result.after.orderStatus, 'sent');
+        });
+
+        await t.test('disabled Send fails closed without a native click', { timeout: TIMEOUT_MS }, async () => {
+            const { result } = await runBrowserScenario(chrome, server.url, '/?disabled=1&label=tr', 'runDisabledSendScenario');
+            assert.equal(result.after.sendCount, 0);
+            assert.equal(result.after.itemStatus, 'inserted');
+            assert.notEqual(result.after.orderStatus, 'sent');
+        });
+
+        await t.test('wrong order after compose hydration cannot create sent ledgers', { timeout: TIMEOUT_MS }, async () => {
+            const { result } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?transition=1&transition_order=10009999',
+                'runMismatchScenario',
+            );
+            assert.equal(result.after.actualOrderId, '10009999');
+            assert.notEqual(result.after.itemStatus, 'sent');
+            assert.equal(result.after.sentConversationCount, 0);
+        });
+
+        await t.test('wrong customer after compose hydration cannot create sent ledgers', { timeout: TIMEOUT_MS }, async () => {
+            const { result } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?transition=1&transition_buyer=Wrong%20Fixture%20Buyer',
+                'runMismatchScenario',
+            );
+            assert.equal(result.after.actualBuyerName, 'Wrong Fixture Buyer');
+            assert.notEqual(result.after.orderStatus, 'sent');
+            assert.equal(result.after.sentConversationCount, 0);
+        });
+
+        await t.test('Message Center local job reaches composer, one Send, and duplicate-safe ledger', { timeout: TIMEOUT_MS }, async () => {
+            const { result } = await runBrowserScenario(chrome, server.url, '/?label=en', 'runMessageCenterScenario');
+            assert.equal(result.after.sendCount, 1);
+            assert.ok(result.after.sentLedger);
+            assert.equal(result.after.pending, null);
+            assert.equal(result.after.results[1]?.duplicatePrevented, true);
+        });
+
+        await t.test('trusted CDP Ctrl+Enter reaches one guarded form submit', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?native_input=shortcut&shortcut_count=1&label=en',
+                'runNativeInputScenario',
+                async page => {
+                    await waitForFixtureInteraction(page, 'trusted Ctrl+Enter fixture readiness');
+                    await dispatchTrustedModifiedEnter(page);
+                },
+            );
+            assert.equal(result.after.shortcutEvents.length, 1);
+            assert.equal(result.after.shortcutEvents[0]?.isTrusted, true);
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.formSubmitEvents.length, 1);
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('trusted CDP Meta+Enter reaches one guarded form submit', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?native_input=shortcut&shortcut_count=1&shortcut_modifier=meta&label=en',
+                'runNativeInputScenario',
+                async page => {
+                    await waitForFixtureInteraction(page, 'trusted Meta+Enter fixture readiness');
+                    await dispatchTrustedModifiedEnter(page, { modifier: 'meta' });
+                },
+            );
+            assert.equal(result.after.shortcutEvents.length, 1);
+            assert.equal(result.after.shortcutEvents[0]?.isTrusted, true);
+            assert.equal(result.after.shortcutEvents[0]?.metaKey, true);
+            assert.equal(result.after.nativeShortcutHandlerCount, 0);
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.formSubmitEvents.length, 1);
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('direct requestSubmit routes through one guarded native form submit', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?native_input=request-submit&label=tr',
+                'runNativeInputScenario',
+                async page => {
+                    await waitForFixtureInteraction(page, 'direct requestSubmit fixture readiness');
+                    await requestFixtureFormSubmit(page);
+                },
+            );
+            assert.equal(result.after.submitIntents.length, 2);
+            assert.equal(result.after.nativeTargetClickCount, 1);
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.formSubmitEvents.length, 1);
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('exact composer Save draft submitter never routes to Send', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?native_input=request-submit&label=en',
+                'runNonSendSubmitterScenario',
+                async page => {
+                    await waitForFixtureInteraction(page, 'Save draft submitter fixture readiness');
+                    await requestFixtureFormSubmit(page, 'fixture-save-draft');
+                },
+            );
+            assert.equal(result.after.submitIntents.length, 1);
+            assert.equal(result.after.submitIntents[0]?.submitterId, 'fixture-save-draft');
+            assert.equal(result.after.sendClickIntents.length, 0);
+            assert.equal(result.after.nativeTargetClickCount, 0);
+            assert.equal(result.after.formSubmitEvents.length, 0);
+            assert.equal(result.after.sendCount, 0);
+            assert.equal(result.after.outgoingCount, 0);
+            assert.equal(result.after.composerText, result.after.expectedText);
+            assert.equal(result.after.nativeAttemptCount, 0);
+            assert.equal(result.after.sentConversationCount, 0);
+            assert.ok(result.after.toastMessages.some(entry => entry.type === 'warning'
+                && /farklı bir işlem düğmesi|Gönder olarak çalıştırılmadı/i.test(entry.message)));
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('rapid double trusted Ctrl+Enter dispatches once', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?native_input=shortcut&shortcut_count=2&label=en',
+                'runNativeInputScenario',
+                async page => {
+                    await waitForFixtureInteraction(page, 'double Ctrl+Enter fixture readiness');
+                    await dispatchTrustedModifiedEnter(page, { count: 2 });
+                },
+            );
+            assert.equal(result.after.shortcutEvents.length, 2);
+            assert.ok(result.after.shortcutEvents.every(event => event.isTrusted));
+            assert.equal(result.after.nativeShortcutHandlerCount, 0);
+            assert.equal(result.after.nativeTargetClickCount, 1);
+            assert.equal(result.after.sendCount, 1);
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        for (const blocked of ['hold', 'stale', 'disabled']) {
+            await t.test(`${blocked} composer blocks requestSubmit and trusted Ctrl+Enter`, { timeout: TIMEOUT_MS }, async () => {
+                const disabledQuery = blocked === 'disabled' ? '&disabled=1' : '';
+                const { result, consoleErrors } = await runBrowserScenario(
+                    chrome,
+                    server.url,
+                    `/?native_input=blocked&block=${blocked}${disabledQuery}`,
+                    'runNativeInputScenario',
+                    async page => {
+                        await waitForFixtureInteraction(page, `${blocked} native input fixture readiness`);
+                        await requestFixtureFormSubmit(page);
+                        await dispatchTrustedModifiedEnter(page);
+                    },
+                );
+                assert.equal(result.after.shortcutEvents.length, 1);
+                assert.equal(result.after.shortcutEvents[0]?.isTrusted, true);
+                assert.equal(result.after.nativeTargetClickCount, 0);
+                assert.equal(result.after.sendCount, 0);
+                assert.equal(result.after.formSubmitEvents.length, 0);
+                assert.equal(result.after.outgoingCount, 0);
+                assert.equal(result.after.nativeShortcutHandlerCount, 0);
+                assert.equal(result.after.nativeAttemptCount, blocked === 'hold' ? 1 : 0);
+                assert.deepEqual(consoleErrors, []);
+            });
+        }
+    } catch (error) {
+        if (server?.output) error.fixtureServerOutput = server.output;
+        if (chrome?.stderr) error.chromeStderr = chrome.stderr;
+        failure = error;
+    } finally {
+        try { await stopChrome(chrome); } catch (error) { failure ||= error; }
+        try { await stopChild(server?.child); } catch (error) { failure ||= error; }
+        try { await stopBlackholeProxy(proxy); } catch (error) { failure ||= error; }
+    }
+    if (failure) throw failure;
+});

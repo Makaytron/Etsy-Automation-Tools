@@ -30,7 +30,7 @@ OpenUserJS is not an active distribution target. Its production publisher curren
 ## Release flow
 
 1. Version each standalone package independently. For a changed script, update only its metadata/runtime marker, package README files, latest changelog heading, and root README row. Change the suite `VERSION` and bundle release note only for an actual suite release.
-2. Run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online` for local version, syntax, updater behavior, secret-pattern, and URL-reachability checks; then review `git diff --check`.
+2. For Message Assistant changes, let its read-only CI workflow complete. Then run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online` for local version, syntax, updater behavior, secret-pattern, and URL-reachability checks; review `git diff --check` as well. Message Assistant CI packages a release candidate for manual or standalone-tag runs but never creates a tag or publishes a release.
 3. Create a signed commit and a scope-matching signed tag from the reviewed commit: `vX.Y.Z` for a suite release or `<package-slug>-vX.Y.Z` for one standalone package.
 4. After pushing canonical `main`, run `powershell -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1 -Online -RemoteParity` to prove that every public Raw file is byte-equivalent to its local source.
 5. Publish the complete GitHub Release once. The release-only webhook requests an immediate Greasy Fork refresh from the configured exact Raw `main` paths; Greasy Fork's own automatic synchronization may also poll those paths.
@@ -46,6 +46,6 @@ OpenUserJS is not an active distribution target. Its production publisher curren
 - Greasy Fork has no GitHub OAuth grant, PAT, deploy key, GitHub App, or repository write permission.
 - The webhook secret exists only in Greasy Fork and GitHub repository settings. It is never stored in Git, Actions, artifacts, logs, or documentation.
 - GitHub sends only public release-event metadata to the HTTPS webhook endpoint. SSL verification stays enabled.
-- GitHub Actions is not required for synchronization and remains disabled unless a separately reviewed release workflow is introduced.
+- GitHub Actions has read-only repository permission and runs local tests, fixture smoke validation, distribution checks, and deterministic release-candidate packaging. It never synchronizes a host, creates a tag, or publishes a release.
 - SourceForge integration is active, release-only, and limited to public GitHub Release data; it has no PAT, deploy key, GitHub App, or repository write permission.
 - No automatic promotional posting is performed to Product Hunt, DEV, Hacker News, AlternativeTo, Chocolatey, or WinGet catalogs.

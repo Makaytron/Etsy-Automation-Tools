@@ -1,0 +1,118 @@
+name: Message Assistant CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "etsy-message-assistant-v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: message-assistant-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate and package
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          $files = @(
+              'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+              'tools/Run-Message-Assistant-Browser-Fixture.mjs'
+              'tools/Test-Message-Assistant-Browser-Fixture.mjs'
+              'tools/fixtures/message-assistant-delivered/fixture.js'
+          )
+          foreach ($file in $files) {
+              node --check $file
+              if ($LASTEXITCODE -ne 0) {
+                  throw "JavaScript syntax validation failed: $file"
+              }
+          }
+
+      - name: Check changed lines for whitespace errors
+        shell: pwsh
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_HEAD_SHA: ${{ github.sha }}
+          GH_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          $eventName = $env:GH_EVENT_NAME
+          $headSha = $env:GH_HEAD_SHA
+          if ($eventName -eq 'pull_request') {
+              $baseSha = $env:GH_PR_BASE_SHA
+              git diff --check $baseSha $headSha
+          }
+          elseif ($eventName -eq 'push' -and $env:GH_PUSH_BEFORE -notmatch '^0+$') {
+              $baseSha = $env:GH_PUSH_BEFORE
+              git diff --check $baseSha $headSha
+          }
+          else {
+              git show --check --format= $headSha
+          }
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Whitespace validation failed.'
+          }
+
+      - name: Run Message Assistant behavior tests
+        run: node --test tools/Test-Message-Assistant.mjs
+
+      - name: Smoke-test the localhost fixture server
+        run: node --test tools/Test-Message-Assistant-Browser-Fixture.mjs
+
+      - name: Run the complete local distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1
+
+      - name: Build standalone release assets
+        id: package
+        shell: pwsh
+        env:
+          GH_REF_NAME: ${{ github.ref_name }}
+          GH_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          $outputDirectory = Join-Path $env:RUNNER_TEMP 'etsy-message-assistant-release'
+          $expectedVersion = ''
+          if ($env:GH_REF_TYPE -eq 'tag') {
+              $tagName = $env:GH_REF_NAME
+              $tagPrefix = 'etsy-message-assistant-v'
+              if (-not $tagName.StartsWith($tagPrefix, [System.StringComparison]::Ordinal)) {
+                  throw "Unexpected release tag: $tagName"
+              }
+              $expectedVersion = $tagName.Substring($tagPrefix.Length)
+          }
+          ./tools/New-Message-Assistant-ReleaseAssets.ps1 `
+              -ExpectedVersion $expectedVersion `
+              -OutputDirectory $outputDirectory
+          "artifact_path=$outputDirectory" >> $env:GITHUB_OUTPUT
+
+      - name: Upload the manually publishable release candidate
+        if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: etsy-message-assistant-release-candidate
+          path: ${{ steps.package.outputs.artifact_path }}
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 14

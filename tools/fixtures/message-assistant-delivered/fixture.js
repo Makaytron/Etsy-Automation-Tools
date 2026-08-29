@@ -6,10 +6,23 @@
     const BUYER_NAME = 'Fixture Buyer';
     const MESSAGE_URL = `https://www.etsy.com/conversations/new?with_id=${RECIPIENT_ID}&recipient_id=${RECIPIENT_ID}&referring_id=${ORDER_ID}&referring_type=receipt`;
     const THREAD_URL = 'https://www.etsy.com/messages/fixture-created-thread';
-    const simulateComposeTransition = new URL(location.href).searchParams.get('transition') === '1';
+    const parameters = new URL(location.href).searchParams;
+    const simulateComposeTransition = parameters.get('transition') === '1';
+    const sendLanguage = parameters.get('label') === 'en' ? 'en' : 'tr';
+    const nativeSendDisabled = parameters.get('disabled') === '1';
+    const transitionOrderId = parameters.get('transition_order') || ORDER_ID;
+    const transitionBuyerName = parameters.get('transition_buyer') || BUYER_NAME;
+    const nativeInputMode = parameters.get('native_input') || '';
+    const nativeInputBlock = parameters.get('block') || '';
+    const shortcutCount = Math.max(1, Number.parseInt(parameters.get('shortcut_count') || '1', 10) || 1);
+    const shortcutModifier = parameters.get('shortcut_modifier') === 'meta' ? 'meta' : 'ctrl';
     const storage = new Map();
     const valueListeners = new Map();
     const networkAttempts = [];
+    const shortcutEvents = [];
+    const submitIntents = [];
+    const sendClickIntents = [];
+    const formSubmitEvents = [];
     let route = 'orders';
     let routeUrl = 'https://www.etsy.com/your/orders/sold/completed';
     let api = null;
@@ -59,6 +72,11 @@
     globalThis.confirm = () => true;
     globalThis.open = url => { networkAttempts.push({ kind: 'window-open', url: String(url) }); return null; };
     document.addEventListener('click', (event) => {
+        const sendButton = event.target.closest?.('#fixture-native-send');
+        if (sendButton) sendClickIntents.push({
+            isTrusted: event.isTrusted,
+            defaultPrevented: event.defaultPrevented,
+        });
         const link = event.target.closest?.('[href]');
         if (!link) return;
         try {
@@ -72,6 +90,24 @@
             event.stopImmediatePropagation();
             networkAttempts.push({ kind: 'navigation-blocked', url: String(link.getAttribute('href') || '') });
         }
+    }, true);
+    document.addEventListener('submit', (event) => {
+        if (event.target?.id !== 'fixture-message-form') return;
+        submitIntents.push({
+            isTrusted: event.isTrusted,
+            submitterId: event.submitter?.id || '',
+            defaultPrevented: event.defaultPrevented,
+        });
+    }, true);
+    document.addEventListener('keydown', (event) => {
+        if (event.target?.id !== 'fixture-message' || event.key !== 'Enter'
+            || (!event.ctrlKey && !event.metaKey) || event.shiftKey) return;
+        shortcutEvents.push({
+            isTrusted: event.isTrusted,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            repeat: event.repeat,
+        });
     }, true);
 
     const fixtureRoot = () => document.getElementById('etsy-fixture');
@@ -110,53 +146,102 @@
         panel.insertBefore(row, panel.querySelector('.fixture-composer'));
     }
 
-    function renderConversation({ thread = false } = {}) {
+    async function appendOutgoingAfterTransitionBaseline(text) {
+        await waitUntil(() => {
+            const pending = api?.Verification?.activePending || api?.Verification?.pending;
+            return pending?.transitionBaselineMatches != null
+                && pending.transitionBaselineRouteFingerprint === api.Router.routeFingerprint();
+        }, 'compose transition verification baseline', 7000);
+        const hydratedPanel = fixtureRoot().querySelector('[role="tabpanel"]');
+        if (!hydratedPanel) throw new Error('Fixture lost the hydrated conversation panel.');
+        appendOutgoing(hydratedPanel, text);
+        await routeListener?.(api.Router.routeFingerprint());
+    }
+
+    async function appendMismatchedOutgoing(text) {
+        await new Promise(resolve => setTimeout(resolve, 550));
+        const hydratedPanel = fixtureRoot().querySelector('[role="tabpanel"]');
+        if (!hydratedPanel) throw new Error('Fixture lost the mismatched conversation panel.');
+        appendOutgoing(hydratedPanel, text);
+        await routeListener?.(api.Router.routeFingerprint());
+    }
+
+    async function runComposeTransition(text) {
+        await waitUntil(
+            () => {
+                const pending = api?.Verification?.activePending;
+                return pending?.sourceWasCompose && pending?.sendCapturedAt ? pending : null;
+            },
+            'active compose send verification',
+            5000,
+        );
+
+        routeUrl = THREAD_URL;
+        fixtureRoot().innerHTML = '<h1>Messages — loading created thread</h1><div role="status" aria-busy="true">Konuşma yükleniyor…</div>';
+        setFixtureState('konuşma rotası değişti; DOM yükleniyor');
+        history.pushState({}, '', '/fixture/created-thread');
+        await routeListener?.(api.Router.routeFingerprint());
+
+        await new Promise(resolve => setTimeout(resolve, 350));
+        renderConversation({ thread: true });
+        await routeListener?.(api.Router.routeFingerprint());
+        const exactTransition = transitionOrderId === ORDER_ID && transitionBuyerName === BUYER_NAME;
+        if (exactTransition) await appendOutgoingAfterTransitionBaseline(text);
+        else await appendMismatchedOutgoing(text);
+    }
+
+    function renderConversation({ thread = false, incoming = false } = {}) {
         route = 'messages';
-        if (!thread) routeUrl = MESSAGE_URL;
+        routeUrl = thread ? THREAD_URL : MESSAGE_URL;
+        const effectiveBuyerName = thread ? transitionBuyerName : BUYER_NAME;
+        const effectiveOrderId = thread ? transitionOrderId : ORDER_ID;
+        const nativeSendLabel = sendLanguage === 'en' ? 'Send' : 'Mesaj gönder';
         fixtureRoot().innerHTML = `
           <h1>Messages — ${thread ? 'Created thread' : 'New conversation'} fixture</h1>
           <section class="conversations-subapp">
-            <div role="tabpanel" data-conversation-id="${thread ? 'fixture-created-thread' : `compose-${RECIPIENT_ID}`}">
-              <h3 class="buyer-name"><a href="https://www.etsy.com/people/fixture-buyer">${BUYER_NAME}</a></h3>
-              <a href="https://www.etsy.com/your/orders/sold/completed?order_id=${ORDER_ID}">Order #${ORDER_ID}</a>
+            <div role="tabpanel" ${thread ? 'data-conversation-id="fixture-created-thread"' : ''}>
+              <h3 class="buyer-name"><a href="https://www.etsy.com/people/fixture-buyer">${effectiveBuyerName}</a></h3>
+              <a href="https://www.etsy.com/your/orders/sold/completed?order_id=${effectiveOrderId}">Order #${effectiveOrderId}</a>
               <a href="https://www.etsy.com/transaction/30000003" title="Fixture Item">Fixture Item</a>
+              ${incoming ? `<div class="wt-grid"><div data-message-direction="incoming" data-message-id="fixture-incoming-1"><span data-message-text>Hello from the fixture buyer.</span></div></div>` : ''}
               <div class="fixture-composer">
                 <form id="fixture-message-form">
                   <label for="fixture-message">Reply</label>
                   <textarea id="fixture-message" name="message" placeholder="Reply"></textarea>
+                  <button id="fixture-save-draft" type="submit" aria-label="Save draft">Save draft</button>
+                  <button id="fixture-native-send" type="submit" aria-label="${nativeSendLabel}" ${nativeSendDisabled ? 'disabled' : ''}>${nativeSendLabel}</button>
                 </form>
-                <button id="fixture-native-send" type="button" aria-label="Mesaj gönder">Mesaj gönder</button>
               </div>
             </div>
           </section>`;
+        const form = document.getElementById('fixture-message-form');
         const textarea = document.getElementById('fixture-message');
         const sendButton = document.getElementById('fixture-native-send');
         sendButton.addEventListener('click', () => {
+            window.__MEMA_FIXTURE__.nativeTargetClickCount += 1;
+        });
+        textarea.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey) || event.shiftKey || event.repeat) return;
+            window.__MEMA_FIXTURE__.nativeShortcutHandlerCount += 1;
+            event.preventDefault();
+            form.requestSubmit(sendButton);
+        });
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
             const text = textarea.value.trim();
             if (!text) return;
             const panel = sendButton.closest('[role="tabpanel"]');
+            formSubmitEvents.push({
+                isTrusted: event.isTrusted,
+                submitterId: event.submitter?.id || '',
+            });
             textarea.value = '';
             textarea.dispatchEvent(new Event('input', { bubbles: true }));
             window.__MEMA_FIXTURE__.sendCount += 1;
             window.__MEMA_FIXTURE__.lastSentText = text;
             document.getElementById('fixture-send-count').textContent = String(window.__MEMA_FIXTURE__.sendCount);
             if (simulateComposeTransition && !thread) {
-                routeUrl = THREAD_URL;
-                fixtureRoot().innerHTML = '<h1>Messages — loading created thread</h1><div role="status" aria-busy="true">Konuşma yükleniyor…</div>';
-                setFixtureState('konuşma rotası değişti; DOM yükleniyor');
-                history.pushState({}, '', '/fixture/created-thread');
-                queueMicrotask(() => {
-                    void routeListener?.(api.Router.routeFingerprint());
-                });
-                setTimeout(() => {
-                    renderConversation({ thread: true });
-                    void routeListener?.(api.Router.routeFingerprint());
-                    setTimeout(() => {
-                        const hydratedPanel = fixtureRoot().querySelector('[role="tabpanel"]');
-                        appendOutgoing(hydratedPanel, text);
-                        void routeListener?.(api.Router.routeFingerprint());
-                    }, 550);
-                }, 350);
+                window.__MEMA_FIXTURE__.transitionPromise = runComposeTransition(text);
             } else appendOutgoing(panel, text);
         });
         setFixtureState('mesaj sayfası');
@@ -172,10 +257,14 @@
         throw new Error(`Fixture timeout: ${label}`);
     };
 
-    async function runScenario() {
+    const assertFixture = (condition, message) => {
+        if (!condition) throw new Error(`Fixture assertion failed: ${message}`);
+    };
+
+    async function prepareCampaign({ expectSendEnabled = false } = {}) {
         if (!api) throw new Error('Message Assistant test API is not ready.');
-        const shadow = api.UI.shadow;
-        shadow.querySelector('[data-action="toggle-app"]').click();
+        const shadow = await waitUntil(() => api.UI.shadow, 'Message Assistant shadow root');
+        if (!api.UI.state.open) shadow.querySelector('[data-action="toggle-app"]').click();
         await waitUntil(() => api.UI.state.open && api.UI.state.page === 'orders', 'orders panel open');
 
         const decision = await waitUntil(() => shadow.querySelector(`[data-review-decision="${ORDER_ID}"]`), 'review decision');
@@ -193,13 +282,12 @@
             'campaign draft insertion',
         );
         await waitUntil(() => api.Store.campaign?.items?.[0]?.status === 'inserted', 'campaign inserted state');
-        await waitUntil(
-            () => api.UI.shadow.querySelector('[data-action="campaign-send-next"]'),
-            'guided send control',
-        );
+        const guidedButton = await waitUntil(() => {
+            const candidate = api.UI.shadow.querySelector('[data-action="campaign-send-next"]');
+            return candidate && (!expectSendEnabled || !candidate.disabled) ? candidate : null;
+        }, expectSendEnabled ? 'enabled guided send control' : 'guided send control');
         const nativeButton = document.getElementById('fixture-native-send');
         const resolvedButton = api.MessageAdapter.getSendButton();
-        const guidedButton = shadow.querySelector('[data-action="campaign-send-next"]');
         const before = {
             routeIdentity: api.Router.conversationIdentity(routeUrl),
             messageUrl: api.Store.campaign?.items?.[0]?.messageUrl || '',
@@ -210,24 +298,36 @@
             itemStatus: api.Store.campaign?.items?.[0]?.status || '',
         };
 
-        const assertFixture = (condition, message) => {
-            if (!condition) throw new Error(`Fixture assertion failed: ${message}`);
-        };
         assertFixture(before.routeIdentity === `compose:${RECIPIENT_ID}:receipt:${ORDER_ID}`, 'compose route identity');
         assertFixture(before.messageUrl === MESSAGE_URL, 'receipt-bound campaign URL');
         assertFixture(Boolean(before.composerText.trim()), 'non-empty campaign draft');
-        assertFixture(before.nativeButtonResolved, 'native Etsy Send selector');
-        assertFixture(before.guidedButtonEnabled, 'guided send control');
         assertFixture(before.campaignStatus === 'active', 'active campaign before Send');
         assertFixture(before.itemStatus === 'inserted', 'inserted item before Send');
+        return { shadow, textarea, nativeButton, guidedButton, before };
+    }
 
+    async function runScenario(options = {}) {
+        const prepared = await prepareCampaign({ expectSendEnabled: true });
+        const { guidedButton, before } = prepared;
+        assertFixture(before.nativeButtonResolved, `${sendLanguage} native Etsy Send selector`);
+        assertFixture(before.guidedButtonEnabled, 'guided send control');
+
+        const doubleClick = options.doubleClick === true || parameters.get('double') === '1';
         guidedButton.click();
+        if (doubleClick) guidedButton.click();
+        if (simulateComposeTransition) {
+            const transitionPromise = await waitUntil(
+                () => window.__MEMA_FIXTURE__.transitionPromise,
+                'compose transition fixture task',
+            );
+            await transitionPromise;
+        }
         await waitUntil(() => api.Store.campaign?.status === 'completed', 'verified campaign completion');
         await waitUntil(() => api.Store.statuses.orders?.[ORDER_ID]?.status === 'sent', 'persistent sent order status');
-        await waitUntil(
-            () => api.Store.statuses.conversations?.['fixture-created-thread']?.status === 'sent',
-            'created thread conversation ledger',
-        );
+        const conversationId = simulateComposeTransition
+            ? 'fixture-created-thread'
+            : api.Router.conversationIdFromUrl(routeUrl);
+        await waitUntil(() => api.Store.statuses.conversations?.[conversationId]?.status === 'sent', 'conversation ledger');
 
         const result = {
             before,
@@ -238,8 +338,11 @@
                 campaignStatus: api.Store.campaign?.status || '',
                 itemStatus: api.Store.campaign?.items?.[0]?.status || '',
                 orderStatus: api.Store.statuses.orders?.[ORDER_ID]?.status || '',
-                conversationStatus: api.Store.statuses.conversations?.['fixture-created-thread']?.status || '',
+                conversationId,
+                conversationStatus: api.Store.statuses.conversations?.[conversationId]?.status || '',
                 outreachWorkflow: api.Store.statuses.outreach?.[ORDER_ID]?.review_request?.workflow || '',
+                sendLanguage,
+                doubleClick,
             },
             externalNetworkAttempts: copy(networkAttempts),
         };
@@ -249,10 +352,367 @@
         assertFixture(result.after.campaignStatus === 'completed', 'completed campaign after verification');
         assertFixture(result.after.itemStatus === 'sent', 'sent campaign item after verification');
         assertFixture(result.after.orderStatus === 'sent', 'sent order after verification');
-        assertFixture(result.after.conversationStatus === 'sent', 'created thread conversation ledger after verification');
+        assertFixture(result.after.conversationStatus === 'sent', 'conversation ledger after verification');
         assertFixture(result.after.outreachWorkflow === 'sent', 'sent review-request workflow after verification');
         document.getElementById('fixture-last-result').textContent = JSON.stringify(result.after);
         return result;
+    }
+
+    async function runDisabledSendScenario() {
+        assertFixture(nativeSendDisabled, 'disabled-send scenario flag');
+        const { nativeButton, guidedButton, before } = await prepareCampaign();
+        assertFixture(!before.nativeButtonResolved, 'disabled native Send rejected');
+        assertFixture(!before.guidedButtonEnabled && guidedButton?.disabled, 'guided Send remains disabled');
+
+        let error = '';
+        try { await api.Campaign.sendCurrentByUser(); }
+        catch (caught) { error = String(caught?.message || caught); }
+        nativeButton.click();
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        const result = {
+            sendCount: window.__MEMA_FIXTURE__.sendCount,
+            outgoingCount: document.querySelectorAll('[data-message-direction="outgoing"]').length,
+            campaignStatus: api.Store.campaign?.status || '',
+            itemStatus: api.Store.campaign?.items?.[0]?.status || '',
+            orderStatus: api.Store.statuses.orders?.[ORDER_ID]?.status || '',
+            error,
+        };
+        assertFixture(/Send|Gönder/i.test(error), 'disabled Send reports an explicit error');
+        assertFixture(result.sendCount === 0, 'disabled native Send never clicked');
+        assertFixture(result.outgoingCount === 0, 'disabled Send creates no outgoing bubble');
+        assertFixture(result.campaignStatus === 'active', 'disabled Send leaves campaign active');
+        assertFixture(result.itemStatus === 'inserted', 'disabled Send leaves draft inserted');
+        assertFixture(result.orderStatus !== 'sent', 'disabled Send creates no sent order ledger');
+        document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+        return { before, after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
+    async function runMismatchScenario() {
+        assertFixture(simulateComposeTransition, 'mismatch scenario uses compose transition');
+        assertFixture(
+            transitionOrderId !== ORDER_ID || transitionBuyerName !== BUYER_NAME,
+            'mismatch scenario changes customer or order',
+        );
+        const { guidedButton, before } = await prepareCampaign({ expectSendEnabled: true });
+        assertFixture(before.nativeButtonResolved && before.guidedButtonEnabled, 'mismatch scenario can dispatch locally');
+        guidedButton.click();
+        await waitUntil(() => window.__MEMA_FIXTURE__.sendCount === 1, 'single local dispatch');
+        const transitionPromise = await waitUntil(
+            () => window.__MEMA_FIXTURE__.transitionPromise,
+            'mismatched compose transition fixture task',
+        );
+        await transitionPromise;
+        await waitUntil(() => document.querySelector('[role="tabpanel"]'), 'mismatched thread hydration');
+        await waitUntil(
+            () => document.querySelectorAll('[data-message-direction="outgoing"]').length === 1,
+            'mismatched outgoing bubble',
+        );
+        await new Promise(resolve => setTimeout(resolve, 300));
+        await waitUntil(() => !api.Verification.activePromise, 'mismatch verification stops', 5000);
+
+        const conversationStatuses = Object.values(api.Store.statuses.conversations || {});
+        const result = {
+            sendCount: window.__MEMA_FIXTURE__.sendCount,
+            outgoingCount: document.querySelectorAll('[data-message-direction="outgoing"]').length,
+            actualOrderId: api.MessageAdapter.context().orderId,
+            actualBuyerName: api.MessageAdapter.context().customerName,
+            campaignStatus: api.Store.campaign?.status || '',
+            itemStatus: api.Store.campaign?.items?.[0]?.status || '',
+            orderStatus: api.Store.statuses.orders?.[ORDER_ID]?.status || '',
+            sentConversationCount: conversationStatuses.filter(status => status?.status === 'sent').length,
+        };
+        assertFixture(result.sendCount === 1, 'mismatch still records only one local native click');
+        assertFixture(result.campaignStatus !== 'completed', 'mismatch cannot complete campaign');
+        assertFixture(result.itemStatus !== 'sent', 'mismatch cannot mark campaign item sent');
+        assertFixture(result.orderStatus !== 'sent', 'mismatch cannot mark order sent');
+        assertFixture(result.sentConversationCount === 0, 'mismatch cannot create a sent conversation ledger');
+        document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+        return { before, after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
+    async function prepareNativeInputScenario({ exposeInteraction = true } = {}) {
+        assertFixture(['shortcut', 'request-submit', 'blocked'].includes(nativeInputMode), 'native input mode');
+        assertFixture(['', 'hold', 'stale', 'disabled'].includes(nativeInputBlock), 'native input block');
+        renderConversation({ thread: true, incoming: true });
+        history.pushState({}, '', '/fixture/native-input-thread');
+
+        const form = document.getElementById('fixture-message-form');
+        const textarea = document.getElementById('fixture-message');
+        const sendButton = document.getElementById('fixture-native-send');
+        if (nativeInputBlock === 'stale') {
+            form.closest('[role="tabpanel"]').dataset.conversationId = 'fixture-stale-thread';
+        }
+        await routeListener?.(api.Router.routeFingerprint());
+
+        const conversationIdentity = api.Router.conversationIdentity();
+        if (nativeInputBlock === 'hold') {
+            const timestamp = new Date().toISOString();
+            await api.Verification.persistNativeSendAttempt({
+                id: 'fixture-native-send-hold',
+                stage: 'ambiguous',
+                conversationId: 'fixture-created-thread',
+                conversationIdentity,
+                conversationUrl: THREAD_URL,
+                text: 'Earlier fixture message with an unresolved result.',
+                textDigest: 'a'.repeat(64),
+                textDigestVersion: 'sha256-utf8-v1',
+                dispatchedAt: timestamp,
+                createdAt: timestamp,
+                ambiguousAt: timestamp,
+            });
+        }
+
+        const text = 'Manual fixture reply through the guarded composer.';
+        textarea.value = text;
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.focus();
+        assertFixture(document.activeElement === textarea, 'native input composer focus');
+        if (nativeInputBlock === 'hold') {
+            assertFixture(api.Verification.localNativeSendHoldIsCurrent(conversationIdentity), 'native send hold is current');
+        } else if (nativeInputBlock === 'stale') {
+            assertFixture(!api.MessageAdapter.getTextarea() && !api.MessageAdapter.getSendButton(), 'stale composer is rejected');
+        } else if (nativeInputBlock === 'disabled') {
+            assertFixture(nativeSendDisabled && sendButton.disabled, 'disabled native Send fixture');
+            assertFixture(!api.MessageAdapter.getSendButton(), 'disabled native Send is rejected');
+        } else {
+            assertFixture(api.MessageAdapter.getTextarea() === textarea, 'current native composer');
+            assertFixture(api.MessageAdapter.getSendButton() === sendButton, 'current native Send');
+        }
+        if (exposeInteraction) window.__MEMA_FIXTURE__.interactionReady = true;
+        return { form, textarea, sendButton, text, conversationIdentity };
+    }
+
+    async function nativeInputResult(text) {
+        const attempts = await api.Verification.nativeSendAttempts();
+        const conversationStatuses = Object.values(api.Store.statuses.conversations || {});
+        return {
+            nativeInputMode,
+            nativeInputBlock,
+            shortcutCount,
+            shortcutModifier,
+            sendCount: window.__MEMA_FIXTURE__.sendCount,
+            nativeTargetClickCount: window.__MEMA_FIXTURE__.nativeTargetClickCount,
+            nativeShortcutHandlerCount: window.__MEMA_FIXTURE__.nativeShortcutHandlerCount,
+            lastSentText: window.__MEMA_FIXTURE__.lastSentText,
+            outgoingCount: document.querySelectorAll('[data-message-direction="outgoing"]').length,
+            composerText: document.getElementById('fixture-message')?.value || '',
+            shortcutEvents: copy(shortcutEvents),
+            submitIntents: copy(submitIntents),
+            sendClickIntents: copy(sendClickIntents),
+            formSubmitEvents: copy(formSubmitEvents),
+            nativeAttemptCount: Object.keys(attempts).length,
+            nativeAttempts: Object.values(attempts).map(attempt => ({
+                id: attempt?.id || '',
+                stage: attempt?.stage || '',
+                conversationIdentity: attempt?.conversationIdentity || '',
+            })),
+            orderStatus: api.Store.statuses.orders?.[ORDER_ID]?.status || '',
+            conversationStatus: api.Store.statuses.conversations?.['fixture-created-thread']?.status || '',
+            sentConversationCount: conversationStatuses.filter(status => status?.status === 'sent').length,
+            expectedText: text,
+        };
+    }
+
+    async function runNativeInputScenario() {
+        const { text } = await prepareNativeInputScenario();
+        if (nativeInputMode === 'blocked') {
+            await waitUntil(
+                () => submitIntents.length >= 1 && shortcutEvents.length >= shortcutCount,
+                'blocked requestSubmit and trusted shortcut intents',
+                5000,
+            );
+            await new Promise(resolve => setTimeout(resolve, 700));
+            const result = await nativeInputResult(text);
+            assertFixture(result.shortcutEvents.length === shortcutCount, 'all blocked shortcut intents observed');
+            assertFixture(
+                result.shortcutEvents.every(event => event.isTrusted
+                    && (shortcutModifier === 'meta' ? event.metaKey : event.ctrlKey)),
+                `blocked shortcut events are trusted ${shortcutModifier}+Enter`,
+            );
+            assertFixture(result.nativeShortcutHandlerCount === 0, 'blocked shortcut is stopped before Etsy target handlers');
+            assertFixture(result.submitIntents.length === 1, 'only the directly requested blocked submit intent is observed');
+            assertFixture(
+                result.sendClickIntents.length === (nativeInputBlock === 'hold' ? 2 : 0),
+                'blocked Send click intent count',
+            );
+            assertFixture(result.sendCount === 0 && result.formSubmitEvents.length === 0, 'blocked input cannot reach Etsy form submit');
+            assertFixture(result.nativeTargetClickCount === 0, 'blocked input cannot reach the native Send target');
+            assertFixture(result.outgoingCount === 0, 'blocked input creates no outgoing bubble');
+            assertFixture(result.composerText === text, 'blocked input preserves the composer text');
+            assertFixture(result.orderStatus !== 'sent' && result.sentConversationCount === 0, 'blocked input creates no sent ledger');
+            if (nativeInputBlock === 'hold') {
+                assertFixture(result.nativeAttemptCount === 1, 'existing native hold remains the only attempt');
+                assertFixture(
+                    result.nativeAttempts[0]?.id === 'fixture-native-send-hold'
+                        && result.nativeAttempts[0]?.stage === 'ambiguous',
+                    'existing native hold identity and stage are preserved',
+                );
+            } else assertFixture(result.nativeAttemptCount === 0, 'blocked input creates no native send attempt');
+            document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+            return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+        }
+
+        if (nativeInputMode === 'shortcut') {
+            await waitUntil(() => shortcutEvents.length >= shortcutCount, 'trusted shortcut intents', 5000);
+        } else {
+            await waitUntil(() => submitIntents.length >= 1, 'direct requestSubmit intent', 5000);
+        }
+        await waitUntil(() => window.__MEMA_FIXTURE__.sendCount === 1, 'single guarded form submit', 10000);
+        await waitUntil(
+            () => !api.Verification.nativeDispatchGuard
+                && !api.Verification.pending
+                && !api.Verification.activePending
+                && !api.Verification.activePromise,
+            'native send verification completion',
+            10000,
+        );
+        await waitUntil(
+            () => api.Store.statuses.conversations?.['fixture-created-thread']?.status === 'sent',
+            'native conversation sent ledger',
+            5000,
+        );
+        const result = await nativeInputResult(text);
+        if (nativeInputMode === 'shortcut') {
+            assertFixture(result.shortcutEvents.length === shortcutCount, 'expected shortcut count observed');
+            assertFixture(
+                result.shortcutEvents.every(event => event.isTrusted
+                    && (shortcutModifier === 'meta' ? event.metaKey : event.ctrlKey)
+                    && !event.repeat),
+                `trusted ${shortcutModifier}+Enter keydown events`,
+            );
+            assertFixture(result.nativeShortcutHandlerCount === 0, 'shortcut is stopped before Etsy target handlers');
+            assertFixture(result.submitIntents.length === 1, 'shortcut produces one guarded submit intent');
+            assertFixture(result.sendClickIntents.length === shortcutCount + 1, 'shortcut click intents are duplicate-safe');
+        } else {
+            assertFixture(result.submitIntents.length === 2, 'requestSubmit is intercepted before exactly one guarded submit');
+            assertFixture(result.sendClickIntents.length === 2, 'requestSubmit reaches exactly one guarded native click');
+        }
+        assertFixture(result.sendCount === 1 && result.formSubmitEvents.length === 1, 'one real Etsy form submit');
+        assertFixture(result.nativeTargetClickCount === 1, 'one guarded native Send target click');
+        assertFixture(result.lastSentText === text && result.composerText === '', 'exact native text sent and composer cleared');
+        assertFixture(result.outgoingCount === 1, 'one native outgoing bubble');
+        assertFixture(result.nativeAttemptCount === 0, 'native send hold cleared after verification');
+        assertFixture(result.orderStatus === 'sent' && result.conversationStatus === 'sent', 'native send ledgers persisted');
+        document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+        return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
+    async function runNonSendSubmitterScenario() {
+        assertFixture(nativeInputMode === 'request-submit' && !nativeInputBlock, 'non-Send submitter input mode');
+        const { text } = await prepareNativeInputScenario({ exposeInteraction: false });
+        const saveDraftButton = document.getElementById('fixture-save-draft');
+        assertFixture(saveDraftButton?.type === 'submit', 'Save draft is a real secondary submitter');
+        assertFixture(!api.MessageAdapter.hasExplicitSendLabel(saveDraftButton), 'Save draft is not a Send control');
+
+        const toastMessages = [];
+        const originalToast = api.UI.toast;
+        api.UI.toast = function fixtureToast(message, type, ...rest) {
+            toastMessages.push({ message: String(message || ''), type: String(type || '') });
+            return originalToast.call(this, message, type, ...rest);
+        };
+        window.__MEMA_FIXTURE__.interactionReady = true;
+        try {
+            await waitUntil(
+                () => submitIntents.some(event => event.submitterId === 'fixture-save-draft'),
+                'Save draft submit intent',
+                5000,
+            );
+            await new Promise(resolve => setTimeout(resolve, 700));
+            const result = {
+                ...await nativeInputResult(text),
+                toastMessages: copy(toastMessages),
+            };
+            assertFixture(result.submitIntents.length === 1, 'one Save draft submit intent');
+            assertFixture(result.submitIntents[0]?.submitterId === 'fixture-save-draft', 'non-Send submitter identity preserved');
+            assertFixture(result.sendClickIntents.length === 0 && result.nativeTargetClickCount === 0, 'Save draft never routes to Send');
+            assertFixture(result.formSubmitEvents.length === 0 && result.sendCount === 0, 'Save draft never reaches the real form submit handler');
+            assertFixture(result.outgoingCount === 0 && result.composerText === text, 'Save draft creates no outgoing bubble and preserves text');
+            assertFixture(result.nativeAttemptCount === 0, 'Save draft creates no native send attempt');
+            assertFixture(result.orderStatus !== 'sent' && result.sentConversationCount === 0, 'Save draft creates no sent ledger');
+            assertFixture(result.toastMessages.some(entry => entry.type === 'warning'
+                && /farklı bir işlem düğmesi|Gönder olarak çalıştırılmadı/i.test(entry.message)), 'Save draft rejection warns the user');
+            document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+            return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+        } finally {
+            api.UI.toast = originalToast;
+        }
+    }
+
+    async function runMessageCenterScenario() {
+        if (!api?.MessageCenterAgent) throw new Error('Message Center test API is not ready.');
+        assertFixture(transitionOrderId === ORDER_ID && transitionBuyerName === BUYER_NAME, 'Message Center exact thread identity');
+        renderConversation({ thread: true, incoming: true });
+        history.pushState({}, '', '/fixture/message-center-thread');
+        await routeListener?.(api.Router.routeFingerprint());
+
+        const agent = api.MessageCenterAgent;
+        const job = {
+            id: 'fixture-message-center-job-1',
+            type: 'reply',
+            conversationId: 'fixture-created-thread',
+            conversationUrl: THREAD_URL,
+            text: 'Message Center fixture reply.',
+        };
+        const requests = [];
+        const results = [];
+        let nextJobCalls = 0;
+        agent.request = async (method, path, body = null, binding = agent.config()) => {
+            requests.push({ method, path, body: copy(body), storeId: binding.storeId });
+            if (method === 'GET' && path.endsWith('/jobs/next')) {
+                nextJobCalls += 1;
+                return { job: nextJobCalls <= 2 ? copy(job) : null };
+            }
+            if (method === 'POST' && path.endsWith(`/jobs/${job.id}/result`)) results.push(copy(body));
+            return { ok: true };
+        };
+
+        await api.Store.saveSettings({
+            ...api.Store.settings,
+            messageCenterEnabled: true,
+            messageCenterStoreId: 'fixture-store',
+            messageCenterAgentToken: 'fixture-token',
+            messageCenterUrl: location.origin,
+            messageCenterSyncSeconds: 120,
+            messageCenterPollSeconds: 60,
+        });
+
+        try {
+            const firstRun = await agent.reconfigure();
+            await waitUntil(() => results.some(result => result?.status === 'sent'), 'Message Center sent result', 10000);
+            const secondRun = await agent.processNextJob();
+            await waitUntil(() => results.length === 2, 'Message Center duplicate result');
+            const binding = agent.config();
+            const ledger = await globalThis.GM.getValue(agent.sentLedgerKey(binding), {});
+            const pending = await globalThis.GM.getValue(agent.pendingKey(binding), null);
+            const result = {
+                firstRun,
+                secondRun,
+                sendCount: window.__MEMA_FIXTURE__.sendCount,
+                outgoingCount: document.querySelectorAll('[data-message-direction="outgoing"]').length,
+                composerText: document.getElementById('fixture-message')?.value || '',
+                sentLedger: ledger[job.id] || null,
+                pending,
+                nextJobCalls,
+                results,
+                requestPaths: requests.map(request => `${request.method} ${request.path}`),
+            };
+            assertFixture(result.firstRun === true, 'Message Center processes the local job');
+            assertFixture(result.secondRun === true, 'Message Center safely resolves duplicate job');
+            assertFixture(result.sendCount === 1, 'Message Center duplicate job clicks Send once');
+            assertFixture(result.outgoingCount === 1, 'Message Center creates one outgoing bubble');
+            assertFixture(result.composerText === '', 'Message Center composer clears after Send');
+            assertFixture(Boolean(result.sentLedger), 'Message Center writes sent ledger');
+            assertFixture(result.pending === null, 'Message Center clears pending job');
+            assertFixture(result.results[0]?.status === 'sent', 'Message Center reports sent');
+            assertFixture(result.results[1]?.duplicatePrevented === true, 'Message Center reports duplicate prevention');
+            document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+            return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+        } finally {
+            agent.clearTimers();
+            agent.generation += 1;
+            api.Store.settings.messageCenterEnabled = false;
+        }
     }
 
     window.__MEMA_FIXTURE__ = {
@@ -260,10 +720,27 @@
         recipientId: RECIPIENT_ID,
         messageUrl: MESSAGE_URL,
         simulateComposeTransition,
+        sendLanguage,
+        nativeSendDisabled,
+        transitionOrderId,
+        transitionBuyerName,
+        nativeInputMode,
+        nativeInputBlock,
+        shortcutCount,
+        shortcutModifier,
+        transitionPromise: null,
+        interactionReady: false,
         sendCount: 0,
+        nativeTargetClickCount: 0,
+        nativeShortcutHandlerCount: 0,
         lastSentText: '',
         networkAttempts,
         runScenario,
+        runDisabledSendScenario,
+        runMismatchScenario,
+        runNativeInputScenario,
+        runNonSendSubmitterScenario,
+        runMessageCenterScenario,
         get api() { return api; },
     };
 
@@ -273,6 +750,7 @@
         const originalConversationIdFromUrl = api.Router.conversationIdFromUrl.bind(api.Router);
         const originalCanonicalConversationUrl = api.Router.canonicalConversationUrl.bind(api.Router);
         const originalIsComposeTarget = api.Router.isComposeTarget.bind(api.Router);
+        const originalAgentCanonicalConversationUrl = api.MessageCenterAgent.canonicalConversationUrl.bind(api.MessageCenterAgent);
         api.Router.page = () => route;
         api.Router.isCompletedOrdersPage = () => route === 'orders';
         api.Router.isMessageListPage = () => false;
@@ -283,7 +761,10 @@
                 : '';
             return originalConversationIdFromUrl(candidate);
         };
-        api.Router.canonicalConversationUrl = (value, options = {}) => originalCanonicalConversationUrl(value, options);
+        api.Router.canonicalConversationUrl = (value, options = {}) => {
+            const candidate = String(value || '');
+            return originalCanonicalConversationUrl(candidate.startsWith(location.origin) ? routeUrl : candidate, options);
+        };
         api.Router.isComposeTarget = (value = routeUrl) => {
             const candidate = String(value || '');
             return originalIsComposeTarget(candidate.startsWith(location.origin) ? routeUrl : candidate);
@@ -300,6 +781,10 @@
                 void routeListener?.(api.Router.routeFingerprint());
             });
             return true;
+        };
+        api.MessageCenterAgent.canonicalConversationUrl = value => {
+            const candidate = String(value || '');
+            return originalAgentCanonicalConversationUrl(candidate.startsWith(location.origin) ? routeUrl : candidate);
         };
         await api.App.init();
         setFixtureState('hazır');
