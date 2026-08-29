@@ -761,6 +761,98 @@ test('new-message Etsy URLs bind identity to recipient and receipt instead of th
     }
 });
 
+test('completed-order compose URLs are receipt-bound message routes without weakening existing threads', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const orderId = '9876543210';
+    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    const identity = `compose:order:receipt:${orderId}`;
+
+    assert.deepEqual(copy(api.Router.orderComposeTargetFromUrl(orderComposeUrl)), {
+        kind: 'order-compose',
+        id: identity,
+        identity,
+        orderId,
+        recipientId: '',
+        referringId: orderId,
+        referringType: 'receipt',
+    });
+    assert.equal(api.Router.conversationIdentity(orderComposeUrl), identity);
+    assert.equal(api.Router.isComposeTarget(orderComposeUrl), true);
+    assert.equal(api.Router.canonicalConversationUrl(orderComposeUrl, { orderId }), orderComposeUrl);
+    assert.equal(api.Router.canonicalConversationUrl(orderComposeUrl, { orderId: '9876543211' }), '');
+
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    sandbox.location.href = orderComposeUrl;
+    assert.equal(api.Router.page(), 'messages');
+    assert.equal(api.Router.conversationId(), identity);
+    assert.equal(api.Router.isCompletedOrdersPage(), false);
+
+    const existingThread = 'https://www.etsy.com/messages/existing-thread?ref=orders';
+    assert.equal(api.Router.conversationIdentity(existingThread), 'existing-thread');
+    assert.equal(api.Router.canonicalConversationUrl(existingThread), existingThread);
+
+    for (const unsafe of [
+        `https://www.etsy.com/your/orders/sold/completed?expand_convo=false&order_id=${orderId}`,
+        `https://www.etsy.com/your/orders/sold/completed?expand_convo=true&expand_convo=true&order_id=${orderId}`,
+        'https://www.etsy.com/your/orders/sold/completed?expand_convo=true',
+        'https://www.etsy.com/your/orders/sold/completed?expand_convo=true&order_id=not-an-order',
+        `https://www.etsy.com/your/orders/sold/completed?expand_convo=true&order_id=${orderId}&order_id=${orderId}`,
+        `https://evil.example/your/orders/sold/completed?expand_convo=true&order_id=${orderId}`,
+    ]) {
+        assert.equal(api.Router.conversationIdentity(unsafe), '', unsafe);
+        assert.equal(api.Router.canonicalConversationUrl(unsafe, { orderId }), '', unsafe);
+    }
+});
+
+test('only Etsy\'s exact same-order purchases prefill may be replaced in order compose', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const orderId = '9876543210';
+    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    const identity = `compose:order:receipt:${orderId}`;
+    const item = {
+        orderId,
+        customerName: 'Fixture Buyer',
+        messageUrl: orderComposeUrl,
+    };
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    sandbox.location.href = orderComposeUrl;
+
+    const expectedPrefill = `https://www.etsy.com/your/purchases/${orderId}`;
+    assert.equal(api.MessageAdapter.etsyPurchasePrefillOrderId(expectedPrefill), orderId);
+    assert.equal(api.MessageAdapter.isExpectedOrderComposePrefill(expectedPrefill, {
+        orderId,
+        conversationUrl: orderComposeUrl,
+        conversationIdentity: identity,
+    }), true);
+    assert.equal(api.Campaign.composerCanAcceptDraft({ value: expectedPrefill }, item, identity), true);
+    assert.equal(api.Campaign.composerCanAcceptDraft({ value: '' }, item, identity), true);
+
+    for (const occupied of [
+        `https://www.etsy.com/your/purchases/${Number(orderId) + 1}`,
+        `${expectedPrefill}?ref=manual`,
+        `${expectedPrefill}/`,
+        ` ${expectedPrefill}`,
+        `${expectedPrefill}\n`,
+        '   ',
+        `Please review ${expectedPrefill}`,
+        'My real unsent Etsy draft',
+    ]) {
+        assert.equal(api.MessageAdapter.isExpectedOrderComposePrefill(occupied, {
+            orderId,
+            conversationUrl: orderComposeUrl,
+            conversationIdentity: identity,
+        }), false, occupied);
+        assert.equal(api.Campaign.composerCanAcceptDraft({ value: occupied }, item, identity), false, occupied);
+    }
+    assert.equal(api.MessageAdapter.isExpectedOrderComposePrefill(expectedPrefill, {
+        orderId,
+        conversationUrl: orderComposeUrl,
+        conversationIdentity: `compose:order:receipt:${Number(orderId) + 1}`,
+    }), false, 'a stale route identity cannot authorize prefill replacement');
+});
+
 test('post-send compose-to-thread verification stays bound to the same order and customer only', async () => {
     const { api, sandbox } = await loadAssistant();
     const composeUrl = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
@@ -1210,6 +1302,63 @@ test('delivered orders accept a receipt-bound compose URL exposed by Etsy custom
     assert.equal(api.Router.conversationIdentity(order.messageUrl), 'compose:87654321:receipt:12345678');
 });
 
+test('href-less native Message controls synthesize the exact receipt surface and never fall back to recipient history', async () => {
+    const { api } = await loadAssistant();
+    const orderId = '9876543210';
+    const orderLink = {
+        href: `https://www.etsy.com/your/orders/sold/completed?order_id=${orderId}`,
+        parentElement: { textContent: '$24.00' },
+    };
+    const recipientHistory = {
+        href: 'https://www.etsy.com/conversations/with/fixturebuyer?ref=order_details',
+    };
+    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    const nativeMessageControl = {
+        getAttribute: () => '',
+        querySelector: selector => selector === 'clg-icon[name="message" i]' ? {} : null,
+    };
+    const existingThreadUrl = 'https://www.etsy.com/messages/existing-thread?ref=orders';
+    const existingThread = { href: existingThreadUrl };
+    const makeRow = ({ includeNativeControl, includeExistingThread }) => ({
+        textContent: `Delivered Order #${orderId}`,
+        querySelectorAll(selector) {
+            if (selector === 'a[href*="order_id="]') return [orderLink];
+            if (selector === 'clg-icon-button') return includeNativeControl ? [nativeMessageControl] : [];
+            if (selector.includes('expand_convo=true')) return includeNativeControl ? [nativeMessageControl] : [];
+            if (selector.includes('/messages')) {
+                return includeExistingThread ? [recipientHistory, existingThread] : [recipientHistory];
+            }
+            if (selector === 'h2, .wt-text-title-small') return [{ textContent: 'Delivered' }];
+            return [];
+        },
+        querySelector(selector) {
+            if (selector.includes('btn-link.strong.fs-mask')) return { textContent: 'Native Compose Buyer' };
+            return null;
+        },
+    });
+
+    const newConversationOrder = api.OrdersAdapter.fromRow(makeRow({
+        includeNativeControl: true,
+        includeExistingThread: true,
+    }), 0);
+    assert.equal(newConversationOrder.orderId, orderId);
+    assert.equal(newConversationOrder.messageUrl, orderComposeUrl);
+    assert.equal(api.Router.conversationIdentity(newConversationOrder.messageUrl), `compose:order:receipt:${orderId}`);
+
+    const existingConversationOrder = api.OrdersAdapter.fromRow(makeRow({
+        includeNativeControl: false,
+        includeExistingThread: true,
+    }), 0);
+    assert.equal(existingConversationOrder.messageUrl, existingThreadUrl,
+        'a working existing thread remains supported when Etsy exposes no native order drawer control');
+
+    const historyOnlyOrder = api.OrdersAdapter.fromRow(makeRow({
+        includeNativeControl: false,
+        includeExistingThread: false,
+    }), 0);
+    assert.equal(historyOnlyOrder.messageUrl, '', 'recipient history without a receipt-bound composer fails closed');
+});
+
 test('campaign creation retains only canonical Etsy conversation URLs', async () => {
     const { api, sandbox } = await loadAssistant();
     sandbox.location.href = 'https://www.etsy.com/your/orders/sold/completed';
@@ -1336,6 +1485,22 @@ test('message-list language controls and rows are width-bounded inside the assis
     assert.match(source, /\.ma-message-list-shell>\.ma-list[^{}]*\{min-width:0;max-width:100%\}/);
     assert.match(source, /\.ma-message-list-shell[^{}]*\{grid-template-columns:minmax\(0,1fr\)\}/);
     assert.match(source, /\.ma-message-list__item \.ma-disclosure__body\{min-width:0;overflow-wrap:anywhere\}/);
+});
+
+test('delivered-order layout contains table overflow inside the narrow assistant panel', async () => {
+    const source = readUserscriptSource();
+    const { api } = await loadAssistant();
+    api.UI.state.ordersTemplateInitialized = false;
+    api.UI.refreshOrders();
+
+    const markup = api.UI.renderOrders();
+    assert.match(markup, /class="ma-split ma-orders-layout"/);
+    assert.match(markup, /class="ma-stack ma-orders-list"[\s\S]*class="ma-table-wrap"/);
+    assert.match(source, /\.ma-main\{container-type:inline-size\}/);
+    assert.match(source, /\.ma-orders-layout,\.ma-orders-layout>\*,\.ma-orders-list\{min-width:0;max-width:100%\}/);
+    assert.match(source, /\.ma-orders-list\{grid-template-columns:minmax\(0,1fr\)\}/);
+    assert.match(source, /\.ma-orders-list>\.ma-table-wrap\{width:100%;min-width:0;max-width:100%;overflow-x:auto\}/);
+    assert.match(source, /@container \(max-width:850px\)\{\.ma-orders-layout\{grid-template-columns:minmax\(0,1fr\)\}\}/);
 });
 
 test('message-list open action validates a canonical Etsy conversation URL before navigation', async () => {
@@ -6368,6 +6533,82 @@ test('campaign resume refuses an already occupied composer before reserving or a
     }
 });
 
+test('order-compose resume replaces only the exact Etsy prefill and never auto-sends', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    const orderId = '9876543210';
+    const customerName = 'Fixture Buyer';
+    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    const identity = `compose:order:receipt:${orderId}`;
+    const purchasePrefill = `https://www.etsy.com/your/purchases/${orderId}`;
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    sandbox.location.href = orderComposeUrl;
+    api.Store.settings.replyInCustomerLanguage = false;
+    api.Store.settings.autoSendCampaign = true;
+    await api.Campaign.create([{
+        orderId,
+        customerName,
+        itemTitle: 'Custom Team Shirt',
+        messageUrl: orderComposeUrl,
+    }], 'tpl-delivered', 'template');
+    assert.equal(api.campaignAutoSendAllowed(api.Store.campaign.items[0], { autoSendCampaign: true }), true,
+        'the fixture purpose would normally permit automatic campaign sending');
+
+    const textarea = { value: purchasePrefill, offsetParent: {} };
+    const context = {
+        conversationId: identity,
+        customerName,
+        customerFirstName: 'Fixture',
+        orderId,
+        itemTitle: 'Custom Team Shirt',
+        messages: [],
+        lastCustomerMessage: '',
+        routeFingerprint: api.Router.routeFingerprint(),
+    };
+    const originals = {
+        getTextarea: api.MessageAdapter.getTextarea,
+        waitForTextarea: api.MessageAdapter.waitForTextarea,
+        context: api.MessageAdapter.context,
+        insert: api.MessageAdapter.insert,
+        autoSendIfCurrent: api.Campaign.autoSendIfCurrent,
+        open: api.UI.open,
+        toast: api.UI.toast,
+    };
+    let insertCalls = 0;
+    let autoSendCalls = 0;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.waitForTextarea = async () => textarea;
+    api.MessageAdapter.context = () => context;
+    api.MessageAdapter.insert = (text, target) => {
+        insertCalls += 1;
+        target.value = text;
+    };
+    api.Campaign.autoSendIfCurrent = async () => { autoSendCalls += 1; return true; };
+    api.UI.open = () => {};
+    api.UI.toast = () => {};
+
+    try {
+        assert.equal(await api.Campaign.resume(), true);
+        assert.equal(insertCalls, 1);
+        assert.notEqual(textarea.value, purchasePrefill);
+        assert.match(textarea.value, /Fixture/i);
+        assert.equal(autoSendCalls, 0, 'the order drawer requires an explicit manual Send action');
+        assert.equal(api.Store.campaign.items[0].status, 'inserted');
+        assert.equal(api.Store.statuses.orders[orderId].status, 'inserted');
+    } finally {
+        Object.assign(api.MessageAdapter, {
+            getTextarea: originals.getTextarea,
+            waitForTextarea: originals.waitForTextarea,
+            context: originals.context,
+            insert: originals.insert,
+        });
+        api.Campaign.autoSendIfCurrent = originals.autoSendIfCurrent;
+        api.UI.open = originals.open;
+        api.UI.toast = originals.toast;
+    }
+});
+
 test('campaign resume never overwrites a different occupied composer mounted while the draft is prepared', async () => {
     const environment = await loadAssistant();
     const { api, sandbox } = environment;
@@ -8360,6 +8601,30 @@ test('campaign compose context rejects an item bound to a different receipt even
         customerName: 'Ashley',
         orderId: '',
     }, item, 'compose:123:receipt:22222222'), false);
+});
+
+test('order-compose campaign context requires the exact DOM order and a nonempty exact buyer', async () => {
+    const { api } = await loadAssistant();
+    const orderId = '9876543210';
+    const identity = `compose:order:receipt:${orderId}`;
+    const item = {
+        orderId,
+        customerName: 'Fixture Buyer',
+        messageUrl: `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`,
+    };
+    const exact = {
+        conversationId: identity,
+        customerName: 'Fixture Buyer',
+        orderId,
+    };
+
+    assert.equal(api.Campaign.contextMatchesItem(exact, item, identity), true);
+    assert.equal(api.Campaign.contextMatchesItem({ ...exact, orderId: '' }, item, identity), false);
+    assert.equal(api.Campaign.contextMatchesItem({ ...exact, orderId: '9876543211' }, item, identity), false);
+    assert.equal(api.Campaign.contextMatchesItem({ ...exact, customerName: '' }, item, identity), false);
+    assert.equal(api.Campaign.contextMatchesItem({ ...exact, customerName: 'Other Buyer' }, item, identity), false);
+    assert.equal(api.Campaign.contextMatchesItem(exact, { ...item, customerName: '' }, identity), false,
+        'legacy or corrupt campaign items without a buyer fail closed');
 });
 
 test('post-mutation Message Center stages quarantine before malformed payload validation', async () => {

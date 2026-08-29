@@ -4,9 +4,13 @@
     const ORDER_ID = '10000001';
     const RECIPIENT_ID = '20000002';
     const BUYER_NAME = 'Fixture Buyer';
-    const MESSAGE_URL = `https://www.etsy.com/conversations/new?with_id=${RECIPIENT_ID}&recipient_id=${RECIPIENT_ID}&referring_id=${ORDER_ID}&referring_type=receipt`;
+    const LEGACY_MESSAGE_URL = `https://www.etsy.com/conversations/new?with_id=${RECIPIENT_ID}&recipient_id=${RECIPIENT_ID}&referring_id=${ORDER_ID}&referring_type=receipt`;
+    const ORDER_SURFACE_URL = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${ORDER_ID}`;
+    const PURCHASE_PREFILL_URL = `https://www.etsy.com/your/purchases/${ORDER_ID}`;
     const THREAD_URL = 'https://www.etsy.com/messages/fixture-created-thread';
     const parameters = new URL(location.href).searchParams;
+    const orderSurfaceMode = parameters.get('order_surface') === '1';
+    const MESSAGE_URL = orderSurfaceMode ? ORDER_SURFACE_URL : LEGACY_MESSAGE_URL;
     const simulateComposeTransition = parameters.get('transition') === '1';
     const sendLanguage = parameters.get('label') === 'en' ? 'en' : 'tr';
     const nativeSendDisabled = parameters.get('disabled') === '1';
@@ -126,7 +130,10 @@
               <h2>Teslim edildi</h2>
               <p><a href="https://www.etsy.com/your/orders/sold/completed?order_id=${ORDER_ID}">Sipariş #${ORDER_ID} — $24.00</a></p>
               <p><a href="https://www.etsy.com/transaction/30000003" title="Fixture Item"><img alt="Fixture Item" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="> Fixture Item</a></p>
-              <clg-icon-button role="link" tabindex="0" aria-label="Message buyer" href="${MESSAGE_URL}">Message buyer</clg-icon-button>
+              ${orderSurfaceMode
+                    ? `<p><a href="https://www.etsy.com/conversations/with/fixturebuyer?ref=order_details">Message history</a></p>
+                       <clg-icon-button role="button" tabindex="0" aria-label="Message buyer"><clg-icon name="message"></clg-icon>Message buyer</clg-icon-button>`
+                    : `<clg-icon-button role="link" tabindex="0" aria-label="Message buyer" href="${MESSAGE_URL}">Message buyer</clg-icon-button>`}
             </div>
           </section>`;
         setFixtureState('sipariş sayfası');
@@ -217,6 +224,10 @@
         const form = document.getElementById('fixture-message-form');
         const textarea = document.getElementById('fixture-message');
         const sendButton = document.getElementById('fixture-native-send');
+        if (orderSurfaceMode && !thread) {
+            textarea.value = PURCHASE_PREFILL_URL;
+            window.__MEMA_FIXTURE__.initialComposerText = textarea.value;
+        }
         sendButton.addEventListener('click', () => {
             window.__MEMA_FIXTURE__.nativeTargetClickCount += 1;
         });
@@ -261,15 +272,23 @@
         if (!condition) throw new Error(`Fixture assertion failed: ${message}`);
     };
 
-    async function prepareCampaign({ expectSendEnabled = false } = {}) {
+    async function prepareCampaign({ expectSendEnabled = false, deliveryFollowup = false } = {}) {
         if (!api) throw new Error('Message Assistant test API is not ready.');
         const shadow = await waitUntil(() => api.UI.shadow, 'Message Assistant shadow root');
         if (!api.UI.state.open) shadow.querySelector('[data-action="toggle-app"]').click();
         await waitUntil(() => api.UI.state.open && api.UI.state.page === 'orders', 'orders panel open');
 
-        const decision = await waitUntil(() => shadow.querySelector(`[data-review-decision="${ORDER_ID}"]`), 'review decision');
-        decision.value = 'eligible';
-        decision.dispatchEvent(new Event('change', { bubbles: true }));
+        if (deliveryFollowup) {
+            const selection = await waitUntil(
+                () => shadow.querySelector(`[data-order-select="${ORDER_ID}"]`),
+                'delivered order selection',
+            );
+            if (!selection.checked) selection.click();
+        } else {
+            const decision = await waitUntil(() => shadow.querySelector(`[data-review-decision="${ORDER_ID}"]`), 'review decision');
+            decision.value = 'eligible';
+            decision.dispatchEvent(new Event('change', { bubbles: true }));
+        }
         await waitUntil(
             () => shadow.querySelector(`[data-order-select="${ORDER_ID}"]`)?.checked,
             'eligible order selected',
@@ -277,11 +296,11 @@
 
         shadow.querySelector('[data-action="campaign-create"]').click();
         await waitUntil(() => route === 'messages', 'fixture conversation navigation');
+        await waitUntil(() => api.Store.campaign?.items?.[0]?.status === 'inserted', 'campaign inserted state');
         const textarea = await waitUntil(
             () => document.getElementById('fixture-message')?.value.trim() && document.getElementById('fixture-message'),
             'campaign draft insertion',
         );
-        await waitUntil(() => api.Store.campaign?.items?.[0]?.status === 'inserted', 'campaign inserted state');
         const guidedButton = await waitUntil(() => {
             const candidate = api.UI.shadow.querySelector('[data-action="campaign-send-next"]');
             return candidate && (!expectSendEnabled || !candidate.disabled) ? candidate : null;
@@ -291,6 +310,7 @@
         const before = {
             routeIdentity: api.Router.conversationIdentity(routeUrl),
             messageUrl: api.Store.campaign?.items?.[0]?.messageUrl || '',
+            initialComposerText: window.__MEMA_FIXTURE__.initialComposerText,
             composerText: textarea.value,
             nativeButtonResolved: resolvedButton === nativeButton,
             guidedButtonEnabled: Boolean(guidedButton && !guidedButton.disabled),
@@ -298,7 +318,10 @@
             itemStatus: api.Store.campaign?.items?.[0]?.status || '',
         };
 
-        assertFixture(before.routeIdentity === `compose:${RECIPIENT_ID}:receipt:${ORDER_ID}`, 'compose route identity');
+        const expectedRouteIdentity = orderSurfaceMode
+            ? `compose:order:receipt:${ORDER_ID}`
+            : `compose:${RECIPIENT_ID}:receipt:${ORDER_ID}`;
+        assertFixture(before.routeIdentity === expectedRouteIdentity, 'compose route identity');
         assertFixture(before.messageUrl === MESSAGE_URL, 'receipt-bound campaign URL');
         assertFixture(Boolean(before.composerText.trim()), 'non-empty campaign draft');
         assertFixture(before.campaignStatus === 'active', 'active campaign before Send');
@@ -386,6 +409,103 @@
         assertFixture(result.orderStatus !== 'sent', 'disabled Send creates no sent order ledger');
         document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
         return { before, after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
+    async function runOrderSurfaceScenario() {
+        assertFixture(orderSurfaceMode, 'order-compose surface scenario flag');
+        await api.Store.saveSettings({
+            ...api.Store.settings,
+            autoSendCampaign: true,
+            replyInCustomerLanguage: false,
+            defaultDeliveredTemplateId: 'tpl-delivered',
+        });
+        api.UI.state.ordersTemplateInitialized = false;
+        api.UI.refreshOrders();
+        api.UI.render();
+
+        const { before } = await prepareCampaign({ expectSendEnabled: true, deliveryFollowup: true });
+        await new Promise(resolve => setTimeout(resolve, 1400));
+        const result = {
+            messageUrl: api.Store.campaign?.items?.[0]?.messageUrl || '',
+            routeIdentity: api.Router.conversationIdentity(routeUrl),
+            initialComposerText: before.initialComposerText,
+            composerText: document.getElementById('fixture-message')?.value || '',
+            autoSendCampaign: api.Store.settings.autoSendCampaign,
+            purpose: api.Store.campaign?.items?.[0]?.purpose || '',
+            campaignStatus: api.Store.campaign?.status || '',
+            itemStatus: api.Store.campaign?.items?.[0]?.status || '',
+            orderStatus: api.Store.statuses.orders?.[ORDER_ID]?.status || '',
+            guidedButtonEnabled: before.guidedButtonEnabled,
+            sendCount: window.__MEMA_FIXTURE__.sendCount,
+            nativeTargetClickCount: window.__MEMA_FIXTURE__.nativeTargetClickCount,
+            formSubmitCount: formSubmitEvents.length,
+            outgoingCount: document.querySelectorAll('[data-message-direction="outgoing"]').length,
+        };
+        assertFixture(result.messageUrl === ORDER_SURFACE_URL, 'href-less native control synthesized the exact order surface');
+        assertFixture(result.routeIdentity === `compose:order:receipt:${ORDER_ID}`, 'receipt-bound order surface identity');
+        assertFixture(result.initialComposerText === PURCHASE_PREFILL_URL, 'exact Etsy purchase prefill observed');
+        assertFixture(Boolean(result.composerText.trim()) && result.composerText !== PURCHASE_PREFILL_URL,
+            'campaign draft safely replaces the exact Etsy purchase prefill');
+        assertFixture(result.autoSendCampaign && result.purpose === 'delivery_followup',
+            'scenario would normally permit campaign automatic sending');
+        assertFixture(result.campaignStatus === 'active' && result.itemStatus === 'inserted' && result.orderStatus === 'inserted',
+            'order surface remains prepared for explicit manual Send');
+        assertFixture(result.guidedButtonEnabled, 'explicit guided Send remains available');
+        assertFixture(result.sendCount === 0 && result.nativeTargetClickCount === 0 && result.formSubmitCount === 0,
+            'order surface never dispatches automatically');
+        assertFixture(result.outgoingCount === 0, 'order surface creates no outgoing message before manual Send');
+        document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+        return { before, after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
+    async function runOrderSurfaceManualSendScenario() {
+        const noAuto = await runOrderSurfaceScenario();
+        const expectedText = noAuto.after.composerText;
+        const guidedButton = await waitUntil(() => {
+            const candidate = api.UI.shadow.querySelector('[data-action="campaign-send-next"]');
+            return candidate && !candidate.disabled ? candidate : null;
+        }, 'order surface guided Send control');
+        guidedButton.click();
+
+        await waitUntil(() => api.Store.campaign?.status === 'completed', 'order surface campaign completion');
+        await waitUntil(() => api.Store.statuses.orders?.[ORDER_ID]?.status === 'sent', 'order surface sent order ledger');
+        const conversationId = api.Router.conversationIdFromUrl(routeUrl);
+        await waitUntil(
+            () => api.Store.statuses.conversations?.[conversationId]?.status === 'sent',
+            'order surface sent conversation ledger',
+        );
+        const result = {
+            noAuto: noAuto.after,
+            expectedText,
+            lastSentText: window.__MEMA_FIXTURE__.lastSentText,
+            composerText: document.getElementById('fixture-message')?.value || '',
+            sendCount: window.__MEMA_FIXTURE__.sendCount,
+            nativeTargetClickCount: window.__MEMA_FIXTURE__.nativeTargetClickCount,
+            formSubmitCount: formSubmitEvents.length,
+            outgoingCount: document.querySelectorAll('[data-message-direction="outgoing"]').length,
+            campaignStatus: api.Store.campaign?.status || '',
+            itemStatus: api.Store.campaign?.items?.[0]?.status || '',
+            orderStatus: api.Store.statuses.orders?.[ORDER_ID]?.status || '',
+            conversationId,
+            conversationStatus: api.Store.statuses.conversations?.[conversationId]?.status || '',
+        };
+        assertFixture(result.noAuto.sendCount === 0
+            && result.noAuto.nativeTargetClickCount === 0
+            && result.noAuto.formSubmitCount === 0
+            && result.noAuto.outgoingCount === 0,
+        'manual scenario first proves the full no-auto observation window');
+        assertFixture(result.sendCount === 1 && result.nativeTargetClickCount === 1 && result.formSubmitCount === 1,
+            'one explicit guided action reaches one native form submit');
+        assertFixture(result.outgoingCount === 1, 'manual order-surface send creates one outgoing message');
+        assertFixture(result.lastSentText === result.expectedText, 'manual order-surface send preserves the exact prepared text');
+        assertFixture(result.composerText === '', 'manual order-surface send clears the composer');
+        assertFixture(result.campaignStatus === 'completed'
+            && result.itemStatus === 'sent'
+            && result.orderStatus === 'sent'
+            && result.conversationStatus === 'sent',
+        'manual order-surface send completes every durable ledger');
+        document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+        return { after: result, externalNetworkAttempts: copy(networkAttempts) };
     }
 
     async function runMismatchScenario() {
@@ -715,10 +835,56 @@
         }
     }
 
+    async function runResponsiveOrdersScenario() {
+        api.UI.open('orders');
+        await api.UI.refreshCurrent();
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+        const shadow = api.UI.shadow;
+        const main = shadow.querySelector('.ma-main');
+        const view = shadow.querySelector('.ma-view');
+        const layout = shadow.querySelector('.ma-orders-layout');
+        const list = shadow.querySelector('.ma-orders-list');
+        const tableWrap = shadow.querySelector('.ma-orders-list > .ma-table-wrap');
+        const table = tableWrap?.querySelector('.ma-table');
+        const row = tableWrap?.querySelector('tbody tr');
+        const sideCard = layout?.children?.[1];
+        assertFixture(main && view && layout && list && tableWrap && table && row && sideCard, 'responsive order layout nodes');
+        const rect = node => {
+            const value = node.getBoundingClientRect();
+            return {
+                left: value.left,
+                right: value.right,
+                top: value.top,
+                bottom: value.bottom,
+                width: value.width,
+                height: value.height,
+            };
+        };
+        const result = {
+            viewportWidth: innerWidth,
+            containerType: getComputedStyle(main).containerType,
+            gridColumns: getComputedStyle(layout).gridTemplateColumns,
+            main: { clientWidth: main.clientWidth, scrollWidth: main.scrollWidth },
+            view: rect(view),
+            layout: { ...rect(layout), clientWidth: layout.clientWidth, scrollWidth: layout.scrollWidth },
+            list: rect(list),
+            tableWrap: { ...rect(tableWrap), clientWidth: tableWrap.clientWidth, scrollWidth: tableWrap.scrollWidth },
+            table: rect(table),
+            row: rect(row),
+            sideCard: rect(sideCard),
+        };
+        document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+        return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
     window.__MEMA_FIXTURE__ = {
         orderId: ORDER_ID,
         recipientId: RECIPIENT_ID,
         messageUrl: MESSAGE_URL,
+        orderSurfaceMode,
+        orderSurfaceUrl: ORDER_SURFACE_URL,
+        purchasePrefillUrl: PURCHASE_PREFILL_URL,
         simulateComposeTransition,
         sendLanguage,
         nativeSendDisabled,
@@ -730,6 +896,7 @@
         shortcutModifier,
         transitionPromise: null,
         interactionReady: false,
+        initialComposerText: '',
         sendCount: 0,
         nativeTargetClickCount: 0,
         nativeShortcutHandlerCount: 0,
@@ -737,10 +904,13 @@
         networkAttempts,
         runScenario,
         runDisabledSendScenario,
+        runOrderSurfaceScenario,
+        runOrderSurfaceManualSendScenario,
         runMismatchScenario,
         runNativeInputScenario,
         runNonSendSubmitterScenario,
         runMessageCenterScenario,
+        runResponsiveOrdersScenario,
         get api() { return api; },
     };
 

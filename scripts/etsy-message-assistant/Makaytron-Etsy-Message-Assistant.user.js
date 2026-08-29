@@ -1181,7 +1181,7 @@ zu|Zulu
 
     const LAUNCHER_CSS = `.ma-launcher{top:78px;right:var(--ma-s3);bottom:auto;min-width:0;width:120px;height:36px;padding:3px 4px;border:1px solid rgba(23,23,23,.14);border-radius:999px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.98);box-shadow:0 6px 18px rgba(15,23,42,.14);backdrop-filter:blur(10px);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.ma-launcher:hover{transform:translateY(-1px);border-color:rgba(23,23,23,.28);box-shadow:0 9px 22px rgba(15,23,42,.18)}.ma-launcher:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-launcher__mark{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;background:#f5f5f5}.ma-launcher .ma-logo-img{width:24px;height:16px}.ma-launcher__copy{min-width:0;display:block;text-align:left;line-height:1.1}.ma-launcher__title{font-size:11px;font-weight:800;white-space:nowrap}.ma-launcher__state{display:none}.ma-launcher__action{min-width:31px;height:26px;margin-left:auto;padding:0 7px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:10px;font-weight:800}.ma-launcher:hover .ma-launcher__action{background:var(--ma-primary-strong)}.ma-panel-close{min-height:34px;padding:0 10px;border:1px solid var(--ma-line);border-radius:999px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ma-ink);background:#fff;font-size:12px;font-weight:750}.ma-panel-close:hover{border-color:#c9c9c9;background:#f7f7f7}.ma-panel-close:focus-visible{outline:3px solid rgba(23,23,23,.14);outline-offset:2px}@media (max-width:560px){.ma-launcher{top:68px;right:var(--ma-s2);width:112px;height:34px}.ma-launcher__mark{width:26px;height:26px}.ma-launcher__title{font-size:10.5px}.ma-launcher__action{height:24px}}`;
 
-    const UX_CSS = `[hidden]{display:none!important}.ma-list-item,.ma-review-card{width:100%;font:inherit;color:inherit;text-align:left}.ma-switch input:focus-visible+span{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-table tr[data-history-id]{cursor:pointer}.ma-table tr[data-history-id]:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:-3px}.ma-busy{pointer-events:auto;opacity:1}.ma-busy .ma-nav,.ma-busy .ma-view{pointer-events:none}.ma-busy .ma-view{opacity:.58}.ma-busy-status{position:sticky;top:0;z-index:4;min-height:36px;padding:8px 12px;display:none;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:12px;font-weight:750}.ma-busy .ma-busy-status{display:flex}.ma-busy::after{display:none}.ma-message-list-shell,.ma-message-list-controls,.ma-message-list-controls .ma-card__body,.ma-message-list-controls .ma-stack,.ma-message-list-controls .ma-field,.ma-message-list-shell>.ma-list,.ma-message-list__item,.ma-message-list__item .ma-list-item__body{min-width:0;max-width:100%}.ma-message-list-shell,.ma-message-list-controls .ma-card__body,.ma-message-list-controls .ma-stack,.ma-message-list-controls .ma-field,.ma-message-list-shell>.ma-list{grid-template-columns:minmax(0,1fr)}.ma-message-list-controls .ma-select{min-width:0;max-width:100%}.ma-message-list__item .ma-disclosure__body{min-width:0;overflow-wrap:anywhere}.ma-message-list__item>[data-message-open-url]{flex:0 0 auto}`;
+    const UX_CSS = `[hidden]{display:none!important}.ma-list-item,.ma-review-card{width:100%;font:inherit;color:inherit;text-align:left}.ma-switch input:focus-visible+span{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-table tr[data-history-id]{cursor:pointer}.ma-table tr[data-history-id]:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:-3px}.ma-busy{pointer-events:auto;opacity:1}.ma-busy .ma-nav,.ma-busy .ma-view{pointer-events:none}.ma-busy .ma-view{opacity:.58}.ma-busy-status{position:sticky;top:0;z-index:4;min-height:36px;padding:8px 12px;display:none;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:12px;font-weight:750}.ma-busy .ma-busy-status{display:flex}.ma-busy::after{display:none}.ma-message-list-shell,.ma-message-list-controls,.ma-message-list-controls .ma-card__body,.ma-message-list-controls .ma-stack,.ma-message-list-controls .ma-field,.ma-message-list-shell>.ma-list,.ma-message-list__item,.ma-message-list__item .ma-list-item__body{min-width:0;max-width:100%}.ma-message-list-shell,.ma-message-list-controls .ma-card__body,.ma-message-list-controls .ma-stack,.ma-message-list-controls .ma-field,.ma-message-list-shell>.ma-list{grid-template-columns:minmax(0,1fr)}.ma-message-list-controls .ma-select{min-width:0;max-width:100%}.ma-message-list__item .ma-disclosure__body{min-width:0;overflow-wrap:anywhere}.ma-message-list__item>[data-message-open-url]{flex:0 0 auto}.ma-main{container-type:inline-size}.ma-orders-layout,.ma-orders-layout>*,.ma-orders-list{min-width:0;max-width:100%}.ma-orders-list{grid-template-columns:minmax(0,1fr)}.ma-orders-list>.ma-table-wrap{width:100%;min-width:0;max-width:100%;overflow-x:auto}@container (max-width:850px){.ma-orders-layout{grid-template-columns:minmax(0,1fr)}}`;
 
     const GLOBAL_CSS = `.mema-order-badge{margin-inline-start:8px;padding:3.2px 7.2px;border-radius:999px;display:inline-flex;align-items:center;font:700 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;vertical-align:middle}.mema-order-badge[data-status="draft"]{color:#2467d8;background:#eaf2ff}.mema-order-badge[data-status="inserted"]{color:#c35b12;background:#fff1e7}.mema-order-badge[data-status="sent_pending_verification"]{color:#8a4b08;background:#fff4d6}.mema-order-badge[data-status="sent"]{color:#178847;background:#eaf8ef}.mema-order-badge[data-status="error"]{color:#c23b3b;background:#ffeded}.mema-order-badge[data-status="skipped"]{color:#697386;background:#eeeeee}.mema-notify{position:fixed;top:16px;left:50%;z-index:2147483647;transform:translateX(-50%);width:min(360px,calc(100vw - 32px));display:grid;gap:8px;pointer-events:none;font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mema-note{--mema-note:#343a4a;min-height:44px;padding:10px 10px 10px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;color:#fff;background:var(--mema-note);box-shadow:0 8px 24px rgba(24,28,45,.18);opacity:0;transform:translateY(8px);transition:.18s ease;pointer-events:auto}.mema-note.is-on{opacity:1;transform:none}.mema-note[data-type="success"]{--mema-note:#178847}.mema-note[data-type="error"]{--mema-note:#c23b3b}.mema-note[data-type="warning"]{--mema-note:#a85710}.mema-note__mark{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;font-size:11px}.mema-note__text{min-width:0;flex:1;overflow-wrap:anywhere}.mema-note__close{width:28px;height:28px;border:0;border-radius:7px;display:grid;place-items:center;color:inherit;background:transparent;cursor:pointer;opacity:.72}.mema-note__close:hover{opacity:1;background:rgba(255,255,255,.14)}.mema-copy-buffer{position:fixed!important;inset:auto auto 0 -9999px!important;width:1px!important;height:1px!important;opacity:0!important}`;
 
@@ -3503,10 +3503,16 @@ zu|Zulu
         '[role="link"][href*="/messages?"]',
         '[role="link"][href*="/conversations/"]',
     ].join(', ');
+    const ORDER_COMPOSE_ANCHOR_SELECTOR = [
+        'a[href*="/your/orders/sold/completed"][href*="expand_convo=true"][href*="order_id="]',
+        'clg-icon-button[href*="/your/orders/sold/completed"][href*="expand_convo=true"][href*="order_id="]',
+        '[role="link"][href*="/your/orders/sold/completed"][href*="expand_convo=true"][href*="order_id="]',
+    ].join(', ');
 
     const Router = {
         page() {
             const path = location.pathname.toLowerCase();
+            if (this.orderComposeTargetFromUrl()) return 'messages';
             if (/^\/(?:messages|conversations)(?:\/|$)/.test(path)) return 'messages';
             if (/^\/your\/orders\/sold(?:\/|$)/.test(path)) return 'orders';
             if (document.querySelector('.dashboard-activity-item') || /^\/your\/shops\/[^/]+\/dashboard\/activity(?:\/|$)/.test(path)) return 'reviews';
@@ -3533,7 +3539,39 @@ zu|Zulu
         elementHref(element) {
             return String(element?.href || element?.getAttribute?.('href') || '').trim();
         },
+        orderComposeTargetFromUrl(value = location.href) {
+            try {
+                const url = new URL(value, location.href);
+                if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return false;
+                const parts = url.pathname.split('/').filter(Boolean).map(part => part.toLowerCase());
+                const isCompletedOrders = parts.length === 4
+                    && parts[0] === 'your'
+                    && parts[1] === 'orders'
+                    && parts[2] === 'sold'
+                    && parts[3] === 'completed';
+                const expandValues = url.searchParams.getAll('expand_convo');
+                if (!isCompletedOrders || !expandValues.length) return null;
+                const orderValues = url.searchParams.getAll('order_id');
+                if (expandValues.length !== 1
+                    || String(expandValues[0] || '').trim().toLowerCase() !== 'true'
+                    || orderValues.length !== 1) return false;
+                const orderId = String(orderValues[0] || '').normalize('NFKC').trim();
+                if (!/^[1-9]\d{0,31}$/.test(orderId)) return false;
+                const identity = `compose:order:receipt:${orderId}`;
+                return {
+                    kind: 'order-compose',
+                    id: identity,
+                    identity,
+                    orderId,
+                    recipientId: '',
+                    referringId: orderId,
+                    referringType: 'receipt',
+                };
+            } catch { return false; }
+        },
         composeTargetFromUrl(value = location.href) {
+            const orderComposeTarget = this.orderComposeTargetFromUrl(value);
+            if (orderComposeTarget !== null) return orderComposeTarget;
             try {
                 const url = new URL(value, location.href);
                 if (url.origin !== 'https://www.etsy.com' || url.username || url.password) return null;
@@ -3662,7 +3700,8 @@ zu|Zulu
                 && /^\/messages(?:\/all)?\/?$/i.test(location.pathname);
         },
         isCompletedOrdersPage() {
-            return /^\/your\/orders\/sold\/completed(?:\/|$)/i.test(location.pathname);
+            return this.page() === 'orders'
+                && /^\/your\/orders\/sold\/completed(?:\/|$)/i.test(location.pathname);
         },
         isReviewActivityPage() {
             return /^\/your\/shops\/[^/]+\/dashboard\/activity(?:\/|$)/i.test(location.pathname);
@@ -3749,6 +3788,21 @@ zu|Zulu
         ],
         conversationScopeSelector: '#dg-tabs-preact__tab-1--default_wt_tab_panel, [role="tabpanel"], [data-conversation-id], [data-message-thread-id], [data-test-id*="conversation" i], [data-testid*="conversation" i]',
         orderDetailsSelector: '.buyer-info, [data-test-id*="order-details" i], [data-testid*="order-details" i]',
+        etsyPurchasePrefillOrderId(value) {
+            const text = String(value ?? '');
+            return text.match(/^https:\/\/www\.etsy\.com\/your\/purchases\/([1-9]\d{0,31})$/)?.[1] || '';
+        },
+        isExpectedOrderComposePrefill(value, options = {}) {
+            const expectedOrderId = String(options.orderId || '').normalize('NFKC').trim();
+            const target = Router.orderComposeTargetFromUrl(options.conversationUrl || '');
+            const expectedIdentity = String(options.conversationIdentity || target?.identity || '').trim();
+            return Boolean(expectedOrderId
+                && target
+                && target.orderId === expectedOrderId
+                && expectedIdentity === target.identity
+                && Router.conversationIdentity() === target.identity
+                && this.etsyPurchasePrefillOrderId(value) === expectedOrderId);
+        },
         isVisible(element) {
             if (!element || element.hidden || element.getAttribute?.('aria-hidden') === 'true') return false;
             if (element.offsetParent !== null) return true;
@@ -3790,10 +3844,12 @@ zu|Zulu
                     const normalizedRaw = String(raw || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
                     const composeAliases = activeCompose ? new Set([
                         activeCompose.identity,
-                        activeCompose.recipientId,
-                        `compose-${activeCompose.recipientId}`,
-                        ...(activeCompose.referringId ? [
-                            `compose-${activeCompose.recipientId}-receipt-${activeCompose.referringId}`,
+                        ...(activeCompose.recipientId ? [
+                            activeCompose.recipientId,
+                            `compose-${activeCompose.recipientId}`,
+                            ...(activeCompose.referringId ? [
+                                `compose-${activeCompose.recipientId}-receipt-${activeCompose.referringId}`,
+                            ] : []),
                         ] : []),
                     ]) : null;
                     if (composeAliases?.has(normalizedRaw)) {
@@ -3999,6 +4055,11 @@ zu|Zulu
                 const value = normalize(scope.querySelector(selector)?.textContent);
                 if (value && value.length < 80) return value;
             }
+            const selectLabel = scope.querySelector?.('[aria-label^="Select this order from" i]')?.getAttribute?.('aria-label') || '';
+            const fromLabel = normalize(selectLabel.match(/from\s+(.+?)\s+on\s+/i)?.[1]);
+            if (fromLabel && fromLabel.length < 80) return fromLabel;
+            const orderBuyer = normalize(scope.querySelector?.('button.btn-link.strong.fs-mask, .btn-link.strong.fs-mask')?.textContent);
+            if (orderBuyer && orderBuyer.length < 80) return orderBuyer;
             return '';
         },
         getBuyerAvatar(resolvedScope = null) {
@@ -4020,11 +4081,28 @@ zu|Zulu
             if (scope.querySelector?.('a[href*="order_id="], a[href*="/listing/"], a[href*="/transaction/"]')) return scope;
 
             const conversationRoot = textarea.closest?.('.conversations-subapp') || null;
-            if (!conversationRoot) return null;
-            const candidates = [...conversationRoot.querySelectorAll?.(this.orderDetailsSelector) || []]
-                .filter(candidate => candidate !== scope
-                    && candidate.querySelector?.('a[href*="order_id="], a[href*="/listing/"], a[href*="/transaction/"]'));
-            return candidates.length === 1 ? candidates[0] : null;
+            if (conversationRoot) {
+                const candidates = [...conversationRoot.querySelectorAll?.(this.orderDetailsSelector) || []]
+                    .filter(candidate => candidate !== scope
+                        && candidate.querySelector?.('a[href*="order_id="], a[href*="/listing/"], a[href*="/transaction/"]'));
+                if (candidates.length === 1) return candidates[0];
+                if (candidates.length > 1) return null;
+            }
+
+            const orderCompose = Router.orderComposeTargetFromUrl();
+            if (!orderCompose) return null;
+            const rows = [...document.querySelectorAll?.('section.order-group-list .panel-body-row, .panel-body-row') || []];
+            const matchingRows = rows.filter((row) => {
+                const ids = [...row.querySelectorAll?.('a[href*="order_id="]') || []]
+                    .map((link) => {
+                        try { return new URL(Router.elementHref(link), location.href).searchParams.get('order_id') || ''; }
+                        catch { return ''; }
+                    })
+                    .filter(Boolean);
+                const unique = [...new Set(ids)];
+                return unique.length === 1 && unique[0] === orderCompose.orderId;
+            });
+            return matchingRows.length === 1 ? matchingRows[0] : null;
         },
         getOrderId(resolvedScope = null) {
             const scope = resolvedScope || this.getConversationScope();
@@ -4040,7 +4118,9 @@ zu|Zulu
             if (uniqueOrderIds.length === 1) return uniqueOrderIds[0];
             if (uniqueOrderIds.length > 1) return '';
             const text = normalize(scope.innerText || scope.textContent || '');
-            return text.match(/#(\d{8,})/)?.[1] || '';
+            const textOrderId = text.match(/#(\d{8,})/)?.[1] || '';
+            if (textOrderId) return textOrderId;
+            return Router.orderComposeTargetFromUrl()?.orderId || '';
         },
         getItemTitle(resolvedScope = null) {
             const scope = resolvedScope || this.getConversationScope();
@@ -5764,15 +5844,45 @@ zu|Zulu
             const orders = rows.map((row, index) => this.fromRow(row, index)).filter((item) => item.orderId && item.customerName);
             return deliveredOnly ? orders.filter((item) => item.delivered) : orders;
         },
+        synthesizedOrderComposeUrl(row, orderId) {
+            const safeOrderId = String(orderId || '').normalize('NFKC').trim();
+            if (!/^[1-9]\d{0,31}$/.test(safeOrderId)) return '';
+            const nativeMessageControls = [...row.querySelectorAll?.('clg-icon-button') || []]
+                .filter(control => control.querySelector?.('clg-icon[name="message" i]'));
+            if (nativeMessageControls.length !== 1) return '';
+            const url = new URL('/your/orders/sold/completed', 'https://www.etsy.com');
+            url.searchParams.set('ref', 'seller-platform-mcnav');
+            url.searchParams.set('expand_convo', 'true');
+            url.searchParams.set('order_id', safeOrderId);
+            return Router.canonicalConversationUrl(url.href, { orderId: safeOrderId });
+        },
+        messageUrlFromRow(row, orderId) {
+            const synthesizedOrderCompose = this.synthesizedOrderComposeUrl(row, orderId);
+            if (synthesizedOrderCompose) return synthesizedOrderCompose;
+            const controls = [...new Set([
+                ...row.querySelectorAll(CONVERSATION_ANCHOR_SELECTOR),
+                ...row.querySelectorAll(ORDER_COMPOSE_ANCHOR_SELECTOR),
+            ])];
+            const urls = controls
+                .map(control => Router.canonicalConversationUrl(Router.elementHref(control), { orderId }))
+                .filter(Boolean);
+            const isRecipientHistoryRoute = (value) => {
+                try { return /^\/conversations\/with\/[^/]+\/?$/i.test(new URL(value).pathname); }
+                catch { return false; }
+            };
+            const existingConversation = urls.find(url => !Router.isComposeTarget(url) && !isRecipientHistoryRoute(url));
+            if (existingConversation) return existingConversation;
+            const orderCompose = urls.find(url => Boolean(Router.orderComposeTargetFromUrl(url)));
+            if (orderCompose) return orderCompose;
+            return urls.find(url => Router.isComposeTarget(url)) || '';
+        },
         fromRow(row, index) {
             const orderLink = [...row.querySelectorAll('a[href*="order_id="]')].find((link) => new URL(link.href).searchParams.get('order_id'));
             const orderId = orderLink ? new URL(orderLink.href).searchParams.get('order_id') : normalize(row.textContent).match(/#(\d{8,})/)?.[1] || '';
             const selectLabel = row.querySelector('[aria-label^="Select this order from" i]')?.getAttribute('aria-label') || '';
             const fromLabel = selectLabel.match(/from\s+(.+?)\s+on\s+/i)?.[1];
             const customerName = normalize(fromLabel || row.querySelector('button.btn-link.strong.fs-mask, .btn-link.strong.fs-mask')?.textContent);
-            const messageAnchor = [...row.querySelectorAll(CONVERSATION_ANCHOR_SELECTOR)]
-                .find((link) => Router.canonicalConversationUrl(Router.elementHref(link), { orderId }));
-            const messageUrl = Router.canonicalConversationUrl(Router.elementHref(messageAnchor), { orderId });
+            const messageUrl = this.messageUrlFromRow(row, orderId);
             const productLink = row.querySelector('a[href*="/transaction/"]');
             const image = productLink?.querySelector('img');
             const itemTitle = normalize(productLink?.getAttribute('title') || image?.alt || '');
@@ -7055,6 +7165,11 @@ zu|Zulu
             const expectedCustomer = normalize(item.customerName).toLocaleLowerCase('en-US');
             const actualCustomer = normalize(context.customerName).toLocaleLowerCase('en-US');
             if (expectedCustomer && actualCustomer && expectedCustomer !== actualCustomer) return false;
+            const orderComposeTarget = Router.orderComposeTargetFromUrl(item.messageUrl || '');
+            if (orderComposeTarget
+                && (actualOrderId !== expectedOrderId
+                    || !expectedCustomer
+                    || actualCustomer !== expectedCustomer)) return false;
             return true;
         },
         activeCampaignContextConflicts() {
@@ -7617,6 +7732,15 @@ zu|Zulu
         composerOccupiedError() {
             return new Error('Etsy cevap alanında gönderilmemiş bir taslak var. Kampanya taslağınızı korudu; mevcut metnin üzerine yazmadı ve otomatik gönderim başlatmadı.');
         },
+        composerCanAcceptDraft(textarea, item, conversationIdentity = Router.conversationIdentity()) {
+            const currentValue = String(textarea?.value ?? '');
+            if (currentValue === '') return true;
+            return MessageAdapter.isExpectedOrderComposePrefill(currentValue, {
+                orderId: item?.orderId || '',
+                conversationUrl: item?.messageUrl || '',
+                conversationIdentity,
+            });
+        },
         async releasePendingReservation(run) {
             if (!run?.campaignId || !run?.itemId || !run?.reservationToken) return false;
             return withCampaignCoordinator(async () => {
@@ -8072,7 +8196,7 @@ zu|Zulu
                 || !currentConversationBeforeClaim
                 || !cachedConversation
                 || currentConversationBeforeClaim !== cachedConversation) return false;
-            if (String(MessageAdapter.getTextarea()?.value || '').trim()) {
+            if (!this.composerCanAcceptDraft(MessageAdapter.getTextarea(), cachedItem, cachedConversation)) {
                 throw this.composerOccupiedError();
             }
             const claim = await this.claimCurrent();
@@ -8106,7 +8230,7 @@ zu|Zulu
                 return false;
             }
             if (!this.runIsCurrent(run)) return false;
-            if (String(MessageAdapter.getTextarea()?.value || '').trim()) {
+            if (!this.composerCanAcceptDraft(MessageAdapter.getTextarea(), item, run.conversationIdentity)) {
                 await this.releasePendingReservation(run);
                 throw this.composerOccupiedError();
             }
@@ -8151,7 +8275,7 @@ zu|Zulu
                 return false;
             }
             if (!this.runIsCurrent(run)) return false;
-            if (String(textarea.value || '').trim()) {
+            if (!this.composerCanAcceptDraft(textarea, item, run.conversationIdentity)) {
                 await this.releasePendingReservation(run);
                 throw this.composerOccupiedError();
             }
@@ -8218,7 +8342,8 @@ zu|Zulu
                 .catch(error => console.error(`[${APP.id}] Kampanya taslağı geçmişe kaydedilemedi.`, error));
             void trackTelemetry('message_draft_generated');
             UI.open('messages');
-            const automaticSend = campaignAutoSendAllowed(item);
+            const automaticSend = campaignAutoSendAllowed(item)
+                && !Router.orderComposeTargetFromUrl(item.messageUrl || '');
             UI.toast(automaticSend
                 ? 'Mesaj hazırlandı; otomatik gönderim başlatılıyor.'
                 : 'Mesaj hazır. Kontrol edip “Gönder ve Sonrakine Geç” düğmesine basın.', 'success', 6000);
@@ -9494,8 +9619,8 @@ zu|Zulu
                     : `<div class="ma-notice ma-notice--info">${icon('send')}<div><strong>Kampanya ${html(campaign.status)}</strong><br>${campaign.items.filter((item) => item.status === 'sent').length}/${campaign.items.length} gönderildi.${current ? `<br>Sıradaki: ${html(current.customerName)}` : ''}</div></div><div class="ma-actions"><button class="ma-btn ma-btn--primary" data-action="campaign-start" ${current ? '' : 'disabled'}>Sırayı Devam Ettir</button><button class="ma-btn ma-btn--danger" data-action="campaign-cancel" data-campaign-id="${attr(campaign.id)}" data-campaign-revision="${attr(campaign.revision)}">Durdur</button></div>`
                 : '';
             return `${this.renderHead('Teslim Edilen Siparişler', 'Yalnız Etsy kartında Delivered olarak doğrulanan siparişler listelenir.', actions)}
-                <div class="ma-split">
-                    <div class="ma-stack">
+                <div class="ma-split ma-orders-layout">
+                    <div class="ma-stack ma-orders-list">
                         <div class="ma-toolbar">
                             <span class="ma-pill ma-pill--primary">${selected.length} seçili</span>
                             <span class="ma-pill">${isReviewRequest ? `${eligibleOrders.length} gönderime hazır · ${pendingReviewChecks} yorum kontrolü bekliyor` : `${orders.length} teslim edilmiş · ${eligibleOrders.length} mesaj uygun`}</span>

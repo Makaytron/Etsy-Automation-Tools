@@ -358,7 +358,7 @@ async function requestFixtureFormSubmit(page, submitterId = '') {
     })()`);
 }
 
-async function runBrowserScenario(chrome, fixtureUrl, query, method, interaction = null) {
+async function runBrowserScenario(chrome, fixtureUrl, query, method, interaction = null, viewport = null) {
     let targetId = null;
     let page = null;
     const requests = [];
@@ -390,6 +390,14 @@ async function runBrowserScenario(chrome, fixtureUrl, query, method, interaction
         await page.send('Network.enable');
         await page.send('Runtime.enable');
         await page.send('Page.enable');
+        if (viewport) {
+            await page.send('Emulation.setDeviceMetricsOverride', {
+                width: viewport.width,
+                height: viewport.height,
+                deviceScaleFactor: 1,
+                mobile: false,
+            });
+        }
         await page.send('Fetch.enable', {
             patterns: [
                 { urlPattern: 'http://*', requestStage: 'Request' },
@@ -430,7 +438,7 @@ async function runBrowserScenario(chrome, fixtureUrl, query, method, interaction
     }
 }
 
-test('Message Assistant isolated Chrome regression fixture', { timeout: 540_000 }, async t => {
+test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 }, async t => {
     let server = null;
     let chrome = null;
     let proxy = null;
@@ -460,6 +468,80 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 540_000 
             assert.equal(result.after.sendCount, 0);
             assert.equal(result.after.itemStatus, 'inserted');
             assert.notEqual(result.after.orderStatus, 'sent');
+        });
+
+        await t.test('href-less native order drawer replaces only Etsy prefill and never auto-sends', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?order_surface=1&label=en',
+                'runOrderSurfaceScenario',
+            );
+            assert.equal(result.after.messageUrl,
+                'https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=10000001');
+            assert.equal(result.after.routeIdentity, 'compose:order:receipt:10000001');
+            assert.equal(result.after.initialComposerText, 'https://www.etsy.com/your/purchases/10000001');
+            assert.notEqual(result.after.composerText, result.after.initialComposerText);
+            assert.equal(result.after.autoSendCampaign, true);
+            assert.equal(result.after.purpose, 'delivery_followup');
+            assert.equal(result.after.itemStatus, 'inserted');
+            assert.equal(result.after.orderStatus, 'inserted');
+            assert.equal(result.after.guidedButtonEnabled, true);
+            assert.equal(result.after.sendCount, 0);
+            assert.equal(result.after.nativeTargetClickCount, 0);
+            assert.equal(result.after.formSubmitCount, 0);
+            assert.equal(result.after.outgoingCount, 0);
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('order drawer sends exactly once only after the explicit guided action', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?order_surface=1&label=en',
+                'runOrderSurfaceManualSendScenario',
+            );
+            assert.equal(result.after.noAuto.autoSendCampaign, true);
+            assert.equal(result.after.noAuto.purpose, 'delivery_followup');
+            assert.equal(result.after.noAuto.sendCount, 0);
+            assert.equal(result.after.noAuto.nativeTargetClickCount, 0);
+            assert.equal(result.after.noAuto.formSubmitCount, 0);
+            assert.equal(result.after.noAuto.outgoingCount, 0);
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.nativeTargetClickCount, 1);
+            assert.equal(result.after.formSubmitCount, 1);
+            assert.equal(result.after.outgoingCount, 1);
+            assert.equal(result.after.lastSentText, result.after.expectedText);
+            assert.equal(result.after.composerText, '');
+            assert.equal(result.after.campaignStatus, 'completed');
+            assert.equal(result.after.itemStatus, 'sent');
+            assert.equal(result.after.orderStatus, 'sent');
+            assert.equal(result.after.conversationId, 'compose:order:receipt:10000001');
+            assert.equal(result.after.conversationStatus, 'sent');
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('narrow delivered-order layout keeps overflow inside the table scroller', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/',
+                'runResponsiveOrdersScenario',
+                null,
+                { width: 900, height: 900 },
+            );
+            const layout = result.after;
+            assert.equal(layout.viewportWidth, 900);
+            assert.equal(layout.containerType, 'inline-size');
+            assert.ok(layout.row.width > 0 && layout.row.height > 0, 'the delivered-order row remains visible');
+            assert.ok(Math.abs(layout.tableWrap.width - layout.layout.width) <= 1, 'the table scroller fills the one-column layout');
+            assert.ok(layout.sideCard.top >= layout.list.bottom - 1, 'the flow card moves below the delivered-order list');
+            assert.ok(layout.main.scrollWidth <= layout.main.clientWidth + 1, 'the assistant main area has no horizontal overflow');
+            assert.ok(layout.layout.scrollWidth <= layout.layout.clientWidth + 1, 'the order layout has no horizontal overflow');
+            assert.ok(layout.tableWrap.scrollWidth > layout.tableWrap.clientWidth, 'the wide table scrolls only inside its wrapper');
+            assert.ok(layout.tableWrap.left >= layout.view.left - 1 && layout.tableWrap.right <= layout.view.right + 1,
+                'the delivered-order list stays within the visible assistant view');
+            assert.deepEqual(consoleErrors, []);
         });
 
         await t.test('wrong order after compose hydration cannot create sent ledgers', { timeout: TIMEOUT_MS }, async () => {
