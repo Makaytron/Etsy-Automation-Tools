@@ -17,7 +17,7 @@ Do not retry an uncertain dispatch. First inspect the conversation for a new out
 
 ## Before opening Etsy
 
-- [ ] Record the reviewed commit and userscript version (`1.2.2`).
+- [ ] Record the reviewed commit and userscript version (`1.2.4`).
 - [ ] Confirm the focused tests, localhost fixture smoke, and distribution gate passed on that commit.
 - [ ] Outside the live account, use the isolated fixture/test agent to prove ambiguous result → manual reconciliation → zero Etsy clicks on replay of the same job. Do not live-test Message Center until this rehearsal passes.
 - [ ] Choose one delivered order and a legitimate, policy-compliant message purpose with the account owner.

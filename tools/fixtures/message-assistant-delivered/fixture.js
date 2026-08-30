@@ -238,7 +238,10 @@
         const delayOrderContext = orderSurfaceMode && delayedOrderContextMode && !thread;
         const orderContextMarkup = `
               <h3 class="buyer-name"><a href="https://www.etsy.com/people/fixture-buyer">${effectiveBuyerName}</a></h3>
-              <a href="https://www.etsy.com/your/orders/sold/completed?order_id=${effectiveOrderId}">Order #${effectiveOrderId}</a>`;
+              <a href="https://www.etsy.com/your/orders/sold/completed?order_id=${effectiveOrderId}">Order #${effectiveOrderId}</a>
+              ${orderSurfaceMode && !thread
+                    ? '<a data-fixture-message-history href="https://www.etsy.com/conversations/with/fixturebuyer?ref=order_details">Message history</a>'
+                    : ''}`;
         const nativeSendLabel = sendLanguage === 'en' ? 'Send' : 'Mesaj gönder';
         fixtureRoot().innerHTML = `
           <h1>Messages — ${thread ? 'Created thread' : 'New conversation'} fixture</h1>
@@ -365,6 +368,7 @@
             initialComposerText: window.__MEMA_FIXTURE__.initialComposerText,
             composerText: textarea.value,
             nativeButtonResolved: resolvedButton === nativeButton,
+            messageHistoryInsideComposer: Boolean(document.querySelector('[data-fixture-message-history]')),
             guidedButtonEnabled: Boolean(guidedButton && !guidedButton.disabled),
             campaignStatus: api.Store.campaign?.status || '',
             itemStatus: api.Store.campaign?.items?.[0]?.status || '',
@@ -375,6 +379,7 @@
             : `compose:${RECIPIENT_ID}:receipt:${ORDER_ID}`;
         assertFixture(before.routeIdentity === expectedRouteIdentity, 'compose route identity');
         assertFixture(before.messageUrl === MESSAGE_URL, 'receipt-bound campaign URL');
+        if (orderSurfaceMode) assertFixture(before.messageHistoryInsideComposer, 'order composer includes Etsy Message history link');
         assertFixture(Boolean(before.composerText.trim()), 'non-empty campaign draft');
         assertFixture(before.campaignStatus === 'active', 'active campaign before Send');
         assertFixture(before.itemStatus === 'inserted', 'inserted item before Send');
@@ -1101,6 +1106,7 @@
         const originalConversationIdFromUrl = api.Router.conversationIdFromUrl.bind(api.Router);
         const originalCanonicalConversationUrl = api.Router.canonicalConversationUrl.bind(api.Router);
         const originalIsComposeTarget = api.Router.isComposeTarget.bind(api.Router);
+        const originalOrderComposeTargetFromUrl = api.Router.orderComposeTargetFromUrl.bind(api.Router);
         const originalAgentCanonicalConversationUrl = api.MessageCenterAgent.canonicalConversationUrl.bind(api.MessageCenterAgent);
         api.Router.page = () => route;
         api.Router.isCompletedOrdersPage = () => route === 'orders';
@@ -1119,6 +1125,10 @@
         api.Router.isComposeTarget = (value = routeUrl) => {
             const candidate = String(value || '');
             return originalIsComposeTarget(candidate.startsWith(location.origin) ? routeUrl : candidate);
+        };
+        api.Router.orderComposeTargetFromUrl = (value = routeUrl) => {
+            const candidate = String(value || '');
+            return originalOrderComposeTargetFromUrl(candidate.startsWith(location.origin) ? routeUrl : candidate);
         };
         api.Router.routeFingerprint = () => `${routeUrl}|${route}|${api.Router.conversationIdFromUrl(routeUrl)}`;
         api.Router.start = onChange => { routeListener = onChange; };

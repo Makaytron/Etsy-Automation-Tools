@@ -5,6 +5,14 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.2.4] - 2026-08-30
+
+### Fixed
+
+- Etsy'nin teslim edilmiş sipariş çekmecesinde kompozitörle aynı panelde gösterdiği tek `Message history` bilgi bağlantısı artık başka bir aktif konuşma sanılmıyor; siparişe bağlı, sıfır konuşmalı akış seçilen alıcı için taslağı hazırlayabiliyor.
+- İstisna yalnız tam Etsy `conversations/with/... ?ref=order_details` bağlantısına ve yalnız bir eşleşmeyen bağlantıya uygulanır; ikinci, bozuk veya gerçekten ilgisiz konuşma bağlantıları kompozitörü fail-closed biçimde engellemeyi sürdürür.
+- Gerçek tarayıcı fixture'ı canlı Etsy panel yapısını içerir ve aynı sipariş ön-dolgusunun tek taslakla değiştiğini, otomatik gönderim yapılmadığını ve açık kullanıcı eylemi olmadan giden mesaj oluşmadığını doğrular.
+
 ## [1.2.3] - 2026-08-29
 
 ### Fixed

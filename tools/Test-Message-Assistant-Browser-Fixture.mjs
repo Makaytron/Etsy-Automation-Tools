@@ -535,6 +535,7 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
                 'https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=10000001');
             assert.equal(result.after.routeIdentity, 'compose:order:receipt:10000001');
             assert.equal(result.after.initialComposerText, 'https://www.etsy.com/your/purchases/10000001');
+            assert.equal(result.before.messageHistoryInsideComposer, true);
             assert.notEqual(result.after.composerText, result.after.initialComposerText);
             assert.equal(result.after.autoSendCampaign, true);
             assert.equal(result.after.purpose, 'delivery_followup');

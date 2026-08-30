@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.2.3
+// @version      1.2.4
 // @description  Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -51,7 +51,7 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.2.3';
+    const APP_VERSION = '1.2.4';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
@@ -3900,14 +3900,36 @@ zu|Zulu
             const candidates = this.composerCandidates(scope);
             return candidates.length === 1 && candidates[0] === textarea;
         },
+        isOrderComposeMessageHistoryLink(link) {
+            if (Router.orderComposeTargetFromUrl()?.kind !== 'order-compose') return false;
+            try {
+                const url = new URL(Router.elementHref(link), location.href);
+                const parts = url.pathname.split('/').filter(Boolean);
+                const query = [...url.searchParams.entries()];
+                return url.origin === 'https://www.etsy.com'
+                    && !url.username
+                    && !url.password
+                    && !url.hash
+                    && parts.length === 3
+                    && parts[0].toLowerCase() === 'conversations'
+                    && parts[1].toLowerCase() === 'with'
+                    && Boolean(Router.decodeConversationId(parts[2]))
+                    && query.length === 1
+                    && query[0][0] === 'ref'
+                    && query[0][1].toLowerCase() === 'order_details'
+                    && Boolean(Router.conversationIdentity(url.href));
+            } catch { return false; }
+        },
         scopeHasOtherConversation(scope) {
             const activeIdentity = Router.conversationIdentity();
             if (!activeIdentity) return true;
             const links = scope?.querySelectorAll?.(CONVERSATION_ANCHOR_SELECTOR) || [];
-            return [...links].some((link) => {
+            const mismatched = [...links].filter((link) => {
                 const identity = Router.conversationIdentity(Router.elementHref(link));
                 return identity && identity !== activeIdentity;
             });
+            return mismatched.length > 0
+                && (mismatched.length !== 1 || !this.isOrderComposeMessageHistoryLink(mismatched[0]));
         },
         getConversationScope(resolvedTextarea = null) {
             if (Router.page() !== 'messages' || !Router.conversationId()) return null;

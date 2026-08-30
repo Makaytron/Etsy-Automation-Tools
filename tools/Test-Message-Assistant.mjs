@@ -853,6 +853,50 @@ test('only Etsy\'s exact same-order purchases prefill may be replaced in order c
     }), false, 'a stale route identity cannot authorize prefill replacement');
 });
 
+test('order compose accepts its informational Message history link but still rejects unrelated conversations', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const orderId = '9876543210';
+    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    const orderHistoryLink = {
+        href: 'https://www.etsy.com/conversations/with/fixturebuyer?ref=order_details',
+    };
+    const unrelatedConversationLink = {
+        href: 'https://www.etsy.com/messages/unrelated-thread?ref=orders',
+    };
+    const scopeWith = links => ({ querySelectorAll: () => links });
+
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    sandbox.location.href = orderComposeUrl;
+
+    assert.equal(api.MessageAdapter.isOrderComposeMessageHistoryLink(orderHistoryLink), true);
+    assert.equal(api.MessageAdapter.scopeHasOtherConversation(scopeWith([orderHistoryLink])), false);
+    assert.equal(api.MessageAdapter.scopeHasOtherConversation(scopeWith([
+        orderHistoryLink,
+        unrelatedConversationLink,
+    ])), true, 'an actual unrelated conversation remains fail-closed');
+    assert.equal(api.MessageAdapter.scopeHasOtherConversation(scopeWith([
+        orderHistoryLink,
+        { ...orderHistoryLink },
+    ])), true, 'multiple informational conversation links remain ambiguous');
+
+    for (const unsafe of [
+        'https://user@www.etsy.com/conversations/with/fixturebuyer?ref=order_details',
+        'https://www.etsy.com/conversations/with/fixturebuyer?ref=order_details&extra=1',
+        'https://www.etsy.com/conversations/with/fixturebuyer?ref=order_details#fragment',
+        'https://www.etsy.com/conversations/with/all?ref=order_details',
+    ]) {
+        assert.equal(api.MessageAdapter.isOrderComposeMessageHistoryLink({ href: unsafe }), false, unsafe);
+    }
+
+    sandbox.location.pathname = '/messages/active-thread';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/messages/active-thread';
+    assert.equal(api.MessageAdapter.isOrderComposeMessageHistoryLink(orderHistoryLink), false);
+    assert.equal(api.MessageAdapter.scopeHasOtherConversation(scopeWith([orderHistoryLink])), true,
+        'the exemption is limited to receipt-bound order compose routes');
+});
+
 test('post-send compose-to-thread verification stays bound to the same order and customer only', async () => {
     const { api, sandbox } = await loadAssistant();
     const composeUrl = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';

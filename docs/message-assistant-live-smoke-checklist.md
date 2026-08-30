@@ -17,7 +17,7 @@ Sonucu belirsiz bir gönderimi tekrar denemeyin. Önce konuşmada yeni bir giden
 
 ## Etsy'yi açmadan önce
 
-- [ ] İncelenen commit'i ve userscript sürümünü (`1.2.2`) kaydedin.
+- [ ] İncelenen commit'i ve userscript sürümünü (`1.2.4`) kaydedin.
 - [ ] Aynı commit'te odaklı testlerin, localhost fixture smoke testinin ve dağıtım kapısının geçtiğini doğrulayın.
 - [ ] Canlı hesap dışında, izole fixture/test agent'ında belirsiz sonuç → manuel uzlaştırma → aynı job tekrarında sıfır Etsy tıklaması zincirini doğrulayın. Bu prova geçmeden canlı Message Center testi yapmayın.
 - [ ] Hesap sahibiyle birlikte tek bir teslim edilmiş sipariş ve meşru, Etsy politikalarına uygun mesaj amacı seçin.

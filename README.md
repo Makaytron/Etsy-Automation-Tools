@@ -15,7 +15,7 @@ Open-source Etsy automation tools and Tampermonkey userscripts for sellers. The 
 | Script | Version | Purpose |
 |---|---:|---|
 | [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/README.en.md) | 1.0.12 | Bulk Sales & Discounts Automation that schedules, verifies, and reports Etsy sale campaigns in controlled, fail-closed batches. |
-| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.2.3 | Adds a translated inbox preview with a persistent display-language picker, reply drafts, review-request eligibility controls, guided send-and-next, templates, and user-selected AI provider profiles. |
+| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.2.4 | Adds a translated inbox preview with a persistent display-language picker, reply drafts, review-request eligibility controls, guided send-and-next, templates, and user-selected AI provider profiles. |
 | [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.0.3 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
 | [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.en.md) | 1.0.5 | Collects every page in order, returns to page 1, and adds retries, error reports, presets, charts, AI comparison, and Health Engine workflows. |
 | [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/README.en.md) | 1.0.3 | Reads visible Marketplace Insights metrics, explains them beneath keyword rows, and can return evidence to Listing Analyzer, which derives the title/tag suggestion locally. |
