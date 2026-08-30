@@ -438,6 +438,60 @@ async function runBrowserScenario(chrome, fixtureUrl, query, method, interaction
     }
 }
 
+function assertResponsiveMessageListLayout(layout, { viewportWidth, desktopPanel = false }) {
+    const tolerance = 1;
+    const noHorizontalOverflow = (box, label) => {
+        assert.ok(box.scrollWidth <= box.clientWidth + tolerance,
+            `${label} has no horizontal overflow (${box.scrollWidth} <= ${box.clientWidth}).`);
+    };
+    const inside = (child, parent, label) => {
+        assert.ok(child.left >= parent.left - tolerance && child.right <= parent.right + tolerance,
+            `${label} stays inside its parent bounds.`);
+    };
+
+    assert.equal(layout.viewportWidth, viewportWidth);
+    assert.equal(layout.itemCount, 2);
+    assert.ok(layout.optionCount > 200, 'the full language catalog remains rendered');
+    assert.ok(layout.longestLanguageOptionLength > 1_000, 'the fixture includes a genuinely long language option');
+    assert.doesNotMatch(layout.appClasses, /(?:^|\s)ma-app--wide(?:\s|$)/,
+        'message-list mode keeps the default compact panel');
+    assert.ok(layout.row.width > 0 && layout.row.height > 0, 'the long conversation row remains visible');
+    assert.ok(layout.rowBody.width > 0, 'the flexible conversation row body remains visible');
+    assert.ok(layout.openButton.width > 0, 'the fixed conversation-open action remains visible');
+
+    for (const [label, box] of [
+        ['assistant main area', layout.main],
+        ['assistant view', layout.view],
+        ['message-list shell', layout.shell],
+        ['message-list controls', layout.controls],
+        ['conversation list', layout.list],
+        ['conversation row', layout.row],
+        ['expanded original-message body', layout.disclosureBody],
+    ]) noHorizontalOverflow(box, label);
+
+    inside(layout.shell, layout.view, 'the message-list shell');
+    inside(layout.controls, layout.shell, 'the language controls');
+    inside(layout.select, layout.controls, 'the long language selector');
+    inside(layout.list, layout.shell, 'the conversation list');
+    inside(layout.row, layout.list, 'the long conversation row');
+    inside(layout.openButton, layout.row, 'the conversation-open action');
+    inside(layout.disclosureBody, layout.rowBody, 'the expanded original-message body');
+
+    assert.ok(layout.title.scrollWidth > layout.title.clientWidth,
+        'the long customer name exercises clipped intrinsic content');
+    assert.ok(layout.preview.scrollWidth > layout.preview.clientWidth,
+        'the long translated preview exercises clipped intrinsic content');
+
+    if (desktopPanel) {
+        assert.ok(Math.abs(layout.app.width - 620) <= tolerance,
+            `the default desktop message panel remains 620px wide (actual ${layout.app.width}).`);
+    } else {
+        assert.ok(layout.app.left >= 3 && layout.app.right <= viewportWidth - 3,
+            'the mobile panel respects its viewport inset');
+        assert.ok(layout.app.width < viewportWidth, 'the mobile panel stays narrower than the viewport');
+    }
+}
+
 test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 }, async t => {
     let server = null;
     let chrome = null;
@@ -494,6 +548,24 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.deepEqual(consoleErrors, []);
         });
 
+        await t.test('delayed order-compose context hydrates before one fail-safe draft insertion', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?order_surface=1&delayed_order_context=1&label=en',
+                'runDelayedOrderContextScenario',
+            );
+            assert.ok(result.after.hydrationDelayMs >= 1500);
+            assert.equal(result.after.preHydrationComposerText, 'https://www.etsy.com/your/purchases/10000001');
+            assert.equal(result.after.draftInsertionCount, 1);
+            assert.equal(result.after.itemStatus, 'inserted');
+            assert.equal(result.after.sendCount, 0);
+            assert.equal(result.after.nativeTargetClickCount, 0);
+            assert.equal(result.after.formSubmitCount, 0);
+            assert.equal(result.after.outgoingCount, 0);
+            assert.deepEqual(consoleErrors, []);
+        });
+
         await t.test('order drawer sends exactly once only after the explicit guided action', { timeout: TIMEOUT_MS }, async () => {
             const { result, consoleErrors } = await runBrowserScenario(
                 chrome,
@@ -541,6 +613,32 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.ok(layout.tableWrap.scrollWidth > layout.tableWrap.clientWidth, 'the wide table scrolls only inside its wrapper');
             assert.ok(layout.tableWrap.left >= layout.view.left - 1 && layout.tableWrap.right <= layout.view.right + 1,
                 'the delivered-order list stays within the visible assistant view');
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('default 620px message panel contains long language options and conversation text', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?message_list=1',
+                'runResponsiveMessageListScenario',
+                null,
+                { width: 1440, height: 900 },
+            );
+            assertResponsiveMessageListLayout(result.after, { viewportWidth: 1440, desktopPanel: true });
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('narrow mobile message panel contains long language options and conversation text', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/?message_list=1',
+                'runResponsiveMessageListScenario',
+                null,
+                { width: 360, height: 800 },
+            );
+            assertResponsiveMessageListLayout(result.after, { viewportWidth: 360 });
             assert.deepEqual(consoleErrors, []);
         });
 

@@ -6609,6 +6609,174 @@ test('order-compose resume replaces only the exact Etsy prefill and never auto-s
     }
 });
 
+test('order-compose resume waits for delayed exact order and buyer context across a safe composer remount', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    const orderId = '9876543210';
+    const customerName = 'Fixture Buyer';
+    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    const identity = `compose:order:receipt:${orderId}`;
+    const purchasePrefill = `https://www.etsy.com/your/purchases/${orderId}`;
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    sandbox.location.href = orderComposeUrl;
+    api.Store.settings.replyInCustomerLanguage = false;
+    api.Store.settings.autoSendCampaign = true;
+    await api.Campaign.create([{
+        orderId,
+        customerName,
+        itemTitle: 'Custom Team Shirt',
+        messageUrl: orderComposeUrl,
+    }], 'tpl-delivered', 'template');
+
+    const firstTextarea = { value: purchasePrefill, offsetParent: {} };
+    const hydratedTextarea = { value: purchasePrefill, offsetParent: {} };
+    let currentTextarea = firstTextarea;
+    let contextReads = 0;
+    let insertCalls = 0;
+    let insertedInto = null;
+    let autoSendCalls = 0;
+    const originals = {
+        getTextarea: api.MessageAdapter.getTextarea,
+        waitForTextarea: api.MessageAdapter.waitForTextarea,
+        context: api.MessageAdapter.context,
+        insert: api.MessageAdapter.insert,
+        autoSendIfCurrent: api.Campaign.autoSendIfCurrent,
+        open: api.UI.open,
+        toast: api.UI.toast,
+    };
+    api.Campaign.contextHydrationTimeoutMs = 500;
+    api.Campaign.contextHydrationPollMs = 25;
+    api.MessageAdapter.getTextarea = () => currentTextarea;
+    api.MessageAdapter.waitForTextarea = async () => currentTextarea;
+    api.MessageAdapter.context = () => {
+        contextReads += 1;
+        if (contextReads === 1) {
+            currentTextarea = hydratedTextarea;
+            return {
+                conversationId: identity,
+                customerName: '',
+                orderId: '',
+                messages: [],
+                lastCustomerMessage: '',
+                routeFingerprint: api.Router.routeFingerprint(),
+            };
+        }
+        return {
+            conversationId: identity,
+            customerName,
+            customerFirstName: 'Fixture',
+            orderId,
+            itemTitle: 'Custom Team Shirt',
+            messages: [],
+            lastCustomerMessage: '',
+            routeFingerprint: api.Router.routeFingerprint(),
+        };
+    };
+    api.MessageAdapter.insert = (text, target) => {
+        insertCalls += 1;
+        insertedInto = target;
+        target.value = text;
+    };
+    api.Campaign.autoSendIfCurrent = async () => { autoSendCalls += 1; return true; };
+    api.UI.open = () => {};
+    api.UI.toast = () => {};
+
+    try {
+        assert.equal(await api.Campaign.resume(), true);
+        assert.ok(contextReads >= 2, 'missing order and buyer context must be polled until it hydrates');
+        assert.equal(insertCalls, 1);
+        assert.equal(insertedInto, hydratedTextarea, 'a remounted composer must be revalidated before insertion');
+        assert.notEqual(hydratedTextarea.value, purchasePrefill);
+        assert.equal(autoSendCalls, 0, 'the order drawer remains explicitly user-triggered');
+        assert.equal(api.Store.campaign.items[0].status, 'inserted');
+        assert.equal(api.Store.statuses.orders[orderId].status, 'inserted');
+    } finally {
+        Object.assign(api.MessageAdapter, {
+            getTextarea: originals.getTextarea,
+            waitForTextarea: originals.waitForTextarea,
+            context: originals.context,
+            insert: originals.insert,
+        });
+        api.Campaign.autoSendIfCurrent = originals.autoSendIfCurrent;
+        api.UI.open = originals.open;
+        api.UI.toast = originals.toast;
+    }
+});
+
+test('order-compose resume fails closed on the first explicit customer mismatch without polling or insertion', async () => {
+    const environment = await loadAssistant();
+    const { api, sandbox } = environment;
+    const orderId = '9876543210';
+    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    const identity = `compose:order:receipt:${orderId}`;
+    const purchasePrefill = `https://www.etsy.com/your/purchases/${orderId}`;
+    sandbox.location.pathname = '/your/orders/sold/completed';
+    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
+    sandbox.location.href = orderComposeUrl;
+    api.Store.settings.replyInCustomerLanguage = false;
+    await api.Campaign.create([{
+        orderId,
+        customerName: 'Fixture Buyer',
+        itemTitle: 'Custom Team Shirt',
+        messageUrl: orderComposeUrl,
+    }], 'tpl-delivered', 'template');
+
+    const textarea = { value: purchasePrefill, offsetParent: {} };
+    let contextReads = 0;
+    let insertCalls = 0;
+    let autoSendCalls = 0;
+    const originals = {
+        getTextarea: api.MessageAdapter.getTextarea,
+        waitForTextarea: api.MessageAdapter.waitForTextarea,
+        context: api.MessageAdapter.context,
+        insert: api.MessageAdapter.insert,
+        autoSendIfCurrent: api.Campaign.autoSendIfCurrent,
+        open: api.UI.open,
+        toast: api.UI.toast,
+    };
+    api.Campaign.contextHydrationTimeoutMs = 500;
+    api.Campaign.contextHydrationPollMs = 25;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.waitForTextarea = async () => textarea;
+    api.MessageAdapter.context = () => {
+        contextReads += 1;
+        return {
+            conversationId: identity,
+            customerName: 'Wrong Buyer',
+            orderId,
+            messages: [],
+            lastCustomerMessage: '',
+            routeFingerprint: api.Router.routeFingerprint(),
+        };
+    };
+    api.MessageAdapter.insert = () => { insertCalls += 1; };
+    api.Campaign.autoSendIfCurrent = async () => { autoSendCalls += 1; return true; };
+    api.UI.open = () => {};
+    api.UI.toast = () => {};
+
+    try {
+        await assert.rejects(api.Campaign.resume(), /sipariş veya müşteri.*eşleşmiyor/i);
+        assert.equal(contextReads, 1, 'an explicit mismatch must not be treated as incomplete hydration');
+        assert.equal(insertCalls, 0);
+        assert.equal(autoSendCalls, 0);
+        assert.equal(textarea.value, purchasePrefill);
+        assert.equal(api.Store.campaign.items[0].status, 'pending');
+        assert.equal(api.Store.statuses.orders[orderId].status, 'draft');
+        assert.equal(api.Store.campaign.items[0].reservation, undefined);
+    } finally {
+        Object.assign(api.MessageAdapter, {
+            getTextarea: originals.getTextarea,
+            waitForTextarea: originals.waitForTextarea,
+            context: originals.context,
+            insert: originals.insert,
+        });
+        api.Campaign.autoSendIfCurrent = originals.autoSendIfCurrent;
+        api.UI.open = originals.open;
+        api.UI.toast = originals.toast;
+    }
+});
+
 test('campaign resume never overwrites a different occupied composer mounted while the draft is prepared', async () => {
     const environment = await loadAssistant();
     const { api, sandbox } = environment;

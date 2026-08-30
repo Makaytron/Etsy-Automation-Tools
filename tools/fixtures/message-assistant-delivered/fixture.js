@@ -10,6 +10,8 @@
     const THREAD_URL = 'https://www.etsy.com/messages/fixture-created-thread';
     const parameters = new URL(location.href).searchParams;
     const orderSurfaceMode = parameters.get('order_surface') === '1';
+    const messageListMode = parameters.get('message_list') === '1';
+    const delayedOrderContextMode = parameters.get('delayed_order_context') === '1';
     const MESSAGE_URL = orderSurfaceMode ? ORDER_SURFACE_URL : LEGACY_MESSAGE_URL;
     const simulateComposeTransition = parameters.get('transition') === '1';
     const sendLanguage = parameters.get('label') === 'en' ? 'en' : 'tr';
@@ -20,6 +22,8 @@
     const nativeInputBlock = parameters.get('block') || '';
     const shortcutCount = Math.max(1, Number.parseInt(parameters.get('shortcut_count') || '1', 10) || 1);
     const shortcutModifier = parameters.get('shortcut_modifier') === 'meta' ? 'meta' : 'ctrl';
+    const LONG_LIST_BUYER = `FixtureBuyer${'LongName'.repeat(8)}`;
+    const LONG_LIST_PREVIEW = `Preview${'UnbrokenMessageSegment'.repeat(70)}`;
     const storage = new Map();
     const valueListeners = new Map();
     const networkAttempts = [];
@@ -139,6 +143,35 @@
         setFixtureState('sipariş sayfası');
     }
 
+    function renderMessageList() {
+        route = 'messages';
+        routeUrl = 'https://www.etsy.com/messages/all';
+        fixtureRoot().innerHTML = `
+          <h1>Messages - Conversation list fixture</h1>
+          <section class="conversations-subapp">
+            <ul class="scrolling-message-list" aria-label="Conversation list">
+              <li class="conversation-row unread" role="listitem" data-conversation-id="fixture-long-thread">
+                <a href="https://www.etsy.com/messages/fixture-long-thread"
+                   aria-label="Conversation with ${LONG_LIST_BUYER}, from 1 hour ago">
+                  <span class="buyer-name" data-test-id="buyer-name">${LONG_LIST_BUYER}</span>
+                  <span class="message-preview" data-test-id="message-preview">${LONG_LIST_PREVIEW}</span>
+                  <time datetime="2026-08-29T12:00:00.000Z">1 hour ago</time>
+                  <span aria-label="Unread">Unread</span>
+                </a>
+              </li>
+              <li class="conversation-row" role="listitem" data-conversation-id="fixture-short-thread">
+                <a href="https://www.etsy.com/messages/fixture-short-thread"
+                   aria-label="Conversation with Second Fixture Buyer, from 2 hours ago">
+                  <span class="buyer-name" data-test-id="buyer-name">Second Fixture Buyer</span>
+                  <span class="message-preview" data-test-id="message-preview">A normal visible message preview.</span>
+                  <time datetime="2026-08-29T11:00:00.000Z">2 hours ago</time>
+                </a>
+              </li>
+            </ul>
+          </section>`;
+        setFixtureState('message list');
+    }
+
     function appendOutgoing(panel, text) {
         const row = document.createElement('div');
         row.className = 'wt-grid';
@@ -202,13 +235,16 @@
         routeUrl = thread ? THREAD_URL : MESSAGE_URL;
         const effectiveBuyerName = thread ? transitionBuyerName : BUYER_NAME;
         const effectiveOrderId = thread ? transitionOrderId : ORDER_ID;
+        const delayOrderContext = orderSurfaceMode && delayedOrderContextMode && !thread;
+        const orderContextMarkup = `
+              <h3 class="buyer-name"><a href="https://www.etsy.com/people/fixture-buyer">${effectiveBuyerName}</a></h3>
+              <a href="https://www.etsy.com/your/orders/sold/completed?order_id=${effectiveOrderId}">Order #${effectiveOrderId}</a>`;
         const nativeSendLabel = sendLanguage === 'en' ? 'Send' : 'Mesaj gönder';
         fixtureRoot().innerHTML = `
           <h1>Messages — ${thread ? 'Created thread' : 'New conversation'} fixture</h1>
           <section class="conversations-subapp">
             <div role="tabpanel" ${thread ? 'data-conversation-id="fixture-created-thread"' : ''}>
-              <h3 class="buyer-name"><a href="https://www.etsy.com/people/fixture-buyer">${effectiveBuyerName}</a></h3>
-              <a href="https://www.etsy.com/your/orders/sold/completed?order_id=${effectiveOrderId}">Order #${effectiveOrderId}</a>
+              <div id="fixture-order-context" ${delayOrderContext ? 'aria-busy="true"' : ''}>${delayOrderContext ? '' : orderContextMarkup}</div>
               <a href="https://www.etsy.com/transaction/30000003" title="Fixture Item">Fixture Item</a>
               ${incoming ? `<div class="wt-grid"><div data-message-direction="incoming" data-message-id="fixture-incoming-1"><span data-message-text>Hello from the fixture buyer.</span></div></div>` : ''}
               <div class="fixture-composer">
@@ -227,6 +263,22 @@
         if (orderSurfaceMode && !thread) {
             textarea.value = PURCHASE_PREFILL_URL;
             window.__MEMA_FIXTURE__.initialComposerText = textarea.value;
+        }
+        textarea.addEventListener('input', () => {
+            if (textarea.value.trim() && textarea.value !== PURCHASE_PREFILL_URL) {
+                window.__MEMA_FIXTURE__.draftInsertionCount += 1;
+            }
+        });
+        if (delayOrderContext) {
+            window.__MEMA_FIXTURE__.contextHydrationScheduledAt = performance.now();
+            setTimeout(() => {
+                const target = document.getElementById('fixture-order-context');
+                if (!target || target.getAttribute('aria-busy') !== 'true') return;
+                window.__MEMA_FIXTURE__.preHydrationComposerText = textarea.value;
+                target.innerHTML = orderContextMarkup;
+                target.removeAttribute('aria-busy');
+                window.__MEMA_FIXTURE__.contextHydratedAt = performance.now();
+            }, 1600);
         }
         sendButton.addEventListener('click', () => {
             window.__MEMA_FIXTURE__.nativeTargetClickCount += 1;
@@ -456,6 +508,26 @@
         assertFixture(result.outgoingCount === 0, 'order surface creates no outgoing message before manual Send');
         document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
         return { before, after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
+    async function runDelayedOrderContextScenario() {
+        assertFixture(orderSurfaceMode && delayedOrderContextMode, 'delayed order context scenario flags');
+        const scenario = await runOrderSurfaceScenario();
+        const result = {
+            ...scenario.after,
+            draftInsertionCount: window.__MEMA_FIXTURE__.draftInsertionCount,
+            preHydrationComposerText: window.__MEMA_FIXTURE__.preHydrationComposerText,
+            hydrationDelayMs: window.__MEMA_FIXTURE__.contextHydratedAt
+                - window.__MEMA_FIXTURE__.contextHydrationScheduledAt,
+        };
+        assertFixture(result.hydrationDelayMs >= 1500, 'buyer/order context hydrates at least 1500 ms later');
+        assertFixture(result.preHydrationComposerText === PURCHASE_PREFILL_URL,
+            'exact Etsy purchases prefill remains untouched before context hydration');
+        assertFixture(result.draftInsertionCount === 1, 'production prepares the draft exactly once');
+        assertFixture(result.sendCount === 0 && result.nativeTargetClickCount === 0
+            && result.formSubmitCount === 0 && result.outgoingCount === 0,
+        'delayed context preparation never dispatches');
+        return { before: scenario.before, after: result, externalNetworkAttempts: copy(networkAttempts) };
     }
 
     async function runOrderSurfaceManualSendScenario() {
@@ -878,11 +950,113 @@
         return { after: result, externalNetworkAttempts: copy(networkAttempts) };
     }
 
+    async function runResponsiveMessageListScenario() {
+        assertFixture(messageListMode, 'responsive message-list scenario flag');
+        await api.Store.saveSettings({
+            ...api.Store.settings,
+            autoTurkishPreview: false,
+        });
+        api.UI.open('messages');
+        await api.UI.refreshCurrent();
+
+        const items = api.UI.messageListItems();
+        const stressItem = items.find(item => item.conversationId === 'fixture-long-thread');
+        assertFixture(stressItem && items.length === 2, 'two real conversation-list rows are scanned');
+        api.UI.state.messageListTranslations.set(
+            api.UI.messageListTranslationKey(stressItem, 'tr'),
+            {
+                text: `Translated${'UnbrokenTranslatedSegment'.repeat(70)}`,
+                detectedLanguage: 'en',
+                provider: 'google',
+            },
+        );
+        api.UI.render();
+
+        const shadow = api.UI.shadow;
+        const select = shadow.querySelector('[data-message-list-language]');
+        assertFixture(select, 'message-list language selector');
+        for (const [value, label] of [
+            ['fixture-long-a', `FixtureLanguage${'UnbrokenLanguageOption'.repeat(70)}`],
+            ['fixture-long-b', `SecondFixtureLanguage${'AnotherUnbrokenLanguageOption'.repeat(60)}`],
+        ]) {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = label;
+            select.appendChild(option);
+        }
+        select.value = 'fixture-long-a';
+
+        const row = shadow.querySelector('[data-message-open-url*="fixture-long-thread"]')?.closest('.ma-message-list__item');
+        const details = row?.querySelector('.ma-disclosure');
+        if (details) details.open = true;
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+        const app = shadow.querySelector('.ma-app');
+        const main = shadow.querySelector('.ma-main');
+        const view = shadow.querySelector('.ma-view');
+        const shell = shadow.querySelector('.ma-message-list-shell');
+        const controls = shadow.querySelector('.ma-message-list-controls');
+        const list = shell?.querySelector(':scope > .ma-list');
+        const rowBody = row?.querySelector('.ma-list-item__body');
+        const openButton = row?.querySelector('[data-message-open-url]');
+        const title = row?.querySelector('.ma-list-item__title');
+        const preview = row?.querySelector('.ma-list-item__desc');
+        const disclosureBody = row?.querySelector('.ma-disclosure__body');
+        assertFixture(
+            app && main && view && shell && controls && select && list && row && rowBody
+                && openButton && title && preview && details && disclosureBody,
+            'responsive message-list layout nodes',
+        );
+        const rect = node => {
+            const value = node.getBoundingClientRect();
+            return {
+                left: value.left,
+                right: value.right,
+                top: value.top,
+                bottom: value.bottom,
+                width: value.width,
+                height: value.height,
+            };
+        };
+        const sizedRect = node => ({
+            ...rect(node),
+            clientWidth: node.clientWidth,
+            scrollWidth: node.scrollWidth,
+        });
+        const optionLengths = [...select.options].map(option => option.textContent.length);
+        const result = {
+            viewportWidth: innerWidth,
+            viewportHeight: innerHeight,
+            appClasses: app.className,
+            appGridColumns: getComputedStyle(app).gridTemplateColumns,
+            itemCount: items.length,
+            optionCount: select.options.length,
+            longestLanguageOptionLength: Math.max(...optionLengths),
+            app: sizedRect(app),
+            main: sizedRect(main),
+            view: sizedRect(view),
+            shell: sizedRect(shell),
+            controls: sizedRect(controls),
+            select: sizedRect(select),
+            list: sizedRect(list),
+            row: sizedRect(row),
+            rowBody: sizedRect(rowBody),
+            openButton: sizedRect(openButton),
+            title: sizedRect(title),
+            preview: sizedRect(preview),
+            disclosureBody: sizedRect(disclosureBody),
+        };
+        document.getElementById('fixture-last-result').textContent = JSON.stringify(result);
+        return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
     window.__MEMA_FIXTURE__ = {
         orderId: ORDER_ID,
         recipientId: RECIPIENT_ID,
         messageUrl: MESSAGE_URL,
         orderSurfaceMode,
+        messageListMode,
+        delayedOrderContextMode,
         orderSurfaceUrl: ORDER_SURFACE_URL,
         purchasePrefillUrl: PURCHASE_PREFILL_URL,
         simulateComposeTransition,
@@ -897,6 +1071,10 @@
         transitionPromise: null,
         interactionReady: false,
         initialComposerText: '',
+        draftInsertionCount: 0,
+        preHydrationComposerText: '',
+        contextHydrationScheduledAt: 0,
+        contextHydratedAt: 0,
         sendCount: 0,
         nativeTargetClickCount: 0,
         nativeShortcutHandlerCount: 0,
@@ -905,16 +1083,19 @@
         runScenario,
         runDisabledSendScenario,
         runOrderSurfaceScenario,
+        runDelayedOrderContextScenario,
         runOrderSurfaceManualSendScenario,
         runMismatchScenario,
         runNativeInputScenario,
         runNonSendSubmitterScenario,
         runMessageCenterScenario,
         runResponsiveOrdersScenario,
+        runResponsiveMessageListScenario,
         get api() { return api; },
     };
 
-    renderOrders();
+    if (messageListMode) renderMessageList();
+    else renderOrders();
     globalThis.addEventListener('mema:test-api-ready', async () => {
         api = globalThis.__MEMA_TEST__;
         const originalConversationIdFromUrl = api.Router.conversationIdFromUrl.bind(api.Router);
@@ -923,7 +1104,7 @@
         const originalAgentCanonicalConversationUrl = api.MessageCenterAgent.canonicalConversationUrl.bind(api.MessageCenterAgent);
         api.Router.page = () => route;
         api.Router.isCompletedOrdersPage = () => route === 'orders';
-        api.Router.isMessageListPage = () => false;
+        api.Router.isMessageListPage = () => messageListMode && route === 'messages';
         api.Router.conversationIdFromUrl = (value = routeUrl) => {
             const candidate = String(value || '');
             if (candidate.startsWith(location.origin)) return route === 'messages'

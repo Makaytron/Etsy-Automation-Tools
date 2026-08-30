@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.2.2
+// @version      1.2.3
 // @description  Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -51,7 +51,7 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.2.2';
+    const APP_VERSION = '1.2.3';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
@@ -7118,6 +7118,8 @@ zu|Zulu
         programmaticDispatchActive: false,
         reservation: null,
         workGeneration: 0,
+        contextHydrationTimeoutMs: 4000,
+        contextHydrationPollMs: 150,
         campaignOwnsConversation(campaign, conversationIdentity) {
             if (!conversationIdentity || !this.isNonterminal(campaign) || !Array.isArray(campaign.items)) return false;
             return campaign.items.some(item => Router.conversationIdentity(item?.messageUrl || '') === conversationIdentity
@@ -7143,8 +7145,10 @@ zu|Zulu
             error.code = 'NATIVE_SEND_OUTCOME_HOLD';
             throw error;
         },
-        contextMatchesItem(context, item, expectedIdentity = Router.conversationIdentity()) {
-            if (!context || !item) return false;
+        contextBindingState(context, item, expectedIdentity = Router.conversationIdentity()) {
+            if (!item) return 'mismatch';
+            const orderComposeTarget = Router.orderComposeTargetFromUrl(item.messageUrl || '');
+            if (!context) return orderComposeTarget ? 'pending' : 'mismatch';
             const itemIdentity = Router.conversationIdentity(item.messageUrl || '');
             const composeReceiptId = itemIdentity.startsWith('compose:')
                 ? itemIdentity.match(/:receipt:([1-9]\d{0,31})$/)?.[1] || ''
@@ -7156,21 +7160,24 @@ zu|Zulu
                 ? expectedIdentity
                 : Router.conversationIdentityFromId(Router.decodeConversationId(declaredConversationId));
             if (declaredConversationId && (!contextIdentity || (expectedIdentity && contextIdentity !== expectedIdentity))) {
-                return false;
+                return 'mismatch';
             }
             const expectedOrderId = String(item.orderId || '').normalize('NFKC').trim();
-            if (itemIdentity.startsWith('compose:') && (!composeReceiptId || composeReceiptId !== expectedOrderId)) return false;
+            if (itemIdentity.startsWith('compose:') && (!composeReceiptId || composeReceiptId !== expectedOrderId)) return 'mismatch';
             const actualOrderId = String(context.orderId || '').normalize('NFKC').trim();
-            if (expectedOrderId && actualOrderId && expectedOrderId !== actualOrderId) return false;
+            if (expectedOrderId && actualOrderId && expectedOrderId !== actualOrderId) return 'mismatch';
             const expectedCustomer = normalize(item.customerName).toLocaleLowerCase('en-US');
             const actualCustomer = normalize(context.customerName).toLocaleLowerCase('en-US');
-            if (expectedCustomer && actualCustomer && expectedCustomer !== actualCustomer) return false;
-            const orderComposeTarget = Router.orderComposeTargetFromUrl(item.messageUrl || '');
-            if (orderComposeTarget
-                && (actualOrderId !== expectedOrderId
-                    || !expectedCustomer
-                    || actualCustomer !== expectedCustomer)) return false;
-            return true;
+            if (expectedCustomer && actualCustomer && expectedCustomer !== actualCustomer) return 'mismatch';
+            if (orderComposeTarget) {
+                if (!expectedCustomer) return 'mismatch';
+                if (!actualOrderId || !actualCustomer) return 'pending';
+                if (actualOrderId !== expectedOrderId || actualCustomer !== expectedCustomer) return 'mismatch';
+            }
+            return 'matched';
+        },
+        contextMatchesItem(context, item, expectedIdentity = Router.conversationIdentity()) {
+            return this.contextBindingState(context, item, expectedIdentity) === 'matched';
         },
         activeCampaignContextConflicts() {
             const campaign = Store.campaign;
@@ -7741,6 +7748,37 @@ zu|Zulu
                 conversationIdentity,
             });
         },
+        async waitForBoundContext(run, item, options = {}) {
+            const timeoutMs = Math.max(0, Number(options.timeoutMs ?? this.contextHydrationTimeoutMs) || 0);
+            const pollMs = Math.max(25, Number(options.pollMs ?? this.contextHydrationPollMs) || 0);
+            const deadline = Date.now() + timeoutMs;
+            while (true) {
+                if (!this.runIsCurrent(run)) return { state: 'stale' };
+                const textarea = MessageAdapter.getTextarea();
+                if (textarea) {
+                    if (!this.composerCanAcceptDraft(textarea, item, run.conversationIdentity)) {
+                        return { state: 'occupied', textarea };
+                    }
+                    let context = null;
+                    try { context = MessageAdapter.context(); } catch { /* hydrate edilene kadar bekle */ }
+                    if (!this.runIsCurrent(run)) return { state: 'stale' };
+                    const currentTextarea = MessageAdapter.getTextarea();
+                    if (currentTextarea === textarea) {
+                        if (!this.composerCanAcceptDraft(currentTextarea, item, run.conversationIdentity)) {
+                            return { state: 'occupied', textarea: currentTextarea };
+                        }
+                        const state = this.contextBindingState(context, item, run.conversationIdentity);
+                        if (state !== 'pending') return { state, context, textarea: currentTextarea };
+                    } else if (currentTextarea
+                        && !this.composerCanAcceptDraft(currentTextarea, item, run.conversationIdentity)) {
+                        return { state: 'occupied', textarea: currentTextarea };
+                    }
+                }
+                const remaining = deadline - Date.now();
+                if (remaining <= 0) return { state: 'timeout' };
+                await sleep(Math.min(pollMs, remaining));
+            }
+        },
         async releasePendingReservation(run) {
             if (!run?.campaignId || !run?.itemId || !run?.reservationToken) return false;
             return withCampaignCoordinator(async () => {
@@ -8230,16 +8268,24 @@ zu|Zulu
                 return false;
             }
             if (!this.runIsCurrent(run)) return false;
-            if (!this.composerCanAcceptDraft(MessageAdapter.getTextarea(), item, run.conversationIdentity)) {
+            const binding = await this.waitForBoundContext(run, item);
+            if (binding.state === 'stale') {
+                await this.releasePendingReservation(run);
+                return false;
+            }
+            if (binding.state === 'occupied') {
                 await this.releasePendingReservation(run);
                 throw this.composerOccupiedError();
             }
-            const context = MessageAdapter.context();
-            if (!MessageAdapter.getTextarea()) return;
-            if (!this.contextMatchesItem(context, item, run.conversationIdentity)) {
+            if (binding.state === 'timeout') {
+                await this.releasePendingReservation(run);
+                throw new Error('Etsy konuşmasındaki sipariş veya müşteri bağlamı zamanında yüklenemedi. Taslak aktarılmadı; sayfanın yüklenmesini bekleyip yeniden deneyin.');
+            }
+            if (binding.state !== 'matched') {
                 await this.releasePendingReservation(run);
                 throw new Error('Etsy konuşmasındaki sipariş veya müşteri kampanya alıcısıyla eşleşmiyor. Taslak aktarılmadı.');
             }
+            const context = binding.context;
             const template = TemplateEngine.get(item.templateId);
             if (!template || template.archived
                 || Outreach.purposeForTemplate(template) !== item.purpose

@@ -5,6 +5,17 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.2.3] - 2026-08-29
+
+### Fixed
+
+- Sıfır konuşmalı sipariş çekmecesinde composer önce, sipariş ve alıcı bağlamı daha sonra yüklenirse kampanya artık bağlamı sınırlı süre bekler. Her bekleme adımında rota, rezervasyon ve composer yeniden doğrulanır; açık sipariş veya müşteri uyuşmazlığı ilk okumada güvenli biçimde durur.
+
+### Tests
+
+- Gerçek Chrome regresyonu, sipariş ve alıcı DOM'u 1,6 saniye geciktiğinde Etsy'nin purchases prefill'inin korunmasını, taslağın tam bir kez hazırlanmasını ve hiçbir Gönder tıklaması, form submit'i veya outgoing mesaj oluşmamasını doğrular.
+- Gerçek Chrome geometri regresyonları, 620 px varsayılan mesaj paneli ile 360 px dar panelde uzun dil seçeneklerinin ve uzun konuşma metinlerinin panel dışına taşmadığını; teslim edilmiş sipariş tablosunun yatay kaydırmayı yalnız kendi sarmalayıcısında tuttuğunu doğrular.
+
 ## [1.2.2] - 2026-08-29
 
 ### Added
