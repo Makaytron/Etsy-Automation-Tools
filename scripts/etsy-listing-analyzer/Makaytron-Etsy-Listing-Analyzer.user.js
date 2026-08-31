@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.2.0
+// @version      1.2.1
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -36,7 +36,7 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.2.0';
+    const APP_VERSION = '1.2.1';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -709,12 +709,12 @@
 
     const RECORD_SCHEMA_VERSION = 2;
     const HEALTH_RESULT_SCHEMA_VERSION = 2;
-    const HEALTH_ENGINE_VERSION = 5;
-    const HEALTH_POLICY_VERSION = 2;
-    const COLLECTION_SCHEMA_VERSION = 3;
+    const HEALTH_ENGINE_VERSION = 6;
+    const HEALTH_POLICY_VERSION = 3;
+    const COLLECTION_SCHEMA_VERSION = 4;
     const LISTING_METRIC_CONTRACT = Object.freeze({
         id: 'etsy-listings-stats-card/v1',
-        parserVersion: 4,
+        parserVersion: 5,
         scopes: Object.freeze({
             visits: 'rolling-30d', favorites: 'rolling-30d',
             sales: 'lifetime', revenue: 'lifetime', renewals: 'lifetime',
@@ -730,6 +730,8 @@
     const COLLECTION_STABLE_SAMPLE_INTERVAL_MS = 250;
     const COLLECTION_STABLE_READ_TIMEOUT_MS = 4000;
     const SNAPSHOT_OBSERVATION_MAX_SKEW_MS = 15 * 60 * 1000;
+    const SNAPSHOT_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
+    const DISPLAY_TIME_ZONE = 'UTC';
     const ANALYSIS_BATCH_SIZE = 40;
     const ANALYSIS_FRESHNESS_MS = 24 * 60 * 60 * 1000;
     const MAX_FILTER_PRESETS = 8;
@@ -789,9 +791,11 @@
         maximumExactExperimentEvents: 1_000_000,
         experimentMatchedWindowToleranceDays: 0.25,
         recentSaleProtectionDays: 30,
+        zeroBaselineGrowthMinimumVisits: 10,
     });
     const SNAPSHOT_NUMBER_FIELDS = Object.freeze(['visits', 'favorites', 'sales', 'revenue', 'renewals', 'stock', 'priceMin', 'priceMax']);
     const HEALTH_METRIC_FIELDS = Object.freeze(['visits', 'favorites', 'sales', 'revenue', 'renewals']);
+    const DECISION_COUNT_FIELDS = Object.freeze(['visits', 'favorites', 'sales', 'renewals']);
     const EDITABLE_FIELDS = Object.freeze(['title', 'description', 'tags', 'materials']);
 
     const KEYS = Object.freeze({
@@ -820,6 +824,12 @@
         declinePercent: 35,
         retentionDays: APP.retentionDays,
         maxSnapshots: APP.maxSnapshots,
+    });
+    const HEALTH_THRESHOLD_CONTRACTS = Object.freeze({
+        minVisitsToImprove: Object.freeze({ min: 1, max: 999999, step: 1, help: 'thresholdHelpImprove' }),
+        minVisitsToProtect: Object.freeze({ min: 2, max: 1000000, step: 1, help: 'thresholdHelpProtect' }),
+        minRenewalsToReview: Object.freeze({ min: 1, max: 1000000, step: 1, help: 'thresholdHelpRenewals' }),
+        declinePercent: Object.freeze({ min: 1, max: 100, step: 1, help: 'thresholdHelpDecline' }),
     });
 
     const DEFAULT_ANALYSIS_FILTERS = Object.freeze({
@@ -1061,6 +1071,7 @@
             evidenceRecentSales: 'Yaklaşık son 30 gün: {sales} satış · {revenue} gelir',
             evidenceCohort: '{size} mağaza listingi içinde trafik yüzdeliği: {percentile}',
             evidenceAnomaly: '{count} veri tutarlılığı uyarısı bulundu.',
+            guardExactCounters: 'Kararda kullanılan sayaçlar exact olarak doğrulandı',
             guardHistory: '60+ gün ve en az 3 tam snapshot',
             guardZeroTraffic: 'En az 14 gün arayla tekrarlanan sıfır trafik',
             guardNoSales: 'Listingde toplam satış/gelir yok ve son 60 gün de sıfır',
@@ -1094,7 +1105,7 @@
             lifecycleDataGap: 'Data incomplete', lifecycleBaseline: 'Building baseline', lifecycleLearning: 'Learning', lifecycleStable: 'Stable', lifecycleGrowing: 'Growing', lifecycleDeclining: 'Declining', lifecycleProtected: 'Protected', lifecycleExperiment: 'Experiment running', lifecycleDormant: 'Dormant', lifecycleDeactivate: 'Review deactivation', lifecycleInactive: 'Inactive',
             diagnosisDiscovery: 'Low discovery', diagnosisEngagement: 'Weak post-visit interest', diagnosisPurchase: 'Possible purchase friction', diagnosisScale: 'Ready for more reach', diagnosisHealthy: 'No clear issue', diagnosisInsufficient: 'Not enough signal', confidenceLow: 'Low', confidenceMedium: 'Medium', confidenceHigh: 'High', confidenceVeryHigh: 'Very high',
             evidenceHistory: '{days} days of history · {count} snapshots', evidenceTraffic: '30-day visits: {current}; previous window: {previous} · {percent}%', evidenceRecentSales: 'Approximate last 30 days: {sales} sales · {revenue} revenue', evidenceCohort: 'Traffic percentile among {size} shop listings: {percentile}', evidenceAnomaly: '{count} data-integrity warning(s) found.',
-            guardHistory: '60+ days and at least 3 complete snapshots', guardZeroTraffic: 'Repeated zero traffic at least 14 days apart', guardNoSales: 'No lifetime sales/revenue and no new sales/revenue in the last 60 days', guardRenewals: 'Renewal cost continues without sales', guardActiveStock: 'Listing is active and in stock', guardNoExperiment: 'No active experiment', guardCooldown: 'No published improvement in the last 45 days', guardSeasonal: 'Explicitly confirmed as non-seasonal', guardDataIntegrity: 'No data-integrity issue in the active 60-day epoch', guardConfidence: 'Evidence readiness is at least 80',
+            guardExactCounters: 'Decision counters are verified as exact', guardHistory: '60+ days and at least 3 complete snapshots', guardZeroTraffic: 'Repeated zero traffic at least 14 days apart', guardNoSales: 'No lifetime sales/revenue and no new sales/revenue in the last 60 days', guardRenewals: 'Renewal cost continues without sales', guardActiveStock: 'Listing is active and in stock', guardNoExperiment: 'No active experiment', guardCooldown: 'No published improvement in the last 45 days', guardSeasonal: 'Explicitly confirmed as non-seasonal', guardDataIntegrity: 'No data-integrity issue in the active 60-day epoch', guardConfidence: 'Evidence readiness is at least 80',
             experimentPlanned: 'Planned', experimentObserving: 'Observing · day {day}/30', experimentWinner: 'Post-change increase signal', experimentUnderperformed: 'Post-change decrease signal', experimentInconclusive: 'Inconclusive', experimentContaminated: 'Contaminated by another change', experimentStopped: 'Stopped', contentChanged: 'The listing content changed after the proposal was saved. The form was preserved and processing stopped; review the proposal again.', proposalStale: 'Listing data or analysis settings changed after the proposal was saved. No queue was created; review the proposal again.', manualApproval: 'Every Etsy write action requires listing-level user approval.',
             confidenceFilter: 'Evidence readiness',
             confidenceLowFilter: 'Low readiness', confidenceMediumFilter: 'Medium readiness', confidenceHighFilter: 'High / very high readiness',
@@ -1121,7 +1132,7 @@
             snapshotRenewalWaste: 'Yenileme verimsizliği', snapshotWeakDiscovery: 'Görünürlük zayıf', snapshotWeakEngagement: 'İlgi zayıf', snapshotPurchaseFriction: 'Satış dönüşümü zayıf', snapshotProvenDemand: 'Satış kanıtı var', snapshotStrongCurrent: 'Güncel erişim/ilgi güçlü', snapshotMixed: 'Güncel sinyaller karışık', snapshotNoActivity: 'Güncel hareket yok', snapshotInsufficient: 'Güncel metrik okunamadı',
             reasonSnapshotRenewalWaste: '{renewals} yenilemeye rağmen satış, gelir ve favori yok. İyileştirmeyi önceliklendirin; kapatma için tarihsel kanıt gerekir.', reasonSnapshotDiscovery: 'Güncel ziyaret düzeyi mağaza içindeki görünürlüğün zayıf olduğunu gösteriyor.', reasonSnapshotEngagement: 'Yeterli ziyaret görülmesine rağmen favori ilgisi zayıf; görsel, başlık ve teklif uyumunu inceleyin.', reasonSnapshotPurchase: 'Ziyaret veya favori var fakat tüm-zaman satış ve gelir yok; fiyat, görseller ve teklif sürtünmesini inceleyin.', reasonSnapshotDemand: 'Tüm-zaman satış veya gelir kanıtı bu listingi korur; güncel erişim/ilgi ayrıca değerlendirilir ve zayıf olabilir. Tarihsel kanıt puanı yapay olarak yükseltmez.', reasonSnapshotStrong: 'Son 30 günlük ziyaret ve favori oranı güçlü bir konuma işaret ediyor; trend doğrulaması için yeni taramalar toplayın.', reasonSnapshotMixed: 'Güncel sayaçlarda tek başına güçlü bir sorun veya fırsat sinyali yok; karşılaştırmalı geçmiş toplamaya devam edin.', reasonSnapshotNoActivity: 'Sayaçlar eksiksiz okundu: son 30 günde ziyaret veya favori, tüm-zaman geçmişinde de satış veya gelir yok. Veri eksik değil; şimdilik izleyin.',
             filterPresets: 'Hazır filtreler', presetGrowing: 'Yükselişte', presetImprove: 'İyileştirilecek', presetDeclining: 'Düşüşte', presetDeactivate: 'Kapatmayı incele', presetExperiments: 'Aktif deneyler', presetMissing: 'Eksik / tutarsız veri', presetName: 'Preset adı', savePreset: 'Mevcut filtreyi kaydet', deletePreset: 'Preseti sil', presetSaved: 'Filtre preseti kaydedildi.', presetDeleted: 'Filtre preseti silindi.', presetLimit: 'En fazla {count} özel filtre preseti kaydedilebilir.', presetInvalid: 'Preset adı 2–32 karakter olmalı.',
-            historyCharts: 'Tarihsel değişim grafikleri', noChartData: 'Grafik için en az iki geçerli kayıt gerekir.', experimentTimeline: 'İyileştirme deney zaman çizelgesi', timelinePlanned: 'Öneri planlandı', timelinePublished: 'Etsy’de yayınlandı', timelineObserving: 'Gözlem başladı', timelineEvaluationDue: 'Değerlendirme tarihi', timelineEvaluated: 'Deney sonucu', timelineNotApplied: 'Henüz uygulanmadı',
+            historyCharts: 'Tarihsel değişim grafikleri', noChartData: 'Grafik için en az iki geçerli kayıt gerekir.', chartApproximate: 'yaklaşık değer', chartLegacy: 'doğrulanmamış eski kayıt', chartStaleExcluded: '{count} eski gözlem grafikten çıkarıldı.', chartMixedCurrencies: 'karışık para birimleri', experimentTimeline: 'İyileştirme deney zaman çizelgesi', timelinePlanned: 'Öneri planlandı', timelinePublished: 'Etsy’de yayınlandı', timelineObserving: 'Gözlem başladı', timelineEvaluationDue: 'Değerlendirme tarihi', timelineEvaluated: 'Deney sonucu', timelineNotApplied: 'Henüz uygulanmadı',
             aiComparison: 'AI önerisi önce / sonra', aiComparisonEmpty: 'İçe aktarılmış bir AI önerisi henüz yok.', beforeValue: 'Önce', proposedValue: 'AI önerisi', appliedValue: 'Doğrulanan sonuç', changedFields: 'Değişen alanlar', valueNotCaptured: 'Önceki değer yakalanmadı.',
             collectionRetrying: 'Geçici sayfa hatası · {attempt}/{max} yeniden deneniyor…', errorReport: 'Ayrıntılı hata raporu', errorReportTitle: 'Sayfa tarama hata raporu', copyErrorReport: 'Raporu kopyala', reportCopied: 'Hata raporu panoya kopyalandı.', reportPhase: 'Aşama', reportExpectedPage: 'Beklenen sayfa', reportObservedPage: 'Görülen sayfa', reportAttempts: 'Deneme', reportTime: 'Hata zamanı', reportNoSensitiveData: 'Rapor yalnız teknik tarama durumunu içerir; çerez, oturum ve sayfa HTML’i içermez.',
             checkUpdate: 'Güncellemeyi denetle', updateChecking: 'Güncelleme denetleniyor…', updateAvailable: 'Yeni sürüm hazır: v{version}', updateCurrent: 'Listing Analyzer güncel.', updateFailed: 'Güncelleme denetlenemedi: {message}', installUpdate: 'Tampermonkey’de güncelle', updateInstallHelp: 'Kurulum Tampermonkey onay ekranında tamamlanır; script kendisini sessizce değiştirmez.', updateBlocked: 'Aktif tarama veya işlem kuyruğu varken güncelleme açılamaz.',
@@ -1153,7 +1164,7 @@
             snapshotRenewalWaste: 'Renewal waste', snapshotWeakDiscovery: 'Weak discovery', snapshotWeakEngagement: 'Weak engagement', snapshotPurchaseFriction: 'Weak sales conversion', snapshotProvenDemand: 'Proven demand', snapshotStrongCurrent: 'Strong current reach/engagement', snapshotMixed: 'Mixed current signals', snapshotNoActivity: 'No current activity', snapshotInsufficient: 'Current metric unreadable',
             reasonSnapshotRenewalWaste: '{renewals} renewals produced no sales, revenue, or favorites. Prioritize improvement; deactivation still requires historical evidence.', reasonSnapshotDiscovery: 'The current visit level indicates weak discovery within the shop.', reasonSnapshotEngagement: 'There is enough traffic, but favorite interest is weak; review imagery, title, and offer alignment.', reasonSnapshotPurchase: 'Visits or favorites exist, but all-time sales and revenue are zero; review pricing, imagery, and offer friction.', reasonSnapshotDemand: 'All-time sales or revenue protect this listing; current reach/engagement is assessed separately and may still be weak. Historical proof does not inflate the score.', reasonSnapshotStrong: 'Last-30-day visits and favorite rate indicate a strong position; collect new scans to confirm the trend.', reasonSnapshotMixed: 'Current counters do not show one strong issue or opportunity; continue collecting comparative history.', reasonSnapshotNoActivity: 'Every counter was read successfully: there are no last-30-day visits or favorites and no all-time sales or revenue. The data is complete; monitor for now.',
             filterPresets: 'Filter presets', presetGrowing: 'Growing', presetImprove: 'Needs improvement', presetDeclining: 'Declining', presetDeactivate: 'Review deactivation', presetExperiments: 'Active experiments', presetMissing: 'Missing / inconsistent data', presetName: 'Preset name', savePreset: 'Save current filters', deletePreset: 'Delete preset', presetSaved: 'Filter preset saved.', presetDeleted: 'Filter preset deleted.', presetLimit: 'You can save up to {count} custom filter presets.', presetInvalid: 'Preset names must contain 2–32 characters.',
-            historyCharts: 'Historical change charts', noChartData: 'At least two valid records are required for a chart.', experimentTimeline: 'Improvement experiment timeline', timelinePlanned: 'Proposal planned', timelinePublished: 'Published on Etsy', timelineObserving: 'Observation started', timelineEvaluationDue: 'Evaluation due', timelineEvaluated: 'Experiment result', timelineNotApplied: 'Not applied yet',
+            historyCharts: 'Historical change charts', noChartData: 'At least two valid records are required for a chart.', chartApproximate: 'approximate value', chartLegacy: 'unverified legacy record', chartStaleExcluded: '{count} stale observation(s) excluded from the chart.', chartMixedCurrencies: 'mixed currencies', experimentTimeline: 'Improvement experiment timeline', timelinePlanned: 'Proposal planned', timelinePublished: 'Published on Etsy', timelineObserving: 'Observation started', timelineEvaluationDue: 'Evaluation due', timelineEvaluated: 'Experiment result', timelineNotApplied: 'Not applied yet',
             aiComparison: 'AI proposal before / after', aiComparisonEmpty: 'No imported AI proposal is available yet.', beforeValue: 'Before', proposedValue: 'AI proposal', appliedValue: 'Verified result', changedFields: 'Changed fields', valueNotCaptured: 'The previous value was not captured.',
             collectionRetrying: 'Temporary page error · retry {attempt}/{max}…', errorReport: 'Detailed error report', errorReportTitle: 'Page collection error report', copyErrorReport: 'Copy report', reportCopied: 'Error report copied to the clipboard.', reportPhase: 'Phase', reportExpectedPage: 'Expected page', reportObservedPage: 'Observed page', reportAttempts: 'Attempts', reportTime: 'Failure time', reportNoSensitiveData: 'The report contains technical collection state only; it excludes cookies, sessions, and page HTML.',
             checkUpdate: 'Check for updates', updateChecking: 'Checking for updates…', updateAvailable: 'New version available: v{version}', updateCurrent: 'Listing Analyzer is up to date.', updateFailed: 'Update check failed: {message}', installUpdate: 'Update in Tampermonkey', updateInstallHelp: 'Installation finishes in Tampermonkey’s confirmation screen; the script never replaces itself silently.', updateBlocked: 'An update cannot be opened while collection or the action queue is active.',
@@ -1280,7 +1291,10 @@
 
     function normalizeSpace(value) { return String(value ?? '').replace(/\s+/g, ' ').trim(); }
     function nowIso() { return new Date().toISOString(); }
-    function dayKey(iso = nowIso()) { return String(iso).slice(0, 10); }
+    function dayKey(iso = nowIso()) {
+        const time = validTime(iso);
+        return time === null ? '' : new Date(time).toISOString().slice(0, 10);
+    }
     function sleep(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
     async function withNamedLock(name, callback) {
         if (!navigator.locks?.request) {
@@ -1311,6 +1325,11 @@
     function daysBetween(newer, older) {
         const newerTime = validTime(newer); const olderTime = validTime(older);
         return newerTime === null || olderTime === null ? null : (newerTime - olderTime) / DAY_MS;
+    }
+    function freshnessAgeDays(snapshotAt, evaluatedAt) {
+        const snapshotTime = validTime(snapshotAt); const evaluationTime = validTime(evaluatedAt);
+        if (snapshotTime === null || evaluationTime === null || snapshotTime > evaluationTime + SNAPSHOT_FUTURE_TOLERANCE_MS) return null;
+        return Math.max(0, (evaluationTime - snapshotTime) / DAY_MS);
     }
     function addDays(value, days) {
         const time = validTime(value);
@@ -1529,13 +1548,74 @@
         return prefix === null ? null : parseDecimal(prefix);
     }
 
+    const SUPPORTED_CURRENCY_CODES = new Set([
+        'AED', 'ARS', 'AUD', 'BRL', 'CAD', 'CHF', 'CLP', 'CNY', 'CZK', 'DKK', 'EGP', 'EUR', 'GBP', 'HKD', 'HUF',
+        'IDR', 'ILS', 'INR', 'JPY', 'KRW', 'MAD', 'MXN', 'MYR', 'NOK', 'NZD', 'PEN', 'PHP', 'PLN', 'RON', 'RUB',
+        'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'UAH', 'USD', 'VND', 'ZAR',
+    ]);
+    const CURRENCY_SYMBOL_CODES = Object.freeze({
+        '$': Object.freeze(['ARS', 'AUD', 'CAD', 'CLP', 'HKD', 'MXN', 'NZD', 'SGD', 'USD']),
+        '€': Object.freeze(['EUR']), '£': Object.freeze(['GBP']), '₺': Object.freeze(['TRY']),
+        '¥': Object.freeze(['CNY', 'JPY']), '₹': Object.freeze(['INR']), '₽': Object.freeze(['RUB']), '₩': Object.freeze(['KRW']),
+    });
+
     function currencyMarker(text) {
         const source = normalizeSpace(text);
+        const qualifiedSymbols = [
+            [/\bUS\s*\$/i, 'USD'], [/\bCA\s*\$/i, 'CAD'], [/\bAU?\s*\$/i, 'AUD'], [/\bNZ\s*\$/i, 'NZD'],
+            [/\bHK\s*\$/i, 'HKD'], [/\bSG\s*\$/i, 'SGD'], [/\bMX\s*\$/i, 'MXN'], [/\bNT\s*\$/i, 'TWD'], [/\bR\s*\$/i, 'BRL'],
+        ];
+        const qualified = qualifiedSymbols.find(([pattern]) => pattern.test(source))?.[1];
+        const rawCode = source.match(/\b(?:TL|[A-Z]{3})\b/i)?.[0]?.toUpperCase();
+        const code = rawCode === 'TL' ? 'TRY' : rawCode;
         const symbol = source.match(/[$€£₺¥₹₽₩]/)?.[0];
-        if (symbol) return symbol;
-        const code = source.match(/\b(?:USD|EUR|GBP|TRY|TL|CAD|AUD|NZD|JPY|CNY|INR|BRL|MXN|SEK|NOK|DKK|CHF|PLN)\b/i)?.[0];
-        if (code?.toUpperCase() === 'TL') return '₺';
-        return code ? `${code.toUpperCase()} ` : '';
+        if (code) {
+            if (!SUPPORTED_CURRENCY_CODES.has(code)) return '';
+            if (qualified && qualified !== code) return '';
+            if (!qualified && symbol && !(CURRENCY_SYMBOL_CODES[symbol] || []).includes(code)) return '';
+            return `${code} `;
+        }
+        if (qualified) return `${qualified} `;
+        return symbol || '';
+    }
+
+    function currencyDescriptor(value) {
+        const marker = normalizeSpace(value);
+        if (!marker) return null;
+        const code = marker.toUpperCase() === 'TL' ? 'TRY' : marker.toUpperCase();
+        if (SUPPORTED_CURRENCY_CODES.has(code)) return { marker: `${code} `, code, symbol: '' };
+        if (Object.hasOwn(CURRENCY_SYMBOL_CODES, marker)) return { marker, code: '', symbol: marker };
+        return null;
+    }
+
+    function currencyMarkerIsInvalid(text) {
+        const source = normalizeSpace(text);
+        const explicitCode = source.match(/\b(?:TL|[A-Z]{3})\b/i)?.[0] || '';
+        const explicitSymbol = source.match(/[$€£₺¥₹₽₩]/)?.[0] || '';
+        return Boolean((explicitCode || explicitSymbol) && !currencyMarker(source));
+    }
+
+    function currencyIdentity(value) {
+        const descriptor = currencyDescriptor(value);
+        if (!descriptor) return '';
+        if (descriptor.code) return descriptor.code;
+        const candidates = CURRENCY_SYMBOL_CODES[descriptor.symbol] || [];
+        return candidates.length === 1 ? candidates[0] : descriptor.symbol;
+    }
+
+    function currenciesComparable(left, right) {
+        const leftIdentity = currencyIdentity(left); const rightIdentity = currencyIdentity(right);
+        return Boolean(leftIdentity && rightIdentity && leftIdentity === rightIdentity);
+    }
+
+    function resolveCardCurrency(priceCurrency, metricCurrency) {
+        const price = currencyDescriptor(priceCurrency); const metric = currencyDescriptor(metricCurrency);
+        if (!price && !metric) return '';
+        if (!price || !metric) return (price || metric).marker;
+        if (price.code && metric.code) return price.code === metric.code ? price.marker : '';
+        if (price.symbol && metric.symbol) return price.symbol === metric.symbol ? price.marker : '';
+        const coded = price.code ? price : metric; const symbolic = price.symbol ? price : metric;
+        return (CURRENCY_SYMBOL_CODES[symbolic.symbol] || []).includes(coded.code) ? coded.marker : '';
     }
 
     function parseListingMetrics(rows) {
@@ -1586,6 +1666,7 @@
                 if (!expected[section.scope].includes(field) || found.has(field)) return { valid: false, reason: 'metric-row-contract' };
                 const prefix = labeledPrefix([row], labels);
                 if (field === 'revenue' && /[kmb]\s*$/i.test(prefix)) return { valid: false, reason: 'metric-value-contract' };
+                if (field === 'revenue' && currencyMarkerIsInvalid(prefix)) return { valid: false, reason: 'metric-currency-contract' };
                 const value = field === 'revenue' ? parseDecimal(prefix) : parseCountValue(prefix);
                 if (!Number.isFinite(value)) return { valid: false, reason: 'metric-value-contract' };
                 found.set(field, value);
@@ -1615,7 +1696,7 @@
         const headings = raw.headings && typeof raw.headings === 'object' ? raw.headings : {};
         const validHeadings = metricHeadingScope(headings.rolling30d) === 'rolling-30d' && metricHeadingScope(headings.lifetime) === 'lifetime';
         const countPrecision = raw.countPrecision && typeof raw.countPrecision === 'object' ? raw.countPrecision : {};
-        const countFields = ['visits', 'favorites', 'sales', 'renewals'];
+        const countFields = DECISION_COUNT_FIELDS;
         const validPrecision = countFields.every((field) => ['exact', 'approximate'].includes(countPrecision[field]));
         if (raw.id !== LISTING_METRIC_CONTRACT.id || Number(raw.version) !== 1 || raw.verified !== true
             || raw.source !== 'etsy-listings-visible-dom' || !validScopes || !validHeadings || !validPrecision) return null;
@@ -1636,6 +1717,13 @@
         return Boolean(contract && (fields || []).every((field) => contract.countPrecision?.[field] === 'exact'));
     }
 
+    function revenueCurrenciesComparable(left, right) {
+        const leftRevenue = finiteOrNull(left?.revenue); const rightRevenue = finiteOrNull(right?.revenue);
+        if (leftRevenue === null || rightRevenue === null) return false;
+        if (leftRevenue === 0 && rightRevenue === 0) return true;
+        return currenciesComparable(left?.currency, right?.currency);
+    }
+
     function parsePriceRange(text) {
         const values = String(text ?? '').split(/\s*[-–—]\s*/).map(parseDecimal).filter(Number.isFinite);
         return { min: values[0] ?? null, max: values[1] ?? values[0] ?? null, label: normalizeSpace(text) };
@@ -1648,12 +1736,19 @@
 
     function formatMoney(value, currency = '$') {
         if (value === null || value === undefined || value === '' || !Number.isFinite(Number(value))) return '—';
-        return `${currency}${new Intl.NumberFormat(state.settings.language === 'tr' ? 'tr-TR' : 'en-US', { maximumFractionDigits: 2 }).format(Number(value))}`;
+        const marker = normalizeSpace(currency) || '$';
+        const separator = /^[A-Z]{3}$/.test(marker) ? ' ' : '';
+        return `${marker}${separator}${new Intl.NumberFormat(state.settings.language === 'tr' ? 'tr-TR' : 'en-US', { maximumFractionDigits: 2 }).format(Number(value))}`;
     }
 
     function formatDate(value) {
         if (!value) return '—';
-        try { return new Intl.DateTimeFormat(state.settings.language === 'tr' ? 'tr-TR' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)); }
+        try {
+            return new Intl.DateTimeFormat(state.settings.language === 'tr' ? 'tr-TR' : 'en-US', {
+                year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                timeZone: DISPLAY_TIME_ZONE, timeZoneName: 'short',
+            }).format(new Date(value));
+        }
         catch { return String(value); }
     }
 
@@ -2421,7 +2516,7 @@
         if (!raw || typeof raw !== 'object' || validTime(raw.at) === null) return null;
         const at = new Date(validTime(raw.at)).toISOString();
         const metricContract = normalizeMetricContract(raw.metricContract);
-        const snapshot = { ...raw, at, day: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.day || '')) ? String(raw.day) : dayKey(at), observedAt: {}, metricContract };
+        const snapshot = { ...raw, at, day: dayKey(at), observedAt: {}, metricContract };
         SNAPSHOT_NUMBER_FIELDS.forEach((field) => {
             snapshot[field] = finiteOrNull(raw[field]);
             const observed = validTime(raw.observedAt?.[field]);
@@ -2607,13 +2702,17 @@
 
     function normalizeHealthThresholds(settings = {}) {
         const valueOrDefault = (value, fallback) => finiteOrNull(value) ?? fallback;
-        const minVisitsToImprove = Math.round(clamp(valueOrDefault(settings.minVisitsToImprove, DEFAULT_SETTINGS.minVisitsToImprove), 1, 999999));
-        const requestedProtect = Math.round(clamp(valueOrDefault(settings.minVisitsToProtect, DEFAULT_SETTINGS.minVisitsToProtect), 2, 1000000));
+        const improveContract = HEALTH_THRESHOLD_CONTRACTS.minVisitsToImprove;
+        const protectContract = HEALTH_THRESHOLD_CONTRACTS.minVisitsToProtect;
+        const renewalContract = HEALTH_THRESHOLD_CONTRACTS.minRenewalsToReview;
+        const declineContract = HEALTH_THRESHOLD_CONTRACTS.declinePercent;
+        const minVisitsToImprove = Math.round(clamp(valueOrDefault(settings.minVisitsToImprove, DEFAULT_SETTINGS.minVisitsToImprove), improveContract.min, improveContract.max));
+        const requestedProtect = Math.round(clamp(valueOrDefault(settings.minVisitsToProtect, DEFAULT_SETTINGS.minVisitsToProtect), protectContract.min, protectContract.max));
         return {
             minVisitsToImprove,
-            minVisitsToProtect: Math.max(minVisitsToImprove + 1, requestedProtect),
-            minRenewalsToReview: Math.round(clamp(valueOrDefault(settings.minRenewalsToReview, DEFAULT_SETTINGS.minRenewalsToReview), 1, 1000000)),
-            declinePercent: Math.round(clamp(valueOrDefault(settings.declinePercent, DEFAULT_SETTINGS.declinePercent), 1, 100)),
+            minVisitsToProtect: Math.min(protectContract.max, Math.max(minVisitsToImprove + 1, requestedProtect)),
+            minRenewalsToReview: Math.round(clamp(valueOrDefault(settings.minRenewalsToReview, DEFAULT_SETTINGS.minRenewalsToReview), renewalContract.min, renewalContract.max)),
+            declinePercent: Math.round(clamp(valueOrDefault(settings.declinePercent, DEFAULT_SETTINGS.declinePercent), declineContract.min, declineContract.max)),
         };
     }
 
@@ -2674,14 +2773,21 @@
         return recommendationBasisEquals(proposal?.basis, recommendationBasis(record, health));
     }
 
-    function findAnchor(history, current, targetDays) {
+    function findAnchor(history, current, targetDays, options = {}) {
         const tolerance = HEALTH_RULES.anchorToleranceDays[targetDays] ?? 7;
-        if (!normalizeMetricContract(current?.metricContract)) return { snapshot: null, targetDays, actualDays: null, distance: null, complete: false };
+        const exactFields = Array.isArray(options.exactFields) ? options.exactFields : [];
+        const sameRevenueCurrency = options.sameRevenueCurrency === true;
+        if (!normalizeMetricContract(current?.metricContract)
+            || (exactFields.length && !snapshotCountsAreExact(current, exactFields))) {
+            return { snapshot: null, targetDays, actualDays: null, distance: null, complete: false };
+        }
         let best = null;
         history.forEach((snapshot) => {
             if (snapshot === current) return;
             if (!normalizeMetricContract(snapshot?.metricContract)) return;
             if (!HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot?.[field]))) return;
+            if (exactFields.length && !snapshotCountsAreExact(snapshot, exactFields)) return;
+            if (sameRevenueCurrency && !revenueCurrenciesComparable(current, snapshot)) return;
             const actualDays = daysBetween(current.at, snapshot.at);
             if (!Number.isFinite(actualDays) || actualDays <= 0) return;
             const distance = Math.abs(actualDays - targetDays);
@@ -2738,11 +2844,18 @@
     }
 
     function cumulativeWindow(current, anchor, field, targetDays) {
-        if (!anchor?.snapshot || !Number.isFinite(current?.[field]) || !Number.isFinite(anchor.snapshot[field])) return { raw: null, normalized: null, actualDays: null };
+        if (!anchor?.snapshot || !Number.isFinite(current?.[field]) || !Number.isFinite(anchor.snapshot[field])) return { raw: null, normalized: null, actualDays: null, issue: 'missing-window' };
+        if (DECISION_COUNT_FIELDS.includes(field)
+            && (!snapshotCountsAreExact(current, [field]) || !snapshotCountsAreExact(anchor.snapshot, [field]))) {
+            return { raw: null, normalized: null, actualDays: anchor.actualDays ?? null, issue: 'approximate-counts' };
+        }
+        if (field === 'revenue' && !revenueCurrenciesComparable(current, anchor.snapshot)) {
+            return { raw: null, normalized: null, actualDays: anchor.actualDays ?? null, issue: 'currency-mismatch' };
+        }
         const raw = current[field] - anchor.snapshot[field];
-        if (raw < 0) return { raw: null, normalized: null, actualDays: anchor.actualDays ?? null };
+        if (raw < 0) return { raw: null, normalized: null, actualDays: anchor.actualDays ?? null, issue: 'cumulative-decrease' };
         const normalized = anchor.actualDays > 0 ? Math.round(raw * (targetDays / anchor.actualDays) * 1000) / 1000 : null;
-        return { raw, normalized, actualDays: anchor.actualDays ?? null };
+        return { raw, normalized, actualDays: anchor.actualDays ?? null, issue: null };
     }
 
     function inspectHistory(history, evaluatedAt) {
@@ -2752,10 +2865,13 @@
             if (!normalizeMetricContract(snapshot.metricContract)) anomalies.push('unverified-metric-scope');
             SNAPSHOT_NUMBER_FIELDS.forEach((field) => { if (Number.isFinite(snapshot[field]) && snapshot[field] < 0) anomalies.push(`negative-${field}`); });
             if (snapshot.sales === 0 && Number(snapshot.revenue) > 0) anomalies.push('revenue-without-sales');
-            if (daysBetween(snapshot.at, evaluatedAt) > 1) anomalies.push('future-snapshot');
+            if (validTime(snapshot.at) > validTime(evaluatedAt) + SNAPSHOT_FUTURE_TOLERANCE_MS) anomalies.push('future-snapshot');
             if (index > 0) {
+                const previous = history[index - 1];
+                if (!revenueCurrenciesComparable(previous, snapshot)) anomalies.push('currency-mismatch');
                 ['sales', 'revenue', 'renewals'].forEach((field) => {
-                    if (Number.isFinite(history[index - 1]?.[field]) && Number.isFinite(snapshot[field]) && snapshot[field] < history[index - 1][field]) anomalies.push(`cumulative-decrease-${field}`);
+                    if (field === 'revenue' && !revenueCurrenciesComparable(previous, snapshot)) return;
+                    if (Number.isFinite(previous?.[field]) && Number.isFinite(snapshot[field]) && snapshot[field] < previous[field]) anomalies.push(`cumulative-decrease-${field}`);
                 });
             }
         });
@@ -2773,12 +2889,23 @@
         anchors.priorTrend30 = anchors.trend30.snapshot
             ? findNonOverlappingTrendAnchor(epochHistory, anchors.trend30.snapshot)
             : { snapshot: null, targetDays: 30, actualDays: null, distance: null, complete: false };
-        const sales30 = cumulativeWindow(current, anchors.d30, 'sales', 30);
-        const revenue30 = cumulativeWindow(current, anchors.d30, 'revenue', 30);
-        const renewals30 = cumulativeWindow(current, anchors.d30, 'renewals', 30);
-        const sales60 = cumulativeWindow(current, anchors.d60, 'sales', 60);
-        const revenue60 = cumulativeWindow(current, anchors.d60, 'revenue', 60);
-        const renewals60 = cumulativeWindow(current, anchors.d60, 'renewals', 60);
+        anchors.d30Traffic = findAnchor(epochHistory, current, 30, { exactFields: ['visits'] });
+        anchors.d60Traffic = findAnchor(epochHistory, current, 60, { exactFields: ['visits'] });
+        anchors.prior30Traffic = anchors.d30Traffic.snapshot
+            ? findAnchor(epochHistory, anchors.d30Traffic.snapshot, 30, { exactFields: ['visits'] })
+            : { snapshot: null, targetDays: 30, actualDays: null, distance: null, complete: false };
+        anchors.d30Sales = findAnchor(epochHistory, current, 30, { exactFields: ['sales'] });
+        anchors.d60Sales = findAnchor(epochHistory, current, 60, { exactFields: ['sales'] });
+        anchors.d30Revenue = findAnchor(epochHistory, current, 30, { sameRevenueCurrency: true });
+        anchors.d60Revenue = findAnchor(epochHistory, current, 60, { sameRevenueCurrency: true });
+        anchors.d30Renewals = findAnchor(epochHistory, current, 30, { exactFields: ['renewals'] });
+        anchors.d60Renewals = findAnchor(epochHistory, current, 60, { exactFields: ['renewals'] });
+        const sales30 = cumulativeWindow(current, anchors.d30Sales, 'sales', 30);
+        const revenue30 = cumulativeWindow(current, anchors.d30Revenue, 'revenue', 30);
+        const renewals30 = cumulativeWindow(current, anchors.d30Renewals, 'renewals', 30);
+        const sales60 = cumulativeWindow(current, anchors.d60Sales, 'sales', 60);
+        const revenue60 = cumulativeWindow(current, anchors.d60Revenue, 'revenue', 60);
+        const renewals60 = cumulativeWindow(current, anchors.d60Renewals, 'renewals', 60);
         const trafficChangePercent = percentChange(current.visits, anchors.d30.snapshot?.visits);
         const priorTrafficChangePercent = anchors.d30.snapshot && anchors.prior30.snapshot
             ? percentChange(anchors.d30.snapshot.visits, anchors.prior30.snapshot.visits)
@@ -2787,32 +2914,45 @@
         const priorTrendTrafficChangePercent = anchors.trend30.snapshot && anchors.priorTrend30.snapshot
             ? percentChange(anchors.trend30.snapshot.visits, anchors.priorTrend30.snapshot.visits)
             : null;
-        const completeSnapshots = epochHistory.filter((snapshot) => normalizeMetricContract(snapshot.metricContract) && HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot[field])));
+        const currentExactness = Object.fromEntries(DECISION_COUNT_FIELDS.map((field) => [field, snapshotCountsAreExact(current, [field])]));
+        const trafficDecisionReady = currentExactness.visits;
+        const reachDecisionReady = currentExactness.visits && currentExactness.favorites;
+        const deactivationDecisionReady = DECISION_COUNT_FIELDS.every((field) => currentExactness[field]);
+        const completeSnapshots = epochHistory.filter((snapshot) => normalizeMetricContract(snapshot.metricContract)
+            && HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot[field])));
+        const deactivationCompleteSnapshots = completeSnapshots.filter((snapshot) => snapshotCountsAreExact(snapshot, DECISION_COUNT_FIELDS));
         const completeSnapshotCount = completeSnapshots.length;
         const historySpanDays = Math.max(0, daysBetween(current.at, epochHistory[0]?.at) || 0);
         const completeHistorySpanDays = Math.max(0, daysBetween(current.at, completeSnapshots[0]?.at) || 0);
-        const decisionSnapshots = [anchors.priorTrend30?.snapshot, anchors.trend30?.snapshot, anchors.prior30?.snapshot, anchors.d60?.snapshot, anchors.d30?.snapshot, current].filter(Boolean);
+        const deactivationCompleteSnapshotCount = deactivationCompleteSnapshots.length;
+        const deactivationCompleteHistorySpanDays = Math.max(0, daysBetween(current.at, deactivationCompleteSnapshots[0]?.at) || 0);
+        const decisionSnapshots = [
+            ...Object.entries(anchors).filter(([key]) => key !== 'd90').map(([, anchor]) => anchor?.snapshot), current,
+        ].filter(Boolean);
         const decisionStart = Math.min(...decisionSnapshots.map((snapshot) => validTime(snapshot.at)).filter(Number.isFinite));
         const decisionHistory = epochHistory.filter((snapshot) => validTime(snapshot.at) >= decisionStart && validTime(snapshot.at) <= validTime(current.at));
         const anomalies = inspectHistory(decisionHistory, evaluatedAt);
         return {
             history: epochHistory, fullHistory: history, current, anchors, snapshotCount: epochHistory.length, completeSnapshotCount, historySpanDays, completeHistorySpanDays,
             stateEpochStartAt: epochHistory[0]?.at || current.at, stateEpochSpanDays: historySpanDays, stateEpochSnapshotCount: epochHistory.length,
-            complete: HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(current[field])),
+            complete: HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(current[field])), currentExactness,
+            trafficDecisionReady, reachDecisionReady, deactivationDecisionReady,
+            deactivationCompleteSnapshotCount, deactivationCompleteHistorySpanDays,
             observedMetrics: HEALTH_METRIC_FIELDS.filter((field) => Number.isFinite(current[field])),
             missingMetrics: HEALTH_METRIC_FIELDS.filter((field) => !Number.isFinite(current[field])),
-            anomalies, historicalAnomalies: inspectHistory(history, evaluatedAt), freshnessDays: Math.max(0, daysBetween(evaluatedAt, current.at) || 0),
-            visits30: current.visits, favorites30: current.favorites,
-            favoriteRate: safeRatio(current.favorites, current.visits, 100),
-            favoriteRateSmoothed: Number(current.visits) > 0 ? bayesianRate(current.favorites, current.visits) : null,
-            salesRateProxy: safeRatio(sales30.normalized, current.visits, 100),
-            revenuePerVisitProxy: safeRatio(revenue30.normalized, current.visits),
+            anomalies, historicalAnomalies: inspectHistory(history, evaluatedAt), freshnessDays: freshnessAgeDays(current.at, evaluatedAt),
+            visits30: currentExactness.visits ? current.visits : null,
+            favorites30: currentExactness.favorites ? current.favorites : null,
+            favoriteRate: currentExactness.visits && currentExactness.favorites ? safeRatio(current.favorites, current.visits, 100) : null,
+            favoriteRateSmoothed: currentExactness.visits && currentExactness.favorites && Number(current.visits) > 0 ? bayesianRate(current.favorites, current.visits) : null,
+            salesRateProxy: currentExactness.visits ? safeRatio(sales30.normalized, current.visits, 100) : null,
+            revenuePerVisitProxy: currentExactness.visits ? safeRatio(revenue30.normalized, current.visits) : null,
             sales30: sales30.normalized, sales30Raw: sales30.raw, revenue30: revenue30.normalized, revenue30Raw: revenue30.raw, renewals30: renewals30.normalized, renewals30Raw: renewals30.raw,
             sales60: sales60.normalized, sales60Raw: sales60.raw, revenue60: revenue60.normalized, revenue60Raw: revenue60.raw, renewals60: renewals60.normalized, renewals60Raw: renewals60.raw,
             trafficChangePercent, priorTrafficChangePercent, trendTrafficChangePercent, priorTrendTrafficChangePercent,
             deltas: {
-                visits: anchors.d30.snapshot && Number.isFinite(current.visits) && Number.isFinite(anchors.d30.snapshot.visits) ? current.visits - anchors.d30.snapshot.visits : null,
-                favorites: anchors.d30.snapshot && Number.isFinite(current.favorites) && Number.isFinite(anchors.d30.snapshot.favorites) ? current.favorites - anchors.d30.snapshot.favorites : null,
+                visits: anchors.d30Traffic.snapshot ? current.visits - anchors.d30Traffic.snapshot.visits : null,
+                favorites: anchors.d30.snapshot && snapshotCountsAreExact(current, ['favorites']) && snapshotCountsAreExact(anchors.d30.snapshot, ['favorites']) ? current.favorites - anchors.d30.snapshot.favorites : null,
                 sales: sales30.raw, revenue: revenue30.raw, renewals: renewals30.raw,
             },
         };
@@ -2846,7 +2986,7 @@
             if (String(candidate.listingId) === String(record.listingId) || Number(target?.stateEpochSpanDays) < 29) return false;
             if (!derived?.complete || recordListingState(candidate, derived) !== 'active') return false;
             if (Number(derived.stateEpochSpanDays) < 29) return false;
-            if (derived.freshnessDays > 1 || derived.anomalies?.length) return false;
+            if (!Number.isFinite(derived.freshnessDays) || derived.freshnessDays > 1 || derived.anomalies?.length) return false;
             if (!Number.isFinite(derived.current?.stock) || derived.current.stock <= 0) return false;
             if ((candidate.meta?.shopKey || shopKeyFromUrl(candidate.meta?.editUrl)) !== targetShop) return false;
             if (targetType !== 'unknown' && normalizeListingType(candidate.meta?.listingType) !== targetType) return false;
@@ -2856,11 +2996,14 @@
             return !recentChange;
         });
         const targetPrice = finiteOrNull(target?.current?.priceMin);
+        const targetCurrency = normalizeSpace(target?.current?.currency);
         let priceBandApplied = false;
-        if (targetPrice !== null) {
+        if (targetPrice !== null && targetCurrency) {
             const priceBand = cohort.filter((candidate) => {
-                const price = finiteOrNull(derivations.get(candidate.listingId)?.current?.priceMin);
-                return price !== null && price > 0 && targetPrice > 0 && Math.abs(Math.log(price / targetPrice)) <= Math.log(1.3);
+                const candidateCurrent = derivations.get(candidate.listingId)?.current;
+                const price = finiteOrNull(candidateCurrent?.priceMin);
+                return currenciesComparable(candidateCurrent?.currency, targetCurrency)
+                    && price !== null && price > 0 && targetPrice > 0 && Math.abs(Math.log(price / targetPrice)) <= Math.log(1.3);
             });
             if (priceBand.length >= policy.thresholds.minimumCohortSize) {
                 cohort = priceBand;
@@ -2870,7 +3013,10 @@
         const metricNames = ['visits30', 'favoriteRate', 'salesRateProxy', 'revenuePerVisitProxy', 'sales30'];
         const metrics = {};
         metricNames.forEach((name) => {
-            const metricValue = (derived) => name === 'favoriteRate' ? derived?.favoriteRateSmoothed : derived?.[name];
+            const metricValue = (derived) => {
+                if (name === 'revenuePerVisitProxy' && (!targetCurrency || !currenciesComparable(derived?.current?.currency, targetCurrency))) return null;
+                return name === 'favoriteRate' ? derived?.favoriteRateSmoothed : derived?.[name];
+            };
             const values = cohort.map((candidate) => metricValue(derivations.get(candidate.listingId))).filter(Number.isFinite);
             const reliable = values.length >= policy.thresholds.minimumCohortSize;
             metrics[name] = {
@@ -2900,40 +3046,46 @@
             available: false, signal: 'INSUFFICIENT', diagnosis: 'INSUFFICIENT_SIGNAL', code: 'waiting', reasonKey: 'reasonNew',
             score: null, priority: 99, source: 'none', components: {},
         };
-        if (!derived?.complete || !derived.current || derived.freshnessDays > 1 || derived.anomalies?.length
+        if (!derived?.complete || !derived.current || !Number.isFinite(derived.freshnessDays) || derived.freshnessDays > 1 || derived.anomalies?.length
             || recordListingState(record, derived) !== 'active' || !Number.isFinite(derived.current.stock) || derived.current.stock <= 0) return unavailable;
         const current = derived.current;
-        const visits = Number(current.visits); const favorites = Number(current.favorites);
         const sales = Number(current.sales); const revenue = Number(current.revenue); const renewals = Number(current.renewals);
-        const minVisits = Math.max(1, Number(policy.thresholds.minVisitsToImprove) || 1);
+        const salesExact = derived.currentExactness?.sales === true;
+        const renewalsExact = derived.currentExactness?.renewals === true;
         const minRenewals = HEALTH_RULES.renewalWasteMinimum;
+        const provenDemand = (salesExact && sales > 0) || revenue > 0;
+        const noDemand = salesExact && sales === 0 && revenue === 0;
+        const renewalMature = renewalsExact && renewals >= minRenewals;
+        const favorites = derived.currentExactness?.favorites === true ? finiteOrNull(derived.favorites30) : null;
+        const exactNoFavorites = favorites === 0;
+        const renewalWasteReady = noDemand && renewalMature && exactNoFavorites;
+        if (!derived.trafficDecisionReady && !provenDemand && !renewalWasteReady) return unavailable;
+        const visits = derived.trafficDecisionReady ? finiteOrNull(derived.visits30) : null;
+        const minVisits = Math.max(1, Number(policy.thresholds.minVisitsToImprove) || 1);
         const protectVisits = Math.max(minVisits, Number(policy.thresholds.minVisitsToProtect) || minVisits);
-        const visibilityAbsolute = clamp((visits / protectVisits) * 100, 0, 100);
-        const engagementEligible = visits >= minVisits;
-        const smoothedFavoriteRate = visits > 0 ? bayesianRate(favorites, visits) : null;
+        const visibilityAbsolute = visits === null ? null : clamp((visits / protectVisits) * 100, 0, 100);
+        const engagementEligible = derived.reachDecisionReady && visits !== null && visits >= minVisits;
+        const smoothedFavoriteRate = derived.reachDecisionReady && visits > 0 ? bayesianRate(favorites, visits) : null;
         const engagementAbsolute = smoothedFavoriteRate === null ? null : clamp((smoothedFavoriteRate / 5) * 100, 0, 100);
-        const engagementEvidence = clamp(visits / minVisits, 0, 1);
+        const engagementEvidence = derived.reachDecisionReady && visits !== null ? clamp(visits / minVisits, 0, 1) : 0;
         const engagementWeight = engagementAbsolute === null ? 0 : 35 * engagementEvidence;
-        const engagementPercentileWeight = 0.65 * clamp(visits / protectVisits, 0, 1);
-        const visibility = bootstrapMetricScore(benchmark.metrics?.visits30, visibilityAbsolute);
+        const engagementPercentileWeight = visits === null ? 0 : 0.65 * clamp(visits / protectVisits, 0, 1);
+        const visibility = visibilityAbsolute === null ? null : bootstrapMetricScore(benchmark.metrics?.visits30, visibilityAbsolute);
         const engagement = engagementAbsolute === null ? null : bootstrapMetricScore(benchmark.metrics?.favoriteRate, engagementAbsolute, engagementPercentileWeight);
-        const weighted = [{ value: visibility, weight: 65 }];
+        const weighted = visibility === null ? [] : [{ value: visibility, weight: 65 }];
         if (engagement !== null && engagementWeight > 0) weighted.push({ value: engagement, weight: engagementWeight });
         const weight = weighted.reduce((sum, item) => sum + item.weight, 0);
         const score = weight ? clamp(Math.round(weighted.reduce((sum, item) => sum + item.value * item.weight, 0) / weight), 0, 100) : null;
-        const noDemand = sales === 0 && revenue === 0;
-        const provenDemand = sales > 0 || revenue > 0;
-        const renewalMature = renewals >= minRenewals;
-        const lowDiscovery = visits < minVisits || visibility <= 25;
+        const lowDiscovery = visits !== null && (visits < minVisits || visibility <= 25);
         const decisionFavoriteRate = finiteOrNull(derived.favoriteRateSmoothed);
         const weakEngagement = engagementEligible && (Number(decisionFavoriteRate) < 3 || engagement <= 25);
         const purchaseInterest = engagementEligible && Number(decisionFavoriteRate) >= 5;
         let funnelSignal = 'MIXED'; let diagnosis = 'HEALTHY_OR_MIXED';
-        if (visits === 0 && favorites === 0) { funnelSignal = 'NO_ACTIVITY'; diagnosis = 'DISCOVERY_WEAK'; }
+        if (visits === 0 && exactNoFavorites) { funnelSignal = 'NO_ACTIVITY'; diagnosis = 'DISCOVERY_WEAK'; }
         else if (lowDiscovery) { funnelSignal = 'WEAK_DISCOVERY'; diagnosis = 'DISCOVERY_WEAK'; }
         else if (weakEngagement) { funnelSignal = 'WEAK_ENGAGEMENT'; diagnosis = 'ENGAGEMENT_WEAK'; }
         else if (Number(score) >= 70) funnelSignal = 'STRONG_CURRENT';
-        const cumulativeSignal = provenDemand ? 'PROVEN_DEMAND' : noDemand && renewalMature && favorites === 0 ? 'RENEWAL_WASTE' : noDemand ? 'NO_DEMAND' : null;
+        const cumulativeSignal = provenDemand ? 'PROVEN_DEMAND' : noDemand && renewalMature && exactNoFavorites ? 'RENEWAL_WASTE' : noDemand ? 'NO_DEMAND' : null;
         let signal = funnelSignal; let code = 'monitor'; let reasonKey = funnelSignal === 'NO_ACTIVITY' ? 'reasonSnapshotNoActivity'
             : funnelSignal === 'WEAK_DISCOVERY' ? 'reasonSnapshotDiscovery'
                 : funnelSignal === 'WEAK_ENGAGEMENT' ? 'reasonSnapshotEngagement'
@@ -2941,8 +3093,8 @@
         let priority = funnelSignal === 'STRONG_CURRENT' ? 4 : 5;
         if (provenDemand) {
             code = 'protected'; reasonKey = 'reasonSnapshotDemand'; priority = 6;
-        } else if (noDemand && renewalMature && favorites === 0) {
-            signal = 'RENEWAL_WASTE'; diagnosis = lowDiscovery ? 'DISCOVERY_WEAK' : 'ENGAGEMENT_WEAK'; code = 'improve'; reasonKey = 'reasonSnapshotRenewalWaste'; priority = 0;
+        } else if (renewalWasteReady) {
+            signal = 'RENEWAL_WASTE'; diagnosis = lowDiscovery ? 'DISCOVERY_WEAK' : derived.reachDecisionReady ? 'ENGAGEMENT_WEAK' : 'INSUFFICIENT_SIGNAL'; code = 'improve'; reasonKey = 'reasonSnapshotRenewalWaste'; priority = 0;
         } else if (funnelSignal === 'WEAK_DISCOVERY') {
             code = 'improve'; priority = 1;
         } else if (funnelSignal === 'WEAK_ENGAGEMENT') {
@@ -2952,7 +3104,7 @@
         }
         const severity = signal === 'RENEWAL_WASTE' ? renewals
             : signal === 'PURCHASE_FRICTION' ? score
-                : code === 'improve' ? 100 - score : 0;
+                : code === 'improve' && Number.isFinite(score) ? 100 - score : 0;
         return {
             available: true, signal, funnelSignal, cumulativeSignal, diagnosis, code, reasonKey, score, priority, severity,
             source: benchmark.metrics?.visits30?.reliable ? 'shop-cohort' : 'absolute-thresholds',
@@ -2964,35 +3116,44 @@
     function confidenceFor(derived, benchmark, policy) {
         const completeness = Math.round((derived.observedMetrics?.length || 0) / HEALTH_METRIC_FIELDS.length * 100);
         const historyDepth = Math.round(Math.min(100, (Math.min(derived.completeHistorySpanDays || 0, 60) / 60) * 70 + (Math.min(derived.completeSnapshotCount || 0, 3) / 3) * 30));
-        const zeroTrafficSnapshots = (derived.history || []).filter((snapshot) => HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot?.[field])) && snapshot.visits === 0);
+        const zeroTrafficSnapshots = (derived.history || []).filter((snapshot) => HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot?.[field]))
+            && snapshotCountsAreExact(snapshot, DECISION_COUNT_FIELDS) && snapshot.visits === 0);
         const repeatedZeroEvidence = derived.current?.visits === 0 && zeroTrafficSnapshots.some((left, index) => zeroTrafficSnapshots.slice(index + 1)
             .some((right) => Math.abs(daysBetween(right.at, left.at) || 0) >= HEALTH_RULES.deactivationZeroObservationGapDays));
         const trafficSample = repeatedZeroEvidence ? 100 : Math.round(Math.min(100, ((finiteOrNull(derived.current?.visits) || 0) / Math.max(1, policy.thresholds.minVisitsToProtect)) * 100));
         const cohortStrength = Math.round(clamp(Number(benchmark.metrics?.visits30?.strength) || 0, 0, 1) * 100);
-        const freshness = derived.freshnessDays <= 1 ? 100 : derived.freshnessDays <= 7 ? 75 : derived.freshnessDays <= 30 ? 35 : 0;
+        const freshness = !Number.isFinite(derived.freshnessDays) ? 0 : derived.freshnessDays <= 1 ? 100 : derived.freshnessDays <= 7 ? 75 : derived.freshnessDays <= 30 ? 35 : 0;
         const integrity = Math.max(0, 100 - (derived.anomalies?.length || 0) * 25);
         const components = { dataQuality: completeness, historyDepth, trafficSample, cohortStrength, freshness, dataIntegrity: integrity };
         let score = Math.round(completeness * 0.25 + historyDepth * 0.25 + trafficSample * 0.15 + cohortStrength * 0.10 + freshness * 0.10 + integrity * 0.15);
         const caps = [];
         if (!derived.complete) { score = Math.min(score, 39); caps.push('missing-metrics'); }
-        if (!derived.anchors?.d30?.complete) { score = Math.min(score, 39); caps.push('insufficient-30-day-history'); }
-        else if (!derived.anchors?.d60?.complete || derived.completeSnapshotCount < 3) { score = Math.min(score, 69); caps.push('insufficient-60-day-history'); }
-        if ((derived.anomalies || []).some((item) => /future|cumulative-decrease|unverified-metric-scope|revenue-without-sales|stale-observation|negative-/.test(item))) { score = Math.min(score, 39); caps.push('data-integrity'); }
+        if (!derived.trafficDecisionReady) { score = Math.min(score, 39); caps.push('approximate-traffic-counter'); }
+        if (!derived.anchors?.d30Traffic?.complete) { score = Math.min(score, 39); caps.push('insufficient-30-day-history'); }
+        else if (!derived.anchors?.d60Traffic?.complete || derived.completeSnapshotCount < 3) { score = Math.min(score, 69); caps.push('insufficient-60-day-history'); }
+        if ((derived.anomalies || []).some((item) => /future|currency-mismatch|cumulative-decrease|unverified-metric-scope|revenue-without-sales|stale-observation|negative-/.test(item))) { score = Math.min(score, 39); caps.push('data-integrity'); }
         const band = score < 40 ? 'low' : score < 70 ? 'medium' : score < 85 ? 'high' : 'veryHigh';
         return { score, band, components, caps };
+    }
+
+    function decisionPercentile(benchmark, metricName) {
+        const metric = benchmark?.metrics?.[metricName];
+        return metric?.reliable && Number(metric.strength) >= 1 ? finiteOrNull(metric.percentile) : null;
     }
 
     function diagnosePerformance(derived, benchmark, policy, confidence) {
         if (!derived.complete || confidence.score < 40) return 'INSUFFICIENT_SIGNAL';
         const visits = derived.visits30; const favoriteRate = derived.favoriteRateSmoothed; const sales = derived.sales30;
-        if (benchmark.reliable && benchmark.strength >= 1) {
-            const visitsRank = benchmark.metrics.visits30.reliable ? benchmark.metrics.visits30.percentile : null;
-            const favoriteRank = benchmark.metrics.favoriteRate.reliable ? benchmark.metrics.favoriteRate.percentile : null;
-            const salesRank = benchmark.metrics.salesRateProxy.reliable ? benchmark.metrics.salesRateProxy.percentile : null;
+        if (benchmark.reliable) {
+            const visitsRank = decisionPercentile(benchmark, 'visits30');
+            const favoriteRank = decisionPercentile(benchmark, 'favoriteRate');
+            const salesRank = decisionPercentile(benchmark, 'salesRateProxy');
             if (Number.isFinite(visitsRank) && visitsRank <= 25) return 'DISCOVERY_WEAK';
-            if (Number.isFinite(favoriteRank) && favoriteRank <= 25 && visitsRank >= 40) return 'ENGAGEMENT_WEAK';
-            if (((Number.isFinite(sales) && sales === 0) || (Number.isFinite(salesRank) && salesRank <= 25)) && favoriteRank >= 50 && visitsRank >= 40) return 'PURCHASE_FRICTION';
-            if (Number.isFinite(sales) && sales > 0 && salesRank >= 50 && visitsRank < 50) return 'SCALE_DISCOVERY';
+            if (Number.isFinite(favoriteRank) && favoriteRank <= 25 && Number.isFinite(visitsRank) && visitsRank >= 40) return 'ENGAGEMENT_WEAK';
+            if (((Number.isFinite(sales) && sales === 0) || (Number.isFinite(salesRank) && salesRank <= 25))
+                && Number.isFinite(favoriteRank) && favoriteRank >= 50 && Number.isFinite(visitsRank) && visitsRank >= 40) return 'PURCHASE_FRICTION';
+            if (Number.isFinite(sales) && sales > 0 && Number.isFinite(salesRank) && salesRank >= 50
+                && Number.isFinite(visitsRank) && visitsRank < 50) return 'SCALE_DISCOVERY';
         }
         if (Number(visits) < policy.thresholds.minVisitsToImprove) return 'DISCOVERY_WEAK';
         if (Number.isFinite(favoriteRate) && favoriteRate < 3) return 'ENGAGEMENT_WEAK';
@@ -3006,14 +3167,16 @@
             const age = daysBetween(derived.current.at, snapshot.at);
             return Number.isFinite(age) && age >= 0 && age <= HEALTH_RULES.deactivationHistoryDays + 2;
         });
-        const zeroObservations = within60.filter((snapshot) => snapshot.visits === 0 && snapshot.favorites === 0 && snapshot.sales === 0 && snapshot.revenue === 0);
-        const currentZeroObservation = derived.current.visits === 0 && derived.current.favorites === 0 && derived.current.sales === 0 && derived.current.revenue === 0;
+        const exactSafetySnapshots = within60.filter((snapshot) => snapshotCountsAreExact(snapshot, DECISION_COUNT_FIELDS));
+        const zeroObservations = exactSafetySnapshots.filter((snapshot) => snapshot.visits === 0 && snapshot.favorites === 0 && snapshot.sales === 0 && snapshot.revenue === 0);
+        const currentZeroObservation = derived.deactivationDecisionReady && derived.current.visits === 0 && derived.current.favorites === 0 && derived.current.sales === 0 && derived.current.revenue === 0;
         const separatedZeros = zeroObservations.some((left, index) => zeroObservations.slice(index + 1).some((right) => Math.abs(daysBetween(right.at, left.at) || 0) >= HEALTH_RULES.deactivationZeroObservationGapDays));
         const recentImprovement = [...(record.improvements || [])].reverse().find((entry) => entry?.publishedAt && daysBetween(evaluatedAt, entry.publishedAt) <= HEALTH_RULES.improvementCooldownDays);
         const experiment = activeExperiment(record, evaluatedAt);
         const integrityAnomalies = inspectHistory(within60, evaluatedAt);
         const checks = [
-            { key: 'guardHistory', passed: derived.completeHistorySpanDays >= 58 && derived.completeSnapshotCount >= 3 },
+            { key: 'guardExactCounters', passed: derived.deactivationDecisionReady && exactSafetySnapshots.length >= 3 },
+            { key: 'guardHistory', passed: derived.deactivationCompleteHistorySpanDays >= 58 && derived.deactivationCompleteSnapshotCount >= 3 },
             { key: 'guardZeroTraffic', passed: currentZeroObservation && zeroObservations.length >= 2 && separatedZeros },
             { key: 'guardNoSales', passed: derived.sales60Raw === 0 && derived.revenue60Raw === 0 && derived.current.sales === 0 && derived.current.revenue === 0 },
             { key: 'guardRenewals', passed: Number(derived.renewals60Raw) >= 1 && Number(derived.current.renewals) >= policy.thresholds.minRenewalsToReview },
@@ -3050,15 +3213,29 @@
         return evidence;
     }
 
+    function materialTrendGrowth(beforeVisits, afterVisits, changePercent, direction, minimumPercent, policy) {
+        if (!direction?.winner) return false;
+        const effect = relativeEffectSummary(finiteOrNull(beforeVisits), finiteOrNull(afterVisits));
+        if (effect.kind === 'relative') return Number(changePercent) >= minimumPercent;
+        if (effect.kind !== 'from-zero') return false;
+        const absoluteMinimum = Math.max(
+            HEALTH_RULES.zeroBaselineGrowthMinimumVisits,
+            Number(policy?.thresholds?.minVisitsToImprove) || 0,
+        );
+        return Number(afterVisits) >= absoluteMinimum;
+    }
+
     function classifyHealth(record, derived, benchmark, policy, evaluatedAt) {
         const confidence = confidenceFor(derived, benchmark, policy);
         const bootstrap = bootstrapAssessment(record, derived, benchmark, policy);
         const listingState = recordListingState(record, derived);
-        const assessmentEligible = Boolean(derived.complete && derived.current && derived.freshnessDays <= 1
+        const trafficAssessmentEligible = Boolean(derived.complete && derived.trafficDecisionReady && derived.current
+            && Number.isFinite(derived.freshnessDays) && derived.freshnessDays <= 1
             && !confidence.caps.includes('data-integrity') && listingState === 'active'
             && Number.isFinite(derived.current.stock) && derived.current.stock > 0);
-        const longitudinalReady = Boolean(assessmentEligible && derived.anchors?.d30?.complete);
-        const diagnosis = longitudinalReady ? diagnosePerformance(derived, benchmark, policy, confidence) : bootstrap.diagnosis;
+        const assessmentEligible = trafficAssessmentEligible;
+        const longitudinalReady = Boolean(trafficAssessmentEligible && derived.anchors?.d30Traffic?.complete);
+        const diagnosis = longitudinalReady && assessmentEligible ? diagnosePerformance(derived, benchmark, policy, confidence) : bootstrap.diagnosis;
         const deactivation = derived.current ? deactivationSafeguards(record, derived, confidence, evaluatedAt, policy) : { checks: [], passed: false };
         const experiment = activeExperiment(record, evaluatedAt);
         const inactive = Boolean(listingState && listingState !== 'active');
@@ -3072,8 +3249,13 @@
         const priorTrafficDirection = priorTrafficExact
             ? separatedRateDirection(derived.anchors?.priorTrend30?.snapshot?.visits, 30, derived.anchors?.trend30?.snapshot?.visits, 30)
             : { comparison: null, winner: false, underperformed: false };
-        const persistentGrowth = Number(derived.trendTrafficChangePercent) >= 15 && Number(derived.priorTrendTrafficChangePercent) >= 5
-            && recentTrafficDirection.winner && priorTrafficDirection.winner;
+        const persistentGrowth = materialTrendGrowth(
+            derived.anchors?.trend30?.snapshot?.visits, derived.current?.visits,
+            derived.trendTrafficChangePercent, recentTrafficDirection, 15, policy,
+        ) && materialTrendGrowth(
+            derived.anchors?.priorTrend30?.snapshot?.visits, derived.anchors?.trend30?.snapshot?.visits,
+            derived.priorTrendTrafficChangePercent, priorTrafficDirection, 5, policy,
+        );
         const persistentDecline = Number(derived.trendTrafficChangePercent) <= -policy.thresholds.declinePercent && Number(derived.priorTrendTrafficChangePercent) <= -10
             && recentTrafficDirection.underperformed && priorTrafficDirection.underperformed;
         const recentStrength = Number(derived.sales30) >= 2 || Number(derived.salesRateProxy) >= 2 || Number(derived.revenue30) > 0;
@@ -3083,14 +3265,15 @@
         else if (experiment) lifecycle = 'EXPERIMENT_RUNNING';
         else if (deactivation.passed) lifecycle = 'DEACTIVATION_REVIEW';
         else if (derived.snapshotCount === 1) lifecycle = 'BASELINE';
-        else if (!derived.anchors.d30.complete) lifecycle = 'LEARNING';
-        else if (confidence.score < 40 || diagnosis === 'INSUFFICIENT_SIGNAL') lifecycle = 'DATA_GAP';
-        else if (derived.current.visits === 0 && derived.current.favorites === 0
-            && derived.anchors.d60.complete && derived.sales60Raw === 0 && derived.revenue60Raw === 0) lifecycle = 'DORMANT';
         else if (persistentGrowth) lifecycle = 'ACTIVE_GROWING';
         else if (persistentDecline && recentStrength) lifecycle = 'PROTECTED';
         else if (persistentDecline) lifecycle = 'ACTIVE_DECLINING';
         else if (recentStrength) lifecycle = 'PROTECTED';
+        else if (!derived.anchors.d30Traffic.complete) lifecycle = 'LEARNING';
+        else if (confidence.score < 40 || diagnosis === 'INSUFFICIENT_SIGNAL') lifecycle = 'DATA_GAP';
+        else if (derived.deactivationDecisionReady && derived.current.visits === 0 && derived.current.favorites === 0
+            && Number.isFinite(derived.sales60Raw) && Number.isFinite(derived.revenue60Raw)
+            && derived.sales60Raw === 0 && derived.revenue60Raw === 0) lifecycle = 'DORMANT';
 
         const weakDiagnoses = new Set(['DISCOVERY_WEAK', 'ENGAGEMENT_WEAK', 'PURCHASE_FRICTION']);
         const legacyByLifecycle = {
@@ -3115,7 +3298,12 @@
         const assessmentMode = longitudinalReady ? 'longitudinal' : bootstrap.available ? 'snapshot' : 'insufficient';
         const currentAssessment = assessmentEligible && bootstrap.available ? bootstrap : null;
         const score = currentAssessment?.score ?? null;
-        const deactivationHistoryReady = Boolean(assessmentEligible && derived.anchors?.d60?.complete
+        const deactivationEligible = Boolean(derived.complete && derived.deactivationDecisionReady && derived.current
+            && Number.isFinite(derived.freshnessDays) && derived.freshnessDays <= 1
+            && !confidence.caps.includes('data-integrity') && listingState === 'active'
+            && Number.isFinite(derived.current.stock) && derived.current.stock > 0);
+        const deactivationHistoryReady = Boolean(deactivationEligible
+            && deactivation.checks.find((item) => item.key === 'guardExactCounters')?.passed
             && deactivation.checks.find((item) => item.key === 'guardHistory')?.passed);
         const trendInferenceReady = Boolean(longitudinalReady && recentTrafficDirection.comparison && priorTrafficDirection.comparison);
         return {
@@ -3136,6 +3324,7 @@
                 previousTrendTrafficChangePercent: derived.priorTrendTrafficChangePercent ?? null,
                 historySpanDays: Math.round(derived.historySpanDays || 0), completeHistorySpanDays: Math.round(derived.completeHistorySpanDays || 0), snapshotCount: derived.snapshotCount || 0,
                 stateEpochStartAt: derived.stateEpochStartAt || null, stateEpochSpanDays: Math.round(derived.stateEpochSpanDays || 0),
+                exactness: { ...(derived.currentExactness || {}) },
                 trendIntervals: { recent: recentTrafficDirection.comparison, prior: priorTrafficDirection.comparison },
                 anchors: Object.fromEntries(Object.entries(derived.anchors || {}).map(([key, anchor]) => [key, anchor?.snapshot ? { at: anchor.snapshot.at, actualDays: Math.round(anchor.actualDays * 10) / 10 } : null])),
             },
@@ -3286,17 +3475,18 @@
     function recentPerformanceMetrics(record) {
         const derived = record?.analysis?.derived || record?.health?.result?.derived || {};
         const latest = record?.history?.at(-1) || {};
-        const recentOrGuaranteedZero = (recent, cumulative) => {
+        const recentOrGuaranteedZero = (recent, cumulative, exact) => {
             const value = finiteOrNull(recent);
             if (value !== null) return value;
-            return finiteOrNull(cumulative) === 0 ? 0 : null;
+            return exact && finiteOrNull(cumulative) === 0 ? 0 : null;
         };
+        const verifiedContract = normalizeMetricContract(latest.metricContract);
         return {
             visits: finiteOrNull(derived.visits30),
             favorites: finiteOrNull(derived.favorites30),
-            sales: recentOrGuaranteedZero(derived.sales30, latest.sales),
-            revenue: recentOrGuaranteedZero(derived.revenue30, latest.revenue),
-            renewals: recentOrGuaranteedZero(derived.renewals30, latest.renewals),
+            sales: recentOrGuaranteedZero(derived.sales30, latest.sales, snapshotCountsAreExact(latest, ['sales'])),
+            revenue: recentOrGuaranteedZero(derived.revenue30, latest.revenue, Boolean(verifiedContract)),
+            renewals: recentOrGuaranteedZero(derived.renewals30, latest.renewals, snapshotCountsAreExact(latest, ['renewals'])),
         };
     }
 
@@ -3396,8 +3586,8 @@
         }).filter(({ record, derived }) => {
             const recentChange = [...(record?.improvements || [])].reverse().find((entry) => entry?.publishedAt
                 && daysBetween(evaluatedAt, entry.publishedAt) <= HEALTH_RULES.improvementCooldownDays);
-            return record && derived?.complete && derived.anchors?.d30?.complete
-                && derived.freshnessDays <= 1 && !derived.anomalies?.length
+            return record && derived?.complete && derived.trafficDecisionReady && derived.anchors?.d30Traffic?.complete
+                && Number.isFinite(derived.freshnessDays) && derived.freshnessDays <= 1 && !derived.anomalies?.length
                 && Number.isFinite(derived.visits30) && Number.isFinite(derived.sales30)
                 && recordListingState(record, derived) === 'active'
                 && !activeExperiment(record, evaluatedAt) && !recentChange;
@@ -3421,7 +3611,7 @@
             .map(({ derived }) => finiteOrNull(derived.visits30)).filter((value) => Number.isFinite(value) && value > 0);
         const sellingVisits = readable.filter(({ derived }) => Number(derived.sales30) > 0)
             .map(({ derived }) => finiteOrNull(derived.visits30)).filter(Number.isFinite);
-        const dormantRenewals = readable.filter(({ derived }) => derived.anchors?.d60?.complete
+        const dormantRenewals = readable.filter(({ derived }) => derived.currentExactness?.renewals === true && derived.anchors?.d60?.complete
             && derived.sales60Raw === 0 && derived.revenue60Raw === 0
             && derived.current?.sales === 0 && derived.current?.revenue === 0)
             .map(({ derived }) => finiteOrNull(derived.current?.renewals)).filter(Number.isFinite);
@@ -3435,17 +3625,18 @@
             minVisitsToImprove: enough(noSaleVisits), minVisitsToProtect: enough(sellingVisits),
             minRenewalsToReview: enough(dormantRenewals), declinePercent: enough(declines),
         };
+        const values = normalizeHealthThresholds({
+            minVisitsToImprove: improve,
+            minVisitsToProtect: Math.max(improve + 10, protectBase),
+            minRenewalsToReview: enough(dormantRenewals) ? clamp(Math.round(median(dormantRenewals)), 2, 10) : DEFAULT_SETTINGS.minRenewalsToReview,
+            declinePercent: enough(declines) ? clamp(Math.round(quantile(declines, 0.75)), 20, 60) : DEFAULT_SETTINGS.declinePercent,
+        });
         return {
             available: true,
             sampleSize: readable.length,
             groupSizes,
             calibratedFields,
-            values: {
-                minVisitsToImprove: improve,
-                minVisitsToProtect: Math.max(improve + 10, protectBase),
-                minRenewalsToReview: enough(dormantRenewals) ? clamp(Math.round(median(dormantRenewals)), 2, 10) : DEFAULT_SETTINGS.minRenewalsToReview,
-                declinePercent: enough(declines) ? clamp(Math.round(quantile(declines, 0.75)), 20, 60) : DEFAULT_SETTINGS.declinePercent,
-            },
+            values,
         };
     }
 
@@ -4177,7 +4368,7 @@
             const priceMin = finiteOrNull(snapshot.priceMin); const priceMax = finiteOrNull(snapshot.priceMax);
             const currency = normalizeSpace(snapshot.currency);
             if (priceMin === null || priceMax === null || !currency) return 'price-exposure-unverified';
-            if (Math.abs(priceMin - baselineMin) > 1e-9 || Math.abs(priceMax - baselineMax) > 1e-9 || currency !== baselineCurrency) return 'price-changed';
+            if (Math.abs(priceMin - baselineMin) > 1e-9 || Math.abs(priceMax - baselineMax) > 1e-9 || !currenciesComparable(currency, baselineCurrency)) return 'price-changed';
             if (previous && ['sales', 'revenue', 'renewals'].some((field) => Number.isFinite(previous[field])
                 && Number.isFinite(snapshot[field]) && snapshot[field] < previous[field])) return 'cumulative-counter-decreased';
             previous = snapshot;
@@ -4343,19 +4534,64 @@
         return record;
     }
 
+    function historyMetricQuality(snapshot, metric) {
+        if (!Number.isFinite(snapshot?.[metric])) return 'missing';
+        if (!snapshotMetricIsCurrent(snapshot, metric)) return 'stale';
+        if (metric === 'revenue' && !currencyIdentity(snapshot.currency)) return 'missing';
+        const contract = normalizeMetricContract(snapshot.metricContract);
+        if (!contract) return 'legacy';
+        if (DECISION_COUNT_FIELDS.includes(metric) && contract.countPrecision?.[metric] !== 'exact') return 'approximate';
+        return 'exact';
+    }
+
     function buildHistoryChartModel(history, metric) {
         const snapshots = (Array.isArray(history) ? history : []).map(normalizeSnapshot).filter(Boolean).sort((a, b) => String(a.at).localeCompare(String(b.at)));
-        const values = snapshots.map((snapshot) => finiteOrNull(snapshot[metric]));
+        const qualityCounts = { exact: 0, approximate: 0, legacy: 0, stale: 0, missing: 0 };
+        const qualities = snapshots.map((snapshot) => {
+            const quality = historyMetricQuality(snapshot, metric);
+            qualityCounts[quality] += 1;
+            return quality;
+        });
+        const rawValues = snapshots.map((snapshot, index) => ['missing', 'stale'].includes(qualities[index]) ? null : finiteOrNull(snapshot[metric]));
+        const currencyEntries = metric === 'revenue' ? snapshots.map((snapshot, index) => Number.isFinite(rawValues[index]) ? {
+            identity: currencyIdentity(snapshot.currency), marker: normalizeSpace(snapshot.currency),
+        } : null) : [];
+        const currencyDisplay = new Map();
+        currencyEntries.forEach((entry) => { if (entry?.identity) currencyDisplay.set(entry.identity, entry.marker); });
+        const currencyIdentities = [...currencyDisplay.keys()];
+        const activeCurrencyIdentity = metric === 'revenue' ? [...currencyEntries].reverse().find((entry) => entry?.identity)?.identity || '' : '';
+        const activeCurrency = activeCurrencyIdentity ? currencyDisplay.get(activeCurrencyIdentity) || '' : '';
+        const comparableCurrencies = metric !== 'revenue' || currencyIdentities.length <= 1;
+        const values = rawValues.map((value, index) => {
+            if (!Number.isFinite(value)) return null;
+            if (metric !== 'revenue' || comparableCurrencies) return value;
+            return currencyEntries[index]?.identity === activeCurrencyIdentity ? value : null;
+        });
+        const excludedCurrencyCount = rawValues.filter((value, index) => Number.isFinite(value)
+            && metric === 'revenue' && !comparableCurrencies && currencyEntries[index]?.identity !== activeCurrencyIdentity).length;
         const finiteValues = values.filter(Number.isFinite);
-        if (snapshots.length < 2 || finiteValues.length < 2) return { metric, snapshots, segments: [], points: [], min: null, max: null, tone: 'neutral' };
+        const currencies = [...currencyDisplay.values()];
+        const empty = {
+            metric, snapshots, segments: [], points: [], min: null, max: null, domainMin: null, domainMax: null,
+            tone: 'neutral', qualityCounts, currencies, currencyIdentities, activeCurrency, activeCurrencyIdentity,
+            comparableCurrencies, excludedCurrencyCount, width: 320, height: 92,
+        };
+        if (snapshots.length < 2 || finiteValues.length < 2) return empty;
         const width = 320; const height = 92; const paddingX = 10; const paddingY = 10;
-        const min = Math.min(...finiteValues); const max = Math.max(...finiteValues); const range = max - min || 1;
+        const min = Math.min(...finiteValues); const max = Math.max(...finiteValues); const flat = min === max;
+        const domainMin = flat ? min : Math.min(0, min); const domainMax = flat ? max : Math.max(0, max);
+        const range = domainMax - domainMin || 1;
         const times = snapshots.map((snapshot) => validTime(snapshot.at));
         const firstTime = Math.min(...times); const lastTime = Math.max(...times); const timeRange = lastTime - firstTime;
         const coordinates = values.map((value, index) => Number.isFinite(value) ? {
-            index, value, at: snapshots[index].at,
+            index, value, at: snapshots[index].at, quality: qualities[index],
+            currency: metric === 'revenue' ? normalizeSpace(snapshots[index].currency) : '',
+            currencyIdentity: metric === 'revenue' ? currencyIdentity(snapshots[index].currency) : '',
+            decisionGrade: qualities[index] === 'exact',
             x: paddingX + (timeRange > 0 ? (times[index] - firstTime) / timeRange : index / Math.max(1, snapshots.length - 1)) * (width - paddingX * 2),
-            y: paddingY + ((max - value) / range) * (height - paddingY * 2),
+            y: flat
+                ? (value === 0 ? height - paddingY : height / 2)
+                : paddingY + ((domainMax - value) / range) * (height - paddingY * 2),
         } : null);
         const segments = []; let current = [];
         coordinates.forEach((point) => {
@@ -4364,8 +4600,14 @@
         });
         if (current.length) segments.push(current);
         const points = coordinates.filter(Boolean);
-        const change = points.at(-1).value - points[0].value;
-        return { metric, snapshots, segments, points, min, max, tone: change > 0 ? 'up' : change < 0 ? 'down' : 'neutral', width, height };
+        const toneSegment = comparableCurrencies && segments.length === 1 ? segments[0] : null;
+        const toneReady = toneSegment?.length >= 2 && toneSegment[0].decisionGrade && toneSegment.at(-1).decisionGrade;
+        const change = toneReady ? toneSegment.at(-1).value - toneSegment[0].value : 0;
+        return {
+            metric, snapshots, segments, points, min, max, domainMin, domainMax,
+            tone: toneReady ? (change > 0 ? 'up' : change < 0 ? 'down' : 'neutral') : 'neutral', width, height, qualityCounts,
+            currencies, currencyIdentities, activeCurrency, activeCurrencyIdentity, comparableCurrencies, excludedCurrencyCount,
+        };
     }
 
     function buildExperimentTimeline(record) {
@@ -4416,10 +4658,10 @@
         cardRoots() {
             return Array.from(document.querySelectorAll('li.wt-block-grid__item')).filter(elementIsUsable);
         },
-        cardLinks() {
+        cardLinks(roots = this.cardRoots()) {
             const found = [];
             const seen = new Set();
-            this.cardRoots().forEach((card) => {
+            roots.forEach((card) => {
                 const candidates = Array.from(card.querySelectorAll('a[href*="/listing-editor/edit/"]')).filter(elementIsUsable);
                 const link = candidates.find((item) => item.matches('a.card-body'))
                     || candidates.find((item) => !item.closest('[role="menu"],.card-actions') && item.querySelector('.card-title, h2[title], h2'));
@@ -4458,24 +4700,28 @@
             const image = card.querySelector('.card-img-wrap img, img');
             const parsedMetrics = parseScopedListingMetrics(this.metricSections(link));
             const metrics = parsedMetrics.metrics || {};
+            const priceCurrency = currencyMarker(priceText);
+            const metricCurrency = String(metrics.currency || '');
+            const currency = resolveCardCurrency(priceCurrency, metricCurrency);
             if (!verifiedShopKey || !normalizeListingState(verifiedListingState) || !title
-                || !parsedMetrics.valid || !HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(metrics[field]))) return null;
+                || currencyMarkerIsInvalid(priceText) || !currency || !parsedMetrics.valid
+                || !HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(metrics[field]))) return null;
             const listingState = normalizeListingState(verifiedListingState);
             return {
                 listingId: editId, title, sku, editUrl: link.href, shopKey: verifiedShopKey,
                 publicUrl: publicLink?.href || '', imageUrl: image?.currentSrc || image?.src || '',
                 stock: parseCount(quantityText, ['in stock', 'stokta', 'stock', 'stok']),
-                price: parsePriceRange(priceText), currency: metrics.currency || currencyMarker(priceText),
+                price: parsePriceRange(priceText), currency,
                 listingState, statusLabel: listingStateLabel(listingState), renewalLabel,
                 visits: metrics.visits, favorites: metrics.favorites, sales: metrics.sales,
                 revenue: metrics.revenue, renewals: metrics.renewals, metricContract: parsedMetrics.contract, capturedAt: nowIso(),
             };
         },
-        scan() {
+        scan(links = this.cardLinks()) {
             const shopKey = currentShopKey();
             const listingState = pageListingState();
             if (!shopKey || !listingState || !statsViewEnabled()) return [];
-            return this.cardLinks().map((link) => this.parseCard(link, shopKey, listingState)).filter(Boolean);
+            return links.map((link) => this.parseCard(link, shopKey, listingState)).filter(Boolean);
         },
         contentSignature(listings = this.scan()) {
             return listings.map((item) => String(item.listingId)).sort().join('\u001f');
@@ -4495,9 +4741,9 @@
             const host = nav?.querySelector('clg-select');
             return host?.shadowRoot?.querySelector('select') || nav?.querySelector('select') || null;
         },
-        pageInfo() {
+        pageInfo(observedCardCount = null) {
             const nav = this.paginationNav();
-            const cardCount = this.cardLinks().length;
+            const cardCount = Number.isInteger(observedCardCount) && observedCardCount >= 0 ? observedCardCount : this.cardLinks().length;
             let routeCurrent = null;
             let routeOffset = 0;
             let routePageValid = true;
@@ -4536,11 +4782,18 @@
             return `${page}|${ids.length}|${ids.join('\u001f')}`;
         },
         snapshotState(options = {}) {
-            const pageInfo = this.pageInfo();
-            const links = this.cardLinks();
-            const listings = this.scan();
+            const roots = this.cardRoots();
+            const pageInfo = this.pageInfo(roots.length);
+            const links = this.cardLinks(roots);
+            const listings = this.scan(links);
+            const linkIds = links.map((link) => link?.href?.match(/\/listing-editor\/edit\/(\d+)/i)?.[1] || '');
+            const listingIds = listings.map((listing) => String(listing.listingId || ''));
             const expectedCount = Math.max(0, Number(options.expectedCount) || 0);
-            let valid = pageInfo.valid && links.length > 0 && listings.length === links.length;
+            const cardinalityValid = roots.length > 0 && roots.length === links.length && links.length === listings.length;
+            const idsValid = listingIds.every((id) => /^\d+$/.test(id)) && linkIds.every((id) => /^\d+$/.test(id))
+                && new Set(listingIds).size === listingIds.length && new Set(linkIds).size === linkIds.length
+                && listingIds.every((id) => linkIds.includes(id));
+            let valid = pageInfo.valid && cardinalityValid && idsValid;
             const contractIds = uniqueStrings(listings.map((listing) => listing.metricContract?.id).filter(Boolean));
             valid = valid && contractIds.length === 1 && contractIds[0] === LISTING_METRIC_CONTRACT.id;
             if (options.requirePagination && !pageInfo.hasPagination) valid = false;
@@ -4548,7 +4801,7 @@
             else if (pageInfo.total > 1 && pageInfo.current < pageInfo.total) valid = valid && listings.length === ANALYSIS_BATCH_SIZE;
             else valid = valid && listings.length <= ANALYSIS_BATCH_SIZE;
             const signature = valid ? JSON.stringify([pageInfo.current, pageInfo.total, this.readSignature(listings)]) : '';
-            return { valid, pageInfo, links, listings, signature, metricContractId: valid ? contractIds[0] : '' };
+            return { valid, pageInfo, roots, rootCount: roots.length, links, listings, signature, metricContractId: valid ? contractIds[0] : '' };
         },
         async readStable(options = {}) {
             const timeout = window.__MAKAYTRON_LISTING_TEST__ === true
@@ -6261,7 +6514,7 @@
         .meli-update-banner,.meli-storage-banner{margin-bottom:12px;padding:11px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #a3a3a3;border-radius:10px;background:#fff}.meli-storage-banner{border-left:4px solid #525252}.meli-update-banner div,.meli-storage-banner div{min-width:0}.meli-update-banner strong,.meli-storage-banner strong{display:block;font-size:12px}.meli-update-banner span,.meli-storage-banner span{display:block;margin-top:3px;color:#595959;font-size:10.5px}.meli-update-actions{display:flex;align-items:center;gap:7px;flex:0 0 auto}
         .meli-import-zone{padding:14px;border:1px dashed #a3a3a3;border-radius:10px;background:#fff}.meli-import-zone input[type="file"]{width:100%;margin-top:10px}.meli-backup-preview{margin-top:12px;padding:12px;border:1px solid #a3a3a3;border-radius:9px;background:#fff}.meli-backup-preview[hidden]{display:none}.meli-calibration{margin-bottom:12px;padding:12px;border:1px solid #cfcfcf;border-radius:9px;background:#fff}.meli-calibration h3{margin:0;font-size:12px}.meli-calibration p{margin:5px 0 0;color:#595959;font-size:10.5px}.meli-threshold-impact{margin-top:10px;padding:9px 10px;border:1px solid #d8d8d8;border-radius:8px;background:#f5f5f5;color:#303030;font-size:10.5px}.meli-conflict-warning,.meli-queue-recovery{padding:12px;border:1px solid #a3a3a3;border-left:4px solid #b42318;border-radius:9px;background:#fff}.meli-conflict-warning strong,.meli-queue-recovery strong{display:block;font-size:12px}.meli-conflict-warning p,.meli-queue-recovery p{margin:5px 0 0;color:#404040;font-size:11px}.meli-feedback-form{display:grid;gap:12px}.meli-feedback-form .meli-note{margin:0}
         .meli-preset-zone{grid-column:1/-1;display:grid;gap:8px}.meli-preset-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.meli-preset-head>span{color:#595959;font-size:9.5px;font-weight:760;letter-spacing:.045em;text-transform:uppercase}.meli-preset-list{display:flex;align-items:center;gap:6px;overflow-x:auto;padding-bottom:2px;scrollbar-width:thin}.meli-preset-wrap{position:relative;display:inline-flex;align-items:center;flex:0 0 auto}.meli-preset-wrap .meli-preset-chip{padding-right:28px}.meli-preset-chip{min-height:30px;padding:0 9px;display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;border:1px solid #d0d0d0;border-radius:999px;background:#fff;color:#303030;font:700 10.5px/1 Inter,system-ui,sans-serif;cursor:pointer}.meli-preset-chip:hover,.meli-preset-chip.is-active{border-color:#202020;background:#202020;color:#fff}.meli-preset-chip b{font-size:9px;opacity:.72}.meli-preset-chip-delete{position:absolute;right:5px;width:18px;height:18px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;background:transparent;color:#737373;cursor:pointer}.meli-preset-wrap:has(.meli-preset-chip.is-active) .meli-preset-chip-delete{color:#fff}.meli-preset-editor{display:grid;grid-template-columns:minmax(150px,1fr) auto;gap:7px}.meli-preset-editor .meli-input{height:36px}.meli-preset-editor .meli-btn{height:36px}
-        .meli-chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.meli-chart{min-width:0;padding:10px;border:1px solid #dedede;border-radius:9px;background:#fafafa}.meli-chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.meli-chart-head b{font-size:11px}.meli-chart-head span{color:#595959;font-size:9.5px}.meli-chart svg{width:100%;height:auto;margin-top:6px;display:block;overflow:visible}.meli-chart-gridline{stroke:#dedede;stroke-width:1}.meli-chart-line{fill:none;stroke:#303030;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.meli-chart[data-tone="up"] .meli-chart-line,.meli-chart[data-tone="up"] .meli-chart-point:last-of-type{stroke:#1f7a4d;fill:#1f7a4d}.meli-chart[data-tone="down"] .meli-chart-line,.meli-chart[data-tone="down"] .meli-chart-point:last-of-type{stroke:#b42318;fill:#b42318}.meli-chart-point{fill:#fff;stroke:#525252;stroke-width:1.5}.meli-chart-empty{min-height:92px;display:grid;place-items:center;color:#737373;font-size:10.5px;text-align:center}
+        .meli-chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.meli-chart{min-width:0;padding:10px;border:1px solid #dedede;border-radius:9px;background:#fafafa}.meli-chart-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.meli-chart-head b{font-size:11px}.meli-chart-head span{color:#595959;font-size:9.5px}.meli-chart svg{width:100%;height:auto;margin-top:6px;display:block;overflow:visible}.meli-chart-gridline{stroke:#dedede;stroke-width:1}.meli-chart-line{fill:none;stroke:#303030;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.meli-chart-line[data-quality="limited"]{stroke-dasharray:5 3}.meli-chart[data-tone="up"] .meli-chart-line,.meli-chart[data-tone="up"] .meli-chart-point:last-of-type{stroke:#1f7a4d;fill:#1f7a4d}.meli-chart[data-tone="down"] .meli-chart-line,.meli-chart[data-tone="down"] .meli-chart-point:last-of-type{stroke:#b42318;fill:#b42318}.meli-chart-point{fill:#fff;stroke:#525252;stroke-width:1.5}.meli-chart-point[data-quality="approximate"]{stroke-dasharray:2 1}.meli-chart-point[data-quality="legacy"]{fill:#fff4cc;stroke:#8a5a00}.meli-chart-quality{display:block;margin-top:5px;color:#737373;font-size:9.5px}.meli-chart-empty{min-height:92px;display:grid;place-items:center;color:#737373;font-size:10.5px;text-align:center}
         .meli-experiment-timeline{position:relative;display:grid;gap:0}.meli-experiment-event{position:relative;padding:0 0 16px 24px}.meli-experiment-event:last-child{padding-bottom:0}.meli-experiment-event:before{content:"";position:absolute;left:6px;top:7px;bottom:-7px;width:1px;background:#cfcfcf}.meli-experiment-event:last-child:before{display:none}.meli-experiment-dot{position:absolute;left:1px;top:3px;width:11px;height:11px;border:2px solid #737373;border-radius:50%;background:#fff}.meli-experiment-event[data-type="winner"] .meli-experiment-dot{border-color:#1f7a4d;background:#1f7a4d}.meli-experiment-event[data-type="underperformed"] .meli-experiment-dot{border-color:#b42318;background:#b42318}.meli-experiment-event[data-type="observing"] .meli-experiment-dot{border-color:#7c3aed}.meli-experiment-event strong{display:block;font-size:11.5px}.meli-experiment-event time,.meli-experiment-event span{display:block;margin-top:2px;color:#595959;font-size:10.5px}
         .meli-ai-comparisons{display:grid;gap:10px}.meli-diff-card{overflow:hidden;border:1px solid #d6d6d6;border-radius:10px;background:#fff}.meli-diff-head{padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid #e3e3e3}.meli-diff-head div{min-width:0}.meli-diff-head strong{display:block;overflow:hidden;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.meli-diff-head span{color:#595959;font-size:9.5px}.meli-diff-fields{display:grid}.meli-diff-field{padding:10px 12px;border-top:1px solid #ededed}.meli-diff-field:first-child{border-top:0}.meli-diff-field>strong{display:block;margin-bottom:7px;font-size:10px;text-transform:uppercase}.meli-diff-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.meli-diff-value{min-width:0;padding:8px;border:1px solid #dedede;border-radius:7px;background:#f7f7f7}.meli-diff-value b{display:block;margin-bottom:4px;color:#595959;font-size:9px;text-transform:uppercase}.meli-diff-value pre{max-height:100px;margin:0;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#202020;font:10.5px/1.42 ui-monospace,SFMono-Regular,Consolas,monospace}.meli-diff-value.is-proposed{border-color:#a3a3a3;background:#fff}
         .meli-report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.meli-report-grid div{padding:9px;border:1px solid #dedede;border-radius:8px;background:#fff}.meli-report-grid span{display:block;color:#595959;font-size:9.5px;text-transform:uppercase}.meli-report-grid b{display:block;margin-top:4px;font-size:12px;overflow-wrap:anywhere}.meli-report-json{max-height:260px;margin:10px 0 0;padding:10px;overflow:auto;border:1px solid #dedede;border-radius:8px;background:#171717;color:#f5f5f5;white-space:pre-wrap;overflow-wrap:anywhere;font:10px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}
@@ -7217,12 +7470,33 @@
         },
         historyChart(history, metric, label, moneyCurrency = '') {
             const model = buildHistoryChartModel(history, metric);
-            const valueLabel = (value) => moneyCurrency ? formatMoney(value, moneyCurrency) : formatNumber(value);
-            if (model.points.length < 2) return `<article class="meli-chart" data-history-chart="${escapeHtml(metric)}"><div class="meli-chart-head"><b>${escapeHtml(label)}</b><span>—</span></div><div class="meli-chart-empty">${escapeHtml(t('noChartData'))}</div></article>`;
-            const lineMarkup = model.segments.filter((segment) => segment.length > 1).map((segment) => `<polyline class="meli-chart-line" points="${segment.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')}"></polyline>`).join('');
-            const pointsMarkup = model.points.map((point) => `<circle class="meli-chart-point" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="3"><title>${escapeHtml(`${formatDate(point.at)} · ${valueLabel(point.value)}`)}</title></circle>`).join('');
-            const aria = `${label}: ${valueLabel(model.points[0].value)} → ${valueLabel(model.points.at(-1).value)}`;
-            return `<article class="meli-chart" data-history-chart="${escapeHtml(metric)}" data-tone="${model.tone}"><div class="meli-chart-head"><b>${escapeHtml(label)}</b><span>${escapeHtml(`${valueLabel(model.min)} – ${valueLabel(model.max)}`)}</span></div><svg viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="${escapeHtml(aria)}"><title>${escapeHtml(aria)}</title><desc>${escapeHtml(`${formatDate(model.points[0].at)} – ${formatDate(model.points.at(-1).at)}`)}</desc><line class="meli-chart-gridline" x1="10" y1="10" x2="310" y2="10"></line><line class="meli-chart-gridline" x1="10" y1="82" x2="310" y2="82"></line>${lineMarkup}${pointsMarkup}</svg></article>`;
+            const valueLabel = (value, currency = '') => moneyCurrency
+                ? (normalizeSpace(currency) ? formatMoney(value, currency) : `${formatNumber(value)} (?)`)
+                : formatNumber(value);
+            const qualityNotes = [];
+            if (model.qualityCounts?.approximate) qualityNotes.push(`${model.qualityCounts.approximate} ${t('chartApproximate')}`);
+            if (model.qualityCounts?.legacy) qualityNotes.push(`${model.qualityCounts.legacy} ${t('chartLegacy')}`);
+            if (model.qualityCounts?.stale) qualityNotes.push(t('chartStaleExcluded', { count: model.qualityCounts.stale }));
+            if (model.excludedCurrencyCount) qualityNotes.push(`${model.excludedCurrencyCount} ${t('chartMixedCurrencies')}`);
+            const qualityMarkup = qualityNotes.length ? `<small class="meli-chart-quality">${escapeHtml(qualityNotes.join(' · '))}</small>` : '';
+            if (model.points.length < 2) return `<article class="meli-chart" data-history-chart="${escapeHtml(metric)}"><div class="meli-chart-head"><b>${escapeHtml(label)}</b><span>—</span></div><div class="meli-chart-empty">${escapeHtml(t('noChartData'))}</div>${qualityMarkup}</article>`;
+            const lineMarkup = model.segments.filter((segment) => segment.length > 1).map((segment) => {
+                const quality = segment.every((point) => point.decisionGrade) ? 'exact' : 'limited';
+                return `<polyline class="meli-chart-line" data-quality="${quality}" points="${segment.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')}"></polyline>`;
+            }).join('');
+            const pointsMarkup = model.points.map((point) => {
+                const flags = point.quality === 'approximate' ? [t('chartApproximate')] : point.quality === 'legacy' ? [t('chartLegacy')] : [];
+                const formatted = valueLabel(point.value, point.currency);
+                const shown = point.quality === 'approximate' ? `≈${formatted}` : formatted;
+                const title = [formatDate(point.at), shown, ...flags].join(' · ');
+                return `<circle class="meli-chart-point" data-quality="${escapeHtml(point.quality)}" cx="${point.x.toFixed(2)}" cy="${point.y.toFixed(2)}" r="3"><title>${escapeHtml(title)}</title></circle>`;
+            }).join('');
+            const first = model.points[0]; const last = model.points.at(-1);
+            const aria = `${label}: ${valueLabel(first.value, first.currency)} → ${valueLabel(last.value, last.currency)}`;
+            const rangeLabel = moneyCurrency && !model.comparableCurrencies
+                ? `${valueLabel(model.min, model.activeCurrency)} – ${valueLabel(model.max, model.activeCurrency)} · ${model.currencies.join(' / ')} · ${t('chartMixedCurrencies')}`
+                : `${valueLabel(model.min, model.activeCurrency || model.currencies[0] || moneyCurrency)} – ${valueLabel(model.max, model.activeCurrency || model.currencies[0] || moneyCurrency)}`;
+            return `<article class="meli-chart" data-history-chart="${escapeHtml(metric)}" data-tone="${model.tone}"><div class="meli-chart-head"><b>${escapeHtml(label)}</b><span>${escapeHtml(rangeLabel)}</span></div><svg viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="${escapeHtml(aria)}"><title>${escapeHtml(aria)}</title><desc>${escapeHtml(`${formatDate(first.at)} – ${formatDate(last.at)}`)}</desc><line class="meli-chart-gridline" x1="10" y1="10" x2="310" y2="10"></line><line class="meli-chart-gridline" x1="10" y1="82" x2="310" y2="82"></line>${lineMarkup}${pointsMarkup}</svg>${qualityMarkup}</article>`;
         },
         experimentTimeline(record) {
             const events = buildExperimentTimeline(record);
@@ -7402,15 +7676,10 @@
         },
         openSettingsModal() {
             const fields = ['minVisitsToImprove','minVisitsToProtect','minRenewalsToReview','declinePercent'];
-            const contracts = {
-                minVisitsToImprove: { min: 1, max: 100000, step: 1, help: 'thresholdHelpImprove' },
-                minVisitsToProtect: { min: 2, max: 100000, step: 1, help: 'thresholdHelpProtect' },
-                minRenewalsToReview: { min: 1, max: 1000, step: 1, help: 'thresholdHelpRenewals' },
-                declinePercent: { min: 1, max: 100, step: 1, help: 'thresholdHelpDecline' },
-            };
+            const contracts = HEALTH_THRESHOLD_CONTRACTS;
             const calibration = thresholdCalibration();
             const calibrationCopy = calibration.available ? t('calibrationAvailable', { count: calibration.sampleSize }) : t('calibrationInsufficient');
-            const recommended = calibration.values || DEFAULT_SETTINGS;
+            const recommended = normalizeHealthThresholds(calibration.values || DEFAULT_SETTINGS);
             const fieldMarkup = fields.map((key) => {
                 const contract = contracts[key]; const helpId = `meli-threshold-help-${key}`;
                 return `<label class="meli-field"><span class="meli-field-head">${escapeHtml(t(key))}<small>${escapeHtml(t('recommendedValue', { value: recommended[key] }))}</small></span><input class="meli-input" data-setting="${key}" type="number" min="${contract.min}" max="${contract.max}" step="${contract.step}" value="${escapeHtml(state.settings[key])}" aria-describedby="${helpId}"><small id="${helpId}">${escapeHtml(t(contract.help))}</small></label>`;
@@ -7440,7 +7709,7 @@
             });
             modal.querySelector('[data-settings-save]').addEventListener('click', async () => {
                 const values = readValues();
-                const invalid = fields.find((key) => !Number.isFinite(values[key]) || values[key] < contracts[key].min || values[key] > contracts[key].max);
+                const invalid = fields.find((key) => !Number.isInteger(values[key]) || values[key] < contracts[key].min || values[key] > contracts[key].max);
                 const feedback = modal.querySelector('[data-settings-feedback]');
                 if (invalid) { feedback.textContent = t('storageWriteFailed'); modal.querySelector(`[data-setting="${invalid}"]`).focus(); return; }
                 if (values.minVisitsToProtect <= values.minVisitsToImprove) { feedback.textContent = t('thresholdRelationship'); modal.querySelector('[data-setting="minVisitsToProtect"]').focus(); return; }
@@ -8645,6 +8914,8 @@
             statsViewEnabled,
             currencyMarker,
             finiteOrNull,
+            dayKey,
+            formatDate,
             currentShopKey,
             normalizeListingState,
             normalizeSeasonality,
@@ -8663,6 +8934,7 @@
             exactPoissonRateRatioInterval,
             relativeEffectSummary,
             normalizeHealthThresholds,
+            thresholdContracts: HEALTH_THRESHOLD_CONTRACTS,
             normalizeAnalysisFilters,
             recentPerformanceMetrics,
             recordMatchesAnalysisFilters,

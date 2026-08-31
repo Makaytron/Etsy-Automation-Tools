@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.1 - 2026-08-31
+
+- Scoped compact `K`/`M`/`B` counters to the decision consumer that uses them: an approximate lifetime counter no longer suppresses independent exact traffic evidence, while that approximate value still cannot authorize sales/renewal conclusions, deactivation, calibration, or threshold previews. Exact sales and renewal anchors are selected independently.
+- Made monetary analysis currency-safe: revenue differences require comparable currencies, mixed-currency history cannot create a protection signal, price-band cohorts compare only matching currencies, and a card whose price/revenue currencies disagree is rejected during collection.
+- Rejected snapshots more than five minutes in the future from health, cohort, calibration, and deactivation decisions. Snapshot day keys and displayed timestamps now share one explicit UTC contract.
+- Required full sample strength for the specific cohort metric behind a hard percentile diagnosis. Exact, statistically separated zero-to-positive traffic can now qualify as growth only after the configured absolute traffic floor, without inventing a percentage.
+- Hardened final-page collection by requiring visible card roots, canonical edit links, parsed listings, and unique listing IDs to have identical cardinality; malformed or duplicate-ID cards can no longer disappear behind link deduplication. The collection schema and parser provenance were advanced so a collection completed under the older DOM contract is blocked until a fresh full scan.
+- Added chart-quality provenance for exact, approximate, legacy, stale, and missing observations; stale values become gaps, limited endpoints stay neutral, and an all-zero series is drawn on the zero baseline. Revenue charts compare only the latest canonical currency series and explicitly exclude older units from their shared scale.
+- Unified threshold normalization, calibration output, and settings-form limits so every generated recommendation can be applied and saved without leaving the supported contract.
+- Expanded the offline Listing Analyzer regression suite from 120 to 134 passing tests, including adversarial consumer-specific precision, currency aliases, future-time, cohort-strength, zero-baseline, DOM-cardinality, chart-quality, UTC-day, and threshold-boundary cases.
+
 ## 1.2.0 - 2026-08-31
 
 - Bound every saved snapshot and complete collection to a verified Etsy metric contract: visits/favorites must come from the **Last 30 days** section, while sales/revenue/renewals must come from **All time**. Missing, duplicated, or misplaced metric sections now fail closed, and legacy unverified snapshots cannot become decision anchors.

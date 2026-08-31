@@ -542,13 +542,16 @@ test('card adapter scopes metric rows, rejects menu-only edit links, and rejects
     assert.equal(api.ListingPageAdapter.cardLinks().length, 0);
 
     const adapter = api.ListingPageAdapter;
-    const originals = { pageInfo: adapter.pageInfo, paginationNav: adapter.paginationNav, cardLinks: adapter.cardLinks, scan: adapter.scan };
+    const originals = { pageInfo: adapter.pageInfo, paginationNav: adapter.paginationNav, cardRoots: adapter.cardRoots, cardLinks: adapter.cardLinks, scan: adapter.scan };
     const listing = (id) => ({ listingId: String(id), title: `L${id}`, sku: '', listingState: 'active', statusLabel: 'Active', renewalLabel: 'Auto-renews', stock: 1, price: { min: 10, max: 10 }, visits: 1, favorites: 0, sales: 0, revenue: 0, renewals: 0, metricContract: snapshot('2026-01-01T00:00:00.000Z').metricContract });
+    const linkFor = (id) => ({ href: `https://www.etsy.com/your/shops/me/listing-editor/edit/${id}` });
     adapter.pageInfo = () => ({ current: 2, total: 17, valid: true, hasPagination: true, ambiguous: false });
-    adapter.cardLinks = () => Array.from({ length: 39 }, () => ({}));
+    adapter.cardRoots = () => Array.from({ length: 39 }, () => ({}));
+    adapter.cardLinks = () => Array.from({ length: 39 }, (_, index) => linkFor(index + 1));
     adapter.scan = () => Array.from({ length: 39 }, (_, index) => listing(index + 1));
     assert.equal(adapter.snapshotState({ requirePagination: true }).valid, false);
-    adapter.cardLinks = () => Array.from({ length: 40 }, () => ({}));
+    adapter.cardRoots = () => Array.from({ length: 40 }, () => ({}));
+    adapter.cardLinks = () => Array.from({ length: 40 }, (_, index) => linkFor(index + 1));
     adapter.scan = () => Array.from({ length: 40 }, (_, index) => listing(index + 1));
     assert.equal(adapter.snapshotState({ requirePagination: true }).valid, true);
     Object.assign(adapter, originals);
@@ -642,7 +645,7 @@ test('stable read waits through a delayed pagination render instead of accepting
 test('shadow pagination contract reconciles the route page and reads final-page controls', async () => {
     const { api, sandbox } = loadAnalyzer();
     const adapter = api.ListingPageAdapter;
-    const originals = { paginationNav: adapter.paginationNav, cardLinks: adapter.cardLinks, scan: adapter.scan };
+    const originals = { paginationNav: adapter.paginationNav, cardRoots: adapter.cardRoots, cardLinks: adapter.cardLinks, scan: adapter.scan };
     const options = Array.from({ length: 17 }, (_, index) => ({ value: String(index + 1), textContent: String(index + 1) }));
     const select = { value: '1', options };
     const previous = { disabled: false, getAttribute: (name) => name === 'aria-label' ? 'Previous' : null };
@@ -655,7 +658,8 @@ test('shadow pagination contract reconciles the route page and reads final-page 
             : [],
     };
     adapter.paginationNav = () => nav;
-    adapter.cardLinks = () => Array.from({ length: 40 }, () => ({}));
+    adapter.cardRoots = () => Array.from({ length: 40 }, () => ({}));
+    adapter.cardLinks = () => Array.from({ length: 40 }, (_, index) => ({ href: `https://www.etsy.com/your/shops/me/listing-editor/edit/${index + 1}` }));
     try {
         sandbox.location.pathname = '/your/shops/me/tools/listings';
         sandbox.location.href = 'https://www.etsy.com/your/shops/me/tools/listings?stats=true&page=2';
@@ -670,7 +674,8 @@ test('shadow pagination contract reconciles the route page and reads final-page 
         next.disabled = true;
         assert.deepEqual(plain(adapter.pageInfo()), { current: 17, total: 17, valid: true, hasPagination: true, ambiguous: false });
         assert.equal(adapter.isDisabled(adapter.nextButton()), true);
-        adapter.cardLinks = () => Array.from({ length: 13 }, () => ({}));
+        adapter.cardRoots = () => Array.from({ length: 13 }, () => ({}));
+        adapter.cardLinks = () => Array.from({ length: 13 }, (_, index) => ({ href: `https://www.etsy.com/your/shops/me/listing-editor/edit/${index + 1}` }));
         adapter.scan = () => Array.from({ length: 13 }, (_, index) => ({ listingId: String(index + 1), metricContract: snapshot('2026-01-01T00:00:00.000Z').metricContract }));
         const finalPage = await adapter.readStable({ requirePagination: true, timeout: 600 });
         assert.equal(finalPage.listings.length, 13);
@@ -1840,6 +1845,17 @@ test('legacy collections are invalidated and current collection peers can be iso
     assert.equal(legacy.status, 'blocked');
     assert.equal(legacy.legacySchema, true);
     assert.equal(api.collectionIsFresh(legacy, Date.now(), { scopeKey: '/scope', totalPages: 1 }), false);
+
+    const previousRelease = api.normalizeCollection({
+        schema: 3, id: 'v1.2.0-completed', status: 'completed', scopeKey: '/scope', metricContractId,
+        completedAt: now, totalPages: 1,
+        pages: { 1: { signature: '1|1|1', contentSignature: '1', ids: ['1'], count: 1, capturedAt: now, metricContractId } },
+        uniqueIds: ['1'],
+    });
+    assert.equal(previousRelease.status, 'blocked');
+    assert.equal(previousRelease.completedAt, null);
+    assert.equal(previousRelease.legacySchema, true);
+    assert.equal(api.collectionIsFresh(previousRelease, Date.now(), { scopeKey: '/scope', totalPages: 1 }), false);
 
     const current = api.normalizeCollection({ schema: api.versions.collectionSchema, id: 'new', status: 'completed', scopeKey: '/scope', metricContractId, completedAt: now, totalPages: 1, pages: { 1: { signature: '1|1|1', contentSignature: '1', ids: ['1'], count: 1, capturedAt: now, metricContractId } }, uniqueIds: ['1'] });
     assert.equal(api.collectionIsFresh(current, Date.now(), { scopeKey: '/scope', totalPages: 1 }), true);
@@ -4588,4 +4604,485 @@ test('a delayed old route cannot overwrite the current route state', async () =>
         runtime.UI.render = originalRender;
         runtime.state.panel = null;
     }
+});
+
+test('approximate counters remain descriptive and cannot authorize deactivation or calibration', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const atDaysAgo = (days) => new Date(Date.parse(evaluatedAt) - days * 86400000).toISOString();
+    const exactHistory = [
+        snapshot(atDaysAgo(60), { renewals: 0 }),
+        snapshot(atDaysAgo(45), { renewals: 1 }),
+        snapshot(atDaysAgo(30), { renewals: 2 }),
+        snapshot(evaluatedAt, { renewals: 4 }),
+    ];
+    const exactCandidate = record('precision-exact-control', exactHistory, { seasonality: 'non-seasonal' });
+    assert.equal(api.evaluateRecord(exactCandidate, [exactCandidate], undefined, evaluatedAt).result.lifecycle, 'DEACTIVATION_REVIEW');
+
+    for (const field of ['visits', 'favorites', 'sales', 'renewals']) {
+        const approximateContract = plain(snapshot(evaluatedAt).metricContract);
+        approximateContract.countPrecision[field] = 'approximate';
+        const candidate = record(`precision-${field}`, [
+            ...exactHistory.slice(0, -1),
+            snapshot(evaluatedAt, { renewals: 4, metricContract: approximateContract }),
+        ], { seasonality: 'non-seasonal' });
+        const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+        assert.notEqual(result.lifecycle, 'DEACTIVATION_REVIEW', `${field} approximation must fail closed`);
+        assert.equal(result.readiness.deactivationHistory, false);
+        assert.equal(result.safeguards.find((item) => item.key === 'guardExactCounters')?.passed, false);
+    }
+
+    const approximateSalesContract = plain(snapshot(evaluatedAt).metricContract);
+    approximateSalesContract.countPrecision.sales = 'approximate';
+    const approximateRows = Array.from({ length: 20 }, (_, index) => record(`precision-calibration-${index}`, [
+        snapshot(atDaysAgo(30), { visits: 1200, sales: 1200, metricContract: approximateSalesContract }),
+        snapshot(evaluatedAt, { visits: 1200, sales: 1200, metricContract: approximateSalesContract }),
+    ]));
+    assert.deepEqual(plain(api.thresholdCalibration(approximateRows, evaluatedAt)), { available: false, sampleSize: 0, values: null });
+    assert.deepEqual(plain(api.thresholdImpactCounts(approximateRows, undefined, evaluatedAt)), { improve: 0, protect: 0 });
+});
+
+test('metric precision fences isolate traffic, engagement, demand, renewal, and deactivation consumers', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const atDaysAgo = (days) => new Date(Date.parse(evaluatedAt) - days * 86400000).toISOString();
+    const approximate = (...fields) => {
+        const contract = plain(snapshot(evaluatedAt).metricContract);
+        fields.forEach((field) => { contract.countPrecision[field] = 'approximate'; });
+        return contract;
+    };
+
+    const approximateSales = approximate('sales');
+    const growing = record('precision-isolated-growth', [
+        snapshot(atDaysAgo(60), { visits: 25, favorites: 3, sales: 0, metricContract: approximateSales }),
+        snapshot(atDaysAgo(30), { visits: 100, favorites: 8, sales: 0, metricContract: approximateSales }),
+        snapshot(evaluatedAt, { visits: 400, favorites: 20, sales: 0, metricContract: approximateSales }),
+    ]);
+    const growingResult = api.evaluateRecord(growing, [growing], undefined, evaluatedAt).result;
+    assert.equal(growingResult.lifecycle, 'ACTIVE_GROWING');
+    assert.ok(Number.isFinite(growingResult.score));
+    assert.equal(growingResult.derived.sales30, null);
+    assert.equal(growingResult.readiness.trend, true);
+    assert.equal(growingResult.readiness.deactivationHistory, false);
+
+    const approximateFavorites = approximate('favorites');
+    const discovery = record('precision-traffic-only', [
+        snapshot(atDaysAgo(30), { visits: 5, favorites: 2, metricContract: approximateFavorites }),
+        snapshot(evaluatedAt, { visits: 5, favorites: 2, metricContract: approximateFavorites }),
+    ]);
+    const discoveryResult = api.evaluateRecord(discovery, [discovery], undefined, evaluatedAt).result;
+    assert.equal(discoveryResult.diagnosis, 'DISCOVERY_WEAK');
+    assert.equal(discoveryResult.code, 'improve');
+    assert.ok(Number.isFinite(discoveryResult.score));
+    assert.equal(discoveryResult.currentAssessment.components.engagement, null);
+
+    const approximateTrafficAndRenewals = approximate('visits', 'renewals');
+    const provenDemand = record('precision-demand-only', [snapshot(evaluatedAt, {
+        visits: 100, favorites: 10, sales: 1, revenue: 20, renewals: 2, metricContract: approximateTrafficAndRenewals,
+    })]);
+    const demandResult = api.evaluateRecord(provenDemand, [provenDemand], undefined, evaluatedAt).result;
+    assert.equal(demandResult.code, 'protected');
+    assert.equal(demandResult.score, null);
+    assert.equal(demandResult.readiness.snapshot, true);
+    assert.equal(demandResult.readiness.deactivationHistory, false);
+
+    const approximateSalesOnly = record('precision-no-false-demand', [snapshot(evaluatedAt, {
+        visits: 100, favorites: 10, sales: 1000, revenue: 0, metricContract: approximateSales,
+    })]);
+    const approximateSalesResult = api.evaluateRecord(approximateSalesOnly, [approximateSalesOnly], undefined, evaluatedAt).result;
+    assert.notEqual(approximateSalesResult.code, 'protected');
+    assert.equal(approximateSalesResult.currentAssessment.cumulativeSignal, null);
+
+    const approximateRenewals = approximate('renewals');
+    const exactDemand = record('precision-renewals-independent', [snapshot(evaluatedAt, {
+        visits: 100, favorites: 10, sales: 1, revenue: 0, renewals: 2000, metricContract: approximateRenewals,
+    })]);
+    assert.equal(api.evaluateRecord(exactDemand, [exactDemand], undefined, evaluatedAt).result.code, 'protected');
+
+    const approximateRenewalWaste = record('precision-no-false-renewal-waste', [snapshot(evaluatedAt, {
+        visits: 100, favorites: 0, sales: 0, revenue: 0, renewals: 2000, metricContract: approximateRenewals,
+    })]);
+    const approximateRenewalResult = api.evaluateRecord(approximateRenewalWaste, [approximateRenewalWaste], undefined, evaluatedAt).result;
+    assert.notEqual(approximateRenewalResult.currentAssessment.cumulativeSignal, 'RENEWAL_WASTE');
+
+    const approximateZeroSales = record('precision-no-false-zero-demand', [snapshot(evaluatedAt, {
+        visits: 100, favorites: 0, sales: 0, revenue: 0, renewals: 2, metricContract: approximateSales,
+    })]);
+    const approximateZeroSalesResult = api.evaluateRecord(approximateZeroSales, [approximateZeroSales], undefined, evaluatedAt).result;
+    assert.equal(approximateZeroSalesResult.currentAssessment.cumulativeSignal, null);
+
+    const approximateVisits = approximate('visits');
+    const exactRenewalWaste = record('precision-renewal-waste-independent', [snapshot(evaluatedAt, {
+        visits: 1000, favorites: 0, sales: 0, revenue: 0, renewals: 2, metricContract: approximateVisits,
+    })]);
+    const exactRenewalWasteResult = api.evaluateRecord(exactRenewalWaste, [exactRenewalWaste], undefined, evaluatedAt).result;
+    assert.equal(exactRenewalWasteResult.code, 'improve');
+    assert.equal(exactRenewalWasteResult.bootstrap.signal, 'RENEWAL_WASTE');
+    assert.equal(exactRenewalWasteResult.score, null);
+
+    const approximateRenewalRows = Array.from({ length: 20 }, (_, index) => record(`precision-renewal-calibration-${index}`, [
+        snapshot(atDaysAgo(60), { visits: 100, renewals: 0, metricContract: approximateRenewals }),
+        snapshot(atDaysAgo(30), { visits: 100, renewals: 1000, metricContract: approximateRenewals }),
+        snapshot(evaluatedAt, { visits: 100, renewals: 2000, metricContract: approximateRenewals }),
+    ]));
+    const renewalCalibration = plain(api.thresholdCalibration(approximateRenewalRows, evaluatedAt));
+    assert.equal(renewalCalibration.available, true);
+    assert.equal(renewalCalibration.groupSizes.dormantRenewals, 0);
+    assert.equal(renewalCalibration.calibratedFields.minRenewalsToReview, false);
+});
+
+test('exact cumulative anchors are not shadowed by a closer approximate sales capture', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const atDaysAgo = (days) => new Date(Date.parse(evaluatedAt) - days * 86400000).toISOString();
+    const approximateContract = plain(snapshot(evaluatedAt).metricContract);
+    approximateContract.countPrecision.sales = 'approximate';
+    const candidate = record('exact-sales-anchor', [
+        snapshot(atDaysAgo(30.5), { visits: 100, sales: 0 }),
+        snapshot(atDaysAgo(30), { visits: 100, sales: 9, metricContract: approximateContract }),
+        snapshot(evaluatedAt, { visits: 100, sales: 10 }),
+    ]);
+    const derived = plain(api.deriveRecordMetrics(candidate, evaluatedAt));
+    assert.equal(derived.anchors.d30.actualDays, 30);
+    assert.equal(derived.anchors.d30Sales.actualDays, 30.5);
+    assert.equal(derived.sales30Raw, 10);
+    assert.ok(derived.sales30 > 9.8 && derived.sales30 < 9.9);
+});
+
+test('currency drift never creates a revenue delta or monetary protection signal', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const mixed = record('currency-mixed', [
+        snapshot('2026-07-02T12:00:00.000Z', { sales: 5, revenue: 100, currency: '$', priceLabel: '$20.00' }),
+        snapshot('2026-08-01T12:00:00.000Z', { sales: 5, revenue: 100, currency: '$', priceLabel: '$20.00' }),
+        snapshot(evaluatedAt, { sales: 5, revenue: 110, currency: '€', priceLabel: '€20.00' }),
+    ]);
+    const mixedResult = api.evaluateRecord(mixed, [mixed], undefined, evaluatedAt).result;
+    assert.equal(mixedResult.derived.revenue30, null);
+    assert.equal(mixedResult.derived.revenue60, null);
+    assert.ok(mixedResult.anomalies.includes('currency-mismatch'));
+    assert.ok(!mixedResult.anomalies.includes('cumulative-decrease-revenue'));
+    assert.equal(mixedResult.lifecycle, 'DATA_GAP');
+
+    const sameCurrency = record('currency-control', [
+        snapshot('2026-08-01T12:00:00.000Z', { sales: 5, revenue: 100, currency: '$' }),
+        snapshot(evaluatedAt, { sales: 5, revenue: 110, currency: '$' }),
+    ]);
+    assert.equal(api.deriveRecordMetrics(sameCurrency, evaluatedAt).revenue30Raw, 10);
+
+    const zeroAcrossCurrencies = record('currency-zero-control', [
+        snapshot('2026-08-01T12:00:00.000Z', { revenue: 0, currency: '$' }),
+        snapshot(evaluatedAt, { revenue: 0, currency: '€' }),
+    ]);
+    const zeroDerived = api.deriveRecordMetrics(zeroAcrossCurrencies, evaluatedAt);
+    assert.equal(zeroDerived.revenue30Raw, 0);
+    assert.ok(!zeroDerived.anomalies.includes('currency-mismatch'));
+});
+
+test('future snapshots inside the former one-day window fail closed', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const futureAt = new Date(Date.parse(evaluatedAt) + 60 * 60 * 1000).toISOString();
+    const candidate = record('future-hour', [
+        snapshot(new Date(Date.parse(futureAt) - 60 * 86400000).toISOString(), { renewals: 0 }),
+        snapshot(new Date(Date.parse(futureAt) - 30 * 86400000).toISOString(), { renewals: 2 }),
+        snapshot(futureAt, { renewals: 4 }),
+    ], { seasonality: 'non-seasonal' });
+    const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+    assert.equal(result.lifecycle, 'DATA_GAP');
+    assert.ok(result.anomalies.includes('future-snapshot'));
+    assert.equal(result.readiness.deactivationHistory, false);
+
+    const withinTolerance = record('future-tolerated', [snapshot('2026-08-31T12:04:59.000Z')]);
+    const beyondTolerance = record('future-rejected', [snapshot('2026-08-31T12:05:01.000Z')]);
+    assert.ok(!api.evaluateRecord(withinTolerance, [withinTolerance], undefined, evaluatedAt).result.anomalies.includes('future-snapshot'));
+    assert.ok(api.evaluateRecord(beyondTolerance, [beyondTolerance], undefined, evaluatedAt).result.anomalies.includes('future-snapshot'));
+
+    const futureCalibration = Array.from({ length: 20 }, (_, index) => record(`future-calibration-${index}`, [
+        snapshot(new Date(Date.parse(futureAt) - 30 * 86400000).toISOString(), { visits: 50, sales: 0 }),
+        snapshot(futureAt, { visits: 50, sales: 0 }),
+    ]));
+    assert.deepEqual(plain(api.thresholdCalibration(futureCalibration, evaluatedAt)), { available: false, sampleSize: 0, values: null });
+});
+
+test('exact zero-baseline traffic can become growth without inventing a percentage', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const makeCandidate = (id, middleVisits) => record(id, [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 0 }),
+        snapshot('2026-08-01T12:00:00.000Z', { visits: middleVisits }),
+        snapshot(evaluatedAt, { visits: 100 }),
+    ]);
+    const settings = { minVisitsToImprove: 10, minVisitsToProtect: 60 };
+    const tiny = api.evaluateRecord(makeCandidate('zero-growth-tiny', 9), undefined, settings, evaluatedAt).result;
+    const material = api.evaluateRecord(makeCandidate('zero-growth-material', 10), undefined, settings, evaluatedAt).result;
+    assert.notEqual(tiny.lifecycle, 'ACTIVE_GROWING');
+    assert.equal(material.lifecycle, 'ACTIVE_GROWING');
+    assert.equal(material.derived.previousTrendTrafficChangePercent, null);
+    assert.equal(material.derived.trendIntervals.prior.ratioKind, 'infinite');
+    assert.ok(material.derived.trendIntervals.prior.low > 1);
+});
+
+test('hard cohort diagnoses require full strength for the metric being used', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const target = record('metric-strength-target', [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 500, favorites: 20, sales: 0 }),
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 500, favorites: 20, sales: 0 }),
+        snapshot(evaluatedAt, { visits: 500, favorites: 20, sales: 1 }),
+    ]);
+    const sparsePeers = Array.from({ length: 30 }, (_, index) => {
+        const usable = index < 8;
+        return record(`metric-strength-peer-${index}`, [
+            snapshot('2026-08-01T12:00:00.000Z', { visits: usable ? 500 : 0, favorites: usable ? 50 : 0, sales: 0 }),
+            snapshot(evaluatedAt, { visits: usable ? 500 : 0, favorites: usable ? 50 : 0, sales: usable ? 1 : 0 }),
+        ]);
+    });
+    const sparse = api.evaluateRecord(target, [target, ...sparsePeers], undefined, evaluatedAt).result;
+    assert.equal(sparse.benchmark.size, 30);
+    assert.equal(sparse.benchmark.strength, 1);
+    assert.equal(sparse.benchmark.metrics.favoriteRate.samples, 8);
+    assert.ok(sparse.benchmark.metrics.favoriteRate.strength < 1);
+    assert.equal(sparse.diagnosis, 'HEALTHY_OR_MIXED');
+
+    const fullPeers = Array.from({ length: 30 }, (_, index) => record(`metric-full-peer-${index}`, [
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 500, favorites: 50, sales: 0 }),
+        snapshot(evaluatedAt, { visits: 500, favorites: 50, sales: 1 }),
+    ]));
+    const full = api.evaluateRecord(target, [target, ...fullPeers], undefined, evaluatedAt).result;
+    assert.equal(full.benchmark.metrics.favoriteRate.samples, 30);
+    assert.equal(full.benchmark.metrics.favoriteRate.strength, 1);
+    assert.equal(full.diagnosis, 'ENGAGEMENT_WEAK');
+});
+
+test('price cohorts and revenue metrics never mix currencies', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const makePriced = (id, currency, favorites = 5) => record(id, [
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 100, favorites, sales: 0, revenue: 0, priceMin: 100, priceMax: 100, currency }),
+        snapshot(evaluatedAt, { visits: 100, favorites, sales: 1, revenue: 10, priceMin: 100, priceMax: 100, currency }),
+    ]);
+    const target = makePriced('currency-cohort-target', '$');
+    const usdPeers = Array.from({ length: 8 }, (_, index) => makePriced(`currency-usd-${index}`, '$', 6));
+    const eurPeers = Array.from({ length: 22 }, (_, index) => makePriced(`currency-eur-${index}`, '€', 7));
+    const result = api.evaluateRecord(target, [target, ...usdPeers, ...eurPeers], undefined, evaluatedAt).result;
+    assert.equal(result.benchmark.size, 8);
+    assert.match(result.benchmark.scope, /price-band/);
+    assert.equal(result.benchmark.metrics.revenuePerVisitProxy.samples, 8);
+});
+
+test('calibration output and settings UI share one bounded threshold contract', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const rows = Array.from({ length: 20 }, (_, index) => record(`extreme-calibration-${index}`, [
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 2_000_000 + index * 10_000, sales: 0, renewals: 0 }),
+        snapshot(evaluatedAt, { visits: 2_100_000 + index * 10_000, sales: index >= 10 ? 1 : 0, renewals: index }),
+    ]));
+    const calibration = plain(api.thresholdCalibration(rows, evaluatedAt));
+    assert.equal(calibration.available, true);
+    assert.deepEqual(calibration.values, plain(api.normalizeHealthThresholds(calibration.values)));
+    assert.equal(calibration.values.minVisitsToImprove, api.thresholdContracts.minVisitsToImprove.max);
+    assert.equal(calibration.values.minVisitsToProtect, api.thresholdContracts.minVisitsToProtect.max);
+    assert.ok(calibration.values.minVisitsToProtect > calibration.values.minVisitsToImprove);
+    const boundary = plain(api.normalizeHealthThresholds({
+        minVisitsToImprove: 9_000_000,
+        minVisitsToProtect: 9_000_001,
+        minRenewalsToReview: 9_000_000,
+        declinePercent: 1000,
+    }));
+    assert.deepEqual(boundary, {
+        minVisitsToImprove: 999999,
+        minVisitsToProtect: 1000000,
+        minRenewalsToReview: 1000000,
+        declinePercent: 100,
+    });
+});
+
+test('snapshot state rejects duplicate IDs and malformed roots on a final page', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const fixture = JSON.parse(fs.readFileSync(sanitizedListingsFixturePath, 'utf8'));
+    const duplicated = plain(fixture);
+    duplicated.cards.push({ ...duplicated.cards[0], title: 'Synthetic Fixture Duplicate' });
+    const originalDocument = sandbox.document;
+    const duplicateDocument = buildSanitizedListingsDocument(duplicated);
+    sandbox.document = duplicateDocument;
+    const fixtureUrl = new URL(fixture.page.href);
+    sandbox.location.pathname = fixtureUrl.pathname;
+    sandbox.location.search = fixtureUrl.search;
+    sandbox.location.href = fixtureUrl.href;
+    try {
+        assert.equal(api.ListingPageAdapter.cardRoots().length, 41);
+        assert.equal(api.ListingPageAdapter.cardLinks().length, 40);
+        const duplicateState = api.ListingPageAdapter.snapshotState({ requirePagination: true });
+        assert.equal(duplicateState.rootCount, 41);
+        assert.equal(duplicateState.valid, false);
+
+        const malformedDocument = buildSanitizedListingsDocument(fixture);
+        const malformedLink = malformedDocument.querySelector('a.card-body');
+        malformedLink.setAttribute('href', 'https://www.etsy.com/your/shops/me/tools/listings');
+        sandbox.document = malformedDocument;
+        assert.equal(api.ListingPageAdapter.cardRoots().length, 40);
+        assert.equal(api.ListingPageAdapter.cardLinks().length, 39);
+        assert.equal(api.ListingPageAdapter.snapshotState({ requirePagination: true }).valid, false);
+    } finally {
+        sandbox.document = originalDocument;
+    }
+});
+
+test('listing capture resolves known currency aliases and rejects mismatched or unsupported markers', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const fixture = JSON.parse(fs.readFileSync(sanitizedListingsFixturePath, 'utf8'));
+    const mismatched = plain(fixture);
+    mismatched.defaults.metricSections[1].rows[1] = '€0 revenue';
+    const originalDocument = sandbox.document;
+    const fixtureDocument = buildSanitizedListingsDocument(mismatched);
+    sandbox.document = fixtureDocument;
+    const fixtureUrl = new URL(fixture.page.href);
+    sandbox.location.pathname = fixtureUrl.pathname;
+    sandbox.location.search = fixtureUrl.search;
+    sandbox.location.href = fixtureUrl.href;
+    try {
+        assert.equal(api.ListingPageAdapter.cardRoots().length, 40);
+        assert.equal(api.ListingPageAdapter.scan().length, 0);
+        assert.equal(api.ListingPageAdapter.snapshotState({ requirePagination: true }).valid, false);
+
+        const usdAlias = plain(fixture);
+        usdAlias.defaults.priceText = 'USD 20.00';
+        usdAlias.defaults.metricSections[1].rows[1] = '$0 revenue';
+        sandbox.document = buildSanitizedListingsDocument(usdAlias);
+        const usdListings = api.ListingPageAdapter.scan();
+        assert.equal(usdListings.length, 40);
+        assert.equal(usdListings[0].currency, 'USD ');
+
+        const tryAlias = plain(fixture);
+        tryAlias.defaults.priceText = 'TRY 20.00';
+        tryAlias.defaults.metricSections[1].rows[1] = '₺0 revenue';
+        sandbox.document = buildSanitizedListingsDocument(tryAlias);
+        assert.equal(api.ListingPageAdapter.scan().length, 40);
+        assert.equal(api.currencyMarker('TL 10.00'), 'TRY ');
+
+        const unsupported = plain(fixture);
+        unsupported.defaults.priceText = 'XYZ 20.00';
+        unsupported.defaults.metricSections[1].rows[1] = 'XYZ 0 revenue';
+        sandbox.document = buildSanitizedListingsDocument(unsupported);
+        assert.equal(api.ListingPageAdapter.scan().length, 0);
+        assert.equal(api.currencyMarker('XYZ 10.00'), '');
+
+        for (const conflictingMarker of ['XYZ $', 'EUR $']) {
+            const conflicting = plain(fixture);
+            conflicting.defaults.priceText = `${conflictingMarker}20.00`;
+            conflicting.defaults.metricSections[1].rows[1] = `${conflictingMarker}0 revenue`;
+            sandbox.document = buildSanitizedListingsDocument(conflicting);
+            assert.equal(api.ListingPageAdapter.scan().length, 0, `${conflictingMarker} must fail closed`);
+            assert.equal(api.currencyMarker(`${conflictingMarker}10.00`), '');
+        }
+
+        const unsupportedPriceOnly = plain(fixture);
+        unsupportedPriceOnly.defaults.priceText = 'XYZ 20.00';
+        unsupportedPriceOnly.defaults.metricSections[1].rows[1] = '$0 revenue';
+        sandbox.document = buildSanitizedListingsDocument(unsupportedPriceOnly);
+        assert.equal(api.ListingPageAdapter.scan().length, 0);
+    } finally {
+        sandbox.document = originalDocument;
+    }
+});
+
+test('history charts expose quality, omit stale values, and keep zero on the baseline', () => {
+    const { api } = loadAnalyzer();
+    const approximateContract = plain(snapshot('2026-08-02T12:00:00.000Z').metricContract);
+    approximateContract.countPrecision.visits = 'approximate';
+    const model = plain(api.buildHistoryChartModel([
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 0 }),
+        snapshot('2026-08-02T12:00:00.000Z', { visits: 1, metricContract: approximateContract }),
+        { ...snapshot('2026-08-03T12:00:00.000Z', { visits: 2 }), metricContract: null },
+        snapshot('2026-08-04T12:00:00.000Z', { visits: 3, observedAt: { visits: '2026-08-04T10:00:00.000Z' } }),
+        snapshot('2026-08-05T12:00:00.000Z', { visits: '   ' }),
+        snapshot('2026-08-06T12:00:00.000Z', { visits: 4 }),
+    ], 'visits'));
+    assert.deepEqual(model.qualityCounts, { exact: 2, approximate: 1, legacy: 1, stale: 1, missing: 1 });
+    assert.deepEqual(model.points.map((point) => point.quality), ['exact', 'approximate', 'legacy', 'exact']);
+    assert.equal(model.segments.length, 2);
+
+    const zeroModel = plain(api.buildHistoryChartModel([
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 0 }),
+        snapshot('2026-08-02T12:00:00.000Z', { visits: 0 }),
+    ], 'visits'));
+    assert.ok(zeroModel.points.every((point) => point.y === 82));
+    const flatPositive = plain(api.buildHistoryChartModel([
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 50 }),
+        snapshot('2026-08-02T12:00:00.000Z', { visits: 50 }),
+    ], 'visits'));
+    assert.ok(flatPositive.points.every((point) => point.y === 46));
+
+    const markup = api.updater.UI.historyChart([
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 0 }),
+        snapshot('2026-08-02T12:00:00.000Z', { visits: 1, metricContract: approximateContract }),
+        { ...snapshot('2026-08-03T12:00:00.000Z', { visits: 2 }), metricContract: null },
+    ], 'visits', 'Visits');
+    assert.match(markup, /data-quality="approximate"/);
+    assert.match(markup, /data-quality="legacy"/);
+    assert.match(markup, /≈/);
+
+    const limitedEndpoint = plain(api.buildHistoryChartModel([
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 100 }),
+        snapshot('2026-08-02T12:00:00.000Z', { visits: 200, metricContract: approximateContract }),
+    ], 'visits'));
+    assert.equal(limitedEndpoint.tone, 'neutral');
+});
+
+test('revenue charts compare one canonical currency at a time and never color limited evidence', () => {
+    const { api } = loadAnalyzer();
+    const model = plain(api.buildHistoryChartModel([
+        snapshot('2026-08-01T12:00:00.000Z', { revenue: 100, currency: '$' }),
+        snapshot('2026-08-02T12:00:00.000Z', { revenue: 110, currency: '$' }),
+        snapshot('2026-08-03T12:00:00.000Z', { revenue: 120, currency: '€' }),
+        snapshot('2026-08-04T12:00:00.000Z', { revenue: 130, currency: '€' }),
+    ], 'revenue'));
+    assert.deepEqual(model.currencies, ['$', '€']);
+    assert.equal(model.comparableCurrencies, false);
+    assert.equal(model.tone, 'neutral');
+    assert.equal(model.segments.length, 1);
+    assert.equal(model.excludedCurrencyCount, 2);
+    assert.deepEqual(model.points.map((point) => point.currency), ['€', '€']);
+    assert.equal(model.min, 120);
+    assert.equal(model.max, 130);
+
+    const aliases = plain(api.buildHistoryChartModel([
+        snapshot('2026-08-01T12:00:00.000Z', { revenue: 100, currency: 'EUR' }),
+        snapshot('2026-08-02T12:00:00.000Z', { revenue: 110, currency: '€' }),
+    ], 'revenue'));
+    assert.equal(aliases.comparableCurrencies, true);
+    assert.deepEqual(aliases.currencyIdentities, ['EUR']);
+    assert.equal(aliases.segments.length, 1);
+    assert.equal(aliases.tone, 'up');
+
+    const unknownUnitHistory = [
+        snapshot('2026-08-01T12:00:00.000Z', { revenue: 100, currency: '€' }),
+        snapshot('2026-08-02T12:00:00.000Z', { revenue: 110, currency: '€' }),
+        snapshot('2026-08-03T12:00:00.000Z', { revenue: 999, currency: '' }),
+    ];
+    const unknownUnit = plain(api.buildHistoryChartModel(unknownUnitHistory, 'revenue'));
+    assert.equal(unknownUnit.qualityCounts.missing, 1);
+    assert.equal(unknownUnit.points.length, 2);
+    const markup = api.updater.UI.historyChart(unknownUnitHistory, 'revenue', 'Revenue', '$');
+    assert.doesNotMatch(markup, /\$/);
+});
+
+test('snapshot day keys and displayed timestamps use one canonical UTC contract', () => {
+    const { api } = loadAnalyzer();
+    assert.equal(api.dayKey('2026-09-01T00:30:00+02:00'), '2026-08-31');
+    const normalized = plain(api.normalizeSnapshot({
+        ...snapshot('2026-09-01T00:30:00+02:00'),
+        day: '2026-09-01',
+    }));
+    assert.equal(normalized.day, '2026-08-31');
+    const merged = plain(api.normalizeRecord(record('utc-day-merge', [
+        snapshot('2026-09-01T00:30:00+02:00', { day: '2026-09-01', visits: 1 }),
+        snapshot('2026-08-31T23:30:00.000Z', { day: '2026-08-31', visits: 2 }),
+    ])));
+    assert.equal(merged.history.length, 1);
+    assert.equal(merged.history[0].day, '2026-08-31');
+    assert.equal(merged.history[0].quality.mergedCaptures, 2);
+    api.settingsRuntime.state.settings.language = 'en';
+    assert.match(api.formatDate('2026-09-01T00:30:00+02:00'), /Aug 31, 2026.*UTC/);
 });
