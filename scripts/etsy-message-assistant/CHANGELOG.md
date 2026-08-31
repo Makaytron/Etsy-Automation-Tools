@@ -5,6 +5,38 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.2.5] - 2026-08-30
+
+### Added
+
+- Her yeni teslimat kampanyası için seçili alıcılar ve şablon görünürken ayrı **Otopilotu Başlat** opt-in'i eklendi. Otopilot alıcıları kesinlikle tek tek işler; her öğede kalıcı durum ve Etsy outgoing balon doğrulaması tamamlanmadan sıradakine geçmez.
+- Otopilot için **Duraklat / Devam Et**, **Bu Alıcıyı Atla** ve **Otomasyonu Bitir / Durdur** kontrolleri eklendi. Duraklatma başlamış doğrulamayı güvenle tamamlayıp sonraki alıcıyı engeller; çözülmemiş gönderim sonucu terminalleştirilmeden durdurma ilerlemez.
+
+### Changed
+
+- Panel premium sade bir çalışma kabuğuna geçirildi: **Mesajlar / Otomasyon / Yorumlar** ana çalışma grubu araçlardan ayrıldı; Otomasyon görünümü tek ana aksiyon, durum/ilerleme hero'su ve yatay tablo yerine responsive alıcı kartları kullanır.
+- Alıcı seçimi veya eski/global otomatik gönderim ayarı artık yeni kampanya yetkisi sayılmaz. `review_request` için sipariş bazında güncel uygunluk kararı ile kampanyaya özel Otopilot opt-in'i birlikte gerekir.
+- Completed Orders yenilemesi, yalnız sipariş satırının kendi içindeki strict aynı-origin `/shop/<shop>/reviews/<numeric>` bağlantısını ve tam **Review/Yorum** etiketini kesin pozitif kanıt sayarak kalıcı `review_exists` blokuna dönüştürüyor. İsim, ürün, dashboard yorum kartı veya public mağaza HTML'i eşleştirilmez; bağlantı yokluğu otomatik uygunluk değildir ve manuel **Yorum yok** onayı iki saat geçerli kalır.
+
+### Security
+
+- Otopilotun aynı anda yalnız bir alıcıyı sahiplenmesi, gönderim öncesi alıcı/sipariş/konuşma/metin bağlarını yeniden doğrulaması ve terminal kalıcı `sent` + outgoing kanıtından önce yeni alıcı başlatmaması zorunlu tutuldu.
+- `pending`, şüpheli, zaman aşımı, bozuk kalıcı aşama veya kimlik/metin/kapsam uyuşmazlığı Otopilotu fail-closed durdurur. Belirsiz öğe otomatik tekrar gönderilmez; yalnız doğru konuşmada gözle inceleme ve açık **Gönderildi / Gönderilmedi** uzlaştırmasıyla çözülebilir.
+- Eski/global `autoSendCampaign` tercihi yeni Otopilot veya yorum talebi yetkisi vermez; yeni kampanya opt-in'i kalıcı bir genel otomatik gönderim onayına dönüşmez.
+- **Otopilotu Başlat** öncesindeki UI yenilemesi kesin pozitif siparişlerin kuyruğa girmesini engeller. Daha önce kuyruğa alınmış veya hazırlanmış bir öğede kanıt belirirse gönderim anındaki uygunluk koruması Etsy gönderiminden önce fail-closed engeller.
+
+### Fixed
+
+- Etsy gönderimden sonra teslim edilmiş sipariş çekmecesine `/conversations/<sayısal-kimlik>` kalıcı bağlantısını eklediğinde genel kompozitör kapsamı fail-closed kalırken, doğrulayıcı gönderim öncesinde yakalanmış aynı receipt kapsamındaki tam `Message history` + tek kanonik sayısal konuşma bağlantısı + yeni giden balon kanıtıyla gönderimi tamamlar.
+- Kanıt istisnası yanlış sipariş/rota, kopmuş DOM kapsamı, eksik gönderim zamanı, ek/tekrarlı/alakasız konuşma bağlantısı veya giden mesaj artışı olmadığında reddedilir; ikinci bir Etsy gönderim tıklaması yapılmaz.
+- Kullanıcının `Gönderildi` olarak uzlaştırdığı kampanya gönderimi artık konuşma ledger'ını `sent` yapar ve tekil `send_verified` geçmiş kaydı üretir; `Gönderilmedi` çözümü doğrulama geçmişi oluşturmaz.
+
+### Tests
+
+- Birim regresyonları yalnız tam iki bağlantılı gönderim sonrası Etsy yapısını, yakalanmış kapsamın receipt/rota/DOM bağlarını ve manuel uzlaştırma ledger/geçmiş tutarlılığını kapsar.
+- Birim regresyonları ayrıca strict aynı-origin, sorgusuz/hash'siz sayı kimlikli review permalink'ini ve tam **Review/Yorum** etiketini kabul eder; yanlış origin, bozuk yol/etiket, isim veya ürün temelli sezgileri reddeder; kalıcı `review_exists` durumunun seçim, kampanya oluşturma ve gönderim anı uygunluk korumalarını doğrular.
+- İzole Chrome fixture'ı gönderim anında sayı kimlikli konuşma kalıcı bağlantısını ekler; genel kompozitör seçicisinin kapalı kaldığını, tek açık Otopilot opt-in'inin kontrollü bir alıcı için bir native submit ve bir giden balon ürettiğini, kampanya ile ledger'ların kalıcı `sent` tamamlandığını ve tekrar gönderim yapılmadığını doğrular.
+
 ## [1.2.4] - 2026-08-30
 
 ### Fixed
@@ -122,23 +154,23 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Added dedicated Message Assistant behavior tests for preset safety, rendering, migration, persistence, AI instructions, guided sending, recovery, and cross-tab safety.
 - Added a persistent per-order review eligibility decision: unchecked, confirmed no review, review exists, deferred, or blocked because contact is unwanted/an order issue remains.
 - Added a purpose-based `review_request` outreach ledger with template/message hashes and queued, prepared, pending-verification, and verified-sent states.
-- Added a user-triggered **Gönder ve Sonrakine Geç** action that reuses the coordinated send-attempt and outgoing-bubble verification path.
+- Added the then-current, per-recipient **Gönder ve Sonrakine Geç** guided action. This historical flow is superseded in 1.2.5 by an explicit, per-campaign Otopilot opt-in that still processes and verifies recipients one at a time.
 
 ### Changed
 
 - Made the review-request preset the default delivered-order template while retaining the original delivery-check template.
 - Migrated existing saved template collections idempotently so the new preset appears without overwriting custom edits or archive state.
 - Specialized the AI campaign instruction so only the dedicated preset may request an honest review; other delivery templates continue to prohibit review requests.
-- Added an in-panel warning and replaced unrestricted bulk Select All with **Onaylıları Seç** because Etsy order cards cannot be reliably joined to dashboard review cards; recipients must be verified individually.
+- Added an in-panel warning and replaced unrestricted bulk Select All with **Onaylıları Seç** because Etsy order cards cannot be reliably joined to dashboard review cards; recipients must be verified individually. This historical limitation still applies to name/item/dashboard/public-HTML matching; v1.2.5 adds only the exact row-local review permalink as definitive positive evidence, while absence still requires manual confirmation.
 - Review-request confirmations now expire after two hours and fail closed until reconfirmed.
-- Review requests always remain user-triggered even when the global automatic-send setting is enabled.
+- At that release, review requests remained per-recipient user-triggered even when the global automatic-send setting was enabled. Since 1.2.5, the fresh campaign-specific **Otopilotu Başlat** opt-in is the authority; the legacy/global setting still grants no review-request authority.
 - The next conversation opens only after the current outgoing message is verified; an uncertain result remains blocked for manual reconciliation.
 - Bumped the operational status envelope to schema 2 and the configuration schema to 5. Exact legacy review-send evidence is backfilled as sent; an older generic sent record with unknown purpose remains blocked until the seller explicitly confirms it was not a review request.
-- Bound the final user-triggered send to the originally claimed conversation, current template tuple, enabled Etsy Send control, and user-edited composer hash immediately before dispatch.
+- Bound that release's final guided send to the originally claimed conversation, current template tuple, enabled Etsy Send control, and user-edited composer hash immediately before dispatch. The 1.2.5 Otopilot retains the same fail-closed binding and verification barrier for every recipient.
 - Suppressed a concurrent native Etsy Send click while the guided action is claiming the draft, while allowing the single programmatic click initiated by that explicit panel action.
 - Made campaign queue binding and order/review-outreach send transitions atomic within the shared status envelope, and made cancel/skip restore the exact prior non-review order state before terminalizing the campaign.
 - Made early claim release and `Not Sent` recovery resumable without overwriting newer cross-tab eligibility or terminal send decisions.
-- Documented that the userscript is unofficial and that manual sending does not replace any written authorization required by Etsy's API Terms for browser-extension access.
+- Documented that the userscript is unofficial and that neither the then-current manual action nor the 1.2.5 Otopilot opt-in replaces any written authorization required by Etsy's API Terms for browser-extension access.
 
 ## [1.0.3] - 2026-08-04
 

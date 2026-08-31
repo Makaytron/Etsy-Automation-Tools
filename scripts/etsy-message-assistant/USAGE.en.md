@@ -2,7 +2,7 @@
 
 <p><a href="./USAGE.md">Türkçe</a> · <strong>English</strong></p>
 
-Message Assistant supports three distinct workflows: translation/drafting in an individual Etsy conversation, a controlled queue for delivered orders, and reply drafting for shop reviews. Each workflow has its own page and send boundary.
+Message Assistant supports three distinct workflows: translation/drafting in an individual Etsy conversation, explicitly authorized Otopilot for delivered orders, and reply drafting for shop reviews. Each workflow has its own page and send boundary.
 
 ## Page, tab, and action map
 
@@ -10,14 +10,16 @@ Message Assistant supports three distinct workflows: translation/drafting in an 
 |---|---|---|
 | `/messages` or `/messages/all` conversation list | **Messages** | A safe list read from Etsy's DOM with name/preview/unread details, display-language control, and a validated **Open** action; draft and insert controls stay hidden. |
 | `/messages/<conversation-id>` with exactly one trusted composer | **Messages** | Preview/translate, Turkish draft, AI, templates, copy, and **Insert into Etsy** for that composer only. |
-| `/your/orders/sold/completed` | **Delivered Orders** | Scan Delivered cards, record review eligibility, select recipients, and create a controlled queue. |
-| New, open, or another `/your/orders/sold*` view | **Delivered Orders** | No production controls; links to **Completed Orders**. |
+| `/your/orders/sold/completed` | **Otomasyon (Automation)** | Scan Delivered cards, record review eligibility, select recipients, and explicitly start one-at-a-time Otopilot. |
+| New, open, or another `/your/orders/sold*` view | **Automation** | No production controls; links to **Completed Orders**. |
 | `/your/shops/<shop>/dashboard/activity` with the **Reviews** filter | **Reviews** | Scan new/updated text reviews, translate/analyse, and insert a draft into the public reply field. |
 | `/dashboard/activity` with another activity filter | **Reviews** | No production controls; guidance to select the **Reviews** filter. |
 | Another or unsupported Shop Manager page | **No direct workflow** | Safe links to Messages, Completed Orders, and Recent activity. |
 | Every supported Etsy page | **Templates / History / Settings** | Context-independent local management; the selected utility tab and unsaved draft survive Etsy route changes. |
 
 The script fails closed when it cannot verify one visible conversation composer, the Completed Orders view, or a review card. The panel is closed by default and opens only when the user asks. If **Open Automatically on Message Page** is explicitly enabled, it still applies only to a verified single-conversation composer.
+
+The simplified premium panel separates **Messages / Automation / Reviews** workspaces from **Templates / History / Settings** utilities. Automation presents one primary action, durable campaign status and progress, and responsive recipient cards. This visual simplification does not remove identity, durable-state, verification, or explicit-authorization boundaries.
 
 The conversation list reads only safe links currently visible in Etsy's page and displays at most 50 rows. The **Display language** choice is persisted. Translated text is shown only inside the panel; Etsy's DOM is not changed, and the source preview remains available under **Show original message**. If DeepL does not support the selected target, the panel says so explicitly and uses Google only when **Free fallback** is enabled.
 
@@ -49,20 +51,22 @@ An AI drafting or polishing request may send the customer name, conversation and
 
 In the normal individual workflow, **Insert into Etsy** fills the composer only; it does not send. If the conversation identity changes after drafting, the stale draft is rejected.
 
-## Delivered-order message queue
+## Explicit Otopilot for delivered orders
 
-1. Open **Completed Orders → Teslim Edilenler (Delivered Orders)**.
-2. Set **Yorum Kontrolü (Review Check)** for each order. **Yorum yok — kuyruğa uygun (No review — queue eligible)** selects that order and remains valid for two hours. **Review exists**, **Defer**, and **Do not contact / order issue** block review outreach.
+1. Open **Completed Orders → Otomasyon (Automation)**.
+2. When Automation refreshes, a strict same-origin `/shop/<shop>/reviews/<numeric>` permalink inside the Completed Orders row is definitive positive evidence only when its visible label is exactly **Review** or **Yorum**; that order is durably blocked as `review_exists`. The absence of this link does not mean no review. For every remaining order, set **Yorum Kontrolü (Review Check)** manually. **Yorum yok — kuyruğa uygun (No review — queue eligible)** selects that order and remains valid for two hours. **Review exists**, **Defer**, and **Do not contact / order issue** block review outreach.
 3. Choose the default English-language **Yorum rica — küçük işletme (EN)** preset and inspect the preview. It requests an honest review without asking for a particular rating, a positive review, or an incentive. **Onaylıları Seç (Select Confirmed)** selects only fresh, confirmed eligible orders.
-4. Select **Seçilenlere Mesaj Hazırla (Prepare Messages for Selected)**. A second `review_request` cannot be queued while that order and purpose is already queued, prepared, pending verification, ambiguous, or verified sent.
-5. The script opens the next conversation and completely fills the Etsy composer. Review or edit the text in Etsy, then click the panel's **Gönder ve Sonrakine Geç (Send and Go to Next)** button once.
-6. That explicit user click triggers Etsy **Send**. The queue advances only after a new outgoing bubble is verified. An uncertain result stays in place and requires **Gönderildi / Gönderilmedi (Sent / Not Sent)** reconciliation. **Not Sent** safely returns the draft for a fresh attempt while preserving any newer eligibility decision. Use **Atla ve Sonraki (Skip and Next)** or **Durdur (Stop)** when needed.
+4. Select recipients and inspect the exact selected count, template, and method in the Automation summary. A known-positive order cannot be selected or queued. Selection is not live-send authority. A second `review_request` cannot be queued while the same order and purpose is queued, prepared, pending verification, suspicious, or verified sent.
+5. Explicitly select **Otopilotu Başlat (Start Otopilot)** to authorize only this new campaign. The pre-start UI refresh reapplies known positives; if evidence appears while an order is queued or prepared, the send-time eligibility guard stops it before Etsy dispatch. This is not a permanent/global auto-send preference; every later campaign requires a fresh opt-in.
+6. Otopilot processes recipients strictly one at a time. It durably records the next reservation and draft, verifies the exact order, buyer, conversation, and text, then dispatches. It cannot open or send to the next recipient until the new outgoing bubble is verified and terminal `sent` state is durable.
+7. A `pending`, suspicious, timed-out, or identity/text/scope mismatch stops Otopilot and never triggers an automatic resend. Inspect the latest bubble in the exact conversation, then use **Gönderildi / Gönderilmedi (Sent / Not Sent)** only for the observed outcome. **Not Sent** does not click again by itself; retry or **Devam Et (Resume)** is a separate user decision.
+8. **Duraklat (Pause)** lets an already-started verification finish safely but prevents the next recipient from starting; **Resume** continues from the same durable queue. **Bu Alıcıyı Atla (Skip This Recipient)** terminalizes only the current recipient. **Otomasyonu Bitir / Durdur (Stop)** ends the remaining unsent queue; an unresolved pending result must be reconciled first.
 
-> **Live-send warning:** Global **Otomatik Gönderim (Automatic Sending)** remains live-send authority for other delivery templates. It is ignored for `review_request`; each review request starts only from your **Send and Go to Next** click.
+> **Live-send warning:** The legacy/global **Otomatik Gönderim (Automatic Sending)** setting is not authority for a new Otopilot campaign or for `review_request`. Review outreach requires a fresh eligibility decision for every order plus a separate **Start Otopilot** opt-in for the selected campaign. After opt-in, recipients are still processed only one at a time with durable state and outgoing verification.
 
-> **Unofficial-integration warning:** This userscript is not approved by Etsy. Etsy's [API Terms](https://www.etsy.com/legal/api/) require express written authorization for automated systems or browser extensions that access, analyse, or scrape Etsy data. The manual per-recipient click is a safety boundary, not proof of Etsy authorization.
+> **Unofficial-integration warning:** This userscript is not approved by Etsy. Etsy's [API Terms](https://www.etsy.com/legal/api/) require express written authorization for automated systems or browser extensions that access, analyse, or scrape Etsy data. The explicit campaign opt-in is a safety boundary, not proof of Etsy authorization.
 
-> **Review-status limitation:** The Etsy Completed Orders card does not expose an order-to-review identifier that this script can match reliably. You make the **No review** decision; **Select Confirmed** uses only fresh local decisions. The script does not guess by buyer name or item title.
+> **Automatic positive-evidence boundary:** The script accepts only a strict same-origin `/shop/<shop>/reviews/<numeric>` permalink inside that Completed Orders row, with a visible label exactly equal to **Review** or **Yorum**, as automatic `review_exists` evidence. It does not match by buyer name, item title, dashboard review card, or public-shop HTML. A missing link is not automatic eligibility: you make the **No review** decision, and **Select Confirmed** uses only fresh two-hour manual decisions. If definitive evidence appears for a queued or prepared item, the send-time eligibility guard blocks Etsy dispatch.
 
 > **Upgrade safeguard:** If an older `sent` record cannot prove whether the previous message was a review request, the control shows an ambiguous state and keeps the order blocked. Inspect the Etsy conversation and choose **Önceki mesaj yorum talebi değildi — onayla (The previous message was not a review request — confirm)** only when that is true; leave the order blocked if you cannot verify it.
 
@@ -101,7 +105,7 @@ Review replies are never published automatically.
 
 - If the wrong conversation or customer is detected, do not insert the draft; reopen the correct conversation and regenerate it.
 - Always verify the recipient and Etsy composer after insertion.
-- Before retrying an unverified queue item, look for the sent message bubble in the conversation.
+- Do not restart an unverified Otopilot item. First inspect the exact conversation for the outgoing bubble; suspicious or `pending` state must never produce an automatic resend.
 - Update installation is blocked while a message campaign is active.
 - Never include customer messages, names, order IDs, API keys, cookies, or session data in an issue or screenshot.
 

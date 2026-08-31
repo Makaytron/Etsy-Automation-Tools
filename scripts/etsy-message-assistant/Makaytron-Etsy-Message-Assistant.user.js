@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.2.4
+// @version      1.2.5
 // @description  Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -51,7 +51,7 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.2.4';
+    const APP_VERSION = '1.2.5';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
@@ -711,6 +711,7 @@
     const HISTORY_COORDINATION_LOCK = `${APP.prefix}:history-coordination:v1`;
     const CONFIG_COORDINATION_LOCK = `${APP.prefix}:config-coordination:v1`;
     const CAMPAIGN_RESERVATION_TTL_MS = 120000;
+    const AUTOPILOT_NEXT_DELAY_MS = 1800;
     const CAMPAIGN_SEND_PENDING_STATUS = 'sent_pending_verification';
     const CAMPAIGN_INELIGIBLE_ORDER_STATUSES = new Set(['skipped', 'sent', CAMPAIGN_SEND_PENDING_STATUS]);
     const CAMPAIGN_KNOWN_ORDER_STATUSES = new Set(['', 'none', 'draft', 'inserted', 'error', 'skipped', 'sent', CAMPAIGN_SEND_PENDING_STATUS]);
@@ -1167,7 +1168,7 @@ zu|Zulu
 
     const NAV_ITEMS = Object.freeze([
         ['messages', 'message', 'Mesajlar'],
-        ['orders', 'send', 'Teslim Edilenler'],
+        ['orders', 'send', 'Otomasyon'],
         ['reviews', 'star', 'Yorumlar'],
         ['templates', 'file', 'Şablonlar'],
         ['history', 'history', 'Geçmiş'],
@@ -1182,6 +1183,8 @@ zu|Zulu
     const LAUNCHER_CSS = `.ma-launcher{top:78px;right:var(--ma-s3);bottom:auto;min-width:0;width:120px;height:36px;padding:3px 4px;border:1px solid rgba(23,23,23,.14);border-radius:999px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.98);box-shadow:0 6px 18px rgba(15,23,42,.14);backdrop-filter:blur(10px);transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}.ma-launcher:hover{transform:translateY(-1px);border-color:rgba(23,23,23,.28);box-shadow:0 9px 22px rgba(15,23,42,.18)}.ma-launcher:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-launcher__mark{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;flex:0 0 auto;background:#f5f5f5}.ma-launcher .ma-logo-img{width:24px;height:16px}.ma-launcher__copy{min-width:0;display:block;text-align:left;line-height:1.1}.ma-launcher__title{font-size:11px;font-weight:800;white-space:nowrap}.ma-launcher__state{display:none}.ma-launcher__action{min-width:31px;height:26px;margin-left:auto;padding:0 7px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:10px;font-weight:800}.ma-launcher:hover .ma-launcher__action{background:var(--ma-primary-strong)}.ma-panel-close{min-height:34px;padding:0 10px;border:1px solid var(--ma-line);border-radius:999px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:var(--ma-ink);background:#fff;font-size:12px;font-weight:750}.ma-panel-close:hover{border-color:#c9c9c9;background:#f7f7f7}.ma-panel-close:focus-visible{outline:3px solid rgba(23,23,23,.14);outline-offset:2px}@media (max-width:560px){.ma-launcher{top:68px;right:var(--ma-s2);width:112px;height:34px}.ma-launcher__mark{width:26px;height:26px}.ma-launcher__title{font-size:10.5px}.ma-launcher__action{height:24px}}`;
 
     const UX_CSS = `[hidden]{display:none!important}.ma-list-item,.ma-review-card{width:100%;font:inherit;color:inherit;text-align:left}.ma-switch input:focus-visible+span{outline:3px solid rgba(23,23,23,.2);outline-offset:3px}.ma-table tr[data-history-id]{cursor:pointer}.ma-table tr[data-history-id]:focus-visible{outline:3px solid rgba(23,23,23,.2);outline-offset:-3px}.ma-busy{pointer-events:auto;opacity:1}.ma-busy .ma-nav,.ma-busy .ma-view{pointer-events:none}.ma-busy .ma-view{opacity:.58}.ma-busy-status{position:sticky;top:0;z-index:4;min-height:36px;padding:8px 12px;display:none;align-items:center;justify-content:center;color:#fff;background:var(--ma-primary);font-size:12px;font-weight:750}.ma-busy .ma-busy-status{display:flex}.ma-busy::after{display:none}.ma-message-list-shell,.ma-message-list-controls,.ma-message-list-controls .ma-card__body,.ma-message-list-controls .ma-stack,.ma-message-list-controls .ma-field,.ma-message-list-shell>.ma-list,.ma-message-list__item,.ma-message-list__item .ma-list-item__body{min-width:0;max-width:100%}.ma-message-list-shell,.ma-message-list-controls .ma-card__body,.ma-message-list-controls .ma-stack,.ma-message-list-controls .ma-field,.ma-message-list-shell>.ma-list{grid-template-columns:minmax(0,1fr)}.ma-message-list-controls .ma-select{min-width:0;max-width:100%}.ma-message-list__item .ma-disclosure__body{min-width:0;overflow-wrap:anywhere}.ma-message-list__item>[data-message-open-url]{flex:0 0 auto}.ma-main{container-type:inline-size}.ma-orders-layout,.ma-orders-layout>*,.ma-orders-list{min-width:0;max-width:100%}.ma-orders-list{grid-template-columns:minmax(0,1fr)}.ma-orders-list>.ma-table-wrap{width:100%;min-width:0;max-width:100%;overflow-x:auto}@container (max-width:850px){.ma-orders-layout{grid-template-columns:minmax(0,1fr)}}`;
+
+    const PREMIUM_CSS = `:host{--ma-primary:#17213a;--ma-primary-strong:#0d1528;--ma-primary-soft:#edf1f8;--ma-accent:#b58a4a;--ma-accent-soft:#fbf5e9;--ma-ink:#172033;--ma-muted:#606a7b;--ma-line:#e1e6ef;--ma-bg:#f3f5f9;--ma-surface:#fff;--ma-success:#0f6b44;--ma-success-soft:#e7f6ef;--ma-warning:#8a490e;--ma-warning-soft:#fff4df;--ma-danger:#a4313b;--ma-danger-soft:#fff0f1;--ma-info:#47556d;--ma-info-soft:#eef2f7;--ma-shadow:0 30px 90px rgba(12,22,43,.22);--ma-shadow-soft:0 12px 32px rgba(18,31,54,.09);--ma-r1:9px;--ma-r2:13px;--ma-r3:19px}.ma-app{width:min(680px,calc(100vw - 28px));top:14px;right:14px;bottom:14px;border-color:rgba(201,210,225,.9);border-radius:22px;box-shadow:var(--ma-shadow);background:var(--ma-bg)}.ma-app--wide{width:min(1220px,calc(100vw - 28px));grid-template-columns:210px minmax(0,1fr)}.ma-app--fullscreen{inset:8px;border-radius:18px}.ma-header{height:68px;padding:0 18px;border-bottom-color:rgba(221,227,237,.9);background:rgba(255,255,255,.94);backdrop-filter:blur(18px)}.ma-brand__mark{width:48px;height:32px;border:1px solid var(--ma-line);border-radius:10px;background:#fff}.ma-brand__title{font-size:14px;font-weight:820;letter-spacing:-.01em}.ma-brand__version{color:var(--ma-muted);font-size:11.5px}.ma-nav{padding:14px 10px;border-right-color:var(--ma-line);background:#f8f9fc}.ma-nav__group{display:grid;gap:5px}.ma-nav__group--utility{margin-top:16px;padding-top:16px;border-top:1px solid var(--ma-line)}.ma-nav__eyebrow{display:none;padding:0 10px 6px;color:#8791a2;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.ma-app--wide .ma-nav__eyebrow,.ma-app--fullscreen .ma-nav__eyebrow{display:block}.ma-nav__item{min-height:44px;padding:0 11px;border:1px solid transparent;border-radius:12px;color:#536075}.ma-nav__item:hover{border-color:#e2e7f0;background:#fff;color:var(--ma-ink)}.ma-nav__item.is-active{border-color:#17213a;color:#fff;background:linear-gradient(145deg,#1d2946,#111a30);box-shadow:0 8px 20px rgba(23,33,58,.2)}.ma-nav__foot{padding-top:12px}.ma-main{background:radial-gradient(circle at 90% 0,rgba(181,138,74,.08),transparent 28%),var(--ma-bg)}.ma-view{padding:24px}.ma-page-head{margin-bottom:20px;align-items:center}.ma-page-head h2{font-size:23px;letter-spacing:-.025em}.ma-page-head p{max-width:680px;color:var(--ma-muted)}.ma-card,.ma-table-wrap,.ma-message-contact{border-color:var(--ma-line);box-shadow:0 1px 2px rgba(16,29,52,.025)}.ma-card{border-radius:17px}.ma-btn{min-height:42px;border-radius:11px}.ma-btn--primary{border-color:var(--ma-primary);background:linear-gradient(145deg,#233152,#131d34);box-shadow:0 8px 18px rgba(23,33,58,.17)}.ma-btn--primary:hover{transform:translateY(-1px);box-shadow:0 11px 24px rgba(23,33,58,.22)}.ma-btn--small{min-height:36px}.ma-input,.ma-select,.ma-textarea{border-color:#d8deea;border-radius:11px}.ma-input:focus,.ma-select:focus,.ma-textarea:focus{border-color:#66738b;box-shadow:0 0 0 3px rgba(59,76,109,.13)}.ma-pill{padding:5px 9px}.ma-icon-btn:focus-visible,.ma-panel-close:focus-visible,.ma-version-chip:focus-visible,.ma-btn:focus-visible,.ma-nav__item:focus-visible,.ma-tone:focus-visible,.ma-review-card:focus-visible,.ma-check:focus-visible,.ma-select:focus-visible{outline:3px solid rgba(53,79,124,.28);outline-offset:2px}.ma-automation-hero{position:relative;overflow:hidden;margin-bottom:18px;padding:22px;border:1px solid rgba(255,255,255,.12);border-radius:21px;color:#fff;background:linear-gradient(135deg,#101a31 0%,#1c2b4c 68%,#26395f 100%);box-shadow:0 18px 42px rgba(18,29,52,.18)}.ma-automation-hero::after{content:"";position:absolute;right:-70px;bottom:-90px;width:240px;height:240px;border:1px solid rgba(210,178,116,.26);border-radius:50%;box-shadow:0 0 0 34px rgba(210,178,116,.05),0 0 0 70px rgba(210,178,116,.035);pointer-events:none}.ma-automation-hero__top,.ma-automation-hero__footer{position:relative;z-index:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap}.ma-automation-hero__copy{min-width:220px;flex:1}.ma-automation-hero__eyebrow{display:flex;align-items:center;gap:7px;color:#d8c09a;font-size:11px;font-weight:820;letter-spacing:.11em;text-transform:uppercase}.ma-automation-dot{width:8px;height:8px;border-radius:50%;background:#d8c09a;box-shadow:0 0 0 5px rgba(216,192,154,.12)}.ma-automation-dot.is-running{background:#65d69a;box-shadow:0 0 0 5px rgba(101,214,154,.13)}.ma-automation-hero h3{margin:7px 0 4px;font-size:24px;line-height:1.15;letter-spacing:-.025em}.ma-automation-hero p{margin:0;max-width:650px;color:#c6cfdf;font-size:13px}.ma-automation-hero__metrics{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,minmax(82px,1fr));gap:8px;margin:18px 0}.ma-automation-metric{padding:10px 12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.07);backdrop-filter:blur(8px)}.ma-automation-metric strong{display:block;font-size:18px}.ma-automation-metric span{color:#b9c3d5;font-size:10.5px}.ma-progress{position:relative;z-index:1;height:7px;margin:4px 0 16px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.13)}.ma-progress__bar{height:100%;border-radius:inherit;background:linear-gradient(90deg,#c9a96d,#ead7ac);transition:width .25s ease}.ma-automation-hero .ma-btn{border-color:rgba(255,255,255,.2);color:#fff;background:rgba(255,255,255,.09);box-shadow:none}.ma-automation-hero .ma-btn:hover{background:rgba(255,255,255,.15)}.ma-automation-hero .ma-btn--primary{border-color:#f2dfba;color:#17213a;background:linear-gradient(145deg,#f7e9ca,#d8b879);box-shadow:0 8px 20px rgba(0,0,0,.2)}.ma-automation-options{position:relative;z-index:1;width:100%;margin-top:14px;border-top:1px solid rgba(255,255,255,.12)}.ma-automation-options>summary{min-height:42px;color:#d3d9e5}.ma-automation-options .ma-disclosure__body{padding-top:8px}.ma-automation-options label{color:#d3d9e5}.ma-automation-options .ma-message-box{border-color:rgba(255,255,255,.13);color:#e7ebf2;background:rgba(255,255,255,.07)}.ma-order-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:13px}.ma-order-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:12px}.ma-order-card{min-width:0;padding:14px;border:1px solid var(--ma-line);border-radius:16px;background:#fff;box-shadow:0 7px 20px rgba(18,31,54,.045);transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}.ma-order-card:hover{transform:translateY(-1px);border-color:#cbd3e1;box-shadow:0 11px 25px rgba(18,31,54,.075)}.ma-order-card.is-selected{border-color:#8997af;box-shadow:0 0 0 2px rgba(69,88,124,.09),0 11px 25px rgba(18,31,54,.075)}.ma-order-card__top{display:flex;align-items:flex-start;gap:11px}.ma-order-card__image{width:48px;height:48px;border-radius:12px;object-fit:cover;background:#eef1f5;flex:0 0 auto}.ma-order-card__copy{min-width:0;flex:1}.ma-order-card__name{font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ma-order-card__meta{margin-top:2px;color:var(--ma-muted);font-size:11.5px}.ma-order-card__product{margin-top:6px;color:#465166;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ma-order-card__status{display:flex;justify-content:flex-end;gap:5px;flex-wrap:wrap}.ma-order-card__body{display:grid;gap:10px;margin-top:13px;padding-top:12px;border-top:1px solid #edf0f5}.ma-order-card__actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.ma-order-card__actions .ma-field{min-width:180px;flex:1}.ma-order-card__actions .ma-select{min-height:36px;font-size:12px}.ma-empty-inline{padding:38px 20px;border:1px dashed #cfd6e2;border-radius:17px;text-align:center;color:var(--ma-muted);background:rgba(255,255,255,.55)}@container (max-width:720px){.ma-view{padding:16px}.ma-order-grid{grid-template-columns:1fr}.ma-automation-hero{padding:18px}.ma-automation-hero__metrics{grid-template-columns:repeat(3,1fr)}.ma-page-head{align-items:flex-start}.ma-page-head__actions{margin-left:0}}@media (max-width:560px){.ma-app{inset:6px;width:auto;grid-template-columns:54px minmax(0,1fr);border-radius:17px}.ma-header{height:60px;padding:0 10px}.ma-brand__mark{width:40px;height:29px}.ma-brand__title{font-size:12.5px}.ma-version-chip,[data-action="toggle-wide"]{display:none}.ma-view{padding:12px}.ma-automation-hero h3{font-size:20px}.ma-automation-hero__metrics{grid-template-columns:1fr 1fr}.ma-automation-metric:last-child{grid-column:1 / -1}.ma-order-card__status{width:100%;justify-content:flex-start}.ma-order-card__top{flex-wrap:wrap}.ma-order-card__actions>*{width:100%}.ma-panel-close span{display:none}}@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}`;
 
     const GLOBAL_CSS = `.mema-order-badge{margin-inline-start:8px;padding:3.2px 7.2px;border-radius:999px;display:inline-flex;align-items:center;font:700 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;vertical-align:middle}.mema-order-badge[data-status="draft"]{color:#2467d8;background:#eaf2ff}.mema-order-badge[data-status="inserted"]{color:#c35b12;background:#fff1e7}.mema-order-badge[data-status="sent_pending_verification"]{color:#8a4b08;background:#fff4d6}.mema-order-badge[data-status="sent"]{color:#178847;background:#eaf8ef}.mema-order-badge[data-status="error"]{color:#c23b3b;background:#ffeded}.mema-order-badge[data-status="skipped"]{color:#697386;background:#eeeeee}.mema-notify{position:fixed;top:16px;left:50%;z-index:2147483647;transform:translateX(-50%);width:min(360px,calc(100vw - 32px));display:grid;gap:8px;pointer-events:none;font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mema-note{--mema-note:#343a4a;min-height:44px;padding:10px 10px 10px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;color:#fff;background:var(--mema-note);box-shadow:0 8px 24px rgba(24,28,45,.18);opacity:0;transform:translateY(8px);transition:.18s ease;pointer-events:auto}.mema-note.is-on{opacity:1;transform:none}.mema-note[data-type="success"]{--mema-note:#178847}.mema-note[data-type="error"]{--mema-note:#c23b3b}.mema-note[data-type="warning"]{--mema-note:#a85710}.mema-note__mark{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;font-size:11px}.mema-note__text{min-width:0;flex:1;overflow-wrap:anywhere}.mema-note__close{width:28px;height:28px;border:0;border-radius:7px;display:grid;place-items:center;color:inherit;background:transparent;cursor:pointer;opacity:.72}.mema-note__close:hover{opacity:1;background:rgba(255,255,255,.14)}.mema-copy-buffer{position:fixed!important;inset:auto auto 0 -9999px!important;width:1px!important;height:1px!important;opacity:0!important}`;
 
@@ -1341,8 +1344,11 @@ zu|Zulu
         }
         return 'Teslimat sonrası nazik kontrol mesajı hazırla. Yorum isteme veya satış baskısı yapma.';
     }
-    const campaignAutoSendAllowed = (item, settings = Store.settings) => Boolean(settings.autoSendCampaign)
-        && item?.purpose !== 'review_request';
+    const campaignAutoSendAllowed = (item, settings = Store.settings, campaign = Store.campaign) => {
+        if (!item) return false;
+        if (campaign?.runMode === 'autopilot') return campaign.runState === 'running';
+        return Boolean(settings.autoSendCampaign) && item.purpose !== 'review_request';
+    };
     const uid = (prefix = 'id') => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const CAMPAIGN_TAB_ID = uid('campaign-tab');
     const normalize = (text = '') => String(text).replace(/\s+/g, ' ').trim();
@@ -1511,6 +1517,10 @@ zu|Zulu
                 templateHash: String(item?.templateHash || ''),
             }))
             : [];
+        campaign.runMode = campaign.runMode === 'autopilot' ? 'autopilot' : 'guided';
+        campaign.runState = campaign.runMode === 'autopilot' && campaign.runState === 'running'
+            ? 'running'
+            : 'paused';
         return campaign;
     }
 
@@ -2277,10 +2287,22 @@ zu|Zulu
             if (this.coordinationListenersPromise) return this.coordinationListenersPromise;
             const onRemoteChange = (_name, _oldValue, _newValue, remote) => {
                 if (remote !== true) return;
-                this.invalidateCoordinatedWork();
+                const previousCampaign = clone(this.campaign);
                 const refresh = this.coordinationRefreshChain.then(
-                    () => this.refreshCoordinatedState({ invalidate: false }),
-                    () => this.refreshCoordinatedState({ invalidate: false }),
+                    async () => {
+                        const fresh = await this.refreshCoordinatedState({ invalidate: false });
+                        if (!stateMatches(previousCampaign, fresh.campaign)) Campaign.invalidateWork();
+                        Verification.invalidate(pending => Boolean(pending.campaignId)
+                            && !Campaign.verificationBindingIsCurrent(fresh, pending));
+                        return fresh;
+                    },
+                    async () => {
+                        const fresh = await this.refreshCoordinatedState({ invalidate: false });
+                        if (!stateMatches(previousCampaign, fresh.campaign)) Campaign.invalidateWork();
+                        Verification.invalidate(pending => Boolean(pending.campaignId)
+                            && !Campaign.verificationBindingIsCurrent(fresh, pending));
+                        return fresh;
+                    },
                 );
                 this.coordinationRefreshChain = refresh.catch(() => null);
             };
@@ -2426,6 +2448,18 @@ zu|Zulu
                 if (Object.keys(purposes).length) nextOutreach[orderId] = purposes;
                 else delete nextOutreach[orderId];
                 next.outreach = nextOutreach;
+
+                const conversationId = String(options.conversationId || '');
+                if (conversationId && options.conversationPatch) {
+                    next.conversations = {
+                        ...next.conversations,
+                        [conversationId]: {
+                            ...(fresh.conversations?.[conversationId] || {}),
+                            ...clone(options.conversationPatch),
+                            updatedAt: nowIso(),
+                        },
+                    };
+                }
             }, options.errorMessage || 'Sipariş ve yorum talebi durumu birlikte kaydedilemedi.');
             if (!applied) return false;
             return {
@@ -2481,7 +2515,7 @@ zu|Zulu
             }, 'Gönderim denemesi sipariş ve yorum talebi kaydına birlikte yazılamadı.');
             return attempt;
         },
-        async finalizeSendAttemptLocked(orderId, purpose, attemptToken, orderPatch = {}, outreachPatch = {}) {
+        async finalizeSendAttemptLocked(orderId, purpose, attemptToken, orderPatch = {}, outreachPatch = {}, options = {}) {
             const result = await this.transitionOrderOutreachLocked(orderId, purpose || 'delivery_followup', {
                 expect: (order, outreach) => order?.status === CAMPAIGN_SEND_PENDING_STATUS
                     && order.sendAttemptToken === attemptToken
@@ -2502,6 +2536,8 @@ zu|Zulu
                         sendAttemptToken: '',
                     },
                 } : {}),
+                conversationId: options.conversationId || '',
+                conversationPatch: options.conversationPatch || null,
                 errorMessage: 'Gönderim sonucu sipariş ve yorum talebi kaydına birlikte yazılamadı.',
             });
             return Boolean(result);
@@ -2567,10 +2603,12 @@ zu|Zulu
                         } else delete next.orders[item.orderId];
                     }
                     if (outreachMatches) {
+                        const preserveBlockingDecision = currentOutreach.decision === 'ineligible'
+                            && ['review_exists', 'blocked'].includes(currentOutreach.reason);
                         next.outreach[item.orderId] ||= {};
                         next.outreach[item.orderId][item.purpose] = normalizeOutreachRecord({
                             ...currentOutreach,
-                            ...(deferred ? {
+                            ...(deferred && !preserveBlockingDecision ? {
                                 decision: 'ineligible',
                                 reason: 'deferred',
                                 source: 'manual',
@@ -2725,6 +2763,13 @@ zu|Zulu
                 const sameCampaign = Boolean(fresh) && fresh.id === snapshot.id;
                 if (sameCampaign && fresh.revision !== expectedRevision) return this.campaignConflict(fresh);
                 if (!fresh && expectedRevision > 0) return this.campaignConflict(null);
+                if (fresh && !sameCampaign && !Campaign.isNonterminal(fresh)) {
+                    const freshStatuses = normalizeStatusState(await GMX.get(KEYS.statuses, defaultStatusState()));
+                    if (Campaign.hasUnresolvedSend(fresh, freshStatuses)) {
+                        this.commitCoordinatedState(fresh, freshStatuses);
+                        throw campaignConflictError('Önceki kampanyanın kalıcı gönderim sonucu uzlaştırılmadan yeni kampanya kaydedilemez.');
+                    }
+                }
                 if (fresh && !sameCampaign && Campaign.isNonterminal(fresh)) return this.campaignConflict(fresh);
                 const next = {
                     ...snapshot,
@@ -3920,6 +3965,31 @@ zu|Zulu
                     && Boolean(Router.conversationIdentity(url.href));
             } catch { return false; }
         },
+        isOrderComposePostSendPermalink(link) {
+            if (Router.orderComposeTargetFromUrl()?.kind !== 'order-compose') return false;
+            try {
+                const url = new URL(Router.elementHref(link), location.href);
+                const match = url.pathname.match(/^\/conversations\/([1-9]\d{0,31})$/i);
+                return url.origin === 'https://www.etsy.com'
+                    && !url.username
+                    && !url.password
+                    && !url.search
+                    && !url.hash
+                    && Boolean(match)
+                    && Router.conversationIdentity(url.href) === match[1];
+            } catch { return false; }
+        },
+        orderComposePostSendThreadIdentity(scope) {
+            const target = Router.orderComposeTargetFromUrl();
+            if (target?.kind !== 'order-compose' || Router.conversationIdentity() !== target.identity) return '';
+            const links = [...scope?.querySelectorAll?.(CONVERSATION_ANCHOR_SELECTOR) || []];
+            if (links.length !== 2) return '';
+            const historyLinks = links.filter(link => this.isOrderComposeMessageHistoryLink(link));
+            const permalinkLinks = links.filter(link => this.isOrderComposePostSendPermalink(link));
+            if (historyLinks.length !== 1 || permalinkLinks.length !== 1
+                || links.some(link => !historyLinks.includes(link) && !permalinkLinks.includes(link))) return '';
+            return Router.conversationIdentity(Router.elementHref(permalinkLinks[0]));
+        },
         scopeHasOtherConversation(scope) {
             const activeIdentity = Router.conversationIdentity();
             if (!activeIdentity) return true;
@@ -4231,7 +4301,9 @@ zu|Zulu
         },
         countOutgoing(text, resolvedScope = null) {
             const expected = normalize(text);
-            return this.getMessages(resolvedScope).filter((message) => message.role === 'seller' && (normalize(message.text) === expected || normalize(message.text).includes(expected.slice(0, 120)))).length;
+            if (!expected) return 0;
+            return this.getMessages(resolvedScope).filter((message) => message.role === 'seller'
+                && normalize(message.text) === expected).length;
         },
         async waitForOutgoing(text, baseline = 0, timeout = 18000, isCurrent = () => true) {
             const started = Date.now();
@@ -5866,6 +5938,62 @@ zu|Zulu
             const orders = rows.map((row, index) => this.fromRow(row, index)).filter((item) => item.orderId && item.customerName);
             return deliveredOnly ? orders.filter((item) => item.delivered) : orders;
         },
+        isReviewPermalink(element) {
+            try {
+                const url = new URL(Router.elementHref(element), location.href);
+                const labels = [
+                    element?.textContent,
+                    element?.innerText,
+                    element?.getAttribute?.('aria-label'),
+                    element?.getAttribute?.('title'),
+                ].map(value => normalize(value)).filter(Boolean);
+                return !url.username
+                    && !url.password
+                    && url.origin === location.origin
+                    && /^\/shop\/[A-Za-z0-9_-]+\/reviews\/[1-9]\d{0,31}\/?$/.test(url.pathname)
+                    && !url.search
+                    && !url.hash
+                    && labels.some(label => /^(?:review|yorum)$/i.test(label));
+            } catch { return false; }
+        },
+        rowHasExistingReview(row) {
+            if (!row?.querySelectorAll) return false;
+            return [...row.querySelectorAll('a[href*="/reviews/"]')]
+                .some(link => this.isReviewPermalink(link));
+        },
+        persistDetectedReviewEvidence(orders) {
+            const scanned = [...new Map((Array.isArray(orders) ? orders : [])
+                .filter(order => order?.orderId)
+                .map(order => [order.orderId, order])).values()];
+            const detected = scanned.filter(order => order.reviewExists === true);
+            if (!detected.length) return null;
+            const observedAt = nowIso();
+            const write = Store.statusWriteChain.then(() => withCampaignCoordinator(async () => {
+                let changed = 0;
+                const result = await Store.mutateStatusesLocked((next, fresh) => {
+                    for (const order of detected) {
+                        const current = normalizeOutreachRecord(fresh.outreach?.[order.orderId]?.review_request);
+                        if (current.decision === 'ineligible'
+                            && current.reason === 'review_exists'
+                            && current.source === 'dom') continue;
+                        next.outreach[order.orderId] ||= {};
+                        next.outreach[order.orderId].review_request = normalizeOutreachRecord({
+                            ...current,
+                            decision: 'ineligible',
+                            reason: 'review_exists',
+                            source: 'dom',
+                            decidedAt: observedAt,
+                            evidenceExpiresAt: '',
+                            updatedAt: observedAt,
+                        });
+                        changed += 1;
+                    }
+                }, 'Etsy review evidence could not be saved atomically.');
+                return result.changed ? changed : 0;
+            }));
+            Store.statusWriteChain = write.catch(() => null);
+            return write;
+        },
         synthesizedOrderComposeUrl(row, orderId) {
             const safeOrderId = String(orderId || '').normalize('NFKC').trim();
             if (!/^[1-9]\d{0,31}$/.test(safeOrderId)) return '';
@@ -5917,7 +6045,8 @@ zu|Zulu
                 || '';
             const delivered = /^(delivered|teslim edildi)$/i.test(fulfillmentStatus);
             const status = Store.getStatus('orders', orderId);
-            return { index, row, orderId, customerName, firstName: firstName(customerName), messageUrl, itemTitle, imageUrl, price, fulfillmentStatus, delivered, status };
+            const reviewExists = this.rowHasExistingReview(row);
+            return { index, row, orderId, customerName, firstName: firstName(customerName), messageUrl, itemTitle, imageUrl, price, fulfillmentStatus, delivered, reviewExists, status };
         },
         decorate(orders) {
             for (const order of orders) {
@@ -6979,6 +7108,25 @@ zu|Zulu
             return !this.invalidatedTokens.has(pending.verificationToken)
                 && (this.contextIsCurrent(pending) || this.composeTransitionMayContinue(pending));
         },
+        capturedOrderComposePostSendScope(pending) {
+            if (!pending?.sourceWasCompose || !pending.sendCapturedAt || !pending.orderId) return null;
+            const target = Router.orderComposeTargetFromUrl();
+            if (target?.kind !== 'order-compose'
+                || target.orderId !== String(pending.orderId)
+                || pending.conversationId !== target.identity
+                || pending.conversationIdentity !== target.identity
+                || pending.routeFingerprint !== Router.routeFingerprint()
+                || !this.verificationIsCurrent(pending)) return null;
+            const scope = pending.sourceConversationScope;
+            const composer = pending.sourceComposer;
+            if (!scope
+                || scope.isConnected === false
+                || !composer
+                || typeof scope.contains !== 'function'
+                || !scope.contains(composer)
+                || !MessageAdapter.orderComposePostSendThreadIdentity(scope)) return null;
+            return scope;
+        },
         async waitForPendingOutgoing(pending, timeout = 18000) {
             if (!pending.sourceWasCompose) {
                 return MessageAdapter.waitForOutgoing(
@@ -7014,6 +7162,12 @@ zu|Zulu
                 } else if (this.contextIsCurrent(pending)
                     && MessageAdapter.countOutgoing(pending.text) > (pending.baselineMatches || 0)) {
                     return true;
+                } else if (this.contextIsCurrent(pending)) {
+                    const capturedScope = this.capturedOrderComposePostSendScope(pending);
+                    if (capturedScope
+                        && MessageAdapter.countOutgoing(pending.text, capturedScope) > (pending.baselineMatches || 0)) {
+                        return true;
+                    }
                 }
                 await sleep(450);
             }
@@ -7140,13 +7294,17 @@ zu|Zulu
         programmaticDispatchActive: false,
         reservation: null,
         workGeneration: 0,
+        recoveryTimer: null,
         contextHydrationTimeoutMs: 4000,
         contextHydrationPollMs: 150,
         campaignOwnsConversation(campaign, conversationIdentity) {
-            if (!conversationIdentity || !this.isNonterminal(campaign) || !Array.isArray(campaign.items)) return false;
+            if (!conversationIdentity || !campaign || !Array.isArray(campaign.items)) return false;
+            const campaignIsNonterminal = this.isNonterminal(campaign);
             return campaign.items.some(item => Router.conversationIdentity(item?.messageUrl || '') === conversationIdentity
-                && (!CAMPAIGN_TERMINAL_ITEM_STATUSES.has(String(item?.status || '').toLowerCase())
-                    || this.reservationIsActive(item?.reservation)));
+                && (Boolean(item?.sendAttemptToken)
+                    || (campaignIsNonterminal
+                        && (!CAMPAIGN_TERMINAL_ITEM_STATUSES.has(String(item?.status || '').toLowerCase())
+                            || this.reservationIsActive(item?.reservation)))));
         },
         async persistedSendOwnership(conversationIdentity) {
             if (!conversationIdentity) return false;
@@ -7255,6 +7413,7 @@ zu|Zulu
                 && campaign?.id === run.campaignId
                 && campaign.revision === run.revision
                 && campaign.status === 'active'
+                && (campaign.runMode !== 'autopilot' || campaign.runState === 'running')
                 && item?.id === run.itemId
                 && item.status === expectedStatus
                 && item.reservation?.ownerId === CAMPAIGN_TAB_ID
@@ -7268,14 +7427,20 @@ zu|Zulu
         orderIsSkipped(item) {
             return Boolean(item?.orderId) && Store.getStatus('orders', item.orderId).status === 'skipped';
         },
+        reviewExistsForItem(item, statuses = Store.statuses) {
+            if (item?.purpose !== 'review_request' || !item.orderId) return false;
+            const record = Outreach.record(item.orderId, item.purpose, statuses);
+            return record.decision === 'ineligible' && record.reason === 'review_exists';
+        },
         orderStatusBlocksCampaign(status) {
             const normalized = String(status || '').toLowerCase();
             return !CAMPAIGN_KNOWN_ORDER_STATUSES.has(normalized)
                 || CAMPAIGN_INELIGIBLE_ORDER_STATUSES.has(normalized);
         },
-        orderCanEnterCampaign(orderId, statuses = Store.statuses, purpose = 'delivery_followup') {
+        orderCanEnterCampaign(orderId, statuses = Store.statuses, purpose = 'delivery_followup', orderEvidence = null) {
             if (!orderId) return false;
             if (purpose === 'review_request') {
+                if (orderEvidence?.reviewExists === true) return false;
                 const status = String(statuses.orders?.[orderId]?.status || '').toLowerCase();
                 if (!CAMPAIGN_KNOWN_ORDER_STATUSES.has(status)
                     || status === 'skipped' || status === CAMPAIGN_SEND_PENDING_STATUS) return false;
@@ -7308,6 +7473,39 @@ zu|Zulu
                 && outreach.templateId === item.templateId
                 && outreach.templateHash === item.templateHash;
         },
+        verificationBindingIsCurrent(fresh, expected = {}) {
+            if (!expected?.campaignId) return true;
+            const attemptToken = String(expected.reservationToken || '');
+            const campaign = fresh?.campaign;
+            const itemIndex = campaign?.items?.findIndex(item => item.id === expected.campaignItemId) ?? -1;
+            const item = itemIndex >= 0 ? campaign.items[itemIndex] : null;
+            const orderStatus = expected.orderId ? fresh?.statuses?.orders?.[expected.orderId] : null;
+            const expectedRevision = Number(expected.campaignRevision);
+            if (!campaign
+                || !attemptToken
+                || campaign.id !== expected.campaignId
+                || campaign.status !== 'active'
+                || campaign.currentIndex !== itemIndex
+                || (campaign.runMode === 'autopilot' && campaign.runState !== 'running')
+                || item?.orderId !== expected.orderId
+                || item.reservation?.ownerId !== CAMPAIGN_TAB_ID
+                || item.reservation?.token !== attemptToken
+                || orderStatus?.campaignId !== expected.campaignId
+                || orderStatus.campaignItemId !== expected.campaignItemId
+                || (Number.isSafeInteger(expectedRevision) && campaign.revision !== expectedRevision)) return false;
+            if (item.status === 'inserted') {
+                return orderStatus.status === 'inserted'
+                    && (campaign.runMode !== 'autopilot'
+                        || (item.draftText === expected.text
+                            && Boolean(item.draftDigest)
+                            && item.draftDigest === orderStatus.messageDigest));
+            }
+            return item.status === CAMPAIGN_SEND_PENDING_STATUS
+                && item.sendAttemptToken === attemptToken
+                && !item.sendResolutionOutcome
+                && orderStatus.status === CAMPAIGN_SEND_PENDING_STATUS
+                && orderStatus.sendAttemptToken === attemptToken;
+        },
         pendingVerificationTuple(fresh, expected = {}) {
             const attemptToken = String(expected.reservationToken || '');
             if (!attemptToken || !expected.orderId || !expected.campaignId || !expected.campaignItemId) return null;
@@ -7333,6 +7531,327 @@ zu|Zulu
                 || (Number.isSafeInteger(expectedRevision) && campaign.revision !== expectedRevision)) return null;
             return { campaign, item, itemIndex, orderStatus, attemptToken };
         },
+        durableSendProof(item) {
+            const outcome = String(item?.sendResolutionOutcome || '');
+            const attemptToken = String(item?.sendAttemptToken || item?.sendResolutionToken || '');
+            if (item?.status !== 'sent' || !['verified', 'sent'].includes(outcome) || !attemptToken) return null;
+            return { outcome, attemptToken };
+        },
+        unresolvedSendItem(campaign = Store.campaign, statuses = Store.statuses) {
+            if (!campaign) return null;
+            return campaign.items.find((item, itemIndex) => {
+                if (item.status === CAMPAIGN_SEND_PENDING_STATUS) return true;
+                const order = statuses.orders?.[item.orderId];
+                const preDispatchToken = String(order?.sendAttemptToken || '');
+                if (item.status === 'inserted'
+                    && !item.sendAttemptToken
+                    && preDispatchToken
+                    && item.reservation?.token === preDispatchToken
+                    && order?.status === CAMPAIGN_SEND_PENDING_STATUS
+                    && order.campaignId === campaign.id
+                    && order.campaignItemId === item.id) return true;
+                const notSentToken = String(item?.sendResolutionToken || '');
+                if (item?.sendResolutionOutcome === 'not_sent' && notSentToken) {
+                    if (order?.status === CAMPAIGN_SEND_PENDING_STATUS
+                        && order.campaignId === campaign.id
+                        && order.campaignItemId === item.id
+                        && order.sendAttemptToken === notSentToken) return true;
+                }
+                if (!this.durableSendProof(item)) return false;
+                if (order?.status !== 'sent'
+                    || order.campaignId !== campaign.id
+                    || order.campaignItemId !== item.id) return true;
+                if (item.purpose === 'review_request') {
+                    const outreach = Outreach.record(item.orderId, item.purpose, statuses);
+                    if (outreach.workflow !== 'sent'
+                        || outreach.campaignId !== campaign.id
+                        || outreach.campaignItemId !== item.id) return true;
+                }
+                return campaign.status === 'active'
+                    && campaign.currentIndex === itemIndex
+                    && item.status === 'sent';
+            }) || null;
+        },
+        hasUnresolvedSend(campaign = Store.campaign, statuses = Store.statuses) {
+            return Boolean(this.unresolvedSendItem(campaign, statuses));
+        },
+        async recoverDurableSendPartialsLocked(fresh, options = {}) {
+            const campaign = normalizeCampaignState(fresh?.campaign);
+            let statuses = normalizeStatusState(fresh?.statuses);
+            if (!campaign) return {
+                campaign: null, statuses, recoveredItemIds: [], restoredNotSentItemIds: [], restoredPreDispatchItemIds: [], advanced: false,
+            };
+            const expectedCampaignId = String(options.expectedCampaignId || '');
+            const hasExpectedRevision = options.expectedRevision !== undefined
+                && options.expectedRevision !== null
+                && options.expectedRevision !== '';
+            const expectedRevision = hasExpectedRevision ? Number(options.expectedRevision) : null;
+            if ((expectedCampaignId && campaign.id !== expectedCampaignId)
+                || (hasExpectedRevision && campaign.revision !== expectedRevision)) throw campaignConflictError();
+
+            const restoredPreDispatchItemIds = [];
+            for (const item of campaign.items) {
+                if (item?.status !== 'inserted' || item.sendAttemptToken) continue;
+                const orderStatus = statuses.orders?.[item.orderId];
+                const attemptToken = String(orderStatus?.sendAttemptToken || '');
+                if (orderStatus?.status !== CAMPAIGN_SEND_PENDING_STATUS
+                    || !attemptToken
+                    || item.reservation?.token !== attemptToken
+                    || orderStatus.campaignId !== campaign.id
+                    || orderStatus.campaignItemId !== item.id) continue;
+                const previousOrderStatus = orderStatus.previousOrderStatus;
+                const previousOutreach = orderStatus.previousOutreach;
+                const previousOrderMatches = previousOrderStatus
+                    && typeof previousOrderStatus === 'object'
+                    && !Array.isArray(previousOrderStatus)
+                    && previousOrderStatus.status === 'inserted'
+                    && previousOrderStatus.campaignId === campaign.id
+                    && previousOrderStatus.campaignItemId === item.id;
+                const previousOutreachMatches = item.purpose !== 'review_request'
+                    || (previousOutreach
+                        && typeof previousOutreach === 'object'
+                        && !Array.isArray(previousOutreach)
+                        && previousOutreach.workflow === 'prepared'
+                        && previousOutreach.campaignId === campaign.id
+                        && previousOutreach.campaignItemId === item.id);
+                if (!previousOrderMatches || !previousOutreachMatches) {
+                    throw campaignConflictError('Gönderim öncesi yarım kalan sipariş kaydı güvenle geri alınamadı; otomasyon devam ettirilmedi.');
+                }
+                const restored = await Store.restoreSendAttemptPairLocked(
+                    item.orderId,
+                    item.purpose,
+                    attemptToken,
+                    previousOrderStatus,
+                    previousOutreach,
+                );
+                if (!restored) {
+                    throw campaignConflictError('Gönderim öncesi yarım kalan sipariş kaydı onarılamadı; otomasyon devam ettirilmedi.');
+                }
+                statuses = normalizeStatusState(await GMX.get(KEYS.statuses, defaultStatusState()));
+                restoredPreDispatchItemIds.push(item.id);
+            }
+
+            for (const item of campaign.items) {
+                if (item?.status !== 'inserted') continue;
+                if (item.sendResolutionOutcome === 'not_sent' && item.sendResolutionToken) continue;
+                if (!item.draftText || !item.draftDigest || await sha256Text(item.draftText) !== item.draftDigest) {
+                    throw campaignConflictError('Kutuya aktarılmış kampanya taslağının kalıcı özeti doğrulanamadı; otomasyon devam ettirilmedi.');
+                }
+                const orderStatus = statuses.orders?.[item.orderId];
+                const orderBindingMatches = orderStatus?.campaignId === campaign.id
+                    && orderStatus.campaignItemId === item.id
+                    && String(orderStatus.purpose || '') === String(item.purpose || '')
+                    && String(orderStatus.templateId || '') === String(item.templateId || '')
+                    && String(orderStatus.templateHash || '') === String(item.templateHash || '');
+                const messageHash = hashText(item.draftText);
+                const orderPrepared = orderBindingMatches
+                    && orderStatus.status === 'inserted'
+                    && orderStatus.messageHash === messageHash
+                    && orderStatus.messageDigest === item.draftDigest;
+                const outreach = item.purpose === 'review_request'
+                    ? Outreach.record(item.orderId, item.purpose, statuses)
+                    : null;
+                const outreachBindingMatches = item.purpose !== 'review_request'
+                    || (outreach.campaignId === campaign.id
+                        && outreach.campaignItemId === item.id
+                        && outreach.templateHash === item.templateHash);
+                const outreachPrepared = item.purpose !== 'review_request'
+                    || (outreachBindingMatches
+                        && outreach.workflow === 'prepared'
+                        && outreach.messageHash === messageHash);
+                if (orderPrepared && outreachPrepared) continue;
+                const orderRecoverable = orderBindingMatches && ['draft', 'inserted'].includes(orderStatus?.status);
+                const outreachRecoverable = item.purpose !== 'review_request'
+                    || (outreachBindingMatches && ['queued', 'prepared'].includes(outreach.workflow));
+                if (!orderRecoverable || !outreachRecoverable) {
+                    throw campaignConflictError('Kutuya aktarılmış kampanya taslağı sipariş kaydıyla eşleşmiyor; otomasyon devam ettirilmedi.');
+                }
+                const prepared = await Store.transitionOrderOutreachLocked(item.orderId, item.purpose, {
+                    expect: (order, currentOutreach) => ['draft', 'inserted'].includes(order?.status)
+                        && order.campaignId === campaign.id
+                        && order.campaignItemId === item.id
+                        && String(order.purpose || '') === String(item.purpose || '')
+                        && String(order.templateId || '') === String(item.templateId || '')
+                        && String(order.templateHash || '') === String(item.templateHash || '')
+                        && (item.purpose !== 'review_request'
+                            || (['queued', 'prepared'].includes(currentOutreach.workflow)
+                                && currentOutreach.campaignId === campaign.id
+                                && currentOutreach.campaignItemId === item.id
+                                && currentOutreach.templateHash === item.templateHash)),
+                    orderPatch: {
+                        status: 'inserted',
+                        campaignId: campaign.id,
+                        campaignItemId: item.id,
+                        purpose: item.purpose,
+                        templateId: item.templateId,
+                        templateHash: item.templateHash,
+                        messageHash,
+                        messageDigest: item.draftDigest,
+                    },
+                    ...(item.purpose === 'review_request' ? {
+                        outreachPatch: Outreach.workflowPatch(item, 'prepared', {
+                            messageHash,
+                            preparedAt: item.insertedAt || item.preparedAt || nowIso(),
+                        }),
+                    } : {}),
+                });
+                if (!prepared) {
+                    throw campaignConflictError('Kutuya aktarılmış kampanya taslağının sipariş kaydı onarılamadı; otomasyon devam ettirilmedi.');
+                }
+                statuses = normalizeStatusState(await GMX.get(KEYS.statuses, defaultStatusState()));
+            }
+
+            const restoredNotSentItemIds = [];
+            for (const item of campaign.items) {
+                const attemptToken = String(item?.sendResolutionToken || '');
+                if (item?.sendResolutionOutcome !== 'not_sent' || !attemptToken
+                    || (options.expectedItemId && item.id !== options.expectedItemId)) continue;
+                const orderStatus = statuses.orders?.[item.orderId];
+                if (orderStatus?.status !== CAMPAIGN_SEND_PENDING_STATUS) continue;
+                if (orderStatus.campaignId !== campaign.id
+                    || orderStatus.campaignItemId !== item.id
+                    || orderStatus.sendAttemptToken !== attemptToken) {
+                    throw campaignConflictError('Gönderilmedi günlüğü güncel sipariş denemesiyle eşleşmiyor; kayıt değiştirilmedi.');
+                }
+                const previousStatus = Object.hasOwn(orderStatus, 'previousOrderStatus')
+                    ? orderStatus.previousOrderStatus
+                    : { status: item.sendResolutionPreviousStatus || 'inserted', campaignId: campaign.id, campaignItemId: item.id };
+                const restored = await Store.restoreSendAttemptPairLocked(
+                    item.orderId,
+                    item.purpose,
+                    attemptToken,
+                    previousStatus,
+                    orderStatus.previousOutreach || null,
+                );
+                if (!restored) {
+                    throw campaignConflictError('Gönderilmedi sonucu sipariş kaydına geri yüklenemedi; otomasyon duraklatılmış halde bırakıldı.');
+                }
+                statuses = normalizeStatusState(await GMX.get(KEYS.statuses, defaultStatusState()));
+                restoredNotSentItemIds.push(item.id);
+            }
+
+            const recoveredItemIds = [];
+            for (let itemIndex = 0; itemIndex < campaign.items.length; itemIndex += 1) {
+                const item = campaign.items[itemIndex];
+                const proof = this.durableSendProof(item);
+                if (!proof || (options.expectedItemId && item.id !== options.expectedItemId)) continue;
+                let orderStatus = statuses.orders?.[item.orderId];
+                const orderBindingMatches = orderStatus?.campaignId === campaign.id
+                    && orderStatus.campaignItemId === item.id;
+                if (!orderBindingMatches) {
+                    throw campaignConflictError('Doğrulanmış gönderim günlüğü güncel sipariş kaydıyla eşleşmiyor; sıra ilerletilmedi.');
+                }
+                if (orderStatus.status === CAMPAIGN_SEND_PENDING_STATUS) {
+                    if (orderStatus.sendAttemptToken !== proof.attemptToken) {
+                        throw campaignConflictError('Doğrulanmış gönderim günlüğünün deneme kimliği sipariş kaydıyla eşleşmiyor; sıra ilerletilmedi.');
+                    }
+                    const statusResolved = await Store.finalizeSendAttemptLocked(
+                        item.orderId,
+                        item.purpose,
+                        proof.attemptToken,
+                        {
+                            messageHash: item.messageHash || orderStatus.messageHash || '',
+                            sentAt: item.sentAt || nowIso(),
+                            ...(proof.outcome === 'sent' && item.manuallyConfirmed ? { manuallyConfirmed: true } : {}),
+                        },
+                        Outreach.workflowPatch(item, 'sent', {
+                            messageHash: item.messageHash || orderStatus.messageHash || '',
+                            sentAt: item.sentAt || nowIso(),
+                        }),
+                        item.id === options.expectedItemId && options.conversationId
+                            ? {
+                                conversationId: options.conversationId,
+                                conversationPatch: options.conversationPatch || null,
+                            }
+                            : {},
+                    );
+                    if (!statusResolved) {
+                        throw campaignConflictError('Doğrulanmış gönderimin sipariş sonucu kalıcılaştırılamadı; sıra ilerletilmedi.');
+                    }
+                    statuses = normalizeStatusState(await GMX.get(KEYS.statuses, defaultStatusState()));
+                    orderStatus = statuses.orders?.[item.orderId];
+                }
+                if (orderStatus?.status !== 'sent'
+                    || orderStatus.campaignId !== campaign.id
+                    || orderStatus.campaignItemId !== item.id) {
+                    throw campaignConflictError('Doğrulanmış gönderimin terminal sipariş kaydı bulunamadı; sıra ilerletilmedi.');
+                }
+                if (item.purpose === 'review_request') {
+                    const outreach = Outreach.record(item.orderId, item.purpose, statuses);
+                    if (outreach.workflow !== 'sent'
+                        || outreach.campaignId !== campaign.id
+                        || outreach.campaignItemId !== item.id) {
+                        const recoverableOutreach = outreach.workflow === CAMPAIGN_SEND_PENDING_STATUS
+                            && outreach.campaignId === campaign.id
+                            && outreach.campaignItemId === item.id
+                            && (!outreach.sendAttemptToken || outreach.sendAttemptToken === proof.attemptToken);
+                        if (!recoverableOutreach) {
+                            throw campaignConflictError('Doğrulanmış yorum talebi günlüğü outreach kaydıyla eşleşmiyor; sıra ilerletilmedi.');
+                        }
+                        const repaired = await Store.transitionOrderOutreachLocked(item.orderId, item.purpose, {
+                            expect: (order, currentOutreach) => order?.status === 'sent'
+                                && order.campaignId === campaign.id
+                                && order.campaignItemId === item.id
+                                && currentOutreach.workflow === CAMPAIGN_SEND_PENDING_STATUS
+                                && currentOutreach.campaignId === campaign.id
+                                && currentOutreach.campaignItemId === item.id
+                                && (!currentOutreach.sendAttemptToken || currentOutreach.sendAttemptToken === proof.attemptToken),
+                            outreachPatch: Outreach.workflowPatch(item, 'sent', {
+                                messageHash: item.messageHash || orderStatus.messageHash || '',
+                                sentAt: item.sentAt || orderStatus.sentAt || nowIso(),
+                                sendAttemptToken: '',
+                            }),
+                        });
+                        if (!repaired) {
+                            throw campaignConflictError('Doğrulanmış yorum talebi outreach sonucu kalıcılaştırılamadı; sıra ilerletilmedi.');
+                        }
+                        statuses = normalizeStatusState(await GMX.get(KEYS.statuses, defaultStatusState()));
+                    }
+                }
+                recoveredItemIds.push(item.id);
+            }
+
+            const currentCampaign = normalizeCampaignState(await GMX.get(KEYS.campaign, null));
+            if (!currentCampaign || !stateMatches(currentCampaign, campaign)) throw campaignConflictError();
+            const snapshot = clone(currentCampaign);
+            let changed = false;
+            for (const itemId of recoveredItemIds) {
+                const item = snapshot.items.find(entry => entry.id === itemId);
+                if (!item) continue;
+                for (const field of ['reservation', 'sendAttemptToken', 'sendAttemptedAt', 'sendAttemptPreviousStatus']) {
+                    if (Object.hasOwn(item, field)) {
+                        delete item[field];
+                        changed = true;
+                    }
+                }
+            }
+            let advanced = false;
+            const currentItem = snapshot.items?.[snapshot.currentIndex];
+            if (snapshot.status === 'active'
+                && currentItem
+                && recoveredItemIds.includes(currentItem.id)
+                && currentItem.status === 'sent') {
+                const nextIndex = snapshot.items.findIndex((entry, index) => index > snapshot.currentIndex && entry.status === 'pending');
+                if (nextIndex === -1) {
+                    snapshot.status = 'completed';
+                    snapshot.completedAt = snapshot.completedAt || nowIso();
+                } else snapshot.currentIndex = nextIndex;
+                changed = true;
+                advanced = true;
+            }
+            const savedCampaign = changed
+                ? await Store.saveCampaignLocked(snapshot, { expectedRevision: currentCampaign.revision })
+                : currentCampaign;
+            Store.commitCoordinatedState(savedCampaign, statuses, { invalidate: false, refresh: false });
+            return { campaign: savedCampaign, statuses, recoveredItemIds, restoredNotSentItemIds, restoredPreDispatchItemIds, advanced };
+        },
+        async recoverDurableSendPartials(options = {}) {
+            return withCampaignCoordinator(async () => {
+                const fresh = await Store.readCoordinatedStateLocked();
+                Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
+                return this.recoverDurableSendPartialsLocked(fresh, options);
+            });
+        },
         async fencePendingVerification(expected = {}) {
             return withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
@@ -7354,29 +7873,22 @@ zu|Zulu
                 snapshotItem.sentAt = nowIso();
                 snapshotItem.messageHash = hashText(text);
                 snapshotItem.sendResolutionOutcome = 'verified';
+                snapshotItem.sendResolutionToken = tuple.attemptToken;
                 snapshotItem.sendResolutionAt = nowIso();
-                delete snapshotItem.reservation;
-                const nextIndex = snapshot.items.findIndex((entry, index) => index > tuple.itemIndex && entry.status === 'pending');
-                if (nextIndex === -1) {
-                    snapshot.status = 'completed';
-                    snapshot.completedAt = nowIso();
-                } else snapshot.currentIndex = nextIndex;
-                const savedCampaign = await Store.saveCampaignLocked(snapshot, { expectedRevision: tuple.campaign.revision });
-                expected.campaignRevision = savedCampaign.revision;
-                Verification.setCampaignRevision(expected, savedCampaign.revision);
-                const statusResolved = await Store.finalizeSendAttemptLocked(
-                    expected.orderId,
-                    snapshotItem.purpose,
-                    tuple.attemptToken,
-                    { messageHash: hashText(text), sentAt: snapshotItem.sentAt },
-                    Outreach.workflowPatch(snapshotItem, 'sent', {
-                        messageHash: hashText(text),
-                        sentAt: snapshotItem.sentAt,
-                    }),
-                );
-                if (!statusResolved) {
-                    throw campaignConflictError('Gönderim doğrulaması başka bir sekmede değişti. Kampanya kaydı korunarak işlem durduruldu.');
-                }
+                const journaledCampaign = await Store.saveCampaignLocked(snapshot, { expectedRevision: tuple.campaign.revision });
+                expected.campaignRevision = journaledCampaign.revision;
+                Verification.setCampaignRevision(expected, journaledCampaign.revision);
+                const recovered = await this.recoverDurableSendPartialsLocked({
+                    campaign: journaledCampaign,
+                    statuses: fresh.statuses,
+                }, {
+                    expectedCampaignId: journaledCampaign.id,
+                    expectedRevision: journaledCampaign.revision,
+                    expectedItemId: snapshotItem.id,
+                });
+                if (!recovered.recoveredItemIds.includes(snapshotItem.id)) return false;
+                expected.campaignRevision = recovered.campaign.revision;
+                Verification.setCampaignRevision(expected, recovered.campaign.revision);
                 return true;
             });
         },
@@ -7429,35 +7941,14 @@ zu|Zulu
                     && revisionMatches;
                 if (campaignFirstPartial || campaignFirstComplete) {
                     if (options.validateOnly) return true;
-                    if (campaignFirstPartial) {
-                        const statusResolved = await Store.finalizeSendAttemptLocked(
-                            expected.orderId,
-                            item.purpose,
-                            attemptToken,
-                            {
-                                messageHash: hashText(expected.text || ''),
-                                sentAt: item.sentAt || nowIso(),
-                            },
-                            Outreach.workflowPatch(item, 'sent', {
-                                messageHash: hashText(expected.text || ''),
-                                sentAt: item.sentAt || nowIso(),
-                            }),
-                        );
-                        if (!statusResolved) return false;
-                    } else if (item.purpose === 'review_request') {
-                        const repaired = await Store.transitionOrderOutreachLocked(expected.orderId, item.purpose, {
-                            expect: (order) => order?.status === 'sent'
-                                && order.campaignId === expected.campaignId
-                                && order.campaignItemId === expected.campaignItemId,
-                            outreachPatch: Outreach.workflowPatch(item, 'sent', {
-                                messageHash: hashText(expected.text || ''),
-                                sentAt: item.sentAt || orderStatus.sentAt || nowIso(),
-                                sendAttemptToken: '',
-                            }),
-                        });
-                        if (!repaired) return false;
-                    }
-                    return true;
+                    const recovered = await this.recoverDurableSendPartialsLocked(fresh, {
+                        expectedCampaignId: campaign.id,
+                        expectedRevision: campaign.revision,
+                        expectedItemId: item.id,
+                    });
+                    expected.campaignRevision = recovered.campaign.revision;
+                    Verification.setCampaignRevision(expected, recovered.campaign.revision);
+                    return recovered.recoveredItemIds.includes(item.id);
                 }
                 if (!campaign
                     || campaign.id !== expected.campaignId
@@ -7478,30 +7969,21 @@ zu|Zulu
                 snapshotItem.status = 'sent';
                 snapshotItem.sentAt = orderStatus.sentAt || nowIso();
                 snapshotItem.messageHash = hashText(expected.text || '');
-                delete snapshotItem.reservation;
-                delete snapshotItem.sendAttemptToken;
-                delete snapshotItem.sendAttemptedAt;
-                delete snapshotItem.sendAttemptPreviousStatus;
-                const nextIndex = snapshot.items.findIndex((entry, index) => index > itemIndex && entry.status === 'pending');
-                if (nextIndex === -1) {
-                    snapshot.status = 'completed';
-                    snapshot.completedAt = nowIso();
-                } else snapshot.currentIndex = nextIndex;
-                await Store.saveCampaignLocked(snapshot, { expectedRevision: campaign.revision });
-                if (snapshotItem.purpose === 'review_request') {
-                    const repaired = await Store.transitionOrderOutreachLocked(expected.orderId, snapshotItem.purpose, {
-                        expect: (order) => order?.status === 'sent'
-                            && order.campaignId === expected.campaignId
-                            && order.campaignItemId === expected.campaignItemId,
-                        outreachPatch: Outreach.workflowPatch(snapshotItem, 'sent', {
-                            messageHash: snapshotItem.messageHash,
-                            sentAt: snapshotItem.sentAt,
-                            sendAttemptToken: '',
-                        }),
-                    });
-                    if (!repaired) return false;
-                }
-                return true;
+                snapshotItem.sendResolutionOutcome = 'verified';
+                snapshotItem.sendResolutionToken = attemptToken;
+                snapshotItem.sendResolutionAt = nowIso();
+                const journaledCampaign = await Store.saveCampaignLocked(snapshot, { expectedRevision: campaign.revision });
+                const recovered = await this.recoverDurableSendPartialsLocked({
+                    campaign: journaledCampaign,
+                    statuses: fresh.statuses,
+                }, {
+                    expectedCampaignId: journaledCampaign.id,
+                    expectedRevision: journaledCampaign.revision,
+                    expectedItemId: snapshotItem.id,
+                });
+                expected.campaignRevision = recovered.campaign.revision;
+                Verification.setCampaignRevision(expected, recovered.campaign.revision);
+                return recovered.recoveredItemIds.includes(snapshotItem.id);
             });
         },
         async markSendPendingVerification(expected = {}) {
@@ -7645,7 +8127,7 @@ zu|Zulu
         },
         async resolvePendingSend(orderId, outcome) {
             if (!['sent', 'not_sent'].includes(outcome)) throw new Error('Geçersiz gönderim çözümleme seçeneği.');
-            return withCampaignCoordinator(async () => {
+            const resolution = await withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
                 const orderStatus = fresh.statuses.orders?.[orderId];
@@ -7689,6 +8171,7 @@ zu|Zulu
                     && candidate.campaignId === orderStatus.campaignId
                     && candidate.campaignItemId === orderStatus.campaignItemId
                     && candidate.reservationToken === attemptToken);
+                let journaledCampaign = campaign;
                 if (itemIsPendingAttempt) {
                     const snapshot = clone(campaign);
                     const snapshotItem = snapshot.items[itemIndex];
@@ -7702,20 +8185,17 @@ zu|Zulu
                         delete snapshotItem.sendAttemptToken;
                         delete snapshotItem.sendAttemptedAt;
                         delete snapshotItem.sendAttemptPreviousStatus;
+                        if (snapshot.runMode === 'autopilot') {
+                            snapshot.runState = 'paused';
+                            snapshot.runStateChangedAt = resolvedAt;
+                        }
                     } else {
                         snapshotItem.status = 'sent';
                         snapshotItem.sentAt = resolvedAt;
+                        snapshotItem.messageHash = orderStatus.messageHash || snapshotItem.messageHash || '';
                         snapshotItem.manuallyConfirmed = true;
-                        delete snapshotItem.reservation;
-                        if (snapshot.status === 'active' && snapshot.currentIndex === itemIndex) {
-                            const nextIndex = snapshot.items.findIndex((entry, index) => index > itemIndex && entry.status === 'pending');
-                            if (nextIndex === -1) {
-                                snapshot.status = 'completed';
-                                snapshot.completedAt = nowIso();
-                            } else snapshot.currentIndex = nextIndex;
-                        }
                     }
-                    await Store.saveCampaignLocked(snapshot, { expectedRevision: campaign.revision });
+                    journaledCampaign = await Store.saveCampaignLocked(snapshot, { expectedRevision: campaign.revision });
                 }
                 if (outcome === 'not_sent') {
                     const previousStatus = Object.hasOwn(orderStatus, 'previousOrderStatus')
@@ -7733,25 +8213,58 @@ zu|Zulu
                             'Gönderim durumu başka bir sekmede değişti. Güncel durum yeniden yüklendi; hiçbir kayıt geri alınmadı.',
                         );
                     }
-                    return 'not_sent';
+                    return { outcome: 'not_sent' };
                 }
-                const statusResolved = await Store.finalizeSendAttemptLocked(
-                    orderId,
-                    item.purpose,
-                    attemptToken,
-                    { sentAt: resolvedAt, manuallyConfirmed: true },
-                    Outreach.workflowPatch(item, 'sent', {
+                const conversationId = Router.conversationIdFromUrl(item.messageUrl || '');
+                const recovered = await this.recoverDurableSendPartialsLocked({
+                    campaign: journaledCampaign,
+                    statuses: fresh.statuses,
+                }, {
+                    expectedCampaignId: journaledCampaign.id,
+                    expectedRevision: journaledCampaign.revision,
+                    expectedItemId: item.id,
+                    conversationId,
+                    conversationPatch: {
+                        status: 'sent',
                         messageHash: orderStatus.messageHash || '',
                         sentAt: resolvedAt,
-                    }),
-                );
-                if (!statusResolved) {
-                    throw campaignConflictError(
-                        'Gönderim durumu başka bir sekmede değişti. Kampanya çözümleme kaydı korundu.',
-                    );
+                        manuallyConfirmed: true,
+                    },
+                });
+                if (!recovered.recoveredItemIds.includes(item.id)) {
+                    throw campaignConflictError('Gönderim durumu kalıcılaştırılmadan sıra ilerletilemedi.');
                 }
-                return 'sent';
+                return {
+                    outcome: 'sent',
+                    attemptToken,
+                    campaignId: campaign.id,
+                    campaignItemId: item.id,
+                    conversationId,
+                    customerName: item.customerName || '',
+                    method: item.method || 'manual',
+                    messageHash: orderStatus.messageHash || '',
+                    resolvedAt,
+                };
             });
+            if (resolution?.outcome !== 'sent') return resolution?.outcome || false;
+            void History.tryLogOnce(
+                'send_verified',
+                `${resolution.campaignId}:${resolution.campaignItemId}:${resolution.attemptToken}:manual-resolved`,
+                {
+                    source: 'messages',
+                    method: resolution.method,
+                    status: 'completed',
+                    customer: resolution.customerName,
+                    orderId,
+                    conversationId: resolution.conversationId,
+                    title: 'Manuel gönderim doğrulandı',
+                    detail: {
+                        messageHash: resolution.messageHash,
+                        manuallyConfirmed: true,
+                    },
+                },
+            ).catch(error => console.error(`[${APP.id}] Manuel gönderim çözümü geçmişe kaydedilemedi.`, error));
+            return 'sent';
         },
         reservationIsActive(reservation) {
             return Boolean(reservation?.ownerId)
@@ -7764,6 +8277,7 @@ zu|Zulu
         composerCanAcceptDraft(textarea, item, conversationIdentity = Router.conversationIdentity()) {
             const currentValue = String(textarea?.value ?? '');
             if (currentValue === '') return true;
+            if (item?.draftText && item?.draftDigest && currentValue === item.draftText) return true;
             return MessageAdapter.isExpectedOrderComposePrefill(currentValue, {
                 orderId: item?.orderId || '',
                 conversationUrl: item?.messageUrl || '',
@@ -7826,13 +8340,19 @@ zu|Zulu
                 const campaign = fresh.campaign;
                 const item = campaign?.items?.[campaign.currentIndex];
                 if (!campaign || campaign.status !== 'active' || !item || item.status !== 'pending'
-                    || !this.itemBindingIsCurrent(item, fresh.statuses, 'draft', 'queued')) return null;
-                await this.assertNoMessageCenterSendHold(Router.conversationIdentity(item.messageUrl));
-                await this.assertNoNativeSendHold(Router.conversationIdentity(item.messageUrl));
+                    || (campaign.runMode === 'autopilot' && campaign.runState !== 'running')) return null;
                 const persistedOrderStatus = item.orderId ? fresh.statuses.orders?.[item.orderId]?.status : '';
                 if (this.orderIsBlockedFromSend(item, fresh.statuses, ['queued'])) {
-                    return { blocked: true, skipped: persistedOrderStatus === 'skipped', item: clone(item) };
+                    return {
+                        blocked: true,
+                        skipped: persistedOrderStatus === 'skipped',
+                        reviewExists: this.reviewExistsForItem(item, fresh.statuses),
+                        item: clone(item),
+                    };
                 }
+                if (!this.itemBindingIsCurrent(item, fresh.statuses, 'draft', 'queued')) return null;
+                await this.assertNoMessageCenterSendHold(Router.conversationIdentity(item.messageUrl));
+                await this.assertNoNativeSendHold(Router.conversationIdentity(item.messageUrl));
                 if (this.reservationIsActive(item.reservation)
                     && item.reservation.ownerId !== CAMPAIGN_TAB_ID) return null;
                 const snapshot = clone(campaign);
@@ -7858,12 +8378,18 @@ zu|Zulu
         },
         async claimInsertedCurrentForUser(messageText) {
             const messageHash = hashText(messageText);
+            const messageDigest = await sha256Text(messageText);
             return withCampaignCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
                 const campaign = fresh.campaign;
                 const item = campaign?.items?.[campaign.currentIndex];
                 const orderStatus = item?.orderId ? fresh.statuses.orders?.[item.orderId] : null;
+                const autopilotDraftMatches = campaign?.runMode !== 'autopilot'
+                    || (campaign.runState === 'running'
+                        && item?.draftText === messageText
+                        && item?.draftDigest === messageDigest
+                        && orderStatus?.messageDigest === messageDigest);
                 const claimedHref = location.href;
                 const currentIdentity = Router.conversationIdentity(claimedHref);
                 const itemIdentity = item ? Router.conversationIdentity(item.messageUrl) : '';
@@ -7882,6 +8408,7 @@ zu|Zulu
                     || orderStatus?.status !== 'inserted'
                     || orderStatus.campaignId !== campaign.id
                     || orderStatus.campaignItemId !== item.id
+                    || !autopilotDraftMatches
                     || !this.itemBindingIsCurrent(item, fresh.statuses, 'inserted', 'prepared')
                     || !currentIdentity
                     || currentIdentity !== itemIdentity
@@ -7908,6 +8435,8 @@ zu|Zulu
                 const snapshotItem = snapshot.items[snapshot.currentIndex];
                 snapshotItem.reservation = reservation;
                 snapshotItem.messageHash = messageHash;
+                snapshotItem.draftText = messageText;
+                snapshotItem.draftDigest = messageDigest;
                 const savedCampaign = await Store.saveCampaignLocked(snapshot, { expectedRevision: campaign.revision });
                 let bound = null;
                 try {
@@ -7927,7 +8456,7 @@ zu|Zulu
                             purpose: item.purpose,
                             templateId: item.templateId,
                             templateHash: item.templateHash,
-                            messageHash,
+                            messageHash, messageDigest,
                         },
                         ...(item.purpose === 'review_request' ? {
                             outreachPatch: Outreach.workflowPatch(item, 'prepared', {
@@ -7969,6 +8498,7 @@ zu|Zulu
                     item: clone(savedCampaign.items[savedCampaign.currentIndex]),
                     reservation: clone(reservation),
                     messageHash,
+                    messageDigest,
                     route: claimedRoute,
                     previousCampaignItem,
                     previousOrderStatus,
@@ -8047,8 +8577,10 @@ zu|Zulu
                 conversationIdentity: claim.route.conversationIdentity,
                 routeFingerprint: claim.route.routeFingerprint,
                 messageHash: claim.messageHash,
+                messageDigest: claim.messageDigest,
                 liveMessageHash: hashExactText(messageText),
                 dispatchObserved: false,
+                explicitDispatch: true,
             };
             let claimReleased = false;
             const releaseClaim = async () => {
@@ -8102,7 +8634,7 @@ zu|Zulu
                 if (this.reservation === run) this.reservation = null;
             }
         },
-        async create(orders, templateId, method) {
+        async create(orders, templateId, method, options = {}) {
             const selectedTemplate = TemplateEngine.get(templateId);
             if (!selectedTemplate || selectedTemplate.archived) throw new Error('Aktif bir teslimat mesajı şablonu seçin.');
             if (!['free', 'ai', 'template'].includes(method)) throw new Error('Geçerli bir kampanya mesaj yöntemi seçin.');
@@ -8116,19 +8648,22 @@ zu|Zulu
             const savedCampaign = await withCampaignCoordinator(() => withEtsySendCoordinator(async () => {
                 const fresh = await Store.readCoordinatedStateLocked();
                 Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
+                if (this.hasUnresolvedSend(fresh.campaign, fresh.statuses)) {
+                    throw new Error('Önceki kampanyanın gönderim sonucu uzlaştırılmadan yeni otomasyon başlatılamaz. Aynı mesaj tekrar gönderilmez.');
+                }
                 if (this.isNonterminal(fresh.campaign)) {
                     throw new Error('Devam eden kampanya sessizce değiştirilemez. Önce mevcut kampanyayı durdurun.');
                 }
                 const campaignId = uid('campaign');
                 if (purpose === 'review_request') {
                     const invalid = safeOrders.filter((order) => !order.messageUrl
-                        || !this.orderCanEnterCampaign(order.orderId, fresh.statuses, purpose));
+                        || !this.orderCanEnterCampaign(order.orderId, fresh.statuses, purpose, order));
                     if (invalid.length) {
                         throw new Error('Yorum durumu güncel ve “Yorum yok” olarak doğrulanmayan siparişler kuyruğa eklenemez.');
                     }
                 }
                 const items = safeOrders
-                    .filter((order) => order.messageUrl && this.orderCanEnterCampaign(order.orderId, fresh.statuses, purpose))
+                    .filter((order) => order.messageUrl && this.orderCanEnterCampaign(order.orderId, fresh.statuses, purpose, order))
                     .map((order) => ({
                         id: uid('queue'), orderId: order.orderId, customerName: order.customerName, itemTitle: order.itemTitle,
                         messageUrl: order.messageUrl, templateId, templateHash: frozenTemplateHash, purpose, campaignId,
@@ -8151,6 +8686,8 @@ zu|Zulu
                 const campaign = {
                     id: campaignId,
                     status: 'initializing',
+                    runMode: options.runMode === 'autopilot' ? 'autopilot' : 'guided',
+                    runState: options.runMode === 'autopilot' ? 'running' : 'paused',
                     purpose,
                     templateId,
                     templateHash: frozenTemplateHash,
@@ -8226,15 +8763,82 @@ zu|Zulu
             if (!campaign || campaign.status !== 'active') return null;
             return campaign.items[campaign.currentIndex] || null;
         },
-        async start() {
-            const item = this.current();
-            if (!item) throw new Error('Aktif kampanya bulunamadı.');
-            if (this.orderIsBlockedFromSend(item)) {
-                if (this.orderIsSkipped(item)) await this.skipOrder(item.orderId, { expectedItemId: item.id, navigate: true });
+        isAutopilot(campaign = Store.campaign) {
+            return campaign?.runMode === 'autopilot';
+        },
+        isAutopilotRunning(campaign = Store.campaign) {
+            return this.isAutopilot(campaign) && campaign.runState === 'running';
+        },
+        async setAutopilotState(runState, options = {}) {
+            if (!['running', 'paused'].includes(runState)) throw new Error('Geçersiz otomasyon durumu.');
+            const expectedCampaignId = String(options.expectedCampaignId || '');
+            const hasExpectedRevision = options.expectedRevision !== undefined
+                && options.expectedRevision !== null
+                && options.expectedRevision !== '';
+            const expectedRevision = hasExpectedRevision ? Number(options.expectedRevision) : null;
+            const result = await withCampaignCoordinator(async () => {
+                const fresh = await Store.readCoordinatedStateLocked();
+                Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
+                const campaign = fresh.campaign;
+                if (!campaign || !this.isNonterminal(campaign)) throw new Error('Aktif otomasyon bulunamadı.');
+                if ((expectedCampaignId && campaign.id !== expectedCampaignId)
+                    || (hasExpectedRevision && campaign.revision !== expectedRevision)) throw campaignConflictError();
+                if (campaign.runMode === 'autopilot' && campaign.runState === runState) {
+                    return { saved: campaign, item: clone(campaign.items?.[campaign.currentIndex] || null), unchanged: true };
+                }
+                if (this.hasUnresolvedSend(campaign, fresh.statuses)) {
+                    throw new Error('Gönderim sonucu kalıcı olarak uzlaştırılmadan otomasyon durumu değiştirilemez. Aynı mesaj tekrar gönderilmez.');
+                }
+                const snapshot = clone(campaign);
+                const item = snapshot.items?.[snapshot.currentIndex];
+                if (item?.status === CAMPAIGN_SEND_PENDING_STATUS) {
+                    throw new Error('Etsy gönderim doğrulaması sürerken otomasyon durumu değiştirilemez. Sonuç kesinleşince duraklatın veya devam edin.');
+                }
+                this.invalidateWork();
+                snapshot.runMode = 'autopilot';
+                snapshot.runState = runState;
+                snapshot.runStateChangedAt = nowIso();
+                if (runState === 'paused' && ['pending', 'inserted'].includes(item?.status)
+                    && item.reservation?.ownerId === CAMPAIGN_TAB_ID) delete item.reservation;
+                const saved = await Store.saveCampaignLocked(snapshot, { expectedRevision: campaign.revision });
+                return { saved, item: clone(saved.items?.[saved.currentIndex] || null) };
+            });
+            if (runState === 'paused' && result.item?.status !== CAMPAIGN_SEND_PENDING_STATUS) {
+                Verification.invalidate(candidate => candidate.campaignId === result.saved.id
+                    && candidate.campaignItemId === result.item?.id);
+            }
+            return result.saved;
+        },
+        async startAutopilot(options = {}) {
+            await this.recoverDurableSendPartials(options);
+            const campaign = await this.setAutopilotState('running', options);
+            const item = campaign.items?.[campaign.currentIndex];
+            if (!item) throw new Error('Otomasyonda işlenecek sipariş bulunamadı.');
+            if (item.status === CAMPAIGN_SEND_PENDING_STATUS) {
+                UI.toast('Önce bekleyen gönderim sonucunu doğrulayın; otomasyon aynı mesajı tekrar göndermez.', 'warning', 7000);
                 return false;
+            }
+            if (this.orderIsBlockedFromSend(item)) {
+                if (this.orderIsSkipped(item) || this.reviewExistsForItem(item)) {
+                    await this.skipOrder(item.orderId, { expectedItemId: item.id, navigate: true });
+                }
+                return false;
+            }
+            const itemIdentity = Router.conversationIdentity(item.messageUrl);
+            if (Router.page() === 'messages' && itemIdentity && itemIdentity === Router.conversationIdentity()) {
+                return this.driveAutopilot();
             }
             Router.navigateToConversation(item.messageUrl);
             return true;
+        },
+        async pauseAutopilot(options = {}) {
+            const campaign = await this.setAutopilotState('paused', options);
+            UI.toast('Otomasyon duraklatıldı. Gönderilmiş bir mesaj varsa doğrulaması tamamlanır; sıradaki alıcı başlamaz.', 'warning', 6000);
+            await UI.refreshCurrent();
+            return campaign;
+        },
+        async start() {
+            return this.startAutopilot();
         },
         async resume() {
             if (this.resumePromise) return this.resumePromise;
@@ -8247,22 +8851,143 @@ zu|Zulu
                 if (this.reservation?.task === task) this.reservation = null;
             }
         },
+        scheduleRecoveryAt(expiresAt) {
+            const deadline = new Date(expiresAt || 0).getTime();
+            if (!Number.isFinite(deadline) || deadline <= Date.now()) return false;
+            if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
+            this.recoveryTimer = setTimeout(() => {
+                this.recoveryTimer = null;
+                if (!this.isAutopilotRunning()) return;
+                void this.driveAutopilot().catch(error => UI.toast(error.message, 'error', 7000));
+            }, Math.min(2147483647, Math.max(50, deadline - Date.now() + 75)));
+            return true;
+        },
+        async waitForInsertedContext(item, conversationIdentity) {
+            const deadline = Date.now() + this.contextHydrationTimeoutMs;
+            while (Date.now() <= deadline) {
+                if (!this.isAutopilotRunning() || this.current()?.id !== item.id
+                    || Router.conversationIdentity() !== conversationIdentity) return { state: 'stale' };
+                const textarea = MessageAdapter.getTextarea();
+                if (textarea) {
+                    let context = null;
+                    try { context = MessageAdapter.context(); } catch { /* Etsy bağlamı yükleniyor */ }
+                    const currentTextarea = MessageAdapter.getTextarea();
+                    if (currentTextarea === textarea) {
+                        const state = this.contextBindingState(context, item, conversationIdentity);
+                        if (state !== 'pending') return { state, context, textarea };
+                    }
+                }
+                await sleep(this.contextHydrationPollMs);
+            }
+            return { state: 'timeout' };
+        },
+        async resumeInsertedAutopilot(item, conversationIdentity) {
+            if (this.reviewExistsForItem(item)) {
+                await this.skipOrder(item.orderId, { expectedItemId: item.id, navigate: true });
+                return false;
+            }
+            if (!item?.draftText || !item.draftDigest) {
+                await this.pauseAutopilot();
+                throw new Error('Kaydedilmiş otomasyon taslağı güçlü biçimde doğrulanamadı. Güvenlik için sıra duraklatıldı; mesaj gönderilmedi.');
+            }
+            const storedDigest = await sha256Text(item.draftText);
+            if (storedDigest !== item.draftDigest) {
+                await this.pauseAutopilot();
+                throw new Error('Kaydedilmiş otomasyon taslağı değişmiş görünüyor. Güvenlik için sıra duraklatıldı; mesaj gönderilmedi.');
+            }
+            if (this.reservationIsActive(item.reservation) && item.reservation.ownerId !== CAMPAIGN_TAB_ID) {
+                this.scheduleRecoveryAt(item.reservation.expiresAt);
+                return false;
+            }
+            const binding = await this.waitForInsertedContext(item, conversationIdentity);
+            if (binding.state === 'stale') return false;
+            if (binding.state === 'timeout') throw new Error('Etsy konuşma bağlamı zamanında yüklenemedi. Otomasyon gönderim yapmadan bekliyor.');
+            if (binding.state !== 'matched') {
+                await this.pauseAutopilot();
+                throw new Error('Etsy konuşmasındaki sipariş veya müşteri sıradaki alıcıyla eşleşmiyor. Otomasyon duraklatıldı; mesaj gönderilmedi.');
+            }
+            const textarea = binding.textarea;
+            const liveText = String(textarea.value || '');
+            if (!liveText || MessageAdapter.isExpectedOrderComposePrefill(liveText, {
+                orderId: item.orderId,
+                conversationUrl: item.messageUrl,
+                conversationIdentity,
+            })) {
+                MessageAdapter.insert(item.draftText, textarea);
+            } else if (liveText !== item.draftText) {
+                await this.pauseAutopilot();
+                throw new Error('Etsy alanında otomasyon taslağından farklı bir metin var. Metin korunarak otomasyon duraklatıldı; kör gönderim yapılmadı.');
+            }
+            const currentText = String(MessageAdapter.getTextarea()?.value || '');
+            if (currentText !== item.draftText || await sha256Text(currentText) !== item.draftDigest) {
+                await this.pauseAutopilot();
+                throw new Error('Gönderilecek metin kaydedilmiş otomasyon taslağıyla birebir eşleşmiyor. Otomasyon duraklatıldı.');
+            }
+            return this.sendCurrentByUser();
+        },
+        async driveAutopilot(options = {}) {
+            if (options.recoveryComplete !== true) await this.recoverDurableSendPartials();
+            const campaign = Store.campaign;
+            if (!this.isAutopilotRunning(campaign) || campaign.status !== 'active') return false;
+            const item = campaign.items?.[campaign.currentIndex];
+            if (!item || item.status === CAMPAIGN_SEND_PENDING_STATUS) return false;
+            if (this.reservationIsActive(item.reservation) && item.reservation.ownerId !== CAMPAIGN_TAB_ID) {
+                this.scheduleRecoveryAt(item.reservation.expiresAt);
+                return false;
+            }
+            const itemIdentity = Router.conversationIdentity(item.messageUrl);
+            if (!itemIdentity) throw new Error('Sıradaki sipariş için güvenli Etsy konuşma bağlantısı bulunamadı.');
+            if (Router.page() !== 'messages' || Router.conversationIdentity() !== itemIdentity) {
+                Router.navigateToConversation(item.messageUrl);
+                return true;
+            }
+            return this.resume();
+        },
         async resumeClaimed() {
             if (Router.page() !== 'messages') return false;
             const cachedItem = this.current();
+            if (this.isAutopilot(Store.campaign) && !this.isAutopilotRunning(Store.campaign)) return false;
             const cachedConversation = cachedItem ? Router.conversationIdentity(cachedItem.messageUrl) : '';
             const currentConversationBeforeClaim = Router.conversationIdentity(location.href);
             if (!cachedItem
                 || !currentConversationBeforeClaim
                 || !cachedConversation
                 || currentConversationBeforeClaim !== cachedConversation) return false;
+            if (this.reviewExistsForItem(cachedItem)) {
+                await this.skipOrder(cachedItem.orderId, {
+                    expectedItemId: cachedItem.id,
+                    navigate: this.isAutopilotRunning(),
+                });
+                return false;
+            }
+            if (cachedItem.status === 'inserted' && this.isAutopilotRunning(Store.campaign)) {
+                return this.resumeInsertedAutopilot(cachedItem, cachedConversation);
+            }
             if (!this.composerCanAcceptDraft(MessageAdapter.getTextarea(), cachedItem, cachedConversation)) {
                 throw this.composerOccupiedError();
             }
             const claim = await this.claimCurrent();
-            if (!claim) return false;
+            if (!claim) {
+                const latest = this.current();
+                if (this.reservationIsActive(latest?.reservation) && latest.reservation.ownerId !== CAMPAIGN_TAB_ID) {
+                    this.scheduleRecoveryAt(latest.reservation.expiresAt);
+                    return false;
+                }
+                if (this.isAutopilotRunning()) {
+                    await this.pauseAutopilot();
+                    throw new Error('Sıradaki siparişin güncel uygunluğu veya kampanya kaydı doğrulanamadı. Otopilot güvenlik için duraklatıldı. Listeyi yenileyip yorum durumunu tekrar kontrol edin.');
+                }
+                return false;
+            }
             if (claim.blocked) {
-                if (claim.skipped) await this.skipOrder(claim.item.orderId, { expectedItemId: claim.item.id });
+                if (claim.skipped || claim.reviewExists || this.reviewExistsForItem(claim.item)) await this.skipOrder(claim.item.orderId, {
+                    expectedItemId: claim.item.id,
+                    navigate: this.isAutopilotRunning(),
+                });
+                else if (this.isAutopilotRunning()) {
+                    await this.pauseAutopilot();
+                    throw new Error('Bu sipariş artık otomatik gönderime uygun değil. Otopilot duraklatıldı; yorum veya iletişim durumunu yeniden kontrol edin.');
+                }
                 return false;
             }
             const item = claim.item;
@@ -8286,7 +9011,12 @@ zu|Zulu
         async resumeReserved(run, item) {
             await sleep(900);
             if (this.orderIsBlockedFromSend(item)) {
-                if (this.orderIsSkipped(item)) await this.skipOrder(item.orderId, { expectedItemId: run.itemId });
+                if (this.orderIsSkipped(item) || this.reviewExistsForItem(item)) {
+                    await this.skipOrder(item.orderId, {
+                        expectedItemId: run.itemId,
+                        navigate: this.isAutopilotRunning(),
+                    });
+                }
                 return false;
             }
             if (!this.runIsCurrent(run)) return false;
@@ -8315,10 +9045,17 @@ zu|Zulu
                 throw new Error('Kampanya şablonu oluşturulduktan sonra değişti. Gönderim yapılmadı; kampanyayı yeniden oluşturun.');
             }
             const baseText = TemplateEngine.render(template, { ...context, customerName: item.customerName, customerFirstName: firstName(item.customerName), itemTitle: item.itemTitle, orderId: item.orderId });
-            let finalText = baseText;
+            let finalText = '';
+            if (item.draftText || item.draftDigest) {
+                if (!item.draftText || !item.draftDigest || await sha256Text(item.draftText) !== item.draftDigest) {
+                    if (this.isAutopilotRunning()) await this.pauseAutopilot();
+                    throw new Error('Kayıtlı kampanya taslağının güçlü özeti eşleşmiyor. Mesaj gönderilmeden otomasyon durduruldu.');
+                }
+                finalText = item.draftText;
+            }
             let targetLanguage = Store.settings.replyInCustomerLanguage ? 'en' : (template.language || 'en');
             const lastMessage = context.lastCustomerMessage;
-            if (Store.settings.replyInCustomerLanguage && lastMessage && item.purpose !== 'review_request') {
+            if (!finalText && Store.settings.replyInCustomerLanguage && lastMessage && item.purpose !== 'review_request') {
                 try {
                     const preview = await Translator.translate(lastMessage, 'tr');
                     if (!this.runIsCurrent(run)) return false;
@@ -8326,20 +9063,26 @@ zu|Zulu
                 } catch { targetLanguage = 'en'; }
                 if (!this.runIsCurrent(run)) return false;
             }
-            if (item.method === 'ai') {
+            if (!finalText && item.method === 'ai') {
                 const result = await AI.generateReply({ ...context, customerName: item.customerName, orderId: item.orderId, itemTitle: item.itemTitle }, {
                     tone: template.tone || Store.settings.defaultTone, targetLanguage, replyMode: 'auto', userDraftTr: '', extraInstruction: campaignInstructionForTemplate(template), templateText: baseText,
                 });
                 if (!this.runIsCurrent(run)) return false;
                 finalText = result.reply || baseText;
-            } else if (template.language === 'tr' && targetLanguage !== 'tr') {
+            } else if (!finalText && template.language === 'tr' && targetLanguage !== 'tr') {
                 finalText = (await Translator.translate(baseText, targetLanguage)).text;
                 if (!this.runIsCurrent(run)) return false;
             }
+            if (!finalText) finalText = baseText;
             const textarea = await MessageAdapter.waitForTextarea();
             if (!textarea) throw new Error('Etsy cevap alanı bulunamadı. Konuşmayı açıp tekrar deneyin.');
             if (this.orderIsBlockedFromSend(item)) {
-                if (this.orderIsSkipped(item)) await this.skipOrder(item.orderId, { expectedItemId: run.itemId });
+                if (this.orderIsSkipped(item) || this.reviewExistsForItem(item)) {
+                    await this.skipOrder(item.orderId, {
+                        expectedItemId: run.itemId,
+                        navigate: this.isAutopilotRunning(),
+                    });
+                }
                 return false;
             }
             if (!this.runIsCurrent(run)) return false;
@@ -8351,6 +9094,23 @@ zu|Zulu
             if (!this.contextMatchesItem(freshContext, item, run.conversationIdentity)) {
                 await this.releasePendingReservation(run);
                 throw new Error('Etsy konuşma bağlamı taslak hazırlanırken değişti. Yanlış siparişe mesaj aktarılmadı.');
+            }
+            const messageDigest = await sha256Text(finalText);
+            if (!this.runIsCurrent(run)) return false;
+            const preparedSnapshot = clone(Store.campaign);
+            const preparedItem = preparedSnapshot?.items?.[preparedSnapshot.currentIndex];
+            if (preparedSnapshot?.id !== run.campaignId
+                || preparedItem?.id !== run.itemId
+                || preparedItem.status !== 'pending'
+                || preparedItem.reservation?.ownerId !== CAMPAIGN_TAB_ID
+                || preparedItem.reservation?.token !== run.reservationToken) return false;
+            if (preparedItem.draftText !== finalText || preparedItem.draftDigest !== messageDigest) {
+                preparedItem.draftText = finalText;
+                preparedItem.draftDigest = messageDigest;
+                preparedItem.preparedAt = preparedItem.preparedAt || nowIso();
+                const preparedCampaign = await Store.saveCampaign(preparedSnapshot, { expectedRevision: run.revision });
+                run.revision = preparedCampaign.revision;
+                if (!this.runIsCurrent(run)) return false;
             }
             MessageAdapter.insert(finalText, textarea);
             Verification.prepare(finalText, {
@@ -8369,21 +9129,31 @@ zu|Zulu
             });
             const campaignSnapshot = clone(Store.campaign);
             const campaignItem = campaignSnapshot?.items?.[campaignSnapshot.currentIndex];
+            const campaignItemBlocked = campaignItem && this.orderIsBlockedFromSend(campaignItem);
             if (campaignSnapshot?.id !== run.campaignId
                 || campaignItem?.id !== run.itemId
                 || campaignItem.status !== 'pending'
-                || this.orderIsBlockedFromSend(campaignItem)) {
+                || campaignItemBlocked) {
                 Verification.invalidate(pending => pending.campaignId === run.campaignId && pending.campaignItemId === run.itemId);
+                if (campaignItemBlocked && (this.orderIsSkipped(campaignItem) || this.reviewExistsForItem(campaignItem))) {
+                    await this.skipOrder(campaignItem.orderId, {
+                        expectedItemId: run.itemId,
+                        navigate: this.isAutopilotRunning(),
+                    });
+                }
                 return false;
             }
             campaignItem.status = 'inserted';
             campaignItem.insertedAt = nowIso();
+            campaignItem.draftText = finalText;
+            campaignItem.draftDigest = messageDigest;
             const savedCampaign = await Store.saveCampaign(campaignSnapshot, { expectedRevision: run.revision });
             run.revision = savedCampaign.revision;
             Verification.setCampaignRevision(run, run.revision);
             if (!this.runIsCurrent(run, 'inserted')) return false;
             const messageHash = hashText(finalText);
             run.messageHash = messageHash;
+            run.messageDigest = messageDigest;
             run.liveMessageHash = hashExactText(finalText);
             const prepared = await withCampaignCoordinator(() => Store.transitionOrderOutreachLocked(item.orderId, item.purpose, {
                 expect: (order, outreach) => ['draft', 'inserted'].includes(order?.status)
@@ -8396,7 +9166,7 @@ zu|Zulu
                             && outreach.templateHash === item.templateHash)),
                 orderPatch: {
                     status: 'inserted', campaignId: run.campaignId, campaignItemId: run.itemId,
-                    purpose: item.purpose, templateId: item.templateId, templateHash: item.templateHash, messageHash,
+                    purpose: item.purpose, templateId: item.templateId, templateHash: item.templateHash, messageHash, messageDigest,
                 },
                 ...(item.purpose === 'review_request' ? {
                     outreachPatch: Outreach.workflowPatch(item, 'prepared', {
@@ -8410,19 +9180,23 @@ zu|Zulu
                 .catch(error => console.error(`[${APP.id}] Kampanya taslağı geçmişe kaydedilemedi.`, error));
             void trackTelemetry('message_draft_generated');
             UI.open('messages');
-            const automaticSend = campaignAutoSendAllowed(item)
-                && !Router.orderComposeTargetFromUrl(item.messageUrl || '');
+            const automaticSend = campaignAutoSendAllowed(item, Store.settings, Store.campaign)
+                && (Campaign.isAutopilot(Store.campaign) || !Router.orderComposeTargetFromUrl(item.messageUrl || ''));
             UI.toast(automaticSend
-                ? 'Mesaj hazırlandı; otomatik gönderim başlatılıyor.'
+                ? 'Mesaj hazırlandı; güvenli gönderim ve Etsy doğrulaması başlatılıyor.'
                 : 'Mesaj hazır. Kontrol edip “Gönder ve Sonrakine Geç” düğmesine basın.', 'success', 6000);
             if (automaticSend) {
                 await sleep(850);
                 if (!await this.autoSendIfCurrent(run, item)) {
-                    if (this.orderIsSkipped(item)) {
-                        await this.skipOrder(item.orderId, { expectedItemId: run.itemId });
+                    if (this.orderIsSkipped(item) || this.reviewExistsForItem(item)) {
+                        await this.skipOrder(item.orderId, {
+                            expectedItemId: run.itemId,
+                            navigate: this.isAutopilotRunning(),
+                        });
                     }
                     return false;
                 }
+                return Verification.onSendClick();
             }
             return true;
         },
@@ -8436,6 +9210,17 @@ zu|Zulu
                     const persistedItem = campaign?.items?.[campaign.currentIndex];
                     const orderStatusRecord = item.orderId ? fresh.statuses.orders?.[item.orderId] : null;
                     const orderStatus = orderStatusRecord?.status || '';
+                    const liveText = String(MessageAdapter.getTextarea()?.value || '').trim();
+                    const liveDigest = liveText ? await sha256Text(liveText) : '';
+                    const dispatchAuthorized = campaign?.runMode === 'autopilot'
+                        ? campaign.runState === 'running'
+                        : (run.explicitDispatch === true || campaignAutoSendAllowed(persistedItem, Store.settings, campaign));
+                    const autopilotDigestMatches = campaign?.runMode !== 'autopilot'
+                        || (Boolean(run.messageDigest)
+                            && run.messageDigest === liveDigest
+                            && persistedItem?.draftDigest === liveDigest
+                            && persistedItem?.draftText === liveText
+                            && orderStatusRecord?.messageDigest === liveDigest);
                     let contextMatches = false;
                     try { contextMatches = this.contextMatchesItem(MessageAdapter.context(), persistedItem, run.conversationIdentity); }
                     catch { contextMatches = false; }
@@ -8446,6 +9231,8 @@ zu|Zulu
                         || campaign.status !== 'active'
                         || persistedItem?.id !== run.itemId
                         || persistedItem.status !== 'inserted'
+                        || !dispatchAuthorized
+                        || !autopilotDigestMatches
                         || persistedItem.reservation?.ownerId !== CAMPAIGN_TAB_ID
                         || persistedItem.reservation?.token !== run.reservationToken
                         || orderStatus !== 'inserted'
@@ -8458,7 +9245,7 @@ zu|Zulu
                         || Router.conversationIdentity(persistedItem.messageUrl) !== run.conversationIdentity
                         || Router.routeFingerprint() !== run.routeFingerprint
                         || !contextMatches
-                        || hashExactText(String(MessageAdapter.getTextarea()?.value || '').trim()) !== run.liveMessageHash
+                        || hashExactText(liveText) !== run.liveMessageHash
                         || !MessageAdapter.getSendButton()) return false;
                     await this.assertNoMessageCenterSendHold(run.conversationIdentity);
                     await this.assertNoNativeSendHold(run.conversationIdentity);
@@ -8504,7 +9291,17 @@ zu|Zulu
                     run.revision = savedCampaign.revision;
                     Verification.setCampaignRevision(run, run.revision);
                     const savedItem = savedCampaign.items?.[savedCampaign.currentIndex];
-                    const currentText = String(MessageAdapter.getTextarea()?.value || '').trim();
+                    const finalTextarea = MessageAdapter.getTextarea();
+                    const currentText = String(finalTextarea?.value || '').trim();
+                    const currentDigest = currentText ? await sha256Text(currentText) : '';
+                    const finalComposerStable = finalTextarea === MessageAdapter.getTextarea()
+                        && currentText === String(finalTextarea?.value || '').trim();
+                    const finalAutopilotDigestMatches = savedCampaign.runMode !== 'autopilot'
+                        || (savedCampaign.runState === 'running'
+                            && Boolean(run.messageDigest)
+                            && currentDigest === run.messageDigest
+                            && savedItem?.draftDigest === currentDigest
+                            && savedItem?.draftText === currentText);
                     const button = MessageAdapter.getSendButton();
                     let finalContextMatches = false;
                     try { finalContextMatches = this.contextMatchesItem(MessageAdapter.context(), savedItem, run.conversationIdentity); }
@@ -8522,6 +9319,8 @@ zu|Zulu
                         && Router.conversationIdentity(savedItem.messageUrl) === run.conversationIdentity
                         && Router.routeFingerprint() === run.routeFingerprint
                         && finalContextMatches
+                        && finalComposerStable
+                        && finalAutopilotDigestMatches
                         && hashExactText(currentText) === run.liveMessageHash
                         && Boolean(button);
                     if (!finalPreflight) {
@@ -8538,6 +9337,8 @@ zu|Zulu
                         || capturedVerification?.reservationToken !== run.reservationToken
                         || capturedVerification?.conversationIdentity !== run.conversationIdentity
                         || capturedVerification?.routeFingerprint !== run.routeFingerprint
+                        || (savedCampaign.runMode === 'autopilot'
+                            && capturedVerification?.text !== savedItem?.draftText)
                         || hashExactText(capturedVerification?.text || '') !== run.liveMessageHash) {
                         if (!await this.rollbackSendAttemptLocked(attempt)) {
                             throw new Error('Gönderim anındaki konuşma ve composer bağlamı doğrulanamadı; deneme kaydı geri alınamadı.');
@@ -8575,57 +9376,24 @@ zu|Zulu
                 throw error;
             }
         },
-        async completeCurrent(text, expected = {}) {
-            const result = await withCampaignCoordinator(async () => {
-                const fresh = await Store.readCoordinatedStateLocked();
-                Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
-                const campaign = fresh.campaign;
-                const item = campaign?.items?.[campaign.currentIndex];
-                if (!campaign || !item || campaign.status !== 'active') return null;
-                if (expected.campaignId && campaign.id !== expected.campaignId) return null;
-                if (expected.campaignItemId && item.id !== expected.campaignItemId) return null;
-                if (item.orderId && fresh.statuses.orders?.[item.orderId]?.status === 'skipped') return null;
-                const snapshot = clone(campaign);
-                const snapshotItem = snapshot.items[snapshot.currentIndex];
-                snapshotItem.status = 'sent';
-                snapshotItem.sentAt = nowIso();
-                snapshotItem.messageHash = hashText(text);
-                delete snapshotItem.reservation;
-                delete snapshotItem.sendAttemptToken;
-                delete snapshotItem.sendAttemptedAt;
-                delete snapshotItem.sendAttemptPreviousStatus;
-                const nextIndex = snapshot.items.findIndex((entry, index) => index > snapshot.currentIndex && entry.status === 'pending');
-                if (nextIndex === -1) {
-                    snapshot.status = 'completed';
-                    snapshot.completedAt = nowIso();
-                } else snapshot.currentIndex = nextIndex;
-                const savedCampaign = await Store.saveCampaignLocked(snapshot, { expectedRevision: campaign.revision });
-                return { savedCampaign, nextIndex, completed: nextIndex === -1 };
-            });
-            if (!result) return false;
-            if (result.completed) {
-                UI.toast('Kampanya tamamlandı.', 'success', 5000);
-                return true;
-            }
-            if (Store.settings.autoAdvanceCampaign) {
-                await sleep(700);
-                Router.navigateToConversation(result.savedCampaign.items[result.nextIndex].messageUrl);
-            }
-            return true;
-        },
         async advanceAfterVerified(expected = {}) {
-            if (!expected.advanceAfterVerified && !Store.settings.autoAdvanceCampaign) return false;
             const fresh = await withCampaignCoordinator(async () => Store.readCoordinatedStateLocked());
             Store.commitCoordinatedState(fresh.campaign, fresh.statuses, { invalidate: false, refresh: false });
             const campaign = fresh.campaign;
             if (!campaign || campaign.id !== expected.campaignId || campaign.status !== 'active') return false;
+            if (this.isAutopilot(campaign)) {
+                if (!this.isAutopilotRunning(campaign)) return false;
+            } else if (!expected.advanceAfterVerified && !Store.settings.autoAdvanceCampaign) return false;
             const nextItem = campaign.items[campaign.currentIndex];
             if (!nextItem || nextItem.id === expected.campaignItemId || nextItem.status !== 'pending' || !nextItem.messageUrl) return false;
-            await sleep(500);
-            const current = Store.campaign;
+            await sleep(this.isAutopilot(campaign) ? AUTOPILOT_NEXT_DELAY_MS : 500);
+            const latest = await withCampaignCoordinator(async () => Store.readCoordinatedStateLocked());
+            Store.commitCoordinatedState(latest.campaign, latest.statuses, { invalidate: false, refresh: false });
+            const current = latest.campaign;
             const stillNext = current?.id === campaign.id
                 && current.status === 'active'
-                && current.items?.[current.currentIndex]?.id === nextItem.id;
+                && current.items?.[current.currentIndex]?.id === nextItem.id
+                && (!this.isAutopilot(current) || this.isAutopilotRunning(current));
             if (!stillNext) return false;
             Router.navigateToConversation(nextItem.messageUrl);
             return true;
@@ -8644,6 +9412,9 @@ zu|Zulu
                 if ((expectedCampaignId && campaign?.id !== expectedCampaignId)
                     || (hasExpectedRevision && campaign?.revision !== expectedRevision)) {
                     throw campaignConflictError();
+                }
+                if (this.hasUnresolvedSend(campaign, fresh.statuses)) {
+                    throw new Error('Doğrulaması veya kalıcı uzlaştırması süren bir gönderim varken alıcı atlanamaz.');
                 }
                 const identityMatches = (entry) => expectedItemId
                     ? entry.id === expectedItemId && entry.orderId === orderId
@@ -8736,7 +9507,7 @@ zu|Zulu
                     throw campaignConflictError();
                 }
                 if (!campaign || campaign.id !== campaignId || !this.isNonterminal(campaign)) return null;
-                if (campaign.items.some(item => item.status === CAMPAIGN_SEND_PENDING_STATUS)) {
+                if (this.hasUnresolvedSend(campaign, fresh.statuses)) {
                     throw new Error('Doğrulaması bekleyen gönderim çözülmeden kampanya durdurulamaz. Önce “Gönderildi” veya “Gönderilmedi” seçin.');
                 }
                 const snapshot = clone(campaign);
@@ -9146,7 +9917,7 @@ zu|Zulu
             document.documentElement.appendChild(this.host);
             this.shadow = this.host.attachShadow({ mode: 'closed' });
             this.shadow.innerHTML = `
-                <style>${CSS}${LAUNCHER_CSS}${UX_CSS}</style>${ICON_SPRITE}
+                <style>${CSS}${LAUNCHER_CSS}${UX_CSS}${PREMIUM_CSS}</style>${ICON_SPRITE}
                 <div class="ma-root">
                     <button class="ma-launcher" type="button" data-action="toggle-app" aria-label="Makaytron Mesaj Asistanını Aç" aria-controls="mema-app-panel" aria-expanded="false"><span class="ma-launcher__mark"><img class="ma-logo-img" src="${attr(BRAND_LOGO_URL)}" alt=""></span><span class="ma-launcher__copy"><span class="ma-launcher__title">Asistan</span><span class="ma-launcher__state">Kapalı</span></span><span class="ma-launcher__action">Aç</span></button>
                     <section id="mema-app-panel" class="ma-app ma-hidden" aria-label="Makaytron Etsy Message Assistant" aria-hidden="true">
@@ -9157,7 +9928,7 @@ zu|Zulu
                             <button class="ma-icon-btn" type="button" data-action="toggle-wide" title="Geniş görünüm" aria-pressed="false">${icon('expand')}</button>
                             <button class="ma-panel-close" type="button" data-action="close-app" aria-label="Mesaj Asistanını Kapat" title="Paneli kapat"><span>Kapat</span>${icon('close', 'ma-icon--sm')}</button>
                         </header>
-                        <nav class="ma-nav" aria-label="Asistan bölümleri">${NAV_ITEMS.map(([id, iconName, label]) => `<button class="ma-nav__item" type="button" data-page="${id}" title="${label}">${icon(iconName)}<span class="ma-nav__label">${label}</span></button>`).join('')}<div class="ma-nav__foot">v${APP.version}</div></nav>
+                        <nav class="ma-nav" aria-label="Asistan bölümleri"><div class="ma-nav__group"><div class="ma-nav__eyebrow">Çalışma</div>${NAV_ITEMS.slice(0, 3).map(([id, iconName, label]) => `<button class="ma-nav__item" type="button" data-page="${id}" title="${label}" aria-label="${label}">${icon(iconName)}<span class="ma-nav__label">${label}</span></button>`).join('')}</div><div class="ma-nav__group ma-nav__group--utility"><div class="ma-nav__eyebrow">Araçlar</div>${NAV_ITEMS.slice(3).map(([id, iconName, label]) => `<button class="ma-nav__item" type="button" data-page="${id}" title="${label}" aria-label="${label}">${icon(iconName)}<span class="ma-nav__label">${label}</span></button>`).join('')}</div><div class="ma-nav__foot">v${APP.version}</div></nav>
                         <main class="ma-main"><div class="ma-busy-status" role="status" aria-live="polite">İşlem sürüyor…</div><div class="ma-view"></div></main>
                     </section>
                 </div>`;
@@ -9329,11 +10100,13 @@ zu|Zulu
             this.app?.classList?.toggle('ma-busy', value);
             this.app?.setAttribute?.('aria-busy', String(Boolean(value)));
             if (this.view) this.view.inert = Boolean(value);
+            const nav = this.shadow?.querySelector?.('.ma-nav');
+            if (nav) nav.inert = Boolean(value);
         },
         async refreshCurrent() {
             if (!this.state.open) return;
             if (this.state.page === 'messages') await this.refreshMessages();
-            if (this.state.page === 'orders') this.refreshOrders();
+            if (this.state.page === 'orders') await this.refreshOrders();
             if (this.state.page === 'reviews') this.refreshReviews();
             this.render();
         },
@@ -9389,23 +10162,28 @@ zu|Zulu
         refreshOrders() {
             this.state.orders = OrdersAdapter.scan();
             OrdersAdapter.decorate(this.state.orders);
-            const activeTemplates = TemplateEngine.active();
-            const selectedTemplateIsActive = activeTemplates.some((template) => template.id === this.state.selectedTemplateId);
-            if (!this.state.ordersTemplateInitialized || !selectedTemplateIsActive) {
-                const preferredTemplateId = Store.settings.defaultDeliveredTemplateId || 'tpl-review-request';
-                const initialTemplate = activeTemplates.find((template) => template.id === preferredTemplateId)
-                    || activeTemplates.find((template) => template.id === 'tpl-delivered')
-                    || activeTemplates[0];
-                this.state.selectedTemplateId = initialTemplate?.id || '';
-                this.state.selectedOrders.clear();
-                if (initialTemplate?.purpose === 'review_request') this.state.composeMethod = 'template';
-                this.state.ordersTemplateInitialized = true;
-            }
-            const purpose = Outreach.purposeForTemplate(TemplateEngine.get(this.state.selectedTemplateId));
-            const available = new Set(this.state.orders
-                .filter((order) => order.messageUrl && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose))
-                .map((order) => order.orderId));
-            this.state.selectedOrders = new Set([...this.state.selectedOrders].filter((id) => available.has(id)));
+            const finalize = () => {
+                const activeTemplates = TemplateEngine.active();
+                const selectedTemplateIsActive = activeTemplates.some((template) => template.id === this.state.selectedTemplateId);
+                if (!this.state.ordersTemplateInitialized || !selectedTemplateIsActive) {
+                    const preferredTemplateId = Store.settings.defaultDeliveredTemplateId || 'tpl-review-request';
+                    const initialTemplate = activeTemplates.find((template) => template.id === preferredTemplateId)
+                        || activeTemplates.find((template) => template.id === 'tpl-delivered')
+                        || activeTemplates[0];
+                    this.state.selectedTemplateId = initialTemplate?.id || '';
+                    this.state.selectedOrders.clear();
+                    if (initialTemplate?.purpose === 'review_request') this.state.composeMethod = 'template';
+                    this.state.ordersTemplateInitialized = true;
+                }
+                const purpose = Outreach.purposeForTemplate(TemplateEngine.get(this.state.selectedTemplateId));
+                const available = new Set(this.state.orders
+                    .filter((order) => order.messageUrl && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose, order))
+                    .map((order) => order.orderId));
+                this.state.selectedOrders = new Set([...this.state.selectedOrders].filter((id) => available.has(id)));
+                return this.state.orders;
+            };
+            const persistence = OrdersAdapter.persistDetectedReviewEvidence(this.state.orders);
+            return persistence ? persistence.then(finalize) : finalize();
         },
         refreshReviews() {
             const previousId = this.state.selectedReviewId;
@@ -9536,6 +10314,12 @@ zu|Zulu
             const campaignConversationIdentity = campaign ? Router.conversationIdentity(campaign.messageUrl) : '';
             const activeContextIdentity = String(context.conversationId || '').normalize('NFKC').trim().toLocaleLowerCase('en-US');
             const campaignAwaitingVerification = campaign?.status === CAMPAIGN_SEND_PENDING_STATUS;
+            const unresolvedCampaignItem = Campaign.unresolvedSendItem(Store.campaign, Store.statuses);
+            const campaignRecoveryBlocked = Boolean(campaign
+                && unresolvedCampaignItem?.id === campaign.id
+                && !campaignAwaitingVerification);
+            const campaignAutopilot = Campaign.isAutopilot(Store.campaign);
+            const campaignAutopilotRunning = Campaign.isAutopilotRunning(Store.campaign);
             const campaignRouteMatches = Boolean(campaign
                 && campaignConversationIdentity
                 && campaignConversationIdentity === Router.conversationIdentity(location.href)
@@ -9555,11 +10339,15 @@ zu|Zulu
                 ? `data-campaign-id="${attr(campaignBinding.id)}" data-campaign-item-id="${attr(campaign.id)}" data-campaign-order-id="${attr(campaign.orderId)}" data-campaign-revision="${attr(campaignBinding.revision)}"`
                 : '';
             const campaignBar = campaign
-                ? campaignAwaitingVerification
+                ? campaignRecoveryBlocked
+                    ? `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Kalıcı gönderim sonucu uzlaştırılıyor.</strong><br>Sipariş #${html(campaign.orderId)} çözülmeden otomasyon değiştirilemez ve aynı mesaj yeniden gönderilmez.<div class="ma-actions"><button class="ma-btn ma-btn--small" data-order-open="${attr(campaign.orderId)}" ${campaign.messageUrl ? '' : 'disabled'}>Konuşmayı Aç</button></div></div></div>`
+                    : campaignAwaitingVerification
                     ? campaignRouteMatches
                         ? `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Gönderim sonucu doğrulanmayı bekliyor.</strong><br>Sipariş #${html(campaign.orderId)} için Etsy konuşmasındaki yeni mesaj balonunu kontrol edin; sonuç çözülmeden kampanya ilerletilemez.<div class="ma-actions"><button class="ma-btn ma-btn--small" data-order-confirm-sent="${attr(campaign.orderId)}">Gönderildi</button><button class="ma-btn ma-btn--small" data-order-confirm-not-sent="${attr(campaign.orderId)}">Gönderilmedi</button></div></div></div>`
                         : `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Sipariş #${html(campaign.orderId)} için gönderim doğrulaması bekliyor.</strong><br>“Gönderildi” veya “Gönderilmedi” seçmeden önce bu siparişin doğru Etsy konuşmasını açın.</div></div>`
-                    : `<div class="ma-notice ma-notice--info">${icon('send')}<div><strong>Aktif kampanya:</strong> ${html(campaign.customerName)} — Sipariş #${html(campaign.orderId)}<br>${guidedSendReady ? 'Mesaj Etsy kutusunda hazır; son kontrol ve gönderim sizde.' : 'Sıradaki mesaj hazırlanıyor veya doğru konuşma bekleniyor.'}<div class="ma-actions"><button class="ma-btn ma-btn--primary" data-action="campaign-send-next" ${guidedSendReady ? '' : 'disabled'}>${icon('send')}Gönder ve Sonrakine Geç</button><button class="ma-btn ma-btn--small" data-action="campaign-skip" ${campaignActionBinding}>Atla ve Sonraki</button><button class="ma-btn ma-btn--small ma-btn--danger" data-action="campaign-cancel" ${campaignActionBinding}>Kampanyayı Durdur</button></div></div></div>`
+                    : campaignAutopilot
+                        ? `<div class="ma-notice ma-notice--info" role="status">${icon('send')}<div><strong>Otopilot ${campaignAutopilotRunning ? 'çalışıyor' : 'duraklatıldı'}:</strong> ${html(campaign.customerName)} — Sipariş #${html(campaign.orderId)}<br>${campaignAutopilotRunning ? 'Metin ve alıcı doğrulanıyor; Etsy mesaj balonu görülmeden sıradaki alıcı başlamaz.' : 'Kaldığınız yer kaydedildi. Devam ettiğinizde bu alıcıdan başlanır.'}<div class="ma-actions">${campaignAutopilotRunning ? `<button class="ma-btn ma-btn--primary" data-action="campaign-pause" ${campaignActionBinding}>Duraklat</button>` : `<button class="ma-btn ma-btn--primary" data-action="campaign-start" ${campaignActionBinding}>Devam Et</button>`}<button class="ma-btn ma-btn--small" data-action="campaign-skip" ${campaignActionBinding}>Bu Alıcıyı Atla</button></div></div></div>`
+                        : `<div class="ma-notice ma-notice--info">${icon('send')}<div><strong>Rehberli kampanya:</strong> ${html(campaign.customerName)} — Sipariş #${html(campaign.orderId)}<br>${guidedSendReady ? 'Mesaj Etsy kutusunda hazır.' : 'Sıradaki mesaj hazırlanıyor veya doğru konuşma bekleniyor.'}<div class="ma-actions"><button class="ma-btn ma-btn--primary" data-action="campaign-send-next" ${guidedSendReady ? '' : 'disabled'}>${icon('send')}Gönder ve Sonrakine Geç</button><button class="ma-btn ma-btn--small" data-action="campaign-start" ${campaignActionBinding}>Otopilota Geç</button><button class="ma-btn ma-btn--small" data-action="campaign-skip" ${campaignActionBinding}>Atla ve Sonraki</button><button class="ma-btn ma-btn--small ma-btn--danger" data-action="campaign-cancel" ${campaignActionBinding}>Kampanyayı Durdur</button></div></div></div>`
                 : '';
             const riskNotice = Store.settings.showRiskTags && analysis.risk === 'high'
                 ? `<div class="ma-notice ma-notice--danger ma-risk-only">${icon('alert')}<div><strong>Manuel kontrol gerekli.</strong> Mesaj para iadesi, hasar veya ciddi memnuniyetsizlik içerebilir.</div></div>`
@@ -9630,84 +10418,94 @@ zu|Zulu
             const selectedTemplate = TemplateEngine.get(this.state.selectedTemplateId);
             const purpose = Outreach.purposeForTemplate(selectedTemplate);
             const isReviewRequest = purpose === 'review_request';
-            const eligibleOrders = orders.filter((order) => order.messageUrl && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose));
-            const selected = eligibleOrders.filter((order) => this.state.selectedOrders.has(order.orderId));
+            const eligibleOrders = orders.filter(order => order.messageUrl
+                && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose, order));
+            const selected = eligibleOrders.filter(order => this.state.selectedOrders.has(order.orderId));
             const current = Campaign.current();
-            const campaignAwaitingVerification = current?.status === CAMPAIGN_SEND_PENDING_STATUS;
+            const awaitingVerification = current?.status === CAMPAIGN_SEND_PENDING_STATUS;
+            const mutationBlocked = Campaign.hasUnresolvedSend(campaign, Store.statuses);
+            const recoveryItem = Campaign.unresolvedSendItem(campaign, Store.statuses) || current;
+            const running = Campaign.isAutopilotRunning(campaign);
+            const paused = Boolean(campaign && Campaign.isAutopilot(campaign) && !running);
+            const total = campaign?.items?.length || selected.length;
+            const sent = campaign?.items?.filter(item => item.status === 'sent').length || 0;
+            const skipped = campaign?.items?.filter(item => item.status === 'skipped').length || 0;
+            const processed = sent + skipped;
+            const progress = total ? Math.min(100, Math.round((processed / total) * 100)) : 0;
             const pendingReviewChecks = isReviewRequest
-                ? orders.filter(order => order.messageUrl && ['unknown', 'expired'].includes(Outreach.decisionUiValue(Outreach.record(order.orderId, 'review_request')))).length
+                ? orders.filter(order => order.messageUrl
+                    && ['unknown', 'expired'].includes(Outreach.decisionUiValue(Outreach.record(order.orderId, 'review_request')))).length
                 : 0;
-            const actions = `<button class="ma-btn" data-action="orders-scan">${icon('refresh')}Yenile</button>${campaignAwaitingVerification ? '' : `<button class="ma-btn ma-btn--primary" data-action="campaign-create" ${selected.length ? '' : 'disabled'}>${icon('send')}Seçilenlere Mesaj Hazırla</button>`}`;
-            if (Router.page() !== 'orders' || !Router.isCompletedOrdersPage()) return `${this.renderHead('Teslim Edilen Siparişler', 'Teslim edilen siparişlerde kontrollü ve tekrarsız iletişim akışı oluşturun.')}<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Completed Orders sayfasını açın</h3><p>Yalnız tamamlanmış sipariş kartları bu akışa alınır. New veya başka bir sipariş görünümünde kampanya kontrolleri gösterilmez.</p><button class="ma-btn ma-btn--primary" data-action="go-orders">Teslim Edilenlere Git</button></div></div>`;
-            const rows = orders.map((order) => {
-                const status = Store.getStatus('orders', order.orderId).status || order.status?.status || 'none';
+            const actions = `<button class="ma-btn" data-action="orders-scan">${icon('refresh')}Yenile</button>`;
+            if (Router.page() !== 'orders' || !Router.isCompletedOrdersPage()) {
+                return `${this.renderHead('Otomasyon', 'Teslim edilen siparişleri güvenli bir sırayla işler.')}
+                    <div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Completed Orders sayfasını açın</h3><p>Otopilot yalnız Etsy’nin tamamlanmış sipariş kartlarından güvenli bir kuyruk oluşturur.</p><button class="ma-btn ma-btn--primary" data-action="go-orders">Teslim Edilenlere Git</button></div></div>`;
+            }
+
+            const campaignBinding = campaign
+                ? `data-campaign-id="${attr(campaign.id)}" data-campaign-revision="${attr(campaign.revision)}"`
+                : '';
+            const heroEyebrow = mutationBlocked ? 'Kontrol gerekli' : running ? 'Otopilot çalışıyor' : paused ? 'Otopilot duraklatıldı' : 'Otopilot hazır';
+            const heroTitle = campaign
+                ? mutationBlocked
+                    ? `${recoveryItem?.customerName || 'Müşteri'} için sonuç bekleniyor`
+                    : running
+                        ? `${current?.customerName || 'Sıradaki alıcı'} işleniyor`
+                        : 'Kaldığınız yer güvenle kaydedildi'
+                : selected.length
+                    ? `${selected.length} sipariş gönderime hazır`
+                    : 'Gönderilecek siparişleri seçin';
+            const heroDescription = campaign
+                ? mutationBlocked
+                    ? 'Etsy mesaj balonu kesin olarak doğrulanamadı. Aynı mesaj tekrar gönderilmeyecek; doğru konuşmayı açıp sonucu çözün.'
+                    : running
+                        ? 'Script her alıcıyı tek tek açar, metni hazırlar, gönderir ve Etsy mesaj balonunu doğrulamadan sonraki alıcıya geçmez.'
+                        : 'Devam ettiğinizde sıra mevcut alıcıdan başlar. Kaydedilmiş metin ve konuşma birebir eşleşmeden gönderim yapılmaz.'
+                : isReviewRequest
+                    ? 'Yalnız “Yorum yok” olarak güncel biçimde onayladığınız siparişler kuyruğa girer. Başlattıktan sonra sıra kendi kendine ilerler.'
+                    : 'Seçili teslimat mesajları tek tek hazırlanır, gönderilir ve doğrulanır.';
+            const heroPrimary = campaign
+                ? mutationBlocked
+                    ? `<button class="ma-btn ma-btn--primary" data-order-open="${attr(recoveryItem?.orderId || '')}" ${recoveryItem?.messageUrl ? '' : 'disabled'}>${icon('message')}Konuşmayı Aç</button>`
+                    : running
+                        ? `<button class="ma-btn ma-btn--primary" data-action="campaign-pause" ${campaignBinding}>Duraklat</button>`
+                        : `<button class="ma-btn ma-btn--primary" data-action="campaign-start" ${campaignBinding}>${icon('send')}Devam Et</button>`
+                : `<button class="ma-btn ma-btn--primary" data-action="campaign-create" ${selected.length ? '' : 'disabled'}>${icon('send')}Otopilotu Başlat</button>`;
+            const templateOptions = TemplateEngine.active().map(template => `<option value="${attr(template.id)}" ${this.state.selectedTemplateId === template.id ? 'selected' : ''}>${html(template.name)}</option>`).join('');
+            const optionsPanel = campaign
+                ? awaitingVerification || mutationBlocked
+                    ? ''
+                    : `<details class="ma-disclosure ma-automation-options"><summary>Otomasyon ayrıntıları</summary><div class="ma-disclosure__body"><div class="ma-small">Kampanya ${html(campaign.id)} · ${sent} gönderildi · ${skipped} atlandı</div><div class="ma-actions"><button class="ma-btn ma-btn--small ma-btn--danger" data-action="campaign-cancel" ${campaignBinding}>Otomasyonu Bitir</button></div></div></details>`
+                : `<details class="ma-disclosure ma-automation-options"><summary>Mesaj ayarları ve önizleme</summary><div class="ma-disclosure__body"><div class="ma-grid ma-grid--2"><div class="ma-field"><label for="ma-orders-template">Şablon</label><select id="ma-orders-template" class="ma-select" data-bind="selectedTemplateId">${templateOptions}</select></div><div class="ma-field"><label for="ma-orders-method">Yöntem</label><select id="ma-orders-method" class="ma-select" data-bind="composeMethod"><option value="free" ${this.state.composeMethod === 'free' ? 'selected' : ''}>Ücretsiz Çeviri</option><option value="ai" ${this.state.composeMethod === 'ai' ? 'selected' : ''}>AI (${html(AI.provider().short)})</option><option value="template" ${this.state.composeMethod === 'template' ? 'selected' : ''}>Standart Şablon</option></select></div></div>${selected[0] ? `<div><div class="ma-label-row"><strong>Önizleme — ${html(selected[0].customerName)}</strong></div><div class="ma-message-box">${html(TemplateEngine.render(selectedTemplate, selected[0]))}</div></div>` : ''}</div></details>`;
+            const hero = `<section class="ma-automation-hero" aria-label="Otomasyon durumu"><div class="ma-automation-hero__top"><div class="ma-automation-hero__copy"><div class="ma-automation-hero__eyebrow"><span class="ma-automation-dot ${running ? 'is-running' : ''}"></span>${html(heroEyebrow)}</div><h3>${html(heroTitle)}</h3><p>${html(heroDescription)}</p></div></div><div class="ma-automation-hero__metrics"><div class="ma-automation-metric"><strong>${campaign ? sent : selected.length}</strong><span>${campaign ? 'Gönderildi' : 'Seçili'}</span></div><div class="ma-automation-metric"><strong>${campaign ? Math.max(0, total - processed) : eligibleOrders.length}</strong><span>${campaign ? 'Sırada' : 'Uygun'}</span></div><div class="ma-automation-metric"><strong>${campaign ? `${progress}%` : pendingReviewChecks}</strong><span>${campaign ? 'Tamamlandı' : 'Kontrol bekliyor'}</span></div></div>${campaign ? `<div class="ma-progress" role="progressbar" aria-label="Otomasyon ilerlemesi" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${processed}"><div class="ma-progress__bar" style="width:${progress}%"></div></div>` : ''}<div class="ma-automation-hero__footer">${heroPrimary}</div>${optionsPanel}</section>`;
+
+            const cards = orders.map(order => {
+                const orderStatus = Store.getStatus('orders', order.orderId);
+                const status = orderStatus.status || order.status?.status || 'none';
                 const outreach = Outreach.record(order.orderId, 'review_request');
                 const reviewDecision = Outreach.decisionUiValue(outreach);
-                const isEligible = Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose);
+                const autoReviewDetected = order.reviewExists === true
+                    || (outreach.decision === 'ineligible' && outreach.reason === 'review_exists' && outreach.source === 'dom');
+                const displayedReviewDecision = autoReviewDetected ? 'review_exists' : reviewDecision;
+                const isEligible = Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose, order);
                 const isSelected = isEligible && this.state.selectedOrders.has(order.orderId);
                 const canMessage = Boolean(order.messageUrl);
-                const statusLabel = !canMessage && status === 'none' ? 'Konuşma Yok' : ({ none: 'İşlem Yok', draft: 'Taslak Hazır', inserted: 'Etsy Kutusunda', sent_pending_verification: 'Gönderim Doğrulaması Bekliyor', sent: 'Gönderildi', error: 'Hata', skipped: 'Atlandı' }[status] || status);
-                const statusTone = !canMessage && status === 'none' ? 'warning' : ({ none: '', draft: 'info', inserted: 'warning', sent_pending_verification: 'warning', sent: 'success', error: 'danger', skipped: '' }[status]);
-                const recoveryActions = status === CAMPAIGN_SEND_PENDING_STATUS
-                    ? `<button class="ma-btn ma-btn--small" data-order-confirm-sent="${attr(order.orderId)}">Gönderildi</button><button class="ma-btn ma-btn--small" data-order-confirm-not-sent="${attr(order.orderId)}">Gönderilmedi</button>`
+                const statusLabel = !canMessage && status === 'none' ? 'Konuşma yok' : ({ none: 'Hazır değil', draft: 'Kuyrukta', inserted: 'Mesaj hazır', sent_pending_verification: 'Doğrulanıyor', sent: 'Gönderildi', error: 'Kontrol gerekli', skipped: 'Atlandı' }[status] || status);
+                const statusTone = !canMessage && status === 'none' ? 'warning' : ({ draft: 'info', inserted: 'warning', sent_pending_verification: 'warning', sent: 'success', error: 'danger' }[status] || '');
+                const workflowLabel = ({ none: 'Talep yok', queued: 'Kuyrukta', prepared: 'Mesaj hazır', sent_pending_verification: 'Doğrulanıyor', sent: 'Talep gönderildi', ambiguous: 'Manuel kontrol' })[outreach.workflow] || outreach.workflow;
+                const decisionOptions = displayedReviewDecision === 'legacy_unknown'
+                    ? `<option value="legacy_unknown" selected disabled>Önceki mesaj belirsiz</option><option value="legacy_non_review">Yorum talebi değildi</option>`
+                    : `<option value="unknown" ${displayedReviewDecision === 'unknown' ? 'selected' : ''}>Kontrol edilmedi</option><option value="eligible" ${displayedReviewDecision === 'eligible' ? 'selected' : ''}>Yorum yok — uygun</option>`;
+                const decisionControl = isReviewRequest
+                    ? `<div class="ma-field"><label for="ma-review-${attr(order.orderId)}">Yorum durumu</label><select id="ma-review-${attr(order.orderId)}" class="ma-select" data-review-decision="${attr(order.orderId)}" ${autoReviewDetected || ['sent', CAMPAIGN_SEND_PENDING_STATUS].includes(outreach.workflow) ? 'disabled' : ''}>${decisionOptions}<option value="review_exists" ${displayedReviewDecision === 'review_exists' ? 'selected' : ''}>Yorum var</option><option value="deferred" ${displayedReviewDecision === 'deferred' ? 'selected' : ''}>Ertele</option><option value="blocked" ${displayedReviewDecision === 'blocked' ? 'selected' : ''}>İletişim istemiyor / sorun var</option>${displayedReviewDecision === 'expired' ? '<option value="expired" selected disabled>Süresi doldu — yeniden kontrol edin</option>' : ''}</select><div class="ma-field__hint">${html(autoReviewDetected ? 'Etsy yorumu bulundu — otomatik atlandı' : workflowLabel)}</div></div>`
                     : '';
-                const campaignItem = campaign?.status === 'active'
+                const campaignItem = campaign?.status === 'active' && !mutationBlocked
                     ? campaign.items?.find(item => item.orderId === order.orderId && ['pending', 'inserted'].includes(item.status))
                     : null;
-                const skipAction = campaignItem
-                    ? `<button class="ma-btn ma-btn--small" data-order-skip="${attr(order.orderId)}">Bu Kampanyada Atla</button>`
-                    : '';
-                const workflowLabel = ({
-                    none: 'Talep yok', queued: 'Kuyrukta', prepared: 'Mesaj hazır',
-                    sent_pending_verification: 'Gönderim doğrulanıyor', sent: 'Talep gönderildi', ambiguous: 'Manuel kontrol gerekli',
-                })[outreach.workflow] || outreach.workflow;
-                const reviewDecisionOptions = reviewDecision === 'legacy_unknown'
-                    ? `<option value="legacy_unknown" selected disabled>Önceki mesajın amacı belirsiz</option>
-                        <option value="legacy_non_review">Önceki mesaj yorum talebi değildi — onayla</option>`
-                    : `<option value="unknown" ${reviewDecision === 'unknown' ? 'selected' : ''}>Kontrol edilmedi</option>
-                        <option value="eligible" ${reviewDecision === 'eligible' ? 'selected' : ''}>Yorum yok — kuyruğa uygun</option>`;
-                const reviewDecisionControl = isReviewRequest
-                    ? `<div class="ma-field"><select class="ma-select" data-review-decision="${attr(order.orderId)}" ${['sent', CAMPAIGN_SEND_PENDING_STATUS].includes(outreach.workflow) ? 'disabled' : ''}>
-                        ${reviewDecisionOptions}
-                        <option value="review_exists" ${reviewDecision === 'review_exists' ? 'selected' : ''}>Yorum var</option>
-                        <option value="deferred" ${reviewDecision === 'deferred' ? 'selected' : ''}>Ertele</option>
-                        <option value="blocked" ${reviewDecision === 'blocked' ? 'selected' : ''}>İletişim istemiyor / sorun var</option>
-                        ${reviewDecision === 'expired' ? '<option value="expired" selected disabled>Kontrol süresi doldu — yeniden seçin</option>' : ''}
-                    </select><div class="ma-field__hint">${html(workflowLabel)}</div></div>`
-                    : '<span class="ma-muted">—</span>';
-                return `<tr class="${isSelected ? 'is-selected' : ''}"><td><input class="ma-check" type="checkbox" data-order-select="${attr(order.orderId)}" ${isSelected ? 'checked' : ''} ${canMessage && isEligible ? '' : 'disabled'}></td><td><strong>#${html(order.orderId)}</strong><div class="ma-small ma-muted">${html(order.price)}</div></td><td>${html(order.customerName)}</td><td><div class="ma-product">${order.imageUrl ? `<img class="ma-product__image" src="${attr(order.imageUrl)}" alt="">` : '<span class="ma-product__image"></span>'}<div class="ma-table__product" title="${attr(order.itemTitle)}">${html(order.itemTitle || 'Ürün')}</div></div></td><td><span class="ma-pill ma-pill--success">Teslim Edildi</span></td><td>${reviewDecisionControl}</td><td><span class="ma-pill ${statusTone ? `ma-pill--${statusTone}` : ''}">${html(statusLabel)}</span></td><td><div class="ma-actions"><button class="ma-btn ma-btn--small" data-order-open="${attr(order.orderId)}" ${order.messageUrl ? '' : 'disabled'}>Mesajı Aç</button>${recoveryActions}${skipAction}</div></td></tr>`;
+                return `<article class="ma-order-card ${isSelected ? 'is-selected' : ''}"><div class="ma-order-card__top"><input class="ma-check" type="checkbox" data-order-select="${attr(order.orderId)}" aria-label="Sipariş ${attr(order.orderId)} seç" ${isSelected ? 'checked' : ''} ${canMessage && isEligible && !campaign ? '' : 'disabled'}>${order.imageUrl ? `<img class="ma-order-card__image" src="${attr(order.imageUrl)}" alt="">` : '<span class="ma-order-card__image"></span>'}<div class="ma-order-card__copy"><div class="ma-order-card__name">${html(order.customerName)}</div><div class="ma-order-card__meta">Sipariş #${html(order.orderId)}${order.price ? ` · ${html(order.price)}` : ''}</div><div class="ma-order-card__product" title="${attr(order.itemTitle)}">${html(order.itemTitle || 'Ürün')}</div></div><div class="ma-order-card__status"><span class="ma-pill ma-pill--success">Teslim edildi</span>${isReviewRequest && autoReviewDetected ? '<span class="ma-pill ma-pill--info">Yorum var · Otomatik atlandı</span>' : ''}<span class="ma-pill ${statusTone ? `ma-pill--${statusTone}` : ''}">${html(statusLabel)}</span></div></div><div class="ma-order-card__body"><div class="ma-order-card__actions">${decisionControl}<button class="ma-btn ma-btn--small" data-order-open="${attr(order.orderId)}" ${order.messageUrl ? '' : 'disabled'}>Mesajı Aç</button>${campaignItem ? `<button class="ma-btn ma-btn--small" data-order-skip="${attr(order.orderId)}">Atla</button>` : ''}</div></div></article>`;
             }).join('');
-            const templateOptions = TemplateEngine.active().map((template) => `<option value="${attr(template.id)}" ${this.state.selectedTemplateId === template.id ? 'selected' : ''}>${html(template.name)}</option>`).join('');
-            const reviewRequestNotice = isReviewRequest
-                ? `<div class="ma-notice">${icon('alert')}<div><strong>Önce her siparişin yorum durumunu işaretleyin.</strong><br>“Yorum yok” onayı 2 saat geçerlidir. Script aynı siparişe ikinci yorum talebini engeller ve mesajı hazırlar; son gönderim her alıcı için sizin düğme tıklamanızla yapılır.</div></div>`
-                : '';
-            const campaignPanel = campaign
-                ? campaignAwaitingVerification
-                    ? `<div class="ma-notice ma-notice--warning" role="status">${icon('alert')}<div><strong>Gönderim sonucu doğrulanmayı bekliyor.</strong><br>Etsy konuşmasında mesajın gerçekten gönderilip gönderilmediğini kontrol edin; sonra ilgili sipariş satırındaki “Gönderildi” veya “Gönderilmedi” doğrulama aksiyonunu kullanın. Sonuç çözülmeden sıra devam ettirilemez, atlanamaz veya durdurulamaz.</div></div>`
-                    : `<div class="ma-notice ma-notice--info">${icon('send')}<div><strong>Kampanya ${html(campaign.status)}</strong><br>${campaign.items.filter((item) => item.status === 'sent').length}/${campaign.items.length} gönderildi.${current ? `<br>Sıradaki: ${html(current.customerName)}` : ''}</div></div><div class="ma-actions"><button class="ma-btn ma-btn--primary" data-action="campaign-start" ${current ? '' : 'disabled'}>Sırayı Devam Ettir</button><button class="ma-btn ma-btn--danger" data-action="campaign-cancel" data-campaign-id="${attr(campaign.id)}" data-campaign-revision="${attr(campaign.revision)}">Durdur</button></div>`
-                : '';
-            return `${this.renderHead('Teslim Edilen Siparişler', 'Yalnız Etsy kartında Delivered olarak doğrulanan siparişler listelenir.', actions)}
-                <div class="ma-split ma-orders-layout">
-                    <div class="ma-stack ma-orders-list">
-                        <div class="ma-toolbar">
-                            <span class="ma-pill ma-pill--primary">${selected.length} seçili</span>
-                            <span class="ma-pill">${isReviewRequest ? `${eligibleOrders.length} gönderime hazır · ${pendingReviewChecks} yorum kontrolü bekliyor` : `${orders.length} teslim edilmiş · ${eligibleOrders.length} mesaj uygun`}</span>
-                            <button class="ma-btn ma-btn--small" data-action="orders-select-all">${isReviewRequest ? 'Onaylıları Seç' : 'Uygunların Tümünü Seç'}</button>
-                            <button class="ma-btn ma-btn--small" data-action="orders-clear-selection">Temizle</button>
-                        </div>
-                        <div class="ma-table-wrap"><table class="ma-table"><thead><tr><th></th><th>Sipariş</th><th>Müşteri</th><th>Ürün</th><th>Teslimat</th><th>Yorum Kontrolü</th><th>Mesaj Durumu</th><th>İşlem</th></tr></thead><tbody>${rows || '<tr><td colspan="8">Delivered durumunda sipariş kartı bulunamadı.</td></tr>'}</tbody></table></div>
-                    </div>
-                    <div class="ma-card">
-                        <div class="ma-card__head"><h3>Teslimat Sonrası Mesaj Akışı</h3></div>
-                        <div class="ma-card__body ma-stack">
-                            <div class="ma-field"><label>Şablon</label><select class="ma-select" data-bind="selectedTemplateId">${templateOptions}</select></div>
-                            ${reviewRequestNotice}
-                            <div class="ma-field"><label>Yöntem</label><select class="ma-select" data-bind="composeMethod"><option value="free" ${this.state.composeMethod === 'free' ? 'selected' : ''}>Ücretsiz Çeviri</option><option value="ai" ${this.state.composeMethod === 'ai' ? 'selected' : ''}>AI (${html(AI.provider().short)})</option><option value="template" ${this.state.composeMethod === 'template' ? 'selected' : ''}>Standart Şablon</option></select></div>
-                            ${selected[0] ? `<div><div class="ma-label-row"><strong>Önizleme — ${html(selected[0].customerName)}</strong></div><div class="ma-message-box ma-message-box--accent">${html(TemplateEngine.render(selectedTemplate, selected[0]))}</div></div>` : '<div class="ma-muted">Önizleme için bir sipariş seçin.</div>'}
-                            ${campaignPanel}
-                        </div>
-                    </div>
-                </div>`;
+            const selectionToolbar = campaign ? '' : `<div class="ma-order-toolbar"><span class="ma-pill ma-pill--primary">${selected.length} seçili</span><span class="ma-pill">${eligibleOrders.length} uygun</span><button class="ma-btn ma-btn--small" data-action="orders-select-all">${isReviewRequest ? 'Onaylıları Seç' : 'Uygunların Tümünü Seç'}</button><button class="ma-btn ma-btn--small" data-action="orders-clear-selection">Temizle</button></div>`;
+            return `${this.renderHead('Otomasyon', 'Teslim edilen siparişleri seçin; gerisini güvenli otopilot sırasıyla tamamlasın.', actions)}${hero}${selectionToolbar}${cards ? `<div class="ma-order-grid">${cards}</div>` : '<div class="ma-empty-inline">Bu sayfada teslim edilmiş sipariş bulunamadı.</div>'}`;
         },
         renderReviews() {
             const reviews = this.state.reviews;
@@ -9894,7 +10692,7 @@ zu|Zulu
 
                         <section class="ma-card"><div class="ma-card__head"><h3>İmza ve Mağaza</h3></div><div class="ma-card__body ma-stack"><div class="ma-field"><label>Mağaza Adı</label><input class="ma-input" data-settings-field="shopName" value="${attr(s.shopName)}"></div><div class="ma-field"><label>İmza</label><input class="ma-input" data-settings-field="signature" value="${attr(s.signature)}"></div><div class="ma-field"><label>Kalıcı Mağaza Talimatı</label><textarea class="ma-textarea" data-settings-field="storeInstruction">${html(s.storeInstruction)}</textarea></div></div></section>
 
-                        <section class="ma-card"><div class="ma-card__head"><h3>Kampanya ve Geçmiş</h3></div><div class="ma-card__body ma-stack">${switchRow('autoAdvanceCampaign','Doğrulama Sonrası Sıradaki','Mesaj doğrulanınca sonraki konuşmaya geçer.')}${switchRow('autoSendCampaign','Otomatik Gönderim','Yorum taleplerinde uygulanmaz; bu mesajlar yalnız sizin “Gönder ve Sonrakine Geç” tıklamanızla gönderilir.')}${switchRow('checkUpdates','GitHub Güncelleme Kontrolü','Belirlenen aralıkla userscript sürümünü kontrol eder.')}<div class="ma-field"><label>Teslim Edilenler Varsayılan Şablonu</label><select class="ma-select" data-settings-field="defaultDeliveredTemplateId">${TemplateEngine.active().map(template => `<option value="${attr(template.id)}" ${s.defaultDeliveredTemplateId === template.id ? 'selected' : ''}>${html(template.name)}</option>`).join('')}</select></div><div class="ma-grid ma-grid--2"><div class="ma-field"><label>Güncelleme Kontrol Aralığı (saat)</label><input class="ma-input" type="number" min="24" max="168" data-settings-field="updateCheckHours" value="${attr(s.updateCheckHours)}"></div><div class="ma-field"><label>Geçmiş Saklama Süresi (gün)</label><input class="ma-input" type="number" min="1" max="365" data-settings-field="retainHistoryDays" value="${attr(s.retainHistoryDays)}"></div></div></div></section>
+                        <section class="ma-card"><div class="ma-card__head"><h3>Otomasyon ve Geçmiş</h3></div><div class="ma-card__body ma-stack">${switchRow('autoAdvanceCampaign','Doğrulama Sonrası Sıradaki','Rehberli akışta mesaj doğrulanınca sonraki konuşmaya geçer. Otopilot bunu her zaman güvenli sırayla yapar.')}${switchRow('autoSendCampaign','Eski Akışlarda Otomatik Gönderim','Yeni Otopilot kampanyaları bu ayardan bağımsızdır. Bu anahtar yalnız eski rehberli teslimat akışları içindir.')}${switchRow('checkUpdates','GitHub Güncelleme Kontrolü','Belirlenen aralıkla userscript sürümünü kontrol eder.')}<div class="ma-field"><label>Teslim Edilenler Varsayılan Şablonu</label><select class="ma-select" data-settings-field="defaultDeliveredTemplateId">${TemplateEngine.active().map(template => `<option value="${attr(template.id)}" ${s.defaultDeliveredTemplateId === template.id ? 'selected' : ''}>${html(template.name)}</option>`).join('')}</select></div><div class="ma-grid ma-grid--2"><div class="ma-field"><label>Güncelleme Kontrol Aralığı (saat)</label><input class="ma-input" type="number" min="24" max="168" data-settings-field="updateCheckHours" value="${attr(s.updateCheckHours)}"></div><div class="ma-field"><label>Geçmiş Saklama Süresi (gün)</label><input class="ma-input" type="number" min="1" max="365" data-settings-field="retainHistoryDays" value="${attr(s.retainHistoryDays)}"></div></div></div></section>
                     </div>
                 </div>`;
         },
@@ -9911,7 +10709,6 @@ zu|Zulu
         pendingResolutionContextIsCurrent(orderId) {
             const item = Campaign.current();
             if (!item || item.status !== CAMPAIGN_SEND_PENDING_STATUS || String(item.orderId) !== String(orderId)) return false;
-            if (Router.page() === 'orders') return Router.isCompletedOrdersPage();
             if (Router.page() !== 'messages') return false;
             const expectedIdentity = Router.conversationIdentity(item.messageUrl);
             const routeIdentity = Router.conversationIdentity(location.href);
@@ -9960,9 +10757,13 @@ zu|Zulu
                     throw new Error('Bu gönderim doğrulaması bu konuşmaya ait değil veya konuşma değişti. Doğru Etsy konuşmasını açıp yeniden deneyin.');
                 }
                 if (!confirm('Mesajın Etsy konuşmasında gerçekten gönderildiğini doğruluyor musunuz?')) return;
-                await Campaign.resolvePendingSend(orderId, 'sent');
+                const resolution = await Campaign.resolvePendingSend(orderId, 'sent');
                 this.toast('Gönderim kullanıcı tarafından doğrulandı.', 'success');
-                return this.refreshCurrent();
+                await this.refreshCurrent();
+                if (resolution === 'sent' && Campaign.isAutopilotRunning()) {
+                    await Campaign.driveAutopilot();
+                }
+                return;
             }
             if (target.dataset.orderConfirmNotSent) {
                 const orderId = target.dataset.orderConfirmNotSent;
@@ -9971,8 +10772,9 @@ zu|Zulu
                 }
                 if (!confirm('Mesajın Etsy konuşmasında gönderilmediğini kontrol ettiniz mi? Bu seçim siparişi yeniden denemeye açar.')) return;
                 await Campaign.resolvePendingSend(orderId, 'not_sent');
-                this.toast('Sipariş yeniden denemeye açıldı.', 'warning');
-                return this.refreshCurrent();
+                this.toast('Sipariş yeniden denemeye açıldı; otopilot duraklatıldı. Kontrol ettikten sonra Devam Et’e basın.', 'warning', 7000);
+                await this.refreshCurrent();
+                return;
             }
             if (target.dataset.orderSkip) {
                 const orderId = target.dataset.orderSkip;
@@ -10081,11 +10883,11 @@ zu|Zulu
                 if (action === 'generate-reply') await this.generateReply();
                 if (action === 'insert-reply') await this.insertReply();
                 if (action === 'copy') await this.copySource(target.dataset.copySource);
-                if (action === 'orders-scan') this.refreshOrders();
+                if (action === 'orders-scan') await this.refreshOrders();
                 if (action === 'orders-select-all') {
                     const purpose = Outreach.purposeForTemplate(TemplateEngine.get(this.state.selectedTemplateId));
                     this.state.selectedOrders = new Set(this.state.orders
-                        .filter((order) => order.messageUrl && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose))
+                        .filter((order) => order.messageUrl && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose, order))
                         .map((order) => order.orderId));
                 }
                 if (action === 'orders-clear-selection') {
@@ -10094,7 +10896,14 @@ zu|Zulu
                 if (action === 'go-messages') location.href = 'https://www.etsy.com/messages';
                 if (action === 'go-orders') location.href = 'https://www.etsy.com/your/orders/sold/completed';
                 if (action === 'campaign-create') await this.createCampaign();
-                if (action === 'campaign-start') await Campaign.start();
+                if (action === 'campaign-start') await Campaign.startAutopilot({
+                    expectedCampaignId: target.dataset.campaignId || '',
+                    expectedRevision: target.dataset.campaignRevision,
+                });
+                if (action === 'campaign-pause') await Campaign.pauseAutopilot({
+                    expectedCampaignId: target.dataset.campaignId || '',
+                    expectedRevision: target.dataset.campaignRevision,
+                });
                 if (action === 'campaign-send-next') { this.setBusy(true); await Campaign.sendCurrentByUser(); }
                 if (action === 'campaign-skip') {
                     if (confirm('Bu alıcı mevcut kampanyada atlansın ve sıradaki alıcıya geçilsin mi? Bu işlem mesaj göndermez.')) {
@@ -10106,7 +10915,7 @@ zu|Zulu
                             expectedItemId,
                             expectedCampaignId: target.dataset.campaignId || '',
                             expectedRevision: target.dataset.campaignRevision,
-                            navigate: true,
+                            navigate: !Campaign.isAutopilot() || Campaign.isAutopilotRunning(),
                         });
                     }
                 }
@@ -10192,8 +11001,9 @@ zu|Zulu
                 const orderId = event.target.dataset.reviewDecision;
                 const choice = event.target.value;
                 await Outreach.setManualDecision(orderId, choice);
+                const order = this.state.orders.find(entry => entry.orderId === orderId) || null;
                 if (['eligible', 'legacy_non_review'].includes(choice)
-                    && Campaign.orderCanEnterCampaign(orderId, Store.statuses, 'review_request')) {
+                    && Campaign.orderCanEnterCampaign(orderId, Store.statuses, 'review_request', order)) {
                     this.state.selectedOrders.add(orderId);
                 } else this.state.selectedOrders.delete(orderId);
                 this.render();
@@ -10257,7 +11067,8 @@ zu|Zulu
             if (event.target.dataset.orderSelect) {
                 const id = event.target.dataset.orderSelect;
                 const purpose = Outreach.purposeForTemplate(TemplateEngine.get(this.state.selectedTemplateId));
-                if (event.target.checked && Campaign.orderCanEnterCampaign(id, Store.statuses, purpose)) {
+                const order = this.state.orders.find(entry => entry.orderId === id) || null;
+                if (event.target.checked && Campaign.orderCanEnterCampaign(id, Store.statuses, purpose, order)) {
                     this.state.selectedOrders.add(id);
                 } else {
                     this.state.selectedOrders.delete(id);
@@ -10428,7 +11239,7 @@ ${result.text || ''}`);
             const purpose = Outreach.purposeForTemplate(template);
             const selected = this.state.orders.filter((order) => order.messageUrl
                 && this.state.selectedOrders.has(order.orderId)
-                && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose));
+                && Campaign.orderCanEnterCampaign(order.orderId, Store.statuses, purpose, order));
             if (!selected.length) throw new Error('Mesaj bağlantısı bulunan en az bir teslim edilmiş sipariş seçin.');
             if (Campaign.isNonterminal()) {
                 const replace = confirm('Devam eden mesaj kampanyası durdurulup yeni seçimle değiştirilsin mi?');
@@ -10436,9 +11247,9 @@ ${result.text || ''}`);
                 await Campaign.cancel();
             }
             this.setBusy(true);
-            const campaign = await Campaign.create(selected, this.state.selectedTemplateId, this.state.composeMethod);
-            this.toast(`${campaign.items.length} siparişlik rehberli sıra oluşturuldu.`, 'success');
-            await Campaign.start();
+            const campaign = await Campaign.create(selected, this.state.selectedTemplateId, this.state.composeMethod, { runMode: 'autopilot' });
+            this.toast(`${campaign.items.length} siparişlik otopilot başlatıldı. Her alıcı gönderimden sonra doğrulanacak.`, 'success', 6500);
+            await Campaign.driveAutopilot();
             return true;
         },
         async translateReview() {
@@ -10669,6 +11480,9 @@ ${result.text || ''}`);
         routeFingerprint: '',
         async init() {
             await Store.load();
+            await Campaign.recoverDurableSendPartials().catch(error => {
+                console.error(`[${APP.id}] Kalıcı gönderim günlüğü başlangıçta uzlaştırılamadı.`, error);
+            });
             await Store.ensureCoordinationListeners();
             await Verification.refreshNativeSendHold();
             await ensureTelemetryInstallationIdListener();
@@ -10717,8 +11531,19 @@ ${result.text || ''}`);
                 const orders = OrdersAdapter.scan();
                 OrdersAdapter.decorate(orders);
             }
-            if (Router.page() === 'messages') {
-                try { await Campaign.resume(); } catch (error) { UI.toast(error.message, 'error', 6000); }
+            let recoveryComplete = false;
+            try {
+                await Campaign.recoverDurableSendPartials();
+                recoveryComplete = true;
+            } catch (error) {
+                UI.toast(error.message, 'error', 7000);
+            }
+            if (recoveryComplete) {
+                if (Campaign.isAutopilotRunning()) {
+                    try { await Campaign.driveAutopilot({ recoveryComplete: true }); } catch (error) { UI.toast(error.message, 'error', 7000); }
+                } else if (Router.page() === 'messages') {
+                    try { await Campaign.resume(); } catch (error) { UI.toast(error.message, 'error', 6000); }
+                }
             }
             await MessageCenterAgent.onRoute().catch(error => {
                 MessageCenterAgent.lastError = error.message || 'agent';

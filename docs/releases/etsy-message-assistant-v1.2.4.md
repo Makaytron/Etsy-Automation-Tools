@@ -1,5 +1,7 @@
 # Makaytron Etsy Message Assistant v1.2.4
 
+> Unpublished: this candidate was superseded by v1.2.5 after the controlled live smoke test exposed a post-send verification regression. Do not tag or publish v1.2.4.
+
 This standalone patch restores delivered-order draft preparation when Etsy renders an informational Message history link inside the same receipt drawer as the composer. It does not change the Etsy Automation Tools suite version, and it must not replace the suite release as GitHub `Latest`.
 
 ## Fixes
