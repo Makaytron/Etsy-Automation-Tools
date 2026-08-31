@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptPath = path.join(repoRoot, 'scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js');
 const sanitizedListingsFixturePath = path.join(repoRoot, 'scripts/etsy-listing-analyzer/fixtures/sanitized-listings-page.json');
+const metricContractId = 'etsy-listings-stats-card/v1';
 
 class FakeElement {
     addEventListener() {}
@@ -333,16 +334,17 @@ function buildSanitizedListingsDocument(fixture) {
         const editUrl = `https://www.etsy.com/your/shops/me/listing-editor/edit/${entry.listingId}`;
         const publicUrl = `https://www.etsy.com/listing/${entry.listingId}/synthetic-fixture-${number}`;
         const statsUrl = `https://www.etsy.com/your/shops/me/stats/listings/${entry.listingId}`;
-        const metricContainer = listingFixtureElement('div', { class: 'card-meta' }, '', [
-            listingFixtureElement('h6', {}, defaults.metricHeading),
-        ]);
-        for (let metricIndex = 0; metricIndex < defaults.metricRows.length; metricIndex += 2) {
-            const row = listingFixtureElement('div', { class: 'card-meta-row' });
-            defaults.metricRows.slice(metricIndex, metricIndex + 2).forEach((metricText) => {
-                row.append(listingFixtureElement('div', { class: 'card-meta-row-item text-gray-lighter selected-color' }, metricText));
-            });
-            metricContainer.append(row);
-        }
+        const metricContainers = defaults.metricSections.map((section) => {
+            const container = listingFixtureElement('div', { class: 'card-meta' }, '', [listingFixtureElement('h6', {}, section.heading)]);
+            for (let metricIndex = 0; metricIndex < section.rows.length; metricIndex += 2) {
+                const row = listingFixtureElement('div', { class: 'card-meta-row' });
+                section.rows.slice(metricIndex, metricIndex + 2).forEach((metricText) => {
+                    row.append(listingFixtureElement('div', { class: 'card-meta-row-item text-gray-lighter selected-color' }, metricText));
+                });
+                container.append(row);
+            }
+            return container;
+        });
         const editLink = listingFixtureElement('a', { class: 'card-body', href: editUrl }, '', [
             listingFixtureElement('div', { class: 'card-title', title: entry.title }, entry.title),
             listingFixtureElement('div', { class: 'card-meta-row-sku' }, '', [
@@ -356,7 +358,7 @@ function buildSanitizedListingsDocument(fixture) {
             listingFixtureElement('div', { class: 'card-img-wrap' }, '', [
                 listingFixtureElement('img', { src: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==' }),
             ]),
-            metricContainer,
+            ...metricContainers,
         ]);
         grid.append(listingFixtureElement('li', { class: 'wt-block-grid__item' }, '', [
             editLink,
@@ -390,13 +392,19 @@ function snapshot(at, overrides = {}) {
         currency: '$',
         listingState: 'active',
         statusLabel: 'Active',
+        metricContract: {
+            id: 'etsy-listings-stats-card/v1', version: 1, verified: true, source: 'etsy-listings-visible-dom',
+            scopes: { visits: 'rolling-30d', favorites: 'rolling-30d', sales: 'lifetime', revenue: 'lifetime', renewals: 'lifetime' },
+            headings: { rolling30d: 'LAST 30 DAYS', lifetime: 'ALL TIME' }, sourceUpdatedAt: null, sourceTimeStatus: 'unknown',
+            countPrecision: { visits: 'exact', favorites: 'exact', sales: 'exact', renewals: 'exact' },
+        },
         ...overrides,
     };
 }
 
 function record(id, history, meta = {}) {
     return {
-        schema: 1,
+        schema: 2,
         listingId: String(id),
         meta: {
             title: `Listing ${id}`,
@@ -412,6 +420,29 @@ function record(id, history, meta = {}) {
     };
 }
 
+async function installEligibleDeactivationQueue(api, runtime, storage, queue, listingId) {
+    const evaluatedAt = new Date().toISOString();
+    const atDaysAgo = (days) => new Date(Date.parse(evaluatedAt) - days * 86400000).toISOString();
+    const candidate = record(String(listingId), [
+        snapshot(atDaysAgo(60), { renewals: 0 }),
+        snapshot(atDaysAgo(30), { renewals: 1 }),
+        snapshot(evaluatedAt, { renewals: 2 }),
+    ], { seasonality: 'non-seasonal' });
+    const health = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt);
+    assert.equal(health.result.lifecycle, 'DEACTIVATION_REVIEW');
+    candidate.health = health;
+    candidate.analysis = health.result;
+    await runtime.Store.putRecord(candidate);
+    await runtime.Store.saveProposal(String(listingId), { action: 'DEACTIVATE_REVIEW', fields: [], reason: 'test' });
+    const savedRecord = await runtime.Store.getRecord(String(listingId));
+    const item = queue.items.find((entry) => String(entry.listingId) === String(listingId));
+    assert.ok(item);
+    item.proposal = plain(savedRecord.proposal);
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    return savedRecord;
+}
+
 test('metric parser reads only complete labeled rows, including compact counts and currency', () => {
     const { api } = loadAnalyzer();
     const parsed = plain(api.parseListingMetrics([
@@ -424,6 +455,63 @@ test('metric parser reads only complete labeled rows, including compact counts a
     assert.deepEqual(parsed, { visits: 1200, favorites: 34, sales: 2, revenue: 53.79, renewals: 4, currency: '€' });
     assert.equal(api.parseListingMetrics(['100 Sales Goal Tracker', '2 sales']).sales, 2);
     assert.equal(api.parseListingMetrics(['Edit']).sales, null);
+});
+
+test('scoped metric contract accepts only one complete rolling and lifetime section', () => {
+    const { api } = loadAnalyzer();
+    const english = plain(api.parseScopedListingMetrics([
+        { heading: 'LAST 30 DAYS', rows: ['12 visits', '3 favorites'] },
+        { heading: 'ALL TIME', rows: ['4 sales', '$55 revenue', '2 renewals'] },
+    ]));
+    assert.equal(english.valid, true);
+    assert.equal(english.contract.id, metricContractId);
+    assert.deepEqual(english.contract.countPrecision, { visits: 'exact', favorites: 'exact', sales: 'exact', renewals: 'exact' });
+    assert.deepEqual(english.metrics, { visits: 12, favorites: 3, sales: 4, revenue: 55, renewals: 2, currency: '$' });
+
+    const compact = plain(api.parseScopedListingMetrics([
+        { heading: 'LAST 30 DAYS', rows: ['1.2K visits', '3 favorites'] },
+        { heading: 'ALL TIME', rows: ['4 sales', '$55 revenue', '2 renewals'] },
+    ]));
+    assert.equal(compact.valid, true);
+    assert.equal(compact.metrics.visits, 1200);
+    assert.equal(compact.contract.countPrecision.visits, 'approximate');
+
+    const turkishHeadings = api.parseScopedListingMetrics([
+        { heading: 'SON 30 GUN', rows: ['12 visits', '3 favorites'] },
+        { heading: 'TUM ZAMANLAR', rows: ['4 sales', '$55 revenue', '2 renewals'] },
+    ]);
+    assert.equal(turkishHeadings.valid, true);
+
+    assert.equal(api.parseScopedListingMetrics([
+        { heading: 'SEO PERFORMANCE', rows: ['12 visits', '3 favorites'] },
+        { heading: 'ALL TIME', rows: ['4 sales', '$55 revenue', '2 renewals'] },
+    ]).valid, false);
+    assert.equal(api.parseScopedListingMetrics([
+        { heading: 'LAST 30 DAYS', rows: ['12 visits', '13 visits', '3 favorites'] },
+        { heading: 'ALL TIME', rows: ['4 sales', '$55 revenue', '2 renewals'] },
+    ]).valid, false);
+    assert.equal(api.parseScopedListingMetrics([
+        { heading: 'LAST 30 DAYS', rows: ['12 visits', '3 favorites'] },
+        { heading: 'ALL TIME', rows: ['4 sales', '$55 revenue'] },
+    ]).valid, false);
+    assert.equal(api.parseScopedListingMetrics([
+        { heading: 'LAST 30 DAYS', rows: ['12 visits', '3 favorites'] },
+        { heading: 'ALL TIME', rows: ['4 sales', '$1.2K revenue', '2 renewals'] },
+    ]).valid, false);
+    assert.equal(api.parseScopedListingMetrics([
+        { heading: 'LAST 30 DAYS', rows: ['12 visits', '3 favorites'] },
+        { heading: 'LAST 30 DAYS', rows: ['12 visits', '3 favorites'] },
+        { heading: 'ALL TIME', rows: ['4 sales', '$55 revenue', '2 renewals'] },
+    ]).valid, false);
+
+    assert.equal(api.statsViewEnabled('https://www.etsy.com/your/shops/me/tools/listings?stats=true'), true);
+    assert.equal(api.statsViewEnabled('https://www.etsy.com/your/shops/me/tools/listings'), false);
+    assert.equal(api.statsViewEnabled('https://www.etsy.com/your/shops/me/tools/listings?stats=false'), false);
+    assert.equal(api.statsViewEnabled('https://www.etsy.com/your/shops/me/tools/listings?stats=true&stats=true'), false);
+    assert.equal(api.normalizeMetricContract({ ...english.contract, version: 2 }), null);
+    assert.equal(api.normalizeMetricContract({ ...english.contract, source: 'backup-claim' }), null);
+    assert.equal(api.normalizeMetricContract({ ...english.contract, headings: { rolling30d: 'SEO PERFORMANCE', lifetime: 'ALL TIME' } }), null);
+    assert.equal(api.normalizeMetricContract({ ...english.contract, countPrecision: {} }), null);
 });
 
 test('card adapter scopes metric rows, rejects menu-only edit links, and rejects partial non-final pages', () => {
@@ -455,7 +543,7 @@ test('card adapter scopes metric rows, rejects menu-only edit links, and rejects
 
     const adapter = api.ListingPageAdapter;
     const originals = { pageInfo: adapter.pageInfo, paginationNav: adapter.paginationNav, cardLinks: adapter.cardLinks, scan: adapter.scan };
-    const listing = (id) => ({ listingId: String(id), title: `L${id}`, sku: '', listingState: 'active', statusLabel: 'Active', renewalLabel: 'Auto-renews', stock: 1, price: { min: 10, max: 10 }, visits: 1, favorites: 0, sales: 0, revenue: 0, renewals: 0 });
+    const listing = (id) => ({ listingId: String(id), title: `L${id}`, sku: '', listingState: 'active', statusLabel: 'Active', renewalLabel: 'Auto-renews', stock: 1, price: { min: 10, max: 10 }, visits: 1, favorites: 0, sales: 0, revenue: 0, renewals: 0, metricContract: snapshot('2026-01-01T00:00:00.000Z').metricContract });
     adapter.pageInfo = () => ({ current: 2, total: 17, valid: true, hasPagination: true, ambiguous: false });
     adapter.cardLinks = () => Array.from({ length: 39 }, () => ({}));
     adapter.scan = () => Array.from({ length: 39 }, (_, index) => listing(index + 1));
@@ -476,15 +564,22 @@ test('card adapter scopes metric rows, rejects menu-only edit links, and rejects
     assert.equal(adapter.pageInfo().valid, false);
     Object.assign(adapter, originals);
     assert.equal(adapter.contentSignature([listing(2), listing(1)]), adapter.contentSignature([listing(1), listing(2)]));
+    const exactListing = listing(1);
+    const approximateListing = plain(exactListing);
+    approximateListing.metricContract.countPrecision.visits = 'approximate';
+    assert.notEqual(adapter.readSignature([exactListing]), adapter.readSignature([approximateListing]));
 });
 
 test('sanitized current Etsy fixture parses 40 canonical inactive listings and preserves every explicit zero metric', () => {
     const { api, sandbox } = loadAnalyzer();
     const fixture = JSON.parse(fs.readFileSync(sanitizedListingsFixturePath, 'utf8'));
-    assert.equal(fixture.schema, 'makaytron-etsy-listing-dom-fixture/v1');
+    assert.equal(fixture.schema, 'makaytron-etsy-listing-dom-fixture/v2');
     assert.equal(fixture.cards.length, 40);
     assert.ok(fixture.cards.every((card) => /^Synthetic Fixture Listing \d{2}$/.test(card.title)));
-    assert.deepEqual(fixture.defaults.metricRows, ['0 visits', '0 favorite', '0 sales', '$0 revenue', '0 renewal']);
+    assert.deepEqual(fixture.defaults.metricSections, [
+        { heading: 'LAST 30 DAYS', rows: ['0 visits', '0 favorite'] },
+        { heading: 'ALL TIME', rows: ['0 sales', '$0 revenue', '0 renewal'] },
+    ]);
 
     const originalDocument = sandbox.document;
     const fixtureDocument = buildSanitizedListingsDocument(fixture);
@@ -576,7 +671,7 @@ test('shadow pagination contract reconciles the route page and reads final-page 
         assert.deepEqual(plain(adapter.pageInfo()), { current: 17, total: 17, valid: true, hasPagination: true, ambiguous: false });
         assert.equal(adapter.isDisabled(adapter.nextButton()), true);
         adapter.cardLinks = () => Array.from({ length: 13 }, () => ({}));
-        adapter.scan = () => Array.from({ length: 13 }, (_, index) => ({ listingId: String(index + 1) }));
+        adapter.scan = () => Array.from({ length: 13 }, (_, index) => ({ listingId: String(index + 1), metricContract: snapshot('2026-01-01T00:00:00.000Z').metricContract }));
         const finalPage = await adapter.readStable({ requirePagination: true, timeout: 600 });
         assert.equal(finalPage.listings.length, 13);
         select.value = '17';
@@ -746,6 +841,40 @@ test('DORMANT requires a complete 60-day anchor instead of treating missing hist
     assert.equal(api.evaluateRecord(sixtyDays, [sixtyDays], undefined, evaluatedAt).result.lifecycle, 'DORMANT');
 });
 
+test('trend anchors never cross an inactive state epoch or an unverified legacy metric scope', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const reactivatedNow = record('epoch-now', [
+        snapshot('2026-06-02T12:00:00.000Z', { visits: 40 }),
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 0, listingState: 'inactive', statusLabel: 'Inactive' }),
+        snapshot(evaluatedAt, { visits: 20 }),
+    ]);
+    const nowDerived = plain(api.deriveRecordMetrics(reactivatedNow, evaluatedAt));
+    assert.equal(nowDerived.stateEpochSnapshotCount, 1);
+    assert.equal(nowDerived.anchors.d30.complete, false);
+    assert.equal(nowDerived.anchors.d60.complete, false);
+    assert.equal(api.evaluateRecord(reactivatedNow, [reactivatedNow], undefined, evaluatedAt).result.lifecycle, 'BASELINE');
+
+    const activeForThirty = record('epoch-thirty', [
+        snapshot('2026-06-02T12:00:00.000Z', { visits: 0, listingState: 'inactive', statusLabel: 'Inactive' }),
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 10 }),
+        snapshot(evaluatedAt, { visits: 20 }),
+    ]);
+    const thirtyDerived = plain(api.deriveRecordMetrics(activeForThirty, evaluatedAt));
+    assert.equal(thirtyDerived.stateEpochSnapshotCount, 2);
+    assert.equal(thirtyDerived.anchors.d30.complete, true);
+    assert.equal(thirtyDerived.anchors.d60.complete, false);
+
+    const legacyAnchor = record('legacy-anchor', [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 10, metricContract: null }),
+        snapshot(evaluatedAt, { visits: 20 }),
+    ]);
+    const legacyResult = api.evaluateRecord(legacyAnchor, [legacyAnchor], undefined, evaluatedAt).result;
+    assert.equal(legacyResult.derived.anchors.d30, null);
+    assert.equal(legacyResult.lifecycle, 'LEARNING');
+    assert.ok(legacyResult.historicalAnomalies.includes('unverified-metric-scope'));
+});
+
 test('deactivation fails closed until non-seasonal status is explicit', () => {
     const { api } = loadAnalyzer();
     const evaluatedAt = '2026-08-01T12:00:00.000Z';
@@ -761,6 +890,65 @@ test('deactivation fails closed until non-seasonal status is explicit', () => {
     assert.notEqual(unknownResult.lifecycle, 'DEACTIVATION_REVIEW');
     assert.equal(unknownResult.safeguards.find((item) => item.key === 'guardSeasonal').passed, false);
     assert.equal(confirmedResult.lifecycle, 'DEACTIVATION_REVIEW');
+});
+
+test('listing context migrates, persists, audits, and survives a later snapshot', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    assert.equal(api.normalizeSeasonality(undefined, true), 'seasonal');
+    assert.equal(api.normalizeSeasonality(undefined, false), 'non-seasonal');
+    assert.equal(api.normalizeSeasonality('invalid'), 'unknown');
+    assert.equal(api.normalizeListingType('invalid'), 'unknown');
+
+    const original = record('context-1', [snapshot('2026-08-30T12:00:00.000Z')], { seasonal: false });
+    await runtime.Store.putRecord(original);
+    const migrated = await runtime.Store.getRecord('context-1');
+    assert.equal(migrated.meta.seasonality, 'non-seasonal');
+    assert.equal(Object.hasOwn(migrated.meta, 'seasonal'), false);
+
+    await runtime.Store.saveListingContext('context-1', { seasonality: 'seasonal', listingType: 'digital' });
+    const saved = await runtime.Store.getRecord('context-1');
+    assert.equal(saved.meta.seasonality, 'seasonal');
+    assert.equal(saved.meta.listingType, 'digital');
+    assert.equal(saved.meta.contextSource, 'user');
+    assert.ok(Number.isFinite(Date.parse(saved.meta.contextUpdatedAt)));
+    const audit = [...storage.entries()].find(([key]) => key.endsWith(':audit'))?.[1] || [];
+    const contextAudit = audit.find((entry) => entry.type === 'listing-context-set');
+    assert.deepEqual(plain(contextAudit.from), { seasonality: 'non-seasonal', listingType: 'unknown' });
+    assert.deepEqual(plain(contextAudit.to), { seasonality: 'seasonal', listingType: 'digital' });
+
+    const next = runtime.Store.prepareSnapshot({
+        listingId: 'context-1', title: 'Listing context-1', sku: '',
+        editUrl: saved.meta.editUrl, publicUrl: '', imageUrl: '', shopKey: saved.meta.shopKey,
+        listingState: 'active', statusLabel: 'Active', renewalLabel: 'Auto-renews', stock: 10,
+        price: { min: 20, max: 20 }, currency: '$', visits: 5, favorites: 1, sales: 0, revenue: 0, renewals: 0,
+        metricContract: snapshot('2026-08-31T12:00:00.000Z').metricContract,
+        capturedAt: '2026-08-31T12:00:00.000Z',
+    }, saved);
+    assert.equal(next.meta.seasonality, 'seasonal');
+    assert.equal(next.meta.listingType, 'digital');
+});
+
+test('record merging fences listing context by contextUpdatedAt instead of lastSeenAt', async () => {
+    const { api } = loadAnalyzer();
+    const store = api.collectionRuntime.Store;
+    const current = record('context-merge', [snapshot('2026-08-29T12:00:00.000Z')], {
+        seasonality: 'seasonal', listingType: 'digital', contextSource: 'user',
+        contextUpdatedAt: '2026-08-20T12:00:00.000Z', lastSeenAt: '2026-08-29T12:00:00.000Z',
+    });
+    await store.putRecord(current);
+    const staleContextWithNewerScan = record('context-merge', [
+        snapshot('2026-08-30T12:00:00.000Z'),
+    ], {
+        seasonality: 'non-seasonal', listingType: 'physical', contextSource: 'user',
+        contextUpdatedAt: '2026-08-10T12:00:00.000Z', lastSeenAt: '2026-08-30T12:00:00.000Z',
+    });
+    await store.putRecord(staleContextWithNewerScan);
+    const saved = await store.getRecord('context-merge');
+    assert.equal(saved.meta.lastSeenAt, '2026-08-30T12:00:00.000Z');
+    assert.equal(saved.meta.contextUpdatedAt, '2026-08-20T12:00:00.000Z');
+    assert.equal(saved.meta.seasonality, 'seasonal');
+    assert.equal(saved.meta.listingType, 'digital');
 });
 
 test('deactivation review requires the current snapshot to remain at zero traffic', () => {
@@ -807,7 +995,23 @@ test('deactivation history requires at least 58 days of complete snapshots', () 
     assert.equal(completeResult.readiness.deactivationHistory, true);
 });
 
-test('integrity anomalies cannot be labeled as growing or stable', () => {
+test('an anomalous intermediate snapshot inside the active deactivation window blocks the action', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const candidate = record('deactivation-intermediate-anomaly', [
+        snapshot('2026-06-02T12:00:00.000Z', { visits: 0, renewals: 0 }),
+        snapshot('2026-06-17T12:00:00.000Z', { visits: -1, renewals: 1 }),
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 0, renewals: 2 }),
+        snapshot(evaluatedAt, { visits: 0, renewals: 4 }),
+    ], { seasonality: 'non-seasonal' });
+    const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+    assert.ok(result.anomalies.includes('negative-visits'));
+    assert.ok(result.historicalAnomalies.includes('negative-visits'));
+    assert.equal(result.safeguards.find((item) => item.key === 'guardDataIntegrity').passed, false);
+    assert.notEqual(result.lifecycle, 'DEACTIVATION_REVIEW');
+});
+
+test('favorites without a same-window visit remain valid evidence without inventing a rate', () => {
     const { api } = loadAnalyzer();
     const evaluatedAt = '2026-08-01T12:00:00.000Z';
     const broken = record('301', [
@@ -815,9 +1019,9 @@ test('integrity anomalies cannot be labeled as growing or stable', () => {
         snapshot(evaluatedAt, { visits: 0, favorites: 5 }),
     ]);
     const result = api.evaluateRecord(broken, [broken], undefined, evaluatedAt).result;
-    assert.equal(result.lifecycle, 'DATA_GAP');
-    assert.equal(result.diagnosis, 'INSUFFICIENT_SIGNAL');
-    assert.ok(result.anomalies.includes('favorites-without-visits'));
+    assert.notEqual(result.lifecycle, 'DATA_GAP');
+    assert.ok(!result.anomalies.includes('favorites-without-visits'));
+    assert.equal(result.derived.favoriteRate, null);
 
     const impossibleRevenue = record('301-revenue', [
         snapshot(evaluatedAt, { visits: 10, sales: 0, revenue: 20 }),
@@ -848,11 +1052,11 @@ test('stale anchor observations and negative metrics fail closed at low confiden
     const staleResult = api.evaluateRecord(stale, [stale], undefined, evaluatedAt).result;
     assert.equal(staleResult.derived.anchors.d30, null);
     assert.equal(staleResult.lifecycle, 'DATA_GAP');
-    assert.equal(staleResult.diagnosis, 'INSUFFICIENT_SIGNAL');
-    assert.ok(staleResult.confidence <= 39);
     assert.ok(staleResult.confidenceCaps.includes('data-integrity'));
     assert.equal(staleResult.assessmentMode, 'insufficient');
     assert.equal(staleResult.score, null);
+    assert.ok(staleResult.anomalies.includes('stale-observation-visits'));
+    assert.ok(staleResult.historicalAnomalies.includes('stale-observation-visits'));
     assert.equal(staleResult.readiness.trend, false);
 
     const negative = record('303', [
@@ -1005,7 +1209,7 @@ test('bootstrap fails closed for unread, stale, anomalous, inactive, or out-of-s
     const cases = [
         record('bootstrap-missing', [snapshot(evaluatedAt, { revenue: null, renewals: 4 })]),
         record('bootstrap-stale', [snapshot('2026-07-20T12:00:00.000Z', { renewals: 4 })]),
-        record('bootstrap-anomaly', [snapshot(evaluatedAt, { visits: 0, favorites: 1, renewals: 4 })]),
+        record('bootstrap-anomaly', [snapshot(evaluatedAt, { sales: 0, revenue: 1, renewals: 4 })]),
         record('bootstrap-inactive', [snapshot(evaluatedAt, { renewals: 4, listingState: 'inactive', statusLabel: 'Inactive' })], { listingState: 'inactive', statusLabel: 'Inactive' }),
         record('bootstrap-stock', [snapshot(evaluatedAt, { renewals: 4, stock: 0 })]),
     ];
@@ -1026,7 +1230,7 @@ test('analysis cards label current reach separately from history confidence', ()
     candidate.analysis = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
     const markup = api.updater.UI.recordRow(candidate);
     assert.match(markup, /30 günlük erişim\/ilgi/);
-    assert.match(markup, /Geçmiş güveni: Düşük/);
+    assert.match(markup, /Geçmiş kanıt yeterliliği: Düşük/);
     assert.match(markup, /Yenileme verimsizliği/);
     assert.match(markup, /Ziyaret · 30g/);
     assert.match(markup, /Satış · tüm-zaman/);
@@ -1122,6 +1326,85 @@ test('rolling trend windows are consecutive and do not reuse a nearby 60-day anc
     assert.equal(derived.priorTrafficChangePercent, null);
 });
 
+test('exact rolling trend inference uses only consecutive non-overlapping 30-31 day windows', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const atDaysAgo = (days) => new Date(Date.parse(evaluatedAt) - days * 86400000).toISOString();
+    const overlapping = record('trend-overlap', [
+        snapshot(atDaysAgo(58), { visits: 25 }),
+        snapshot(atDaysAgo(29), { visits: 100 }),
+        snapshot(evaluatedAt, { visits: 400 }),
+    ]);
+    const overlapResult = api.evaluateRecord(overlapping, [overlapping], undefined, evaluatedAt).result;
+    assert.equal(overlapResult.derived.trafficChangePercent, 300);
+    assert.equal(overlapResult.derived.trendTrafficChangePercent, null);
+    assert.equal(overlapResult.derived.trendIntervals.recent, null);
+    assert.equal(overlapResult.readiness.trend, false);
+    assert.notEqual(overlapResult.lifecycle, 'ACTIVE_GROWING');
+
+    const consecutive = record('trend-consecutive', [
+        snapshot(atDaysAgo(60), { visits: 25 }),
+        snapshot(atDaysAgo(30), { visits: 100 }),
+        snapshot(evaluatedAt, { visits: 400 }),
+    ]);
+    const consecutiveResult = api.evaluateRecord(consecutive, [consecutive], undefined, evaluatedAt).result;
+    assert.equal(consecutiveResult.derived.trendTrafficChangePercent, 300);
+    assert.ok(consecutiveResult.derived.trendIntervals.recent);
+    assert.ok(consecutiveResult.derived.trendIntervals.prior);
+    assert.equal(consecutiveResult.readiness.trend, true);
+    assert.equal(consecutiveResult.lifecycle, 'ACTIVE_GROWING');
+
+    const tooWide = record('trend-too-wide', [
+        snapshot(atDaysAgo(62.02), { visits: 25 }),
+        snapshot(atDaysAgo(31.01), { visits: 100 }),
+        snapshot(evaluatedAt, { visits: 400 }),
+    ]);
+    const tooWideResult = api.evaluateRecord(tooWide, [tooWide], undefined, evaluatedAt).result;
+    assert.equal(tooWideResult.derived.trendTrafficChangePercent, null);
+    assert.equal(tooWideResult.readiness.trend, false);
+    assert.notEqual(tooWideResult.lifecycle, 'ACTIVE_GROWING');
+});
+
+test('exact trend anchors are not shadowed by a closer approximate snapshot', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const atDaysAgo = (days) => new Date(Date.parse(evaluatedAt) - days * 86400000).toISOString();
+    const approximateContract = plain(snapshot(evaluatedAt).metricContract);
+    approximateContract.countPrecision.visits = 'approximate';
+    const candidate = record('trend-anchor-selection', [
+        snapshot(atDaysAgo(61.5), { visits: 50 }),
+        snapshot(atDaysAgo(30.75), { visits: 100 }),
+        snapshot(atDaysAgo(29.75), { visits: 200, metricContract: approximateContract }),
+        snapshot(evaluatedAt, { visits: 400 }),
+    ]);
+    const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+    assert.equal(result.derived.anchors.d30.actualDays, 29.8);
+    assert.equal(result.derived.anchors.trend30.actualDays, 30.8);
+    assert.equal(result.derived.trafficChangePercent, 100);
+    assert.equal(result.derived.trendTrafficChangePercent, 300);
+    assert.ok(result.derived.trendIntervals.recent);
+});
+
+test('compact approximate traffic can describe change but cannot produce an exact trend lifecycle', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const approximateContract = plain(snapshot(evaluatedAt).metricContract);
+    approximateContract.countPrecision.visits = 'approximate';
+    const candidate = record('approximate-trend', [
+        snapshot('2026-06-02T12:00:00.000Z', { visits: 100, metricContract: approximateContract }),
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 200, metricContract: approximateContract }),
+        snapshot(evaluatedAt, { visits: 400, metricContract: approximateContract }),
+    ]);
+    const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+    assert.equal(result.derived.trafficChangePercent, 100);
+    assert.equal(result.derived.previousTrafficChangePercent, 100);
+    assert.equal(result.derived.trendIntervals.recent, null);
+    assert.equal(result.derived.trendIntervals.prior, null);
+    assert.equal(result.readiness.trend, false);
+    assert.notEqual(result.lifecycle, 'ACTIVE_GROWING');
+    assert.notEqual(result.lifecycle, 'ACTIVE_DECLINING');
+});
+
 test('priority and explicit score sorting use bootstrap evidence instead of the shared confidence cap', () => {
     const { api } = loadAnalyzer();
     const rows = [
@@ -1191,12 +1474,12 @@ test('cohort benchmark excludes stale peers and reports price-band fallback hone
         snapshot('2026-07-02T12:00:00.000Z', { visits: 10, priceMin: 100, priceMax: 100 }),
         snapshot(evaluatedAt, { visits: 20, priceMin: 100, priceMax: 100 }),
     ]);
-    const peers = Array.from({ length: 7 }, (_, index) => record(String(501 + index), [
+    const peers = Array.from({ length: 8 }, (_, index) => record(String(501 + index), [
         snapshot('2026-07-02T12:00:00.000Z', { visits: 10, priceMin: 10, priceMax: 10 }),
         snapshot(evaluatedAt, { visits: 20, priceMin: 10, priceMax: 10 }),
     ]));
     const fallback = api.evaluateRecord(target, [target, ...peers], undefined, evaluatedAt).result.benchmark;
-    assert.equal(fallback.scope, 'shop');
+    assert.equal(fallback.scope, 'active-shop');
     assert.equal(fallback.size, 8);
     assert.equal(fallback.reliable, true);
 
@@ -1212,27 +1495,55 @@ test('cohort benchmark excludes stale peers and reports price-band fallback hone
         snapshot('2025-12-01T12:00:00.000Z', { visits: 20, priceMin: 100, priceMax: 100 }),
     ]);
     const withoutStale = api.evaluateRecord(target, [target, stalePeer], undefined, evaluatedAt).result.benchmark;
-    assert.equal(withoutStale.size, 1);
+    assert.equal(withoutStale.size, 0);
 });
 
 test('an eight-listing cohort is usable without claiming full statistical strength', () => {
     const { api } = loadAnalyzer();
     const evaluatedAt = '2026-08-01T12:00:00.000Z';
-    const peers = Array.from({ length: 8 }, (_, index) => record(`cohort-strength-${index}`, [
+    const peers = Array.from({ length: 9 }, (_, index) => record(`cohort-strength-${index}`, [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 25 + index, favorites: 1 }),
         snapshot(evaluatedAt, { visits: 30 + index, favorites: 1 }),
     ]));
     const result = api.evaluateRecord(peers[0], peers, undefined, evaluatedAt).result;
     assert.equal(result.benchmark.reliable, true);
-    assert.equal(result.confidenceComponents.cohortStrength, 27);
+    assert.equal(result.confidenceComponents.cohortStrength, 4);
     assert.ok(result.confidenceComponents.cohortStrength < 100);
+});
+
+test('cohort influence ramps continuously from eight peers to full strength', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const historyFor = (visits, favorites) => [
+        snapshot('2026-07-02T12:00:00.000Z', { visits, favorites }),
+        snapshot(evaluatedAt, { visits, favorites }),
+    ];
+    const target = record('cohort-ramp-target', historyFor(20, 1));
+    const peers = Array.from({ length: 30 }, (_, index) => record(`cohort-ramp-peer-${index}`, historyFor(100 + index, 10)));
+    const withSeven = api.evaluateRecord(target, [target, ...peers.slice(0, 7)], undefined, evaluatedAt).result;
+    const withEight = api.evaluateRecord(target, [target, ...peers.slice(0, 8)], undefined, evaluatedAt).result;
+    const withFifteen = api.evaluateRecord(target, [target, ...peers.slice(0, 15)], undefined, evaluatedAt).result;
+    const withThirty = api.evaluateRecord(target, [target, ...peers], undefined, evaluatedAt).result;
+    assert.equal(withSeven.benchmark.reliable, false);
+    assert.equal(withSeven.benchmark.strength, 0);
+    assert.equal(withSeven.confidenceComponents.cohortStrength, 0);
+    assert.equal(withEight.benchmark.reliable, true);
+    assert.ok(Math.abs(withEight.benchmark.strength - (1 / 23)) < 1e-12);
+    assert.equal(withEight.confidenceComponents.cohortStrength, 4);
+    assert.ok(withEight.benchmark.strength < withFifteen.benchmark.strength);
+    assert.ok(withFifteen.benchmark.strength < withThirty.benchmark.strength);
+    assert.equal(withThirty.benchmark.strength, 1);
+    assert.ok(Math.abs(withEight.score - withSeven.score) <= 3);
+    assert.equal(withEight.diagnosis, withSeven.diagnosis);
 });
 
 test('cohort favorite percentiles smooth low-traffic outliers', () => {
     const { api } = loadAnalyzer();
     const evaluatedAt = '2026-08-01T12:00:00.000Z';
-    const lowTraffic = record('cohort-low-traffic', [snapshot(evaluatedAt, { visits: 1, favorites: 1 })]);
-    const stableTraffic = record('cohort-stable-traffic', [snapshot(evaluatedAt, { visits: 100, favorites: 10 })]);
-    const fillers = Array.from({ length: 6 }, (_, index) => record(`cohort-filler-${index}`, [
+    const lowTraffic = record('cohort-low-traffic', [snapshot('2026-07-02T12:00:00.000Z', { visits: 1, favorites: 1 }), snapshot(evaluatedAt, { visits: 1, favorites: 1 })]);
+    const stableTraffic = record('cohort-stable-traffic', [snapshot('2026-07-02T12:00:00.000Z', { visits: 100, favorites: 10 }), snapshot(evaluatedAt, { visits: 100, favorites: 10 })]);
+    const fillers = Array.from({ length: 7 }, (_, index) => record(`cohort-filler-${index}`, [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 100, favorites: 4 + (index % 2) }),
         snapshot(evaluatedAt, { visits: 100, favorites: 4 + (index % 2) }),
     ]));
     const peers = [lowTraffic, stableTraffic, ...fillers];
@@ -1269,8 +1580,9 @@ test('sparse cohort metrics never drive a percentile diagnosis from one sample',
         snapshot('2026-07-02T12:00:00.000Z', { visits: 500 }),
         snapshot(evaluatedAt, { visits: 500, favorites: 25, sales: 1 }),
     ]);
-    const peers = Array.from({ length: 7 }, (_, index) => record(String(601 + index), [
-        snapshot(evaluatedAt, { visits: 500, favorites: 25 }),
+    const peers = Array.from({ length: 8 }, (_, index) => record(String(601 + index), [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: index === 0 ? 500 : 0, favorites: index === 0 ? 25 : 0 }),
+        snapshot(evaluatedAt, { visits: index === 0 ? 500 : 0, favorites: index === 0 ? 25 : 0 }),
     ]));
     const result = api.evaluateRecord(target, [target, ...peers], undefined, evaluatedAt).result;
     assert.equal(result.benchmark.size, 8);
@@ -1283,7 +1595,7 @@ test('record refresh evaluates the completed collection together and isolates ou
     const { api, storage } = loadAnalyzer();
     const evaluatedAt = '2026-08-01T12:00:00.000Z';
     const runtime = api.collectionRuntime;
-    const scoped = Array.from({ length: 8 }, (_, index) => record(String(650 + index), [
+    const scoped = Array.from({ length: 9 }, (_, index) => record(String(650 + index), [
         snapshot('2026-07-02T12:00:00.000Z', { visits: 100 }),
         snapshot(evaluatedAt, { visits: 120, favorites: 6 }),
     ]));
@@ -1398,6 +1710,72 @@ test('threshold calibration requires twenty clean rows and excludes recent exper
     assert.equal(calibrated.sampleSize, 20);
     assert.ok(calibrated.values.minVisitsToImprove >= 10);
     assert.ok(calibrated.values.minVisitsToProtect > calibrated.values.minVisitsToImprove);
+    assert.deepEqual(plain(api.thresholdImpactCounts(clean, {
+        minVisitsToImprove: 'broken', minVisitsToProtect: '', minRenewalsToReview: {}, declinePercent: Number.NaN,
+    }, evaluatedAt)), { improve: 10, protect: 6 });
+});
+
+test('calibration falls back per sparse subgroup and central policy repairs contradictory thresholds', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const clean = Array.from({ length: 20 }, (_, index) => record(`calibration-group-${index}`, [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: index === 0 ? 100 : 20, sales: 0, renewals: 0 }),
+        snapshot(evaluatedAt, { visits: index === 0 ? 41 : 20, sales: 0, renewals: index === 0 ? 10 : 0 }),
+    ]));
+    const calibration = plain(api.thresholdCalibration(clean, evaluatedAt));
+    assert.equal(calibration.available, true);
+    assert.equal(calibration.groupSizes.declines, 1);
+    assert.equal(calibration.groupSizes.dormantRenewals, 0);
+    assert.equal(calibration.calibratedFields.declinePercent, false);
+    assert.equal(calibration.calibratedFields.minRenewalsToReview, false);
+    assert.equal(calibration.values.declinePercent, 35);
+    assert.equal(calibration.values.minRenewalsToReview, 2);
+
+    const normalized = plain(api.normalizeHealthThresholds({
+        minVisitsToImprove: 100,
+        minVisitsToProtect: 10,
+        minRenewalsToReview: 0,
+        declinePercent: 999,
+    }));
+    assert.deepEqual(normalized, {
+        minVisitsToImprove: 100,
+        minVisitsToProtect: 101,
+        minRenewalsToReview: 1,
+        declinePercent: 100,
+    });
+    assert.deepEqual(plain(api.normalizeHealthThresholds({
+        minVisitsToImprove: 'broken', minVisitsToProtect: '', minRenewalsToReview: {}, declinePercent: Number.NaN,
+    })), {
+        minVisitsToImprove: 20,
+        minVisitsToProtect: 60,
+        minRenewalsToReview: 2,
+        declinePercent: 35,
+    });
+    const candidate = record('policy-repair', [snapshot(evaluatedAt, { visits: 50 })]);
+    const evaluated = api.evaluateRecord(candidate, [candidate], { minVisitsToImprove: 100, minVisitsToProtect: 10 }, evaluatedAt);
+    assert.equal(evaluated.policy.thresholds.minVisitsToImprove, 100);
+    assert.equal(evaluated.policy.thresholds.minVisitsToProtect, 101);
+});
+
+test('decline calibration uses the same exact non-overlapping trend population as lifecycle decisions', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const atDaysAgo = (days) => new Date(Date.parse(evaluatedAt) - days * 86400000).toISOString();
+    const rows = (days) => Array.from({ length: 20 }, (_, index) => record(`decline-calibration-${days}-${index}`, [
+        snapshot(atDaysAgo(days), { visits: 100 }),
+        snapshot(evaluatedAt, { visits: index < 10 ? 40 + index : 100 }),
+    ]));
+    const overlapping = plain(api.thresholdCalibration(rows(29), evaluatedAt));
+    assert.equal(overlapping.available, true);
+    assert.equal(overlapping.groupSizes.declines, 0);
+    assert.equal(overlapping.calibratedFields.declinePercent, false);
+    assert.equal(overlapping.values.declinePercent, 35);
+
+    const exact = plain(api.thresholdCalibration(rows(30), evaluatedAt));
+    assert.equal(exact.available, true);
+    assert.equal(exact.groupSizes.declines, 10);
+    assert.equal(exact.calibratedFields.declinePercent, true);
+    assert.ok(exact.values.declinePercent >= 51 && exact.values.declinePercent <= 60);
 });
 
 test('collection scope ignores pagination and tracking drift but preserves analysis filters', () => {
@@ -1443,10 +1821,10 @@ test('collection conflict detection catches both exact repeats and partial cross
     assert.equal(api.pageIdentityMatchesCollection({ valid: true, current: 1, total: 17 }, { totalPages: 17 }), true);
     const ids = (start, count) => Array.from({ length: count }, (_, index) => ({ listingId: String(start + index) }));
     const first = ids(1, 40);
-    const collection = { pages: { 1: { contentSignature: api.ListingPageAdapter.contentSignature(first), ids: first.map((item) => item.listingId), count: 40 } }, uniqueIds: first.map((item) => item.listingId) };
+    const collection = { metricContractId, pages: { 1: { metricContractId, contentSignature: api.ListingPageAdapter.contentSignature(first), ids: first.map((item) => item.listingId), count: 40 } }, uniqueIds: first.map((item) => item.listingId) };
     collection.pages[1].signature = api.ListingPageAdapter.pageSignature(first, 1);
-    assert.equal(api.collectionPageMatchesManifest(collection, { pageInfo: { current: 1 }, listings: ids(21, 40) }), false);
-    assert.equal(api.collectionPageMatchesManifest(collection, { pageInfo: { current: 1 }, listings: [...first].reverse() }), true);
+    assert.equal(api.collectionPageMatchesManifest(collection, { pageInfo: { current: 1 }, listings: ids(21, 40), metricContractId }), false);
+    assert.equal(api.collectionPageMatchesManifest(collection, { pageInfo: { current: 1 }, listings: [...first].reverse(), metricContractId }), true);
     const exact = plain(api.collectionPageConflict(collection, { pageInfo: { current: 2 }, listings: [...first].reverse() }));
     assert.deepEqual(exact, { repeated: true, overlap: true });
     const partial = plain(api.collectionPageConflict(collection, { pageInfo: { current: 2 }, listings: ids(21, 40) }));
@@ -1463,9 +1841,21 @@ test('legacy collections are invalidated and current collection peers can be iso
     assert.equal(legacy.legacySchema, true);
     assert.equal(api.collectionIsFresh(legacy, Date.now(), { scopeKey: '/scope', totalPages: 1 }), false);
 
-    const current = api.normalizeCollection({ schema: api.versions.collectionSchema, id: 'new', status: 'completed', scopeKey: '/scope', completedAt: now, totalPages: 1, pages: { 1: { signature: '1|1|1', contentSignature: '1', ids: ['1'], count: 1, capturedAt: now } }, uniqueIds: ['1'] });
+    const current = api.normalizeCollection({ schema: api.versions.collectionSchema, id: 'new', status: 'completed', scopeKey: '/scope', metricContractId, completedAt: now, totalPages: 1, pages: { 1: { signature: '1|1|1', contentSignature: '1', ids: ['1'], count: 1, capturedAt: now, metricContractId } }, uniqueIds: ['1'] });
     assert.equal(api.collectionIsFresh(current, Date.now(), { scopeKey: '/scope', totalPages: 1 }), true);
     assert.deepEqual(Array.from(api.evaluationScopeRecords([record('1', []), record('2', [])], ['2']), (item) => item.listingId), ['2']);
+    api.collectionRuntime.state.collection = current;
+    const identity = plain(api.currentCollectionIdentity());
+    assert.equal(identity.metricContractId, metricContractId);
+    assert.equal(identity.writeRevision, 0);
+    assert.match(identity.manifestFingerprint, /^[0-9a-f]{8}$/);
+    current.pages['1'].capturedAt = new Date(Date.parse(now) + 3600000).toISOString();
+    const recapturedIdentity = plain(api.currentCollectionIdentity());
+    assert.notEqual(recapturedIdentity.manifestFingerprint, identity.manifestFingerprint);
+    current.pages['1'].capturedAt = now;
+    current.pages['1'].signature = '1|1|tampered';
+    const tamperedIdentity = plain(api.currentCollectionIdentity());
+    assert.notEqual(tamperedIdentity.manifestFingerprint, identity.manifestFingerprint);
 
     const firstIds = Array.from({ length: 40 }, (_, index) => String(index + 1));
     const lastIds = ['40', '41'];
@@ -1476,11 +1866,12 @@ test('legacy collections are invalidated and current collection peers can be iso
         id: 'overlap',
         status: 'completed',
         scopeKey: '/scope',
+        metricContractId,
         completedAt: now,
         totalPages: 2,
         pages: {
-            1: { signature: `1|40|${firstContent}`, contentSignature: firstContent, ids: firstIds, count: 40, capturedAt: now },
-            2: { signature: `2|2|${lastContent}`, contentSignature: lastContent, ids: lastIds, count: 2, capturedAt: now },
+            1: { signature: `1|40|${firstContent}`, contentSignature: firstContent, ids: firstIds, count: 40, capturedAt: now, metricContractId },
+            2: { signature: `2|2|${lastContent}`, contentSignature: lastContent, ids: lastIds, count: 2, capturedAt: now, metricContractId },
         },
         uniqueIds: [...firstIds, '41'],
         duplicateCount: 0,
@@ -1489,10 +1880,357 @@ test('legacy collections are invalidated and current collection peers can be iso
     assert.equal(api.collectionIsFresh(malformed, Date.now(), { scopeKey: '/scope', totalPages: 2 }), false);
 });
 
+test('collection writes use revision and canonical manifest compare-and-swap fences', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const base = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-cas', writeRevision: 4, status: 'running', scopeKey: '/scope',
+        metricContractId, startedAt: now, updatedAt: now, expectedPage: 2, totalPages: 2,
+        pages: { 1: { signature: '1|1|1', contentSignature: '1', ids: ['1'], count: 1, capturedAt: now, metricContractId } },
+        uniqueIds: ['1'], duplicateCount: 0, leaseToken: '', failureReports: [],
+    });
+    runtime.state.collection = base;
+    storage.set(runtime.KEYS.collection, plain(base));
+    const identity = plain(api.currentCollectionIdentity());
+    const saved = await runtime.Store.saveCollection({ ...base, status: 'paused', updatedAt: new Date(Date.parse(now) + 1000).toISOString() }, {
+        id: base.id, token: '', writeRevision: 4, manifestFingerprint: identity.manifestFingerprint,
+    });
+    assert.equal(saved.writeRevision, 5);
+    assert.equal(saved.status, 'paused');
+
+    const staleLocal = plain(saved);
+    runtime.state.collection = api.normalizeCollection(staleLocal);
+    const staleIdentity = plain(api.currentCollectionIdentity());
+    const remoteRevision = { ...staleLocal, writeRevision: 6, status: 'blocked' };
+    storage.set(runtime.KEYS.collection, plain(remoteRevision));
+    await assert.rejects(
+        runtime.Store.saveCollection({ ...staleLocal, status: 'running' }, {
+            id: staleLocal.id, token: staleLocal.leaseToken, writeRevision: staleLocal.writeRevision,
+            manifestFingerprint: staleIdentity.manifestFingerprint,
+        }),
+        (error) => error?.code === 'COLLECTION_LEASE_LOST',
+    );
+    assert.deepEqual(plain(storage.get(runtime.KEYS.collection)), plain(remoteRevision));
+
+    storage.set(runtime.KEYS.collection, plain(staleLocal));
+    const sameRevisionManifestDrift = plain(staleLocal);
+    sameRevisionManifestDrift.pages['1'].capturedAt = new Date(Date.parse(now) + 2000).toISOString();
+    storage.set(runtime.KEYS.collection, sameRevisionManifestDrift);
+    await assert.rejects(
+        runtime.Store.saveCollection({ ...staleLocal, status: 'running' }, {
+            id: staleLocal.id, token: staleLocal.leaseToken, writeRevision: staleLocal.writeRevision,
+            manifestFingerprint: staleIdentity.manifestFingerprint,
+        }),
+        (error) => error?.code === 'COLLECTION_LEASE_LOST',
+    );
+    assert.deepEqual(plain(storage.get(runtime.KEYS.collection)), sameRevisionManifestDrift);
+});
+
+test('collection resume reloads the newer stored manifest before calculating its next page', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    sandbox.location.pathname = '/your/shops/shop-one/tools/listings';
+    sandbox.location.search = '?stats=true&item_status=active';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}${sandbox.location.search}`;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    sandbox.document.querySelectorAll = (selector) => {
+        if (selector.includes('[data-seller-nav="true"]')) return [{ href: 'https://www.etsy.com/shop/ShopOne' }];
+        if (selector.includes('input[name="item_status"]')) return [{ value: 'active', checked: true, closest: () => null, getAttribute: () => null, matches: () => true }];
+        return [];
+    };
+    const scopeKey = api.collectionScopeKey(sandbox.location.href, 'etsy-shop:shopone', 'active');
+    const page = (number) => ({
+        signature: `${number}|1|${number}`, contentSignature: String(number), ids: [String(number)], count: 1,
+        capturedAt: now, metricContractId,
+    });
+    const local = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-resume-fresh', writeRevision: 4, status: 'paused', scopeKey,
+        metricContractId, startedAt: now, updatedAt: now, stoppedAt: now, expectedPage: 2, totalPages: 3,
+        pages: { 1: page(1) }, uniqueIds: ['1'], duplicateCount: 0, leaseToken: '', failureReports: [],
+    });
+    const stored = api.normalizeCollection({
+        ...local, writeRevision: 5, pages: { 1: page(1), 2: page(2) }, uniqueIds: ['1', '2'], expectedPage: 3,
+        updatedAt: new Date(Date.parse(now) + 1000).toISOString(),
+    });
+    runtime.state.collection = local;
+    storage.set(runtime.KEYS.collection, plain(stored));
+    const originalReadStable = api.ListingPageAdapter.readStable;
+    const originalRun = runtime.Collection.run;
+    api.ListingPageAdapter.readStable = async () => ({ pageInfo: { current: 2, total: 3, valid: true }, metricContractId, listings: [{ listingId: '2' }] });
+    runtime.Collection.run = async () => runtime.state.collection;
+    try {
+        const resumed = await runtime.Collection.resumeOnce();
+        assert.equal(resumed.status, 'running');
+        assert.equal(resumed.expectedPage, 3);
+        assert.deepEqual(Object.keys(plain(resumed.pages)).sort(), ['1', '2']);
+        assert.deepEqual(plain(resumed.uniqueIds), ['1', '2']);
+        assert.equal(resumed.writeRevision, 7);
+        assert.equal(plain(storage.get(runtime.KEYS.collection)).writeRevision, 7);
+    } finally {
+        api.ListingPageAdapter.readStable = originalReadStable;
+        runtime.Collection.run = originalRun;
+        await runtime.CollectionLease.release();
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('collection resume cannot claim or rewrite a same-id run already completed by another tab', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    sandbox.location.pathname = '/your/shops/shop-one/tools/listings';
+    sandbox.location.search = '?stats=true&item_status=active';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}${sandbox.location.search}`;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    sandbox.document.querySelectorAll = (selector) => {
+        if (selector.includes('[data-seller-nav="true"]')) return [{ href: 'https://www.etsy.com/shop/ShopOne' }];
+        if (selector.includes('input[name="item_status"]')) return [{ value: 'active', checked: true, closest: () => null, getAttribute: () => null, matches: () => true }];
+        return [];
+    };
+    const scopeKey = api.collectionScopeKey(sandbox.location.href, 'etsy-shop:shopone', 'active');
+    const listingId = '9900000000000188';
+    const page = {
+        signature: `1|1|${listingId}`, contentSignature: listingId, ids: [listingId], count: 1,
+        capturedAt: now, metricContractId,
+    };
+    const local = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-resume-completed-elsewhere', writeRevision: 4,
+        status: 'paused', scopeKey, metricContractId, startedAt: now, updatedAt: now, stoppedAt: now,
+        expectedPage: 1, totalPages: 1, pages: { 1: page }, uniqueIds: [listingId], duplicateCount: 0,
+        leaseToken: '', failureReports: [],
+    });
+    const stored = api.normalizeCollection({
+        ...local, writeRevision: 5, status: 'completed', completedAt: new Date(Date.parse(now) + 1000).toISOString(),
+        updatedAt: new Date(Date.parse(now) + 1000).toISOString(),
+    });
+    const pendingAi = {
+        'air-pending-completed-elsewhere': {
+            collectionId: stored.id, scopeKey: stored.scopeKey, writeRevision: stored.writeRevision,
+            manifestFingerprint: 'completed-manifest-must-remain-unchanged',
+        },
+    };
+    runtime.state.collection = local;
+    storage.set(runtime.KEYS.collection, plain(stored));
+    storage.set(runtime.KEYS.aiRequests, plain(pendingAi));
+    const originalReadStable = api.ListingPageAdapter.readStable;
+    const originalRun = runtime.Collection.run;
+    let runCalls = 0;
+    api.ListingPageAdapter.readStable = async () => ({
+        pageInfo: { current: 1, total: 1, valid: true }, metricContractId, listings: [{ listingId }],
+    });
+    runtime.Collection.run = async () => { runCalls += 1; return runtime.state.collection; };
+    const storedBefore = plain(storage.get(runtime.KEYS.collection));
+    try {
+        assert.equal(await runtime.Collection.resumeOnce(), null);
+        assert.equal(runCalls, 0);
+        assert.deepEqual(plain(storage.get(runtime.KEYS.collection)), storedBefore);
+        assert.deepEqual(plain(storage.get(runtime.KEYS.aiRequests)), pendingAi);
+        assert.equal(storage.has(runtime.KEYS.collectionLease), false);
+    } finally {
+        api.ListingPageAdapter.readStable = originalReadStable;
+        runtime.Collection.run = originalRun;
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('collection acquire rejects a replaced collection id without leaving a lease claim', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const local = api.normalizeCollection({ schema: api.versions.collectionSchema, id: 'collection-a', status: 'paused', startedAt: now, updatedAt: now, totalPages: 1, pages: {}, uniqueIds: [] });
+    const replacement = api.normalizeCollection({ ...local, id: 'collection-b', writeRevision: 3 });
+    runtime.state.collection = local;
+    storage.set(runtime.KEYS.collection, plain(replacement));
+    assert.equal(await runtime.CollectionLease.acquire({ expectedCollectionId: local.id }), false);
+    assert.equal(storage.has(runtime.KEYS.collectionLease), false);
+    assert.equal(plain(storage.get(runtime.KEYS.collection)).id, 'collection-b');
+});
+
+test('action queues and full collection mutually exclude their complete lifecycles', async () => {
+    const { api, storage } = loadAnalyzer();
+    const collectionRuntime = api.collectionRuntime;
+    const actionRuntime = api.actionRuntime;
+    const now = new Date().toISOString();
+    const running = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-lifecycle-interlock', status: 'running',
+        scopeKey: 'etsy-shop:shopone|status:active|/your/shops/me/tools/listings?item_status=active&stats=true',
+        metricContractId, startedAt: now, updatedAt: now, expectedPage: 1, totalPages: 1,
+        pages: {}, uniqueIds: [], duplicateCount: 0, leaseToken: '', failureReports: [],
+    });
+
+    assert.equal(await actionRuntime.Lease.acquire(), true);
+    assert.equal(await collectionRuntime.CollectionLease.acquire(), false);
+    assert.equal(storage.has(collectionRuntime.KEYS.collectionLease), false);
+    await actionRuntime.Lease.release();
+
+    collectionRuntime.state.collection = running;
+    storage.set(collectionRuntime.KEYS.collection, plain(running));
+    assert.equal(await collectionRuntime.CollectionLease.acquire({ expectedCollectionId: running.id }), true);
+    assert.equal(await actionRuntime.Lease.acquire(), false);
+    assert.equal(storage.has(actionRuntime.KEYS.lease), false);
+    await assert.rejects(
+        actionRuntime.Queue.create([], null),
+        (error) => error?.code === 'COLLECTION_ACTIVE',
+    );
+    await collectionRuntime.CollectionLease.release();
+
+    const completed = {
+        ...plain(collectionRuntime.state.collection), status: 'completed', completedAt: now, updatedAt: now,
+    };
+    collectionRuntime.state.collection = api.normalizeCollection(completed);
+    storage.set(collectionRuntime.KEYS.collection, plain(completed));
+    storage.set(collectionRuntime.KEYS.collectionLease, {
+        owner: 'expired-owner', instanceId: 'expired-page', token: 'expired-collection-lease', expiresAt: Date.now() - 1,
+    });
+    assert.equal(await actionRuntime.Lease.acquire(), true);
+    assert.equal(await collectionRuntime.CollectionLease.acquire(), false);
+    await actionRuntime.Lease.release();
+    storage.delete(collectionRuntime.KEYS.collectionLease);
+
+    const uncertainQueue = {
+        schema: 1, id: 'queue-lifecycle-interlock', status: 'running', cursor: 0,
+        items: [{
+            listingId: '9900000000000299', status: 'deactivation-submitted-unverified',
+            proposal: { action: 'DEACTIVATE_REVIEW' },
+        }],
+    };
+    actionRuntime.state.queue = plain(uncertainQueue);
+    storage.set(actionRuntime.KEYS.queue, plain(uncertainQueue));
+    assert.equal(await collectionRuntime.CollectionLease.acquire(), false);
+    assert.equal(storage.has(collectionRuntime.KEYS.collectionLease), false);
+
+    uncertainQueue.status = 'stopped';
+    actionRuntime.state.queue = plain(uncertainQueue);
+    storage.set(actionRuntime.KEYS.queue, plain(uncertainQueue));
+    assert.equal(await collectionRuntime.CollectionLease.acquire(), true);
+    await collectionRuntime.CollectionLease.release();
+
+    const overlappingCollection = api.normalizeCollection({
+        ...plain(running), id: 'collection-legacy-overlap', writeRevision: 3,
+        leaseToken: 'legacy-collection-token',
+    });
+    const overlappingQueue = {
+        ...plain(uncertainQueue), id: 'queue-legacy-overlap', status: 'running',
+        items: [{
+            listingId: '9900000000000300', status: 'deactivation-submitted-unverified',
+            proposal: { action: 'DEACTIVATE_REVIEW' },
+        }],
+    };
+    collectionRuntime.state.collection = overlappingCollection;
+    storage.set(collectionRuntime.KEYS.collection, plain(overlappingCollection));
+    assert.equal(await collectionRuntime.CollectionLease.acquire({ expectedCollectionId: overlappingCollection.id }), true);
+    const staleCollectionOwnerState = plain(collectionRuntime.state.collection);
+    const ownedCollectionLease = plain(storage.get(collectionRuntime.KEYS.collectionLease));
+    actionRuntime.state.queue = plain(overlappingQueue);
+    storage.set(actionRuntime.KEYS.queue, plain(overlappingQueue));
+    assert.equal(await actionRuntime.Lease.acquire(), false);
+
+    const originalSaveCollectionLocked = collectionRuntime.Store.saveCollectionLocked;
+    collectionRuntime.Store.saveCollectionLocked = async () => {
+        const error = new Error('injected collection block failure');
+        error.code = 'STORAGE_WRITE_FAILED';
+        throw error;
+    };
+    try {
+        await actionRuntime.stopCurrentQueue('legacy-overlap-block-failure');
+    } finally {
+        collectionRuntime.Store.saveCollectionLocked = originalSaveCollectionLocked;
+    }
+    assert.equal(plain(storage.get(actionRuntime.KEYS.queue)).status, 'running');
+    assert.equal(plain(storage.get(collectionRuntime.KEYS.collection)).status, 'running');
+    assert.equal(storage.has(actionRuntime.KEYS.lease), false);
+
+    await actionRuntime.stopCurrentQueue('legacy-overlap-recovery');
+    assert.equal(plain(storage.get(actionRuntime.KEYS.queue)).status, 'stopped');
+    const blockedCollection = plain(storage.get(collectionRuntime.KEYS.collection));
+    assert.equal(blockedCollection.status, 'blocked');
+    assert.equal(blockedCollection.writeRevision, staleCollectionOwnerState.writeRevision + 1);
+    assert.equal(blockedCollection.error.key, 'collectionPageChanged');
+    assert.equal(blockedCollection.leaseToken, '');
+    assert.equal(storage.has(actionRuntime.KEYS.lease), false);
+    assert.deepEqual(plain(storage.get(collectionRuntime.KEYS.collectionLease)), ownedCollectionLease);
+
+    const legacyPersist = async (candidate, expected) => {
+        const stored = api.normalizeCollection(storage.get(collectionRuntime.KEYS.collection));
+        if (expected.id && stored?.id !== expected.id) {
+            const error = new Error('legacy collection ownership changed');
+            error.code = 'COLLECTION_LEASE_LOST';
+            throw error;
+        }
+        if (expected.token && stored?.leaseToken !== expected.token) {
+            const error = new Error('legacy collection fencing token changed');
+            error.code = 'COLLECTION_LEASE_LOST';
+            throw error;
+        }
+        const lease = storage.get(collectionRuntime.KEYS.collectionLease);
+        if (expected.leaseToken && (lease?.token !== expected.leaseToken || Number(lease.expiresAt) <= Date.now())) {
+            const error = new Error('legacy collection lease changed');
+            error.code = 'COLLECTION_LEASE_LOST';
+            throw error;
+        }
+        storage.set(collectionRuntime.KEYS.collection, plain(candidate));
+    };
+    await assert.rejects(
+        legacyPersist(
+            { ...plain(staleCollectionOwnerState), status: 'running', expectedPage: 2 },
+            {
+                id: staleCollectionOwnerState.id,
+                token: staleCollectionOwnerState.leaseToken,
+                leaseToken: ownedCollectionLease.token,
+            },
+        ),
+        (error) => error?.code === 'COLLECTION_LEASE_LOST',
+    );
+    assert.deepEqual(plain(storage.get(collectionRuntime.KEYS.collection)), blockedCollection);
+
+    collectionRuntime.state.collection = api.normalizeCollection(staleCollectionOwnerState);
+    await assert.rejects(
+        collectionRuntime.Collection.persist({ expectedPage: 2 }),
+        (error) => error?.code === 'COLLECTION_LEASE_LOST',
+    );
+    assert.deepEqual(plain(storage.get(collectionRuntime.KEYS.collection)), blockedCollection);
+    await collectionRuntime.CollectionLease.release();
+    assert.equal(await collectionRuntime.CollectionLease.acquire({ expectedCollectionId: overlappingCollection.id }), false);
+});
+
 test('percentile ranks stay within the documented 0-100 range', () => {
     const { api } = loadAnalyzer();
     assert.equal(api.percentileRank([1, 2], 100), 100);
     assert.equal(api.percentileRank([1, 2], -100), 0);
+    assert.equal(api.percentileRank([1, 2], 1), 25);
+    assert.equal(api.percentileRank([1, 1, 2, 2], 1), 25);
+});
+
+test('exact Poisson rate-ratio inference handles sparse and zero-baseline counts without fake percentages', () => {
+    const { api } = loadAnalyzer();
+    const sparse = plain(api.exactPoissonRateRatioInterval(2, 100, 8, 100));
+    assert.equal(sparse.method, 'conditional-exact-poisson');
+    assert.equal(sparse.confidenceLevel, 0.95);
+    assert.equal(sparse.ratio, 4);
+    assert.ok(sparse.low < 1 && sparse.high > 1);
+
+    const fromZero = plain(api.exactPoissonRateRatioInterval(0, 100, 6, 100));
+    assert.equal(fromZero.ratioKind, 'infinite');
+    assert.equal(fromZero.high, null);
+    assert.equal(fromZero.highOpen, true);
+    assert.ok(fromZero.low > 1);
+    assert.deepEqual(plain(api.relativeEffectSummary(0, 6)), { kind: 'from-zero', percent: null, absolute: 6 });
+
+    const forward = api.exactPoissonRateRatioInterval(4, 30, 12, 60);
+    const reverse = api.exactPoissonRateRatioInterval(12, 60, 4, 30);
+    const scaled = api.exactPoissonRateRatioInterval(4, 300, 12, 600);
+    assert.ok(Math.abs(forward.low - (1 / reverse.high)) < 1e-10);
+    assert.ok(Math.abs(forward.high - (1 / reverse.low)) < 1e-10);
+    assert.ok(Math.abs(forward.low - scaled.low) < 1e-10);
+    assert.ok(Math.abs(forward.high - scaled.high) < 1e-10);
+    assert.equal(api.exactPoissonRateRatioInterval(0, 100, 0, 100), null);
+    assert.equal(api.exactPoissonRateRatioInterval(1.5, 100, 2, 100), null);
+    assert.equal(api.exactPoissonRateRatioInterval(1, 0, 2, 100), null);
+    const supportedBoundary = api.exactPoissonRateRatioInterval(500_000, 100, 500_000, 100);
+    assert.ok(supportedBoundary && supportedBoundary.low <= 1 && supportedBoundary.high >= 1);
+    assert.equal(api.exactPoissonRateRatioInterval(100_000_000, 100, 100_000_000, 100), null);
 });
 
 test('snapshot normalization preserves explicit zeroes without coercing blank or structured values to zero', () => {
@@ -1628,6 +2366,7 @@ test('AI request packages import one synthetic response exactly once and clean u
         id: 'collection-synthetic-ai-roundtrip',
         status: 'completed',
         scopeKey: 'etsy-shop:syntheticfixture|active',
+        metricContractId,
         startedAt: now,
         updatedAt: now,
         completedAt: now,
@@ -1640,6 +2379,7 @@ test('AI request packages import one synthetic response exactly once and clean u
                 ids: [listingId],
                 count: 1,
                 capturedAt: now,
+                metricContractId,
             },
         },
         uniqueIds: [listingId],
@@ -1691,6 +2431,317 @@ test('AI request packages import one synthetic response exactly once and clean u
     const afterReplay = await runtime.Store.getRecord(listingId);
     assert.equal(afterReplay.improvements.length, 1);
     assert.equal(afterReplay.proposal.requestId, request.requestId);
+});
+
+test('AI imports atomically reject changed editor and analytical payload records', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const atDaysAgo = (days) => new Date(Date.parse(now) - days * 86400000).toISOString();
+    const ids = ['9900000000000291', '9900000000000292'];
+    const candidates = ids.map((listingId) => {
+        const candidate = record(listingId, [
+            snapshot(atDaysAgo(60), { visits: 100, sales: 0, revenue: 0 }),
+            snapshot(atDaysAgo(30), { visits: 100, sales: 5, revenue: 50 }),
+            snapshot(now, { visits: 100, sales: 10, revenue: 100 }),
+        ], { title: `AI fence ${listingId}`, shopKey: 'etsy-shop:syntheticfixture' });
+        candidate.editor = {
+            title: `AI fence ${listingId}`, description: `Description ${listingId}`,
+            tags: ['synthetic', 'fixture'], materials: ['cotton'], capturedAt: now,
+        };
+        return candidate;
+    });
+    const storedRecords = [];
+    for (const candidate of candidates) storedRecords.push(await runtime.Store.putRecord(candidate));
+    const contentSignature = [...ids].sort().join('\u001f');
+    const collection = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-ai-record-fence', status: 'completed',
+        scopeKey: 'etsy-shop:syntheticfixture|active', metricContractId, startedAt: now, updatedAt: now, completedAt: now,
+        expectedPage: 1, totalPages: 1,
+        pages: { 1: { signature: `1|2|${contentSignature}`, contentSignature, ids, count: 2, capturedAt: now, metricContractId } },
+        uniqueIds: ids, duplicateCount: 0, failureReports: [],
+    });
+    runtime.state.collection = collection;
+    runtime.state.records = storedRecords;
+    storage.set(runtime.KEYS.collection, plain(collection));
+
+    const request = await api.aiRuntime.aiRequestPackage(storedRecords, api.currentCollectionIdentity());
+    const editorChanged = plain(storage.get(runtime.KEYS.record(ids[0])));
+    editorChanged.editor.description = 'Changed after the AI request';
+    storage.set(runtime.KEYS.record(ids[0]), editorChanged);
+    const analyticsChanged = plain(storage.get(runtime.KEYS.record(ids[1])));
+    analyticsChanged.history[1].sales = 1;
+    analyticsChanged.history[1].revenue = 10;
+    storage.set(runtime.KEYS.record(ids[1]), analyticsChanged);
+
+    const response = JSON.stringify({
+        schema: 'makaytron-listing-ai-proposals/v1', requestId: request.requestId,
+        proposals: ids.map((_listingId, index) => ({
+            reference: `L${String(index + 1).padStart(3, '0')}`, action: 'UPDATE', fields: ['description'],
+            description: `Proposed ${index + 1}`, reason: 'stale payload regression',
+        })),
+    });
+    const imported = await api.aiRuntime.importAiResponse(response, null);
+    assert.equal(imported.ok, false);
+    assert.equal(imported.error.code, 'AI_REQUEST');
+    assert.equal(imported.error.path, '$.requestId');
+    assert.ok(storage.get(runtime.KEYS.aiRequests)[request.requestId]);
+    for (const listingId of ids) {
+        const saved = await runtime.Store.getRecord(listingId);
+        assert.equal(saved.proposal, null);
+        assert.equal(saved.improvements.length, 0);
+    }
+});
+
+test('AI import cannot supersede a newer manual proposal saved after request export', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const listingId = '9900000000000293';
+    const candidate = record(listingId, [snapshot(now, { visits: 42, favorites: 3 })], {
+        title: 'AI proposal race fence', shopKey: 'etsy-shop:syntheticfixture',
+    });
+    candidate.editor = {
+        title: 'AI proposal race fence', description: 'Description before export',
+        tags: ['synthetic', 'fixture'], materials: ['cotton'], capturedAt: now,
+    };
+    const storedCandidate = await runtime.Store.putRecord(candidate);
+    const collection = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-ai-proposal-race', status: 'completed',
+        scopeKey: 'etsy-shop:syntheticfixture|active', metricContractId, startedAt: now, updatedAt: now, completedAt: now,
+        expectedPage: 1, totalPages: 1,
+        pages: { 1: { signature: `1|1|${listingId}`, contentSignature: listingId, ids: [listingId], count: 1, capturedAt: now, metricContractId } },
+        uniqueIds: [listingId], duplicateCount: 0, failureReports: [],
+    });
+    runtime.state.collection = collection;
+    runtime.state.records = [storedCandidate];
+    storage.set(runtime.KEYS.collection, plain(collection));
+
+    const request = await api.aiRuntime.aiRequestPackage([storedCandidate], api.currentCollectionIdentity());
+    await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['title'], title: 'Newer manual proposal',
+        reason: 'This proposal was saved after AI export', source: 'manual',
+    });
+    const newerRecord = await runtime.Store.getRecord(listingId);
+    const newerProposal = plain(newerRecord.proposal);
+    const newerImprovements = plain(newerRecord.improvements);
+
+    const response = JSON.stringify({
+        schema: 'makaytron-listing-ai-proposals/v1', requestId: request.requestId,
+        proposals: [{
+            reference: 'L001', action: 'UPDATE', fields: ['description'],
+            description: 'Stale AI response', reason: 'Must not replace the newer manual proposal',
+        }],
+    });
+    const imported = await api.aiRuntime.importAiResponse(response, null);
+    assert.equal(imported.ok, false);
+    assert.equal(imported.error.code, 'AI_REQUEST');
+    assert.equal(imported.error.path, '$.requestId');
+    assert.ok(storage.get(runtime.KEYS.aiRequests)[request.requestId]);
+    const afterImport = await runtime.Store.getRecord(listingId);
+    assert.deepEqual(plain(afterImport.proposal), newerProposal);
+    assert.deepEqual(plain(afterImport.improvements), newerImprovements);
+    assert.equal(afterImport.proposal.source, 'manual');
+    assert.equal(afterImport.proposal.title, 'Newer manual proposal');
+});
+
+test('verified deactivation invalidates its saved proposal basis and every earlier AI request', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const deactivatedAt = new Date(Date.parse(now) + 1000).toISOString();
+    const completedAt = new Date(Date.parse(now) + 2000).toISOString();
+    const listingId = '9900000000000294';
+    const candidate = record(listingId, [snapshot(now, { visits: 0, favorites: 0 })], {
+        title: 'AI deactivation state fence', shopKey: 'etsy-shop:syntheticfixture',
+    });
+    candidate.editor = {
+        title: 'AI deactivation state fence', description: 'Description before deactivation',
+        tags: ['synthetic', 'fixture'], materials: ['cotton'], capturedAt: now,
+    };
+    await runtime.Store.putRecord(candidate);
+    const savedPlan = await runtime.Store.saveProposal(listingId, {
+        action: 'DEACTIVATE_REVIEW', fields: [], reason: 'Synthetic verified-deactivation fence', source: 'manual',
+    });
+    const collection = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-ai-deactivation-fence', status: 'completed',
+        scopeKey: 'etsy-shop:syntheticfixture|status:active|/your/shops/me/tools/listings?item_status=active&stats=true',
+        metricContractId, startedAt: now, updatedAt: completedAt, completedAt,
+        expectedPage: 1, totalPages: 1,
+        pages: { 1: { signature: `1|1|${listingId}`, contentSignature: listingId, ids: [listingId], count: 1, capturedAt: now, metricContractId } },
+        uniqueIds: [listingId], duplicateCount: 0, failureReports: [],
+    });
+    runtime.state.collection = collection;
+    runtime.state.records = [savedPlan];
+    storage.set(runtime.KEYS.collection, plain(collection));
+
+    const collectionIdentity = api.currentCollectionIdentity();
+    const request = await api.aiRuntime.aiRequestPackage([savedPlan], collectionIdentity);
+    const beforeDeactivationProposal = plain(savedPlan.proposal);
+    const marked = await runtime.Store.getRecord(listingId);
+    marked.deactivation = {
+        at: deactivatedAt, operationId: 'deactivate-ai-fence-001',
+        reason: 'Synthetic verified-deactivation fence', baselineSnapshot: marked.history.at(-1),
+        userConfirmed: true, automated: true,
+    };
+    const deactivated = await runtime.Store.putRecord(marked);
+    runtime.state.records = [deactivated];
+    assert.equal(api.recommendationBasisMatches(deactivated), false);
+    assert.equal(api.analysisCollectionIsFresh(), false);
+    await assert.rejects(api.assertFreshCollection(collectionIdentity), (error) => error?.code === 'COLLECTION_STALE');
+    await assert.rejects(
+        api.aiRuntime.aiRequestPackage([deactivated], collectionIdentity),
+        (error) => error?.code === 'COLLECTION_STALE',
+    );
+    const invalidatedCollection = await runtime.invalidateCollectionForRecordMutationLocked(
+        listingId,
+        deactivated.deactivation.at,
+        'etsy-shop:syntheticfixture',
+    );
+    assert.equal(invalidatedCollection.status, 'blocked');
+    assert.equal(invalidatedCollection.writeRevision, collection.writeRevision + 1);
+    assert.equal(plain(storage.get(runtime.KEYS.collection)).status, 'blocked');
+
+    const response = JSON.stringify({
+        schema: 'makaytron-listing-ai-proposals/v1', requestId: request.requestId,
+        proposals: [{
+            reference: 'L001', action: 'UPDATE', fields: ['description'],
+            description: 'Stale response after deactivation', reason: 'Must not revive stale active-state work',
+        }],
+    });
+    const imported = await api.aiRuntime.importAiResponse(response, null);
+    assert.equal(imported.ok, false);
+    assert.equal(imported.error.code, 'COLLECTION_STALE');
+    assert.equal(imported.error.path, '$.requestId');
+    assert.ok(storage.get(runtime.KEYS.aiRequests)[request.requestId]);
+    const afterImport = await runtime.Store.getRecord(listingId);
+    assert.deepEqual(plain(afterImport.proposal), beforeDeactivationProposal);
+    assert.equal(afterImport.deactivation.operationId, 'deactivate-ai-fence-001');
+});
+
+test('deactivation invalidates same-shop inactive membership even when the listing was absent', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const startedAt = new Date(Date.now() - 5000).toISOString();
+    const capturedAt = new Date(Date.now() - 4000).toISOString();
+    const completedAt = new Date(Date.now() - 3000).toISOString();
+    const deactivatedAt = new Date(Date.now() - 2000).toISOString();
+    const listingId = '9900000000000295';
+    const memberId = '9900000000000296';
+    const target = record(listingId, [snapshot(capturedAt)], { shopKey: 'etsy-shop:shopone' });
+    target.deactivation = {
+        at: deactivatedAt, operationId: 'deactivate-inactive-membership-001', reason: 'scope transition',
+        baselineSnapshot: target.history.at(-1), userConfirmed: true, automated: true,
+    };
+    const member = record(memberId, [snapshot(capturedAt, { listingState: 'inactive', statusLabel: 'Inactive' })], {
+        shopKey: 'etsy-shop:shopone', listingState: 'inactive', statusLabel: 'Inactive',
+    });
+    await runtime.Store.putRecord(target);
+    await runtime.Store.putRecord(member);
+    const collection = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-inactive-membership', status: 'completed',
+        scopeKey: 'etsy-shop:shopone|status:inactive|/your/shops/me/tools/listings?item_status=inactive&stats=true',
+        metricContractId, startedAt, updatedAt: completedAt, completedAt, expectedPage: 1, totalPages: 1,
+        pages: { 1: { signature: `1|1|${memberId}`, contentSignature: memberId, ids: [memberId], count: 1, capturedAt, metricContractId } },
+        uniqueIds: [memberId], duplicateCount: 0, failureReports: [],
+    });
+    runtime.state.collection = collection;
+    runtime.state.records = [member, target];
+    storage.set(runtime.KEYS.collection, plain(collection));
+
+    assert.equal(api.analysisCollectionIsFresh(), false);
+    await assert.rejects(api.assertFreshCollection(api.currentCollectionIdentity()), (error) => error?.code === 'COLLECTION_STALE');
+    const invalidated = await runtime.invalidateCollectionForRecordMutationLocked(listingId, deactivatedAt, 'etsy-shop:shopone');
+    assert.equal(invalidated.status, 'blocked');
+
+    const otherShopMember = record('9900000000000297', [snapshot(capturedAt, { listingState: 'inactive', statusLabel: 'Inactive' })], {
+        shopKey: 'etsy-shop:shoptwo', listingState: 'inactive', statusLabel: 'Inactive',
+    });
+    await runtime.Store.putRecord(otherShopMember);
+    const crossShop = api.normalizeCollection({
+        ...plain(collection), id: 'collection-inactive-other-shop', writeRevision: 0, status: 'completed',
+        scopeKey: 'etsy-shop:shoptwo|status:inactive|/your/shops/me/tools/listings?item_status=inactive&stats=true',
+        pages: {
+            1: {
+                signature: `1|1|${otherShopMember.listingId}`, contentSignature: otherShopMember.listingId,
+                ids: [otherShopMember.listingId], count: 1, capturedAt, metricContractId,
+            },
+        },
+        uniqueIds: [otherShopMember.listingId],
+    });
+    runtime.state.collection = crossShop;
+    runtime.state.records = [otherShopMember, target];
+    storage.set(runtime.KEYS.collection, plain(crossShop));
+    assert.equal(api.analysisCollectionIsFresh(), true);
+    const untouched = await runtime.invalidateCollectionForRecordMutationLocked(listingId, deactivatedAt, 'etsy-shop:shopone');
+    assert.equal(untouched.status, 'completed');
+    assert.equal(untouched.writeRevision, crossShop.writeRevision);
+});
+
+test('collection page persistence rejects a post-read deactivation and accepts a genuinely later observation', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const listingId = '9900000000000298';
+    const deactivatedAt = new Date(Date.now() - 3000).toISOString();
+    const observedBefore = new Date(Date.parse(deactivatedAt) - 1000).toISOString();
+    const observedAfter = new Date(Date.parse(deactivatedAt) + 1000).toISOString();
+    const target = record(listingId, [snapshot(observedBefore)], { shopKey: 'etsy-shop:shopone' });
+    target.deactivation = {
+        at: deactivatedAt, operationId: 'deactivate-page-observation-001', reason: 'page fence',
+        baselineSnapshot: target.history.at(-1), userConfirmed: true, automated: true,
+    };
+    await runtime.Store.putRecord(target);
+    const scopeKey = 'etsy-shop:shopone|status:active|/your/shops/me/tools/listings?item_status=active&stats=true';
+    const makeRun = (id, startedAt) => api.normalizeCollection({
+        schema: api.versions.collectionSchema, id, status: 'running', scopeKey, metricContractId,
+        startedAt, updatedAt: startedAt, expectedPage: 1, totalPages: 1, pages: {}, uniqueIds: [],
+        duplicateCount: 0, leaseToken: '', failureReports: [],
+    });
+    const alreadyObservedRun = makeRun('collection-page-observation-running', observedBefore);
+    alreadyObservedRun.pages = {
+        1: {
+            signature: `1|1|${listingId}`, contentSignature: listingId, ids: [listingId], count: 1,
+            capturedAt: observedBefore, metricContractId,
+        },
+    };
+    alreadyObservedRun.uniqueIds = [listingId];
+    runtime.state.collection = alreadyObservedRun;
+    storage.set(runtime.KEYS.collection, plain(alreadyObservedRun));
+    const blockedRun = await runtime.invalidateCollectionForRecordMutationLocked(listingId, deactivatedAt, 'etsy-shop:shopone');
+    assert.equal(blockedRun.status, 'blocked');
+
+    const staleRun = makeRun('collection-page-observation-stale', observedBefore);
+    runtime.state.collection = staleRun;
+    storage.set(runtime.KEYS.collection, plain(staleRun));
+    assert.equal(await runtime.CollectionLease.acquire({ expectedCollectionId: staleRun.id }), true);
+    const staleListing = { listingId, listingState: 'active', capturedAt: observedBefore };
+    const stalePage = {
+        signature: `1|1|${listingId}`, contentSignature: listingId, ids: [listingId], count: 1,
+        capturedAt: observedBefore, metricContractId,
+    };
+    await assert.rejects(
+        runtime.Collection.persist({ pages: { 1: stalePage }, uniqueIds: [listingId] }, { observedListings: [staleListing] }),
+        (error) => error?.code === 'COLLECTION_STATE_CHANGED',
+    );
+    assert.deepEqual(plain(storage.get(runtime.KEYS.collection).pages), {});
+    await runtime.CollectionLease.release();
+
+    const laterRun = makeRun('collection-page-observation-later', observedAfter);
+    runtime.state.collection = laterRun;
+    storage.set(runtime.KEYS.collection, plain(laterRun));
+    assert.equal(await runtime.CollectionLease.acquire({ expectedCollectionId: laterRun.id }), true);
+    const laterListing = { listingId, listingState: 'active', capturedAt: observedAfter };
+    const laterPage = { ...stalePage, capturedAt: observedAfter };
+    const saved = await runtime.Collection.persist(
+        { pages: { 1: laterPage }, uniqueIds: [listingId] },
+        { observedListings: [laterListing] },
+    );
+    assert.equal(saved.pages['1'].capturedAt, observedAfter);
+    assert.equal(runtime.collectionListingsObservedAt([
+        { listingId: 'a', capturedAt: observedAfter },
+        { listingId: 'b', capturedAt: deactivatedAt },
+    ]), deactivatedAt);
+    await runtime.CollectionLease.release();
 });
 
 test('backup import sanitizes non-Etsy URLs, skips its queue, and preserves local display settings', async () => {
@@ -2496,10 +3547,10 @@ test('improvement experiments reach winner, underperformed, contaminated, and in
         baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 40 }),
     });
 
-    const winner = make('904', 40, 60, [improvement('win')]);
+    const winner = make('904', 40, 100, [improvement('win')]);
     api.updateExperimentEvaluations(winner, evaluateAt);
     assert.equal(winner.improvements[0].experiment.state, 'winner');
-    assert.equal(winner.improvements[0].experiment.effectPercent, 50);
+    assert.equal(winner.improvements[0].experiment.effectPercent, 150);
 
     const underperformed = make('905', 40, 20, [improvement('loss')]);
     api.updateExperimentEvaluations(underperformed, evaluateAt);
@@ -2522,6 +3573,10 @@ test('improvement experiments reach winner, underperformed, contaminated, and in
     const inconclusive = make('907', 40, 10, [improvement('missing')]);
     inconclusive.history = [snapshot('2026-01-01T00:00:00.000Z', { visits: 40 })];
     api.updateExperimentEvaluations(inconclusive, evaluateAt);
+    assert.equal(inconclusive.improvements[0].experiment.state, 'observing');
+    assert.equal(inconclusive.improvements[0].experiment.waitingForSnapshot, true);
+    assert.equal(inconclusive.improvements[0].experiment.evaluatedAt, undefined);
+    api.updateExperimentEvaluations(inconclusive, '2026-02-08T00:00:00.000Z');
     assert.equal(inconclusive.improvements[0].experiment.state, 'inconclusive');
 });
 
@@ -2557,7 +3612,94 @@ test('rate experiments require a separated Poisson rate-ratio interval instead o
     assert.ok(visitsInterval.low <= 1 && visitsInterval.high >= 1);
 });
 
-test('sales experiments normalize exposure days and reject a stale publication baseline', () => {
+test('experiment grace accepts the first valid late snapshot and zero-baseline effects stay non-percent', () => {
+    const { api } = loadAnalyzer();
+    const delayed = record('experiment-grace', [snapshot('2026-01-01T00:00:00.000Z', { visits: 40 })]);
+    delayed.improvements.push({
+        id: 'grace', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['title'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 40 }),
+    });
+    api.updateExperimentEvaluations(delayed, '2026-02-01T00:00:00.000Z');
+    assert.equal(delayed.improvements[0].experiment.state, 'observing');
+    assert.equal(delayed.improvements[0].experiment.waitingForSnapshot, true);
+    delayed.history.push(snapshot('2026-02-05T00:00:00.000Z', { visits: 100 }));
+    api.updateExperimentEvaluations(delayed, '2026-02-05T00:00:00.000Z');
+    assert.equal(delayed.improvements[0].experiment.state, 'winner');
+    assert.equal(delayed.improvements[0].experiment.evaluationDelayDays, 5);
+
+    const zeroBaseline = record('experiment-zero-baseline', [
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 100, favorites: 0 }),
+        snapshot('2026-01-31T00:00:00.000Z', { visits: 100, favorites: 6 }),
+    ]);
+    zeroBaseline.improvements.push({
+        id: 'zero-favorites', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['materials'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100, favorites: 0 }),
+    });
+    api.updateExperimentEvaluations(zeroBaseline, '2026-02-01T00:00:00.000Z');
+    const experiment = zeroBaseline.improvements[0].experiment;
+    assert.equal(experiment.state, 'winner');
+    assert.equal(experiment.effectKind, 'from-zero');
+    assert.equal(experiment.effectPercent, null);
+    assert.equal(experiment.effectAbsolute, 6);
+    assert.ok(experiment.current.rateRatioInterval.low > 1);
+    assert.equal(experiment.current.rateRatioInterval.highOpen, true);
+});
+
+test('experiments reject look-ahead snapshots and compact approximate counts', () => {
+    const { api } = loadAnalyzer();
+    const lookAhead = record('experiment-look-ahead', [
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 40 }),
+        snapshot('2026-02-05T00:00:00.000Z', { visits: 100 }),
+    ]);
+    lookAhead.improvements.push({
+        id: 'future-snapshot', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['title'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 40 }),
+    });
+    api.updateExperimentEvaluations(lookAhead, '2026-02-01T00:00:00.000Z');
+    assert.equal(lookAhead.improvements[0].experiment.state, 'observing');
+    assert.equal(lookAhead.improvements[0].experiment.waitingForSnapshot, true);
+    assert.equal(lookAhead.improvements[0].experiment.evaluationSnapshotAt, undefined);
+    api.updateExperimentEvaluations(lookAhead, '2026-02-05T00:00:00.000Z');
+    assert.equal(lookAhead.improvements[0].experiment.state, 'winner');
+
+    const approximateContract = plain(snapshot('2026-01-01T00:00:00.000Z').metricContract);
+    approximateContract.countPrecision.visits = 'approximate';
+    const approximate = record('experiment-approximate-count', [
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 1_200, metricContract: approximateContract }),
+        snapshot('2026-01-31T00:00:00.000Z', { visits: 2_400, metricContract: approximateContract }),
+    ]);
+    approximate.improvements.push({
+        id: 'approximate', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['title'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 1_200, metricContract: approximateContract }),
+    });
+    api.updateExperimentEvaluations(approximate, '2026-02-08T00:00:00.000Z');
+    assert.equal(approximate.improvements[0].experiment.state, 'inconclusive');
+    assert.equal(approximate.improvements[0].experiment.invalidReason, 'approximate-counts');
+    assert.equal(approximate.improvements[0].experiment.current, undefined);
+});
+
+test('a second publication before the used grace snapshot contaminates the earlier experiment', () => {
+    const { api } = loadAnalyzer();
+    const candidate = record('experiment-late-contamination', [
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 40 }),
+        snapshot('2026-02-05T00:00:00.000Z', { visits: 100 }),
+    ]);
+    candidate.improvements.push(
+        {
+            id: 'first', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['title'],
+            baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 40 }),
+        },
+        {
+            id: 'second', action: 'UPDATE', status: 'published', publishedAt: '2026-02-02T00:00:00.000Z', fields: ['tags'],
+            baselineSnapshot: snapshot('2026-02-02T00:00:00.000Z', { visits: 40 }),
+        },
+    );
+    api.updateExperimentEvaluations(candidate, '2026-02-05T00:00:00.000Z');
+    assert.equal(candidate.improvements[0].experiment.state, 'contaminated');
+    assert.equal(candidate.improvements[0].experiment.contaminatedAt, '2026-02-02T00:00:00.000Z');
+});
+
+test('sales experiments require matched 30-day windows and reject a stale publication baseline', () => {
     const { api } = loadAnalyzer();
     const delayed = record('sales-window-normalized', [
         snapshot('2025-12-02T00:00:00.000Z', { visits: 100, sales: 0 }),
@@ -2568,15 +3710,86 @@ test('sales experiments normalize exposure days and reject a stale publication b
         id: 'sales-window', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
         baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 3 }),
     });
-    api.updateExperimentEvaluations(delayed, '2026-02-07T00:00:00.000Z');
-    const normalized = delayed.improvements[0].experiment;
-    assert.equal(normalized.current.rawSales, 2);
-    assert.equal(normalized.current.exposureDays, 37);
-    assert.equal(normalized.current.sales, 1.622);
-    assert.equal(normalized.evaluationDelayDays, 7);
-    assert.equal(normalized.current.rateRatioInterval.afterEvents, 2);
-    assert.equal(normalized.current.rateRatioInterval.afterExposure, normalized.current.effectiveVisitExposure);
-    assert.equal(Math.round(normalized.current.effectiveVisitExposure * 1000) / 1000, 123.333);
+    api.updateExperimentEvaluations(delayed, '2026-02-08T00:00:00.000Z');
+    assert.equal(delayed.improvements[0].experiment.state, 'inconclusive');
+    assert.equal(delayed.improvements[0].experiment.invalidReason, 'window-mismatch');
+
+    const matched = record('sales-window-matched', [
+        snapshot('2025-12-02T00:00:00.000Z', { visits: 100, sales: 0 }),
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-01-08T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-02-07T00:00:00.000Z', { visits: 100, sales: 12 }),
+    ]);
+    matched.improvements.push({
+        id: 'sales-window-valid', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2 }),
+    });
+    api.updateExperimentEvaluations(matched, '2026-02-07T00:00:00.000Z');
+    const evaluated = matched.improvements[0].experiment;
+    assert.equal(evaluated.state, 'winner');
+    assert.equal(evaluated.baseline.rawSales, 2);
+    assert.equal(evaluated.current.rawSales, 10);
+    assert.equal(evaluated.baseline.windowDays, 30);
+    assert.equal(evaluated.current.windowDays, 30);
+    assert.equal(evaluated.current.rateRatioInterval.beforeEvents, 2);
+    assert.equal(evaluated.current.rateRatioInterval.afterEvents, 10);
+    assert.equal(evaluated.evaluationDelayDays, 7);
+
+    const sparseMatched = record('sales-window-sparse', [
+        snapshot('2025-12-02T00:00:00.000Z', { visits: 100, sales: 0 }),
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-01-08T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-02-07T00:00:00.000Z', { visits: 100, sales: 10 }),
+    ]);
+    sparseMatched.improvements.push({
+        id: 'sales-window-sparse', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2 }),
+    });
+    api.updateExperimentEvaluations(sparseMatched, '2026-02-07T00:00:00.000Z');
+    assert.equal(sparseMatched.improvements[0].experiment.current.rawSales, 8);
+    assert.equal(sparseMatched.improvements[0].experiment.state, 'inconclusive');
+
+    const interruptedBaseline = record('sales-window-interrupted-baseline', [
+        snapshot('2025-12-02T00:00:00.000Z', { visits: 100, sales: 0 }),
+        snapshot('2025-12-15T00:00:00.000Z', { visits: 100, sales: 1, listingState: 'inactive', statusLabel: 'Inactive' }),
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-01-08T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-02-07T00:00:00.000Z', { visits: 100, sales: 12 }),
+    ]);
+    interruptedBaseline.improvements.push({
+        id: 'sales-window-interrupted', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2 }),
+    });
+    api.updateExperimentEvaluations(interruptedBaseline, '2026-02-08T00:00:00.000Z');
+    assert.equal(interruptedBaseline.improvements[0].experiment.state, 'inconclusive');
+    assert.equal(interruptedBaseline.improvements[0].experiment.invalidReason, 'listing-state-changed');
+
+    const unverifiedPrice = record('sales-window-unverified-price', [
+        snapshot('2025-12-02T00:00:00.000Z', { visits: 100, sales: 0 }),
+        snapshot('2026-01-08T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-02-07T00:00:00.000Z', { visits: 100, sales: 12 }),
+    ]);
+    unverifiedPrice.improvements.push({
+        id: 'sales-window-price', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2, priceMin: null }),
+    });
+    api.updateExperimentEvaluations(unverifiedPrice, '2026-02-07T00:00:00.000Z');
+    assert.equal(unverifiedPrice.improvements[0].experiment.state, 'contaminated');
+    assert.equal(unverifiedPrice.improvements[0].experiment.invalidReason, 'price-exposure-unverified');
+
+    const mismatchedDurations = record('sales-window-duration-mismatch', [
+        snapshot('2025-12-03T00:00:00.000Z', { visits: 100, sales: 0 }),
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-01-07T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-02-07T00:00:00.000Z', { visits: 100, sales: 12 }),
+    ]);
+    mismatchedDurations.improvements.push({
+        id: 'sales-window-duration', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 2 }),
+    });
+    api.updateExperimentEvaluations(mismatchedDurations, '2026-02-08T00:00:00.000Z');
+    assert.equal(mismatchedDurations.improvements[0].experiment.state, 'inconclusive');
+    assert.equal(mismatchedDurations.improvements[0].experiment.invalidReason, 'window-mismatch');
 
     const stale = record('sales-stale-baseline', [
         snapshot('2025-12-02T00:00:00.000Z', { visits: 100, sales: 0 }),
@@ -2587,9 +3800,35 @@ test('sales experiments normalize exposure days and reject a stale publication b
         id: 'stale-baseline', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
         baselineSnapshot: snapshot('2025-12-29T00:00:00.000Z', { visits: 100, sales: 2 }),
     });
-    api.updateExperimentEvaluations(stale, '2026-02-01T00:00:00.000Z');
+    api.updateExperimentEvaluations(stale, '2026-02-08T00:00:00.000Z');
     assert.equal(stale.improvements[0].experiment.state, 'inconclusive');
     assert.equal(stale.improvements[0].experiment.current, undefined);
+});
+
+test('sales experiment anchors prefer exact counts over a closer approximate capture', () => {
+    const { api } = loadAnalyzer();
+    const baselineAt = '2026-01-01T00:00:00.000Z';
+    const currentAt = '2026-01-31T00:00:00.000Z';
+    const before = (days) => new Date(Date.parse(baselineAt) - days * 86400000).toISOString();
+    const approximateContract = plain(snapshot(baselineAt).metricContract);
+    approximateContract.countPrecision.sales = 'approximate';
+    const candidate = record('sales-anchor-exact-first', [
+        snapshot(before(30.1), { visits: 100, sales: 0 }),
+        snapshot(before(29.95), { visits: 100, sales: 1, metricContract: approximateContract }),
+        snapshot(baselineAt, { visits: 100, sales: 2 }),
+        snapshot(currentAt, { visits: 100, sales: 12 }),
+    ]);
+    candidate.improvements.push({
+        id: 'sales-anchor-selection', action: 'UPDATE', status: 'published', publishedAt: baselineAt, fields: ['description'],
+        baselineSnapshot: snapshot(baselineAt, { visits: 100, sales: 2 }),
+    });
+    api.updateExperimentEvaluations(candidate, '2026-02-01T00:00:00.000Z');
+    const experiment = candidate.improvements[0].experiment;
+    assert.equal(experiment.state, 'winner');
+    assert.equal(experiment.baseline.rawSales, 2);
+    assert.equal(experiment.current.rawSales, 10);
+    assert.equal(experiment.baseline.windowDays, 30.1);
+    assert.equal(experiment.current.windowDays, 30);
 });
 
 test('stale skip cannot resurrect or overwrite a newer stored queue', async () => {
@@ -2680,8 +3919,8 @@ test('a missing deactivation menu releases the action lease without changing the
             proposal: { action: 'DEACTIVATE_REVIEW' },
         }],
     };
-    runtime.state.queue = plain(queue);
-    storage.set(runtime.KEYS.queue, plain(queue));
+    await installEligibleDeactivationQueue(api, runtime, storage, queue, '77');
+    const queueBefore = plain(storage.get(runtime.KEYS.queue));
     sandbox.location.pathname = '/your/shops/me/listing-editor/edit/77';
     sandbox.location.search = '';
     sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/77';
@@ -2698,7 +3937,7 @@ test('a missing deactivation menu releases the action lease without changing the
         await runtime.openCurrentDeactivate();
         assert.equal(cancelAttempts, 1);
         assert.equal(storage.has(runtime.KEYS.lease), false);
-        assert.deepEqual(plain(storage.get(runtime.KEYS.queue)), queue);
+        assert.deepEqual(plain(storage.get(runtime.KEYS.queue)), queueBefore);
     } finally {
         runtime.EditorAdapter.listingStatusLabels = originalLabels;
         runtime.EditorAdapter.formIsClean = originalClean;
@@ -2723,8 +3962,7 @@ test('automatic deactivation submits once, verifies Active to Inactive, and adva
             },
         ],
     };
-    runtime.state.queue = plain(queue);
-    storage.set(runtime.KEYS.queue, plain(queue));
+    await installEligibleDeactivationQueue(api, runtime, storage, queue, '78');
     sandbox.location.pathname = '/your/shops/me/listing-editor/edit/78';
     sandbox.location.search = '';
     sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/78';
@@ -2763,7 +4001,184 @@ test('automatic deactivation submits once, verifies Active to Inactive, and adva
     }
 });
 
-test('a legacy manual deactivation wait can enter the automatic flow only while still visibly Active', async () => {
+test('deactivation retry keeps its immutable operation time and preserves a later fresh collection', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const collectionRuntime = api.collectionRuntime;
+    const listingId = '785';
+    const intentAt = new Date(Date.now() - 4000).toISOString();
+    const oldStartedAt = new Date(Date.now() - 7000).toISOString();
+    const oldObservedAt = new Date(Date.now() - 6000).toISOString();
+    const oldCompletedAt = new Date(Date.now() - 5000).toISOString();
+    const laterObservedAt = new Date(Date.now() - 2000).toISOString();
+    const laterCompletedAt = new Date(Date.now() - 1000).toISOString();
+    const queue = {
+        id: 'deactivate-immutable-time', status: 'running', cursor: 0,
+        items: [{
+            listingId, status: 'deactivation-submitted-unverified',
+            editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+            proposal: { action: 'DEACTIVATE_REVIEW', reason: 'immutable marker test' },
+        }],
+    };
+    await installEligibleDeactivationQueue(api, runtime, storage, queue, listingId);
+    const storedQueue = plain(storage.get(runtime.KEYS.queue));
+    storedQueue.status = 'running';
+    storedQueue.items[0].status = 'deactivation-submitted-unverified';
+    storedQueue.items[0].deactivationAttemptId = 'deactivation-attempt-immutable-001';
+    storedQueue.items[0].deactivationStatusBefore = ['Active'];
+    storedQueue.items[0].deactivationSubmittedIntentAt = intentAt;
+    runtime.state.queue = plain(storedQueue);
+    storage.set(runtime.KEYS.queue, plain(storedQueue));
+    const makeCollection = (id, startedAt, observedAt, completedAt) => api.normalizeCollection({
+        schema: api.versions.collectionSchema, id, status: 'completed',
+        scopeKey: 'etsy-shop:shopone|status:active|/your/shops/me/tools/listings?item_status=active&stats=true',
+        metricContractId, startedAt, updatedAt: completedAt, completedAt, expectedPage: 1, totalPages: 1,
+        pages: {
+            1: {
+                signature: `1|1|${listingId}`, contentSignature: listingId, ids: [listingId], count: 1,
+                capturedAt: observedAt, metricContractId,
+            },
+        },
+        uniqueIds: [listingId], duplicateCount: 0, failureReports: [],
+    });
+    const oldCollection = makeCollection('collection-before-deactivation-retry', oldStartedAt, oldObservedAt, oldCompletedAt);
+    collectionRuntime.state.collection = oldCollection;
+    storage.set(collectionRuntime.KEYS.collection, plain(oldCollection));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+    const originalLabels = runtime.EditorAdapter.listingStatusLabels;
+    const originalSaveQueueLocked = runtime.Store.saveQueueLocked;
+    const queueBeforeFailedCommit = plain(storage.get(runtime.KEYS.queue));
+    runtime.EditorAdapter.listingStatusLabels = () => ['Inactive'];
+    let failQueueWrite = true;
+    runtime.Store.saveQueueLocked = async function saveQueueLockedWithOneFailure(...args) {
+        if (failQueueWrite) {
+            failQueueWrite = false;
+            storage.set(runtime.KEYS.queue, plain(queueBeforeFailedCommit));
+            const error = new Error('synthetic queue write failure');
+            error.code = 'STORAGE_WRITE_FAILED';
+            throw error;
+        }
+        return originalSaveQueueLocked.apply(this, args);
+    };
+    try {
+        await runtime.verifyCurrentDeactivate();
+        const afterFirst = await runtime.Store.getRecord(listingId);
+        assert.equal(afterFirst.deactivation.operationId, 'deactivation-attempt-immutable-001');
+        assert.equal(afterFirst.deactivation.at, intentAt);
+        assert.equal(plain(storage.get(collectionRuntime.KEYS.collection)).status, 'blocked');
+        assert.equal(plain(storage.get(runtime.KEYS.queue)).items[0].status, 'deactivation-submitted-unverified');
+
+        const laterCollection = makeCollection(
+            'collection-after-deactivation-retry',
+            new Date(Date.parse(intentAt) + 1000).toISOString(),
+            laterObservedAt,
+            laterCompletedAt,
+        );
+        collectionRuntime.state.collection = laterCollection;
+        storage.set(collectionRuntime.KEYS.collection, plain(laterCollection));
+        await runtime.verifyCurrentDeactivate();
+
+        const afterRetry = await runtime.Store.getRecord(listingId);
+        const savedQueue = plain(storage.get(runtime.KEYS.queue));
+        const savedCollection = plain(storage.get(collectionRuntime.KEYS.collection));
+        assert.equal(afterRetry.deactivation.at, intentAt);
+        assert.equal(savedQueue.status, 'completed');
+        assert.equal(savedQueue.cursor, 1);
+        assert.equal(savedQueue.items[0].status, 'verified-deactivated');
+        assert.equal(savedCollection.status, 'completed');
+        assert.equal(savedCollection.id, laterCollection.id);
+        assert.equal(plain(storage.get(runtime.KEYS.audit)).filter((entry) => entry.type === 'listing-deactivated').length, 1);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originalLabels;
+        runtime.Store.saveQueueLocked = originalSaveQueueLocked;
+        if (runtime.state.leaseToken) await runtime.Lease.release();
+    }
+});
+
+test('deactivation revalidates health and blocks a stale seasonal recommendation before opening Etsy', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        id: 'deactivate-stale-preflight', status: 'ready', cursor: 0,
+        items: [{ listingId: '783', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/783', proposal: { action: 'DEACTIVATE_REVIEW' } }],
+    };
+    await installEligibleDeactivationQueue(api, runtime, storage, queue, '783');
+    await runtime.Store.saveListingContext('783', { seasonality: 'seasonal', listingType: 'unknown' });
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/783';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/783';
+    const originals = {
+        labels: runtime.EditorAdapter.listingStatusLabels, clean: runtime.EditorAdapter.formIsClean,
+        open: runtime.EditorAdapter.openDeactivateDialog, confirm: runtime.EditorAdapter.clickDeactivateConfirmation,
+    };
+    let openAttempts = 0;
+    let finalClicks = 0;
+    runtime.EditorAdapter.listingStatusLabels = () => ['Active'];
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.openDeactivateDialog = async () => { openAttempts += 1; return true; };
+    runtime.EditorAdapter.clickDeactivateConfirmation = () => { finalClicks += 1; return true; };
+    try {
+        await runtime.openCurrentDeactivate();
+        const saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(openAttempts, 0);
+        assert.equal(finalClicks, 0);
+        assert.equal(saved.items[0].status, 'pending');
+        assert.equal(saved.cursor, 0);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originals.labels;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.openDeactivateDialog = originals.open;
+        runtime.EditorAdapter.clickDeactivateConfirmation = originals.confirm;
+    }
+});
+
+test('deactivation revalidates again under the final-click fence when context changes after dialog open', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        id: 'deactivate-stale-final', status: 'ready', cursor: 0,
+        items: [{ listingId: '784', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/784', proposal: { action: 'DEACTIVATE_REVIEW' } }],
+    };
+    await installEligibleDeactivationQueue(api, runtime, storage, queue, '784');
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/784';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/784';
+    const originals = {
+        labels: runtime.EditorAdapter.listingStatusLabels, clean: runtime.EditorAdapter.formIsClean,
+        open: runtime.EditorAdapter.openDeactivateDialog, modal: runtime.EditorAdapter.deactivateDialogContract,
+        confirm: runtime.EditorAdapter.clickDeactivateConfirmation,
+    };
+    let finalClicks = 0;
+    runtime.EditorAdapter.listingStatusLabels = () => ['Active'];
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.openDeactivateDialog = async () => {
+        await runtime.Store.saveListingContext('784', { seasonality: 'seasonal', listingType: 'unknown' });
+        return true;
+    };
+    runtime.EditorAdapter.deactivateDialogContract = () => ({});
+    runtime.EditorAdapter.clickDeactivateConfirmation = () => { finalClicks += 1; return true; };
+    try {
+        await runtime.openCurrentDeactivate();
+        const saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(finalClicks, 0);
+        assert.equal(saved.items[0].status, 'deactivation-submitted-unverified');
+        assert.match(saved.items[0].deactivationAttemptId, /^deactivation-attempt-/);
+        assert.equal(saved.cursor, 0);
+        assert.equal((plain(storage.get(runtime.KEYS.audit)) || []).some((entry) => entry.type === 'listing-deactivated'), false);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originals.labels;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.openDeactivateDialog = originals.open;
+        runtime.EditorAdapter.deactivateDialogContract = originals.modal;
+        runtime.EditorAdapter.clickDeactivateConfirmation = originals.confirm;
+    }
+});
+
+test('a legacy manual deactivation wait cannot enter the automatic click flow', async () => {
     const { api, sandbox, storage } = loadAnalyzer();
     const runtime = api.actionRuntime;
     const queue = {
@@ -2795,13 +4210,11 @@ test('a legacy manual deactivation wait can enter the automatic flow only while 
     try {
         await runtime.openCurrentDeactivate();
         const saved = plain(storage.get(runtime.KEYS.queue));
-        assert.equal(finalClicks, 1);
-        assert.equal(saved.cursor, 1);
-        assert.equal(saved.status, 'completed');
-        assert.equal(saved.items[0].status, 'verified-deactivated');
-        assert.deepEqual(saved.items[0].deactivationStatusBefore, ['Active']);
-        assert.deepEqual(saved.items[0].deactivationStatusAfter, ['Inactive']);
-        assert.equal(plain(storage.get(runtime.KEYS.audit)).filter((entry) => entry.type === 'listing-deactivated').length, 1);
+        assert.equal(finalClicks, 0);
+        assert.equal(saved.cursor, 0);
+        assert.equal(saved.status, 'running');
+        assert.equal(saved.items[0].status, 'awaiting-user-deactivation');
+        assert.equal(storage.has(runtime.KEYS.audit), false);
         assert.equal(storage.has(runtime.KEYS.lease), false);
     } finally {
         runtime.EditorAdapter.listingStatusLabels = originals.labels;
@@ -2822,8 +4235,7 @@ test('an armed deactivation that loses its final control becomes unverified and 
             proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
         }],
     };
-    runtime.state.queue = plain(queue);
-    storage.set(runtime.KEYS.queue, plain(queue));
+    await installEligibleDeactivationQueue(api, runtime, storage, queue, '80');
     sandbox.location.pathname = '/your/shops/me/listing-editor/edit/80';
     sandbox.location.search = '';
     sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/80';
@@ -2874,8 +4286,7 @@ test('route drift after a durable deactivation arm prevents the final click and 
             proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
         }],
     };
-    runtime.state.queue = plain(queue);
-    storage.set(runtime.KEYS.queue, plain(queue));
+    await installEligibleDeactivationQueue(api, runtime, storage, queue, '81');
     sandbox.location.pathname = '/your/shops/me/listing-editor/edit/81';
     sandbox.location.search = '';
     sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/81';

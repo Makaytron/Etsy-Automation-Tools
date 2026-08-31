@@ -11,7 +11,7 @@ Listing Analyzer, Etsy Shop Manager'da görünür listing istatistiklerini kontr
 - Listing listesi: `https://www.etsy.com/your/shops/<shop>/tools/listings*`
 - Listing editörü: `https://www.etsy.com/your/shops/<shop>/listing-editor/edit/<id>*`
 
-Analiz için Etsy listing sayfasında **Stats** görünümünü ve incelemek istediğiniz gerçek durum filtresini açın. Aktif listing analizinde `active` kapsamını kullanın.
+Analiz için Etsy listing sayfasında **Stats** görünümünü ve incelemek istediğiniz gerçek durum filtresini açın. Aktif listing analizinde `active` kapsamını kullanın. Kartlarda ziyaret/favorinin **Son 30 gün**, satış/gelir/yenilemenin **Tüm zamanlar** başlıkları altında görünmesi gerekir.
 
 ## Kurulum
 
@@ -22,15 +22,15 @@ Analiz için Etsy listing sayfasında **Stats** görünümünü ve incelemek ist
 
 ## İlk güvenli tam tarama
 
-1. Listing sayfasında istatistik satırlarının göründüğünü kontrol edin.
+1. Listing sayfasında **Son 30 gün** ve **Tüm zamanlar** istatistik bölümlerinin göründüğünü kontrol edin.
 2. Panelde **Tüm sayfaları tara** düğmesine basın veya `Ctrl + Alt + A` kullanın.
 3. Script `1 → 2 → … → son sayfa → 1` akışını tamamlar.
-4. Her sayfada kimlik, numaralandırma, kart sayısı, listing ID'leri ve beş metriğin tamamı doğrulanır.
+4. Her sayfada kimlik, numaralandırma, kart sayısı, listing ID'leri ve beş metriğin doğru Etsy zaman kapsamındaki yeri doğrulanır.
 5. Analiz kartları ancak son sayfadan 1. sayfaya güvenli dönüş ve tam koleksiyon doğrulaması tamamlanınca açılır.
 
-Aynı kontrol taramayı durdurur ve kaldığı yerden devam ettirir. **Bu sayfayı tara** yalnız açık sayfanın yerel kaydını yeniler; tam mağaza analizi veya işlem kuyruğu için tamamlanmış tüm-sayfa taramasının yerine geçmez.
+Aynı kontrol taramayı durdurur ve kaldığı yerden devam ettirir. Her kayıt adımı revizyonlu manifesti ilerletir ve sayfanın en erken gerçek DOM gözlem zamanını kaydeder; başka bir sekme daha yeni bir sayfa kaydetmiş veya okumadan sonra listing üyeliği değişmişse eski sekme üzerine yazmak yerine durur. Aktif işlem kuyruğu ile tüm-sayfa taraması karşılıklı dışlanır. Taramayı başlatmadan/devam ettirmeden önce kuyruğu tamamlayın veya durdurun; eski sürümden kalmış çakışmalı durumda salt kuyruk-durdurma kurtarması kullanılabilir. Etsy'ye gönderilmiş fakat doğrulanamamış bir adım varken bu kurtarma kullanılırsa çakışan tarama güvenli biçimde bloklanır ve yeni tam tarama gerekir. **Bu sayfayı tara** yalnız açık sayfanın yerel kaydını yeniler; tam mağaza analizi veya işlem kuyruğu için tamamlanmış tüm-sayfa taramasının yerine geçmez.
 
-Eksik metrik, tekrarlanan/örtüşen sayfa, geçici DOM karışımı, mağaza kimliği veya sayfa sayısı uyuşmazlığında analiz kilitli kalır. Eksik değer hiçbir zaman `0` kabul edilmez.
+Eksik, yinelenmiş veya yanlış zaman bölümündeki metrik; tekrarlanan/örtüşen sayfa, geçici DOM karışımı, mağaza kimliği ya da sayfa sayısı uyuşmazlığında analiz kilitli kalır. Eksik değer hiçbir zaman `0` kabul edilmez. Kapsam sözleşmesi olmayan eski snapshotlar grafikte korunabilse de trend, deney veya deaktivasyon çıpası olamaz.
 
 ## Analizi doğru yorumlama
 
@@ -39,15 +39,19 @@ Eksik metrik, tekrarlanan/örtüşen sayfa, geçici DOM karışımı, mağaza ki
 | Ziyaret ve favori | Etsy'nin kayan son 30 günlük görünür değerleri. |
 | Satış, gelir ve yenileme | Etsy kartındaki tüm-zaman sayaçları. |
 | **30 günlük erişim/ilgi** | Güncel ziyaret ve örneklem boyutuna göre yumuşatılmış favori oranından oluşan karşılaştırılabilir performans puanı; favori ağırlığı kademeli artar. |
-| **Geçmiş güveni** | Yerel zaman serisinin trend/deaktivasyon kararı için ne kadar hazır olduğu; listing kalite puanı değildir. |
+| **Kanıt yeterliliği** | Veri kapsamı ve yerel zaman serisinin karar vermeye hazırlığını özetleyen sezgisel gösterge; listing kalite puanı veya doğruluk olasılığı değildir. |
 
-İlk tam taramada geçmiş güveni `39` veya düşük görünebilir. Bu, listing performansının `%39` olduğu anlamına gelmez. Güncel erişim/ilgi puanı ve ilk-tarama sinyalleri ayrı değerlendirilir; büyüme/düşüş için karşılaştırılabilir 30 günlük geçmiş, deaktivasyon incelemesi için en az 58 günlük tam geçmiş ve diğer güvenlik kapıları gerekir.
+İlk tam taramada kanıt yeterliliği düşük görünebilir. Bu, listing performansının veya öneri doğruluğunun aynı yüzde olduğu anlamına gelmez. Güncel erişim/ilgi puanı ve ilk-tarama sinyalleri ayrı değerlendirilir; büyüme/düşüş için karşılaştırılabilir 30 günlük geçmiş, deaktivasyon incelemesi için en az 58 günlük kesintisiz aktif geçmiş ve diğer güvenlik kapıları gerekir.
 
 Tam ve taze sayaçlar sıfırsa bu **veri eksik** değildir; **Güncel hareket yok** kanıtıdır. Okunamayan, eski veya tutarsız veri ise fail-closed **Eksik / tutarsız veri** olarak kalır.
 
-Trend için kullanılan dönemler ardışık 30 günlük pencerelerden seçilir. Deney sonucu için baseline yayın anına en fazla bir gün uzak olmalı; ziyaret, favori ve satış karşılaştırmalarında `Kazandı` / `Beklentinin altında` kararı %90 Poisson oran-oranı güven aralığı 1 değerini dışlamadan verilmez. Satış deneyi gösterilen oranı 30 güne normalize ederken güven hesabında gerçek olay sayısı ve gözlem süresini kullanır; gösterilen yüzde **30 günlük göreli değişim**dir, nedensellik iddiası değildir.
+Trend ve deaktivasyon çıpaları yalnız listingin mevcut kesintisiz **aktif durum dönemi** içinden seçilir; aradaki pasif dönem yeni bir dönem başlatır. Exact kayan-pencere trendi ayrıca exact ziyaret sayaçlarıyla 30–31 gün uzaktaki örtüşmeyen bir snapshot gerektirir; daha yakın, daha eski veya kısaltılmış `K`/`M`/`B` değeri yalnız açıklayıcıdır. Listing ayrıntısında **Listing bağlamı** bölümünü açıp mevsimselliği (`Mevsimsel`, `Mevsimsel değil`, `Bilinmiyor`) ve ürün türünü (`Dijital`, `Fiziksel`, `Bilinmiyor`) kaydedin. Bilinen bağlam kohortu segmentler; deaktivasyon incelemesi için `Mevsimsel değil` açıkça seçilmiş olmalıdır.
 
-Arama, hazır/özel presetler, yaşam döngüsü, sorun/fırsat, öneri, performans, stok ve veri güveni filtreleriyle kapsamı daraltın. Satış/gelir/yenileme değerlerinin tüm-zaman; ziyaret/favorinin 30 günlük olduğunu sıralama ve karşılaştırmada unutmayın.
+Mağaza kohortu hedef listingi kendi emsallerine katmaz. En az sekiz uygun emsal gerekir; kohort etkisi sekizden 30 emsale kadar kademeli artar. Daha az emsalde göreli sinyal güvenilir sayılmaz.
+
+Deney baseline'ı yayın anına en fazla bir gün uzak olmalıdır. Ziyaret, favori ve satışta **değişiklik sonrası artış/azalış sinyali**, %95 exact conditional Poisson oran-oranı güven aralığı 1 değerini dışlamadan verilmez. Kısaltılmış `K`/`M`/`B` sayaçları yaklaşık gösterim değeridir; bu nedenle exact trend veya deney sinyali üretemez. Başlangıç sıfırken pozitif sonuç göreli yüzde değildir; mutlak yeni sinyal olarak gösterilir. Satış değerlendirmesi eşlenmiş gerçek 30 günlük pencerelerin tamsayı satış farklarını kullanır. 30. günde uygun snapshot yoksa deney yedi günlük grace süresince `İzleniyor` kalır; geçerli veri gelmezse sonra `Belirsiz` olur. Bu sinyaller gözlemseldir, nedensellik iddiası değildir.
+
+Arama, hazır/özel presetler, yaşam döngüsü, sorun/fırsat, öneri, performans, stok ve kanıt yeterliliği filtreleriyle kapsamı daraltın. Satış/gelir/yenileme değerlerinin tüm-zaman; ziyaret/favorinin 30 günlük olduğunu sıralama ve karşılaştırmada unutmayın.
 
 ## Manuel iyileştirme önerisi
 
@@ -67,7 +71,7 @@ Listing Analyzer bir AI servisine ağ isteği göndermez ve API anahtarı saklam
 2. **AI önerileri** ekranını açıp istek paketini kopyalayın.
 3. Paketi kullanacağınız harici AI aracına kendiniz verin; paylaşmadan önce içerik ve gizlilik kapsamını kontrol edin.
 4. Aracın ürettiği tam cevap JSON'unu Listing Analyzer'a yapıştırıp içe aktarın.
-5. Şema bütünü doğrulanırsa öneriler yerel olarak kaydedilir; geçersiz veya kısmi JSON hiçbir öneriyi yazmaz.
+5. Şema bütünü doğrulandıktan ve her geçici referans dışa aktarılan tam düzenlenebilir içerik, analiz temeli, kayıtlı öneri kimliği, doğrulanmış deaktivasyon durumu ve istek payloadıyla hâlâ eşleştikten sonra öneriler yerel olarak kaydedilir. İçe aktarım atomiktir: tek stale referans tüm yanıtı reddeder ve hiçbir öneri yazılmaz.
 6. **Önce / AI önerisi / Doğrulanan sonuç** karşılaştırmasını inceleyip gerekirse manuel düzeltin.
 
 ## İşlem kuyruğu ve yayınlama
@@ -89,9 +93,9 @@ Bu uyarı, kartı seçtiğiniz hâlde o listing için uygulanabilir bir öneri k
 
 ## Deaktivasyon incelemesi
 
-**Kapatmayı incele** tek başına otomatik deaktivasyon emri değildir. Kullanıcı listing bazında onay verdikten sonra script yalnız Etsy'nin tek, görünür ve etkin tam eşleşen **Deactivate** menü öğesini ve doğru başlıklı penceredeki final **Deactivate** düğmesini tıklar. **Delete** veya silme semantiği hiçbir zaman kabul edilmez. Script görünür `Active → Inactive` geçişini doğrularsa kuyruğu ilerletir; sonuç belirsizse otomatik tekrar yapmaz ve **Deaktivasyonu doğrula ve devam et** ile güvenli, salt-doğrulama kurtarması sunar.
+**Kapatmayı incele** tek başına otomatik deaktivasyon emri değildir. Kullanıcı listing bazında onay verdikten sonra script güncel sağlık, bağlam, güvenlik kapıları, anomali durumu, öneri temeli ve aktifliği Etsy'yi açmadan önce ve final tıklama kilidi altında bir kez daha hesaplar. Yalnız Etsy'nin tek, görünür ve etkin tam eşleşen **Deactivate** menü öğesini ve doğru başlıklı penceredeki final **Deactivate** düğmesini tıklar. **Delete** veya silme semantiği hiçbir zaman kabul edilmez. Script görünür `Active → Inactive` geçişini doğrularsa kuyruğu ilerletir; sonuç belirsizse otomatik tekrar yapmaz ve **Deaktivasyonu doğrula ve devam et** ile güvenli, salt-doğrulama kurtarması sunar. Doğrulama, kurtarma denemelerinde değişmeyen tek işlem zamanını korur ve aynı mağazadaki etkilenen eski aktif/inaktif koleksiyonları geçersizleştirir; yeni analiz, AI dışa aktarımı veya yeni kuyruk öncesinde yeniden tam tarama yapın.
 
-v1.0.7'nin eski manuel adımında kalan bir kuyruk öğesi yalnız listing hâlâ görünür biçimde `Active`, form temiz ve kullanıcı güncel otomatik akışı ayrıca onaylarsa gönderilebilir. Script tarafından gönderilmiş veya sonucu belirsiz bir deaktivasyon bu uyumluluk yoluna girmez.
+v1.0.7'nin eski manuel adımında kalan kuyruk öğesi yalnız salt-okunur doğrulama veya kuyruğu durdurma için uyumluluk verisidir; güncel otomatik tıklama yoluna giremez. Deaktivasyon hâlâ uygunsa taze ve tamamlanmış analizden yeni kuyruk oluşturun.
 
 ## Marketplace Insights araştırması
 

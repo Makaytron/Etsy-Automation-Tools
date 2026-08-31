@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.2.0 - 2026-08-31
+
+- Bound every saved snapshot and complete collection to a verified Etsy metric contract: visits/favorites must come from the **Last 30 days** section, while sales/revenue/renewals must come from **All time**. Missing, duplicated, or misplaced metric sections now fail closed, and legacy unverified snapshots cannot become decision anchors.
+- Limited trend and deactivation evidence to the listing's current contiguous active-state epoch, so inactive periods cannot be compared as if exposure had continued uninterrupted.
+- Added explicit per-listing seasonality (`seasonal`, `non-seasonal`, or `unknown`) and product-type (`digital`, `physical`, or `unknown`) context. Known context segments shop peers, and deactivation review requires an explicit non-seasonal value.
+- Excluded the target listing from its own cohort, retained eight comparable peers as the minimum, and ramped cohort influence continuously from 8 to full strength at 30 peers instead of applying an abrupt full-weight comparison.
+- Reframed the heuristic confidence score as **Evidence readiness**: it summarizes data coverage and decision readiness, not a calibrated probability that a recommendation is correct.
+- Replaced approximate experiment inference with a 95% exact conditional Poisson rate-ratio interval. A zero-to-positive result is reported as a new absolute signal without a fabricated percentage.
+- Marked compact `K`/`M`/`B` counters as approximate: they remain usable for descriptive cards, but cannot produce an "exact" trend or experiment signal.
+- Restricted exact rolling-traffic inference to consecutive, non-overlapping captures 30–31 days apart. Descriptive nearby-scan changes remain separate, and closer approximate captures can no longer shadow an exact decision anchor.
+- Compared sales experiments with matched real 30-day cumulative-sales windows and integer event counts. The evaluator waits up to seven days after day 30 for a valid snapshot before returning an inconclusive result.
+- Added monotonic collection revisions and canonical manifest fingerprints to every same-run write. Resume reloads the latest stored manifest after acquiring its lease, preventing a stale tab from overwriting pages collected by another tab; a same-ID run already completed or blocked elsewhere cannot be claimed or rewritten.
+- Mutually excluded the complete action-queue and all-page-collection lifecycles under the shared storage lock. Stop-only recovery for legacy overlap now CAS-blocks the overlapping collection before closing an unverified Etsy submission, while preserving the foreign lease so its next stale write is rejected. Page manifests use the earliest real DOM observation time, and a verified active-to-inactive transition invalidates affected same-shop active and inactive scopes, including an inactive collection where the listing was not yet present.
+- Bound AI imports to the exact exported editable and analytical payload plus current proposal identity for every opaque reference; any intervening content, metric, history, state, context, policy, health, proposal, or verified-deactivation change rejects the whole response atomically.
+- Revalidate a deactivation candidate's current health, safeguards, context, proposal basis, and active state before opening Etsy and again under the final-click fence. A verified deactivation uses one immutable operation timestamp across recovery attempts, invalidates affected older collections, and requires a new full scan before analysis, AI export, or a new queue; legacy manual queue items are verification-only and cannot enter the automatic click path.
+- Expanded the offline regression suite to 120 passing tests covering metric scopes, active epochs, context-safe merges, cohort boundaries, exact non-overlapping trends, calibrated decline populations, exact intervals, stale AI/proposal payloads, matched sales windows, collection CAS/resume races, queue/collection interlocks, page-observation races, inactive-scope membership, and deactivation revalidation.
+
 ## 1.1.0 - 2026-08-31
 
 - Replaced the hard favorite-score cutoff with a sample-size-smoothed favorite rate and gradually increasing engagement weight, eliminating the 19-to-20-visit score discontinuity.

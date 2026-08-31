@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.1.0
+// @version      1.2.0
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -36,7 +36,7 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.1.0';
+    const APP_VERSION = '1.2.0';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -707,11 +707,21 @@
         } catch {}
     }
 
-    const RECORD_SCHEMA_VERSION = 1;
-    const HEALTH_RESULT_SCHEMA_VERSION = 1;
-    const HEALTH_ENGINE_VERSION = 4;
-    const HEALTH_POLICY_VERSION = 1;
-    const COLLECTION_SCHEMA_VERSION = 2;
+    const RECORD_SCHEMA_VERSION = 2;
+    const HEALTH_RESULT_SCHEMA_VERSION = 2;
+    const HEALTH_ENGINE_VERSION = 5;
+    const HEALTH_POLICY_VERSION = 2;
+    const COLLECTION_SCHEMA_VERSION = 3;
+    const LISTING_METRIC_CONTRACT = Object.freeze({
+        id: 'etsy-listings-stats-card/v1',
+        parserVersion: 4,
+        scopes: Object.freeze({
+            visits: 'rolling-30d', favorites: 'rolling-30d',
+            sales: 'lifetime', revenue: 'lifetime', renewals: 'lifetime',
+        }),
+        rollingHeadings: Object.freeze(['last 30 days', 'son 30 gün', 'son 30 gun']),
+        lifetimeHeadings: Object.freeze(['all time', 'tüm zamanlar', 'tum zamanlar']),
+    });
     const MAX_COLLECTION_PAGES = 250;
     const COLLECTION_TRANSITION_TIMEOUT_MS = 15000;
     const COLLECTION_RETRY_ATTEMPTS = 3;
@@ -765,6 +775,7 @@
         minimumCohortSize: 8,
         fullStrengthCohortSize: 30,
         minimumCalibrationSize: 20,
+        minimumCalibrationGroupSize: 8,
         favoritePriorRate: 3,
         favoritePriorVisits: 20,
         renewalWasteMinimum: 2,
@@ -774,7 +785,9 @@
         experimentDays: 30,
         experimentEvaluationGraceDays: 7,
         experimentBaselineMaxAgeDays: 1,
-        experimentConfidenceZ: 1.645,
+        experimentConfidenceLevel: 0.95,
+        maximumExactExperimentEvents: 1_000_000,
+        experimentMatchedWindowToleranceDays: 0.25,
         recentSaleProtectionDays: 30,
     });
     const SNAPSHOT_NUMBER_FIELDS = Object.freeze(['visits', 'favorites', 'sales', 'revenue', 'renewals', 'stock', 'priceMin', 'priceMax']);
@@ -981,7 +994,7 @@
             deleteUnsupported: 'Silme işlemi güvenlik nedeniyle desteklenmez.',
             leaseBlocked: 'İşlem kuyruğu başka bir sekmede açık. Bu sekmede yazma işlemi başlatılmadı.',
             reasonNew: 'Geçmiş karşılaştırması için yeni kayıt.',
-            reasonGrowth: 'Önceki kayda göre satış, gelir, ziyaret veya favori artışı var.',
+            reasonGrowth: 'Ardışık 30 günlük pencerelerde ziyaret artışı, düşük sayım belirsizliği aşılarak doğrulandı.',
             reasonProtect: 'Satış ve gelir üreten güçlü listing; riskli toplu değişikliklerden koruyun.',
             reasonImproveTraffic: 'Ziyaret var ancak satış yok; başlık, görsel, fiyat ve teklif uyumunu inceleyin.',
             reasonDeactivate: 'En az {renewals} yenilemeye rağmen satış, ziyaret ve favori yok; deaktivasyonu inceleyin.',
@@ -1001,10 +1014,10 @@
             healthAndHistory: 'Listing sağlığı ve geçmişi',
             lifecycle: 'Yaşam döngüsü',
             diagnosis: 'Performans teşhisi',
-            confidence: 'Güven',
+            confidence: 'Kanıt yeterliliği',
             evidence: 'Kanıtlar',
             showAllEvidence: 'Tüm kanıtları göster ({count})',
-            confidenceDetails: 'Güven bileşenleri',
+            confidenceDetails: 'Kanıt yeterliliği bileşenleri',
             dataQuality: 'Veri kalitesi',
             historyDepth: 'Geçmiş yeterliliği',
             trafficSample: 'Trafik örneklemi',
@@ -1015,13 +1028,13 @@
             experiment: 'Deney',
             experimentState: 'Deney durumu',
             primaryMetric: 'Ana metrik',
-            adjustedEffect: '30 günlük göreli değişim',
+            adjustedEffect: 'Gözlenen 30 günlük değişim',
             nextReview: 'Sonraki inceleme',
             afterNextSnapshot: 'Sonraki snapshot sonrası',
             missingData: 'Eksik veriler',
             whyRecommendation: 'Neden bu öneri?',
             details: 'Ayrıntılar',
-            confidenceLimited: 'Güven, yetersiz geçmiş veya veri kalitesi nedeniyle sınırlandı.',
+            confidenceLimited: 'Bu değer istatistiksel olasılık değildir; veri kapsamı ve karar hazırlığını özetler.',
             lifecycleDataGap: 'Veri eksik',
             lifecycleBaseline: 'Başlangıç verisi',
             lifecycleLearning: 'Veri topluyor',
@@ -1056,33 +1069,47 @@
             guardNoExperiment: 'Aktif deney yok',
             guardCooldown: 'Son 45 günde yayımlanan iyileştirme yok',
             guardSeasonal: 'Mevsimsel olmadığı açıkça doğrulandı',
-            guardConfidence: 'Güven puanı en az 80',
+            guardDataIntegrity: 'Son 60 günlük aktif dönemde veri tutarsızlığı yok',
+            guardConfidence: 'Kanıt yeterliliği en az 80',
             experimentPlanned: 'Planlandı',
             experimentObserving: 'İzleniyor · {day}/30 gün',
-            experimentWinner: 'Kazandı',
-            experimentUnderperformed: 'Beklentinin altında',
+            experimentWinner: 'Değişiklik sonrası artış sinyali',
+            experimentUnderperformed: 'Değişiklik sonrası düşüş sinyali',
             experimentInconclusive: 'Belirsiz',
             experimentContaminated: 'Başka değişiklik nedeniyle ayrıştırılamadı',
             experimentStopped: 'Durduruldu',
             contentChanged: 'Listing içeriği öneri kaydedildikten sonra değişti. Form korunarak işlem durduruldu; öneriyi yeniden inceleyin.',
             proposalStale: 'Listing verisi veya analiz ayarları öneri kaydedildikten sonra değişti. Kuyruk oluşturulmadı; öneriyi yeniden inceleyin.',
             manualApproval: 'Her Etsy yazma işlemi listing bazında kullanıcı onayı ister.',
+            confidenceFilter: 'Kanıt yeterliliği',
+            confidenceLowFilter: 'Düşük yeterlilik', confidenceMediumFilter: 'Orta yeterlilik', confidenceHighFilter: 'Yüksek / çok yüksek yeterlilik',
+            sortConfidence: 'En yüksek kanıt yeterliliği', analysisConfidence: 'Kanıt yeterliliği', historyConfidence: 'Geçmiş kanıt yeterliliği',
+            snapshotConfidenceLimited: 'İlk tarama teşhisi kullanılabilir; büyüme, düşüş ve deaktivasyon için kanıt yeterliliği 30/60 günlük geçmiş oluşana kadar sınırlıdır.',
         }),
         en: Object.freeze({
             deactivateVerified: 'Etsy deactivation was verified and added to the action history.',
             launcher: 'Open Listing Analyzer panel', panelAria: 'Makaytron Etsy Listing Analyzer control panel', product: 'Listing Analyzer', overview: 'Overview', wideView: 'Wide view', compactView: 'Compact view', ready: 'Ready', scanning: 'Scanning', error: 'Error', blocked: 'Stopped', saved: 'Saved', collapse: 'Hide panel', expand: 'Open panel', switchLanguage: 'Türkçeye geç', pageReady: 'Listings on this page are ready for analysis.', editorReady: 'The edit and action queue is ready for this listing.', unsupportedPage: 'This tool only runs on the listing list and listing editor.', scanPage: 'Scan this page', scanAndNext: 'Scan and open next page', openAnalysis: 'Listing analysis', aiExchange: 'AI proposals', exportData: 'Download backup', queueTitle: 'Action queue', noQueue: 'There is no active action queue.', listings: 'Stored listings', pageListings: 'This page', growing: 'Growing', improve: 'Improve', deactivateReview: 'Review deactivation', protected: 'Protect', monitor: 'Monitor', waiting: 'Waiting for data', declining: 'Declining', scanComplete: '{count} listings read; {saved} records updated.', noCards: 'Listing cards were not found. Enable Etsy statistics view.', nextMissing: 'The next-page control was not found or is disabled.', pageProgress: 'Page {current}/{total}', analysisTitle: 'Listing analysis', search: 'Search title, SKU, or ID', filterAll: 'All recommendations', selected: '{count} selected', selectAll: 'Select visible', clearSelection: 'Clear selection', listing: 'Listing', performance: 'Performance', recommendation: 'Recommendation', trend: 'Change', actions: 'Actions', visits: 'Visits', favorites: 'Favorites', sales: 'Sales', revenue: 'Revenue', renewals: 'Renewals', stock: 'Stock', price: 'Price', noData: 'No listings have been stored yet.', editProposal: 'Improvement plan', history: 'History', openEtsy: 'Open on Etsy', proposalTitle: 'Listing improvement proposal', actionLabel: 'Planned action', actionUpdate: 'Update selected fields', actionDeactivate: 'Recommend deactivation (never deletes the listing)', actionSkip: 'Do nothing', title: 'Title', description: 'Description', tags: 'Tags', materials: 'Materials', tagsHelp: 'Comma-separated; up to 13 tags and 20 characters per tag.', materialsHelp: 'Separate with commas.', reason: 'Reason / note', saveProposal: 'Save proposal', cancel: 'Cancel', close: 'Close', invalidTitle: 'The title must contain 1–140 characters.', invalidTags: 'Use at most 13 tags and no more than 20 characters per tag.', changeField: 'Change this field', selectChangeField: 'Select at least one field to change for an UPDATE action.', proposalSaved: 'Proposal saved and an improvement baseline was recorded.', buildQueue: 'Build queue from selection', queueConfirm: 'Prepare a user-approved action queue for {count} listings? This confirmation will not publish any listing automatically.', queueCreated: '{count} listings were added to the action queue.', noProposalSelection: 'Selection alone does not create a queue. First save an actionable item in Improvement plan or import valid AI proposal JSON; then select the listing with that saved proposal and try again.', goFirst: 'Open first listing', currentItem: 'Queue {current}/{total}', applyForm: 'Apply proposal to form', publishAfterReview: 'Reviewed; publish on Etsy', openDeactivate: 'Deactivate on Etsy', deactivateConfirm: 'Do you confirm deactivating listing {id}? The script clicks only the exact Deactivate menu item and Etsy’s final Deactivate confirmation; it never clicks Delete.', deactivateLegacyConfirm: 'Listing {id} is waiting in the old manual deactivation step and is still visibly Active. Do you confirm starting the new v1.0.12 automatic Deactivate flow for this listing? Delete is never clicked.', verifyDeactivate: 'Verify deactivation and continue', skipItem: 'Skip this listing', stopQueue: 'Stop queue', continueQueue: 'Next listing', routeMismatch: 'The queued listing ID does not match the open page. Processing stopped safely.', formNotReady: 'Required Etsy form fields are not ready; no changes were applied.', formApplied: 'Proposal applied to the form. Review the Etsy fields; nothing has been published yet.', publishDisabled: 'Etsy’s “Publish changes” button is not enabled. Check form validation.', publishConfirm: 'Do you confirm publishing {fields} for listing {id} on Etsy?', publishSubmitted: 'Publish was submitted to Etsy; verifying the result.', publishVerified: 'Etsy save was verified and added to history.', publishUnverified: 'The Etsy result could not be verified. The queue did not advance blindly.', deactivateOpened: 'The script submitted the Etsy deactivation and is verifying the result. Delete is never used.', deactivateNotVerified: 'The listing still appears active; the queue did not advance.', deactivateUnverified: 'Deactivation may have been submitted to Etsy, but the result could not be verified. Automatic retry is disabled to avoid a duplicate action; verify the listing state or stop the queue.', queueStopped: 'The action queue was stopped.', queueComplete: 'The action queue is complete.', aiTitle: 'AI proposal exchange', aiIntro: 'This version sends no network request to an AI service. Copy selected listings as prompt/JSON, then paste and validate the AI result below.', copyAiRequest: 'Copy AI request', importAiResponse: 'Import AI response', aiResponseLabel: 'AI proposal JSON', aiCopied: 'AI request package for {count} listings copied to the clipboard.', aiImportSuccess: '{count} valid AI proposals imported.', aiImportError: 'AI JSON could not be validated: {message}', selectForAi: 'Select listings from the listing-analysis cards first.', exportComplete: 'Local analysis backup downloaded.', historyTitle: 'Analysis and improvement history', capturedAt: 'Captured at', changes: 'Changes', baseline: 'Baseline', latest: 'Latest', noHistory: 'At least two records from different days are required for comparison.', settingsTitle: 'Analysis thresholds', minVisitsToImprove: 'Improvement threshold when there are no sales (visits)', minVisitsToProtect: 'Strong-listing visit threshold', minRenewalsToReview: 'Deactivation review threshold (renewals)', declinePercent: 'Decline warning percentage', saveSettings: 'Save settings', settingsSaved: 'Analysis thresholds saved.', openSettings: 'Thresholds', editThresholds: 'Edit analysis thresholds', clearData: 'Clear local analysis data', clearDataConfirm: 'Delete all listing snapshots, improvement records, AI mappings, queue, and action history from this browser? Language and threshold settings are preserved.', dataCleared: 'Local listing analysis data was cleared; language and threshold settings were preserved.', deleteUnsupported: 'Deletion is not supported for safety.', leaseBlocked: 'The action queue is open in another tab. No write action started here.', reasonNew: 'New record; more history is needed for comparison.', reasonGrowth: 'Sales, revenue, visits, or favorites increased since the previous record.', reasonProtect: 'A strong revenue-generating listing; protect it from risky bulk changes.', reasonImproveTraffic: 'It has visits but no sales; review title, images, pricing, and offer alignment.', reasonDeactivate: 'No sales, visits, or favorites after at least {renewals} renewals; review deactivation.', reasonDecline: 'Last-30-day visits fell by at least {percent}% since the previous record.', reasonMonitor: 'No urgent action signal; continue collecting data.', reasonUnknown: 'Some performance metrics could not be read; missing values were not treated as zero and no decision was produced.',
             reasonLearning: 'At least 30 days of comparison history is being collected before a reliable decision.', reasonExperiment: 'The published improvement is being observed through its 30-day evaluation window.', reasonDormant: 'The listing looks dormant, but the safety conditions for a deactivation review are not complete.', reasonDeactivateSafe: 'A 60+ day history, repeated zero traffic, and no sales support a deactivation review; the user makes the final decision.', reasonInactive: 'The listing appears inactive on Etsy; no write action was recommended.',
-            health: 'Health', healthy: 'Protect / monitor', needsReview: 'Needs review', activeExperiments: 'Active experiments', listingHealth: 'Listing health', healthAndHistory: 'Listing health & history', lifecycle: 'Lifecycle', diagnosis: 'Performance diagnosis', confidence: 'Confidence', evidence: 'Evidence', showAllEvidence: 'Show all evidence ({count})', confidenceDetails: 'Confidence details', dataQuality: 'Data quality', historyDepth: 'History depth', trafficSample: 'Traffic sample', cohortStrength: 'Cohort strength', freshness: 'Freshness', dataIntegrity: 'Data integrity', shopBenchmark: 'Shop benchmark', experiment: 'Experiment', experimentState: 'Experiment status', primaryMetric: 'Primary metric', adjustedEffect: '30-day relative change', nextReview: 'Next review', afterNextSnapshot: 'After the next snapshot', missingData: 'Missing data', whyRecommendation: 'Why this recommendation?', details: 'Details', confidenceLimited: 'Confidence is limited by insufficient history or data quality.',
+            health: 'Health', healthy: 'Protect / monitor', needsReview: 'Needs review', activeExperiments: 'Active experiments', listingHealth: 'Listing health', healthAndHistory: 'Listing health & history', lifecycle: 'Lifecycle', diagnosis: 'Performance diagnosis', confidence: 'Evidence readiness', evidence: 'Evidence', showAllEvidence: 'Show all evidence ({count})', confidenceDetails: 'Evidence-readiness components', dataQuality: 'Data quality', historyDepth: 'History depth', trafficSample: 'Traffic sample', cohortStrength: 'Cohort strength', freshness: 'Capture freshness', dataIntegrity: 'Data integrity', shopBenchmark: 'Shop benchmark', experiment: 'Experiment', experimentState: 'Experiment status', primaryMetric: 'Primary metric', adjustedEffect: 'Observed 30-day change', nextReview: 'Next review', afterNextSnapshot: 'After the next snapshot', missingData: 'Missing data', whyRecommendation: 'Why this recommendation?', details: 'Details', confidenceLimited: 'This is not a statistical probability; it summarizes evidence coverage and decision readiness.',
             lifecycleDataGap: 'Data incomplete', lifecycleBaseline: 'Building baseline', lifecycleLearning: 'Learning', lifecycleStable: 'Stable', lifecycleGrowing: 'Growing', lifecycleDeclining: 'Declining', lifecycleProtected: 'Protected', lifecycleExperiment: 'Experiment running', lifecycleDormant: 'Dormant', lifecycleDeactivate: 'Review deactivation', lifecycleInactive: 'Inactive',
             diagnosisDiscovery: 'Low discovery', diagnosisEngagement: 'Weak post-visit interest', diagnosisPurchase: 'Possible purchase friction', diagnosisScale: 'Ready for more reach', diagnosisHealthy: 'No clear issue', diagnosisInsufficient: 'Not enough signal', confidenceLow: 'Low', confidenceMedium: 'Medium', confidenceHigh: 'High', confidenceVeryHigh: 'Very high',
             evidenceHistory: '{days} days of history · {count} snapshots', evidenceTraffic: '30-day visits: {current}; previous window: {previous} · {percent}%', evidenceRecentSales: 'Approximate last 30 days: {sales} sales · {revenue} revenue', evidenceCohort: 'Traffic percentile among {size} shop listings: {percentile}', evidenceAnomaly: '{count} data-integrity warning(s) found.',
-            guardHistory: '60+ days and at least 3 complete snapshots', guardZeroTraffic: 'Repeated zero traffic at least 14 days apart', guardNoSales: 'No lifetime sales/revenue and no new sales/revenue in the last 60 days', guardRenewals: 'Renewal cost continues without sales', guardActiveStock: 'Listing is active and in stock', guardNoExperiment: 'No active experiment', guardCooldown: 'No published improvement in the last 45 days', guardSeasonal: 'Explicitly confirmed as non-seasonal', guardConfidence: 'Confidence score is at least 80',
-            experimentPlanned: 'Planned', experimentObserving: 'Observing · day {day}/30', experimentWinner: 'Winner', experimentUnderperformed: 'Underperformed', experimentInconclusive: 'Inconclusive', experimentContaminated: 'Contaminated by another change', experimentStopped: 'Stopped', contentChanged: 'The listing content changed after the proposal was saved. The form was preserved and processing stopped; review the proposal again.', proposalStale: 'Listing data or analysis settings changed after the proposal was saved. No queue was created; review the proposal again.', manualApproval: 'Every Etsy write action requires listing-level user approval.',
+            guardHistory: '60+ days and at least 3 complete snapshots', guardZeroTraffic: 'Repeated zero traffic at least 14 days apart', guardNoSales: 'No lifetime sales/revenue and no new sales/revenue in the last 60 days', guardRenewals: 'Renewal cost continues without sales', guardActiveStock: 'Listing is active and in stock', guardNoExperiment: 'No active experiment', guardCooldown: 'No published improvement in the last 45 days', guardSeasonal: 'Explicitly confirmed as non-seasonal', guardDataIntegrity: 'No data-integrity issue in the active 60-day epoch', guardConfidence: 'Evidence readiness is at least 80',
+            experimentPlanned: 'Planned', experimentObserving: 'Observing · day {day}/30', experimentWinner: 'Post-change increase signal', experimentUnderperformed: 'Post-change decrease signal', experimentInconclusive: 'Inconclusive', experimentContaminated: 'Contaminated by another change', experimentStopped: 'Stopped', contentChanged: 'The listing content changed after the proposal was saved. The form was preserved and processing stopped; review the proposal again.', proposalStale: 'Listing data or analysis settings changed after the proposal was saved. No queue was created; review the proposal again.', manualApproval: 'Every Etsy write action requires listing-level user approval.',
+            confidenceFilter: 'Evidence readiness',
+            confidenceLowFilter: 'Low readiness', confidenceMediumFilter: 'Medium readiness', confidenceHighFilter: 'High / very high readiness',
+            sortConfidence: 'Highest evidence readiness', analysisConfidence: 'Evidence readiness', historyConfidence: 'History evidence readiness',
+            snapshotConfidenceLimited: 'The first-scan diagnosis is usable; evidence readiness for growth, decline, and deactivation remains limited until 30/60-day history is available.',
         }),
     });
 
     const EXTRA_I18N = Object.freeze({
         tr: Object.freeze({
+            listingContext: 'Listing bağlamı', seasonality: 'Mevsimsellik', listingType: 'Ürün türü',
+            contextUnknown: 'Bilinmiyor', contextSeasonal: 'Mevsimsel', contextNonSeasonal: 'Mevsimsel değil', contextDigital: 'Dijital', contextPhysical: 'Fiziksel',
+            saveContext: 'Bağlamı kaydet', contextSaved: 'Listing bağlamı kaydedildi; analiz yeniden hesaplandı.',
+            sourceTimeUnknown: 'Etsy kaynak yenileme zamanı görünmüyor; güncellik tarama zamanına göredir.',
+            effectFromZero: 'Sıfırdan yeni sinyal · mutlak değişim {amount}', exactInterval: '%{confidence} exact Poisson oran aralığı',
             scanAllPages: 'Tüm sayfaları tara', stopCollection: 'Taramayı durdur', resumeCollection: 'Taramaya devam et', collectionShortcut: 'Kısayol: CTRL + ALT + A',
             collectionStarting: 'Tüm sayfa taraması başlatılıyor…', collectionFirstPage: 'İlk sayfaya geçiliyor…', collectionProgress: 'Sayfa {current}/{total} · {pages} sayfa · {count} benzersiz listing', collectionComplete: '{pages} sayfada {count} benzersiz listing toplandı.', collectionPaused: 'Tarama durduruldu. Aynı düğmeyle kaldığınız yerden devam edebilirsiniz.', collectionBlocked: 'Tarama güvenli biçimde durdu: {reason}', collectionBusy: 'Tüm sayfa taraması başka bir sekmede çalışıyor.', collectionRouteRequired: 'Tüm sayfa taraması yalnız Etsy listing sayfasında başlatılabilir.', collectionPageChanged: 'Beklenen Etsy sayfası yüklenmedi.', collectionRepeatedPage: 'Aynı Etsy sayfası tekrar açıldığı için döngü durduruldu.', collectionOverlap: 'Farklı sayfalarda aynı listing görüldü; eksik veya karışık analiz oluşmaması için tarama durduruldu.', collectionStorageFailed: 'Yerel depolama yazılamadı; kota veya kapasite dolu olabilir. Yedek alın, eski analiz verilerini temizleyin ve yeniden deneyin.', collectionNewerSchema: 'Tarama kaydı daha yeni bir script sürümüne ait; veri korunarak işlem durduruldu.', collectionLimit: 'Güvenlik için {count} sayfa sınırında tarama durduruldu.', collectionPages: 'Toplanan sayfa', collectionListings: 'Benzersiz listing', collectionStatus: 'Toplu veri toplama',
             filters: 'Filtreler', hideFilters: 'Filtreleri gizle', clearFilters: 'Filtreleri sıfırla', resultsCount: '{visible} / {total} listing', showingCount: '{shown} gösteriliyor · {total} eşleşme', scope: 'Kapsam', scopeAll: 'Kayıtlı tüm listingler', scopePage: 'Bu Etsy sayfası', lifecycleFilter: 'Durum', diagnosisFilter: 'Sorun / fırsat', recommendationFilter: 'Öneri', performanceFilter: '30 günlük performans', trendFilter: 'Değişim', stockFilter: 'Stok', confidenceFilter: 'Veri güveni', sortBy: 'Sırala',
@@ -1110,6 +1137,11 @@
             researchStart: 'Marketplace Insights ile araştır', researchOneListing: 'Araştırma için tam olarak bir listing seçin.', researchProbing: 'Etsy Keyword & Market Analyzer aranıyor…', researchCompanionMissingTitle: 'Etsy Keyword & Market Analyzer gerekli', researchCompanionMissing: 'Bağlantılı Marketplace Insights araştırması için ayrı Etsy Keyword & Market Analyzer scripti gerekir. Listing Analyzer diğer tüm özellikleriyle bağımsız çalışmaya devam eder.', researchInstallHelp: 'Script sessizce kurulamaz. Kurulum sayfası yeni sekmede açılır ve son onayı userscript yöneticisinde siz verirsiniz.', researchOpenInstall: 'Yükleme sayfasını aç', researchTransferTitle: 'Marketplace Insights araştırması', researchWaitingReady: 'Insights sekmesinin hazır olması bekleniyor…', researchRequestSent: 'Araştırma isteği gönderildi; Analyzer açık kalmalıdır.', researchAcknowledged: 'İstek alındı; Etsy Marketplace Insights sonuçları bekleniyor…', researchTimedOut: 'Otomatik yanıt süresi doldu. Analyzer açık kalır ve geçerli sonuç süresi dolana kadar kabul edilir; gerekirse JSON kurtarma araçlarını kullanın.', researchComplete: '{count} anahtar kelime kanıtı doğrulandı; öneri otomatik yayımlanmadı.', researchSavedForReview: 'Başlık ve etiket önerisi inceleme için kaydedildi; hiçbir Etsy alanı değiştirilmedi.', researchNeedsEditor: 'Kanıt ve öneri kaydedildi. Etiketleri güvenle karşılaştırmak için listing düzenleyicisini bir kez açın; işlem kuyruğu oluşturulmadı.', researchFailed: 'Araştırma sonucu doğrulanamadı: {message}', researchCopyRequest: 'İstek JSON’unu kopyala', researchRequestCopied: 'Araştırma istek JSON’u panoya kopyalandı.', researchImportResult: 'Sonuç JSON’unu içe aktar', researchResultLabel: 'Tam RESEARCH_RESULT envelope JSON’u', researchReopenInsights: 'Insights sayfasını yeniden aç', researchEvidenceTitle: 'Marketplace Insights kanıtı', researchSearches30d: '30 günlük arama', researchSearchResults: 'Arama sonucu / rekabet göstergesi', researchOpportunity: 'Makaytron fırsat puanı', researchSourceNote: 'Kaynak: Etsy Marketplace Insights görünür sayfa verisi. Fırsat puanı Makaytron tarafından türetilmiştir.', researchStale: 'Listing başlığı veya etiketleri araştırma başladıktan sonra değişti; sonuç güvenli biçimde reddedildi.', researchNoSeeds: 'Araştırma için kullanılabilecek başlık veya etiket bulunamadı.', researchOpenProposal: 'Öneriyi incele', researchPendingExists: 'Bu listing için bekleyen araştırma yeniden açıldı.', researchErrorRemote: 'Keyword Analyzer araştırmayı tamamlayamadı: {message}', researchProposalReason: 'Marketplace Insights kanıtı: “{keyword}” — {searches} arama / 30 gün, {results} arama sonucu. Makaytron fırsat puanı türetilmiş metriktir.', researchTagReplacement: '13 etiket dolu olduğu için düşük kanıtlı “{old}” yerine “{keyword}” önerildi; değişiklik yalnız inceleme taslağıdır.', updateManagedExternally: 'Güncellemeler kurulum kaynağınız tarafından yönetiliyor; GitHub güncelleme akışı zorlanmadı.',
         }),
         en: Object.freeze({
+            listingContext: 'Listing context', seasonality: 'Seasonality', listingType: 'Product type',
+            contextUnknown: 'Unknown', contextSeasonal: 'Seasonal', contextNonSeasonal: 'Non-seasonal', contextDigital: 'Digital', contextPhysical: 'Physical',
+            saveContext: 'Save context', contextSaved: 'Listing context saved and analysis recalculated.',
+            sourceTimeUnknown: 'Etsy source-refresh time is not visible; freshness is based on capture time.',
+            effectFromZero: 'New signal from zero · absolute change {amount}', exactInterval: '{confidence}% exact Poisson rate interval',
             scanAllPages: 'Collect all pages', stopCollection: 'Stop collection', resumeCollection: 'Resume collection', collectionShortcut: 'Shortcut: CTRL + ALT + A',
             collectionStarting: 'Starting all-page collection…', collectionFirstPage: 'Opening the first page…', collectionProgress: 'Page {current}/{total} · {pages} pages · {count} unique listings', collectionComplete: '{count} unique listings collected across {pages} pages.', collectionPaused: 'Collection stopped. Use the same button to resume.', collectionBlocked: 'Collection stopped safely: {reason}', collectionBusy: 'All-page collection is running in another tab.', collectionRouteRequired: 'All-page collection can only start on the Etsy listings page.', collectionPageChanged: 'The expected Etsy page did not load.', collectionRepeatedPage: 'Collection stopped because the same Etsy page appeared again.', collectionOverlap: 'The same listing appeared on different pages; collection stopped to avoid an incomplete or mixed analysis.', collectionStorageFailed: 'Local storage could not be written; its quota or capacity may be full. Export a backup, clear old analysis data, and retry.', collectionNewerSchema: 'The collection record belongs to a newer script schema; it was preserved and collection stopped.', collectionLimit: 'Collection stopped at the {count}-page safety limit.', collectionPages: 'Pages collected', collectionListings: 'Unique listings', collectionStatus: 'Bulk data collection',
             filters: 'Filters', hideFilters: 'Hide filters', clearFilters: 'Reset filters', resultsCount: '{visible} / {total} listings', showingCount: '{shown} shown · {total} matches', scope: 'Scope', scopeAll: 'All stored listings', scopePage: 'This Etsy page', lifecycleFilter: 'Status', diagnosisFilter: 'Issue / opportunity', recommendationFilter: 'Recommendation', performanceFilter: '30-day performance', trendFilter: 'Change', stockFilter: 'Stock', confidenceFilter: 'Data confidence', sortBy: 'Sort',
@@ -1294,11 +1326,9 @@
         const target = finiteOrNull(value);
         const sorted = values.map(finiteOrNull).filter(Number.isFinite).sort((a, b) => a - b);
         if (target === null || !sorted.length) return null;
-        if (sorted.length === 1) return 50;
-        const positions = sorted.map((item, index) => item === target ? index : -1).filter((index) => index >= 0);
-        if (positions.length) return Math.round((median(positions) / (sorted.length - 1)) * 100);
         const below = sorted.filter((item) => item < target).length;
-        return clamp(Math.round((below / (sorted.length - 1)) * 100), 0, 100);
+        const equal = sorted.filter((item) => item === target).length;
+        return clamp(Math.round(((below + (equal * 0.5)) / sorted.length) * 100), 0, 100);
     }
     function percentChange(current, previous) {
         const currentValue = finiteOrNull(current); const previousValue = finiteOrNull(previous);
@@ -1316,33 +1346,116 @@
         if (top === null || bottom === null || top < 0 || bottom < 0 || priorRate === null || priorRate < 0 || priorWeight === null || priorWeight <= 0) return null;
         return Math.round(((top + (priorRate / 100) * priorWeight) / (bottom + priorWeight)) * 100000) / 1000;
     }
-    function poissonRateRatioInterval(beforeEvents, beforeExposure, afterEvents, afterExposure, z = HEALTH_RULES.experimentConfidenceZ) {
+    function logGamma(value) {
+        const coefficients = [676.5203681218851, -1259.1392167224028, 771.3234287776531, -176.6150291621406, 12.507343278686905, -0.13857109526572012, 9.984369578019572e-6, 1.5056327351493116e-7];
+        if (!Number.isFinite(value) || value <= 0) return null;
+        if (value < 0.5) return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * value)) - logGamma(1 - value);
+        let shifted = value - 1;
+        let sum = 0.9999999999998099;
+        coefficients.forEach((coefficient, index) => { sum += coefficient / (shifted + index + 1); });
+        const base = shifted + coefficients.length - 0.5;
+        return 0.5 * Math.log(2 * Math.PI) + (shifted + 0.5) * Math.log(base) - base + Math.log(sum);
+    }
+
+    function betaContinuedFraction(a, b, x) {
+        const maxIterations = 2048; const epsilon = 3e-14; const floor = 1e-300;
+        const sum = a + b; const plus = a + 1; const minus = a - 1;
+        let c = 1; let d = 1 - (sum * x) / plus;
+        if (Math.abs(d) < floor) d = floor;
+        d = 1 / d;
+        let result = d;
+        let converged = false;
+        for (let iteration = 1; iteration <= maxIterations; iteration += 1) {
+            const twice = iteration * 2;
+            let term = (iteration * (b - iteration) * x) / ((minus + twice) * (a + twice));
+            d = 1 + term * d; if (Math.abs(d) < floor) d = floor;
+            c = 1 + term / c; if (Math.abs(c) < floor) c = floor;
+            d = 1 / d; result *= d * c;
+            if (![c, d, result].every(Number.isFinite)) return null;
+            term = -((a + iteration) * (sum + iteration) * x) / ((a + twice) * (plus + twice));
+            d = 1 + term * d; if (Math.abs(d) < floor) d = floor;
+            c = 1 + term / c; if (Math.abs(c) < floor) c = floor;
+            d = 1 / d;
+            const delta = d * c;
+            result *= delta;
+            if (![c, d, delta, result].every(Number.isFinite)) return null;
+            if (Math.abs(delta - 1) <= epsilon) { converged = true; break; }
+        }
+        return converged && Number.isFinite(result) ? result : null;
+    }
+
+    function regularizedBeta(x, a, b) {
+        if (![x, a, b].every(Number.isFinite) || a <= 0 || b <= 0) return null;
+        if (x <= 0) return 0;
+        if (x >= 1) return 1;
+        const gammaSum = logGamma(a + b); const gammaA = logGamma(a); const gammaB = logGamma(b);
+        if (![gammaSum, gammaA, gammaB].every(Number.isFinite)) return null;
+        const logBeta = gammaSum - gammaA - gammaB + a * Math.log(x) + b * Math.log1p(-x);
+        if (!Number.isFinite(logBeta)) return null;
+        const factor = Math.exp(logBeta);
+        if (!Number.isFinite(factor)) return null;
+        const fraction = x < (a + 1) / (a + b + 2)
+            ? betaContinuedFraction(a, b, x)
+            : betaContinuedFraction(b, a, 1 - x);
+        if (!Number.isFinite(fraction)) return null;
+        const value = x < (a + 1) / (a + b + 2)
+            ? factor * fraction / a
+            : 1 - factor * fraction / b;
+        return Number.isFinite(value) && value >= -1e-12 && value <= 1 + 1e-12 ? Math.min(1, Math.max(0, value)) : null;
+    }
+
+    function inverseRegularizedBeta(probability, a, b) {
+        if (![probability, a, b].every(Number.isFinite) || probability < 0 || probability > 1 || a <= 0 || b <= 0) return null;
+        if (probability === 0) return 0;
+        if (probability === 1) return 1;
+        let low = 0; let high = 1;
+        for (let iteration = 0; iteration < 100; iteration += 1) {
+            const middle = (low + high) / 2;
+            const observed = regularizedBeta(middle, a, b);
+            if (!Number.isFinite(observed)) return null;
+            if (observed < probability) low = middle;
+            else high = middle;
+        }
+        return (low + high) / 2;
+    }
+
+    function exactPoissonRateRatioInterval(beforeEvents, beforeExposure, afterEvents, afterExposure, confidenceLevel = HEALTH_RULES.experimentConfidenceLevel) {
         const beforeCount = finiteOrNull(beforeEvents); const beforeSample = finiteOrNull(beforeExposure);
-        const afterCount = finiteOrNull(afterEvents); const afterSample = finiteOrNull(afterExposure); const critical = finiteOrNull(z);
-        if (beforeCount === null || beforeSample === null || afterCount === null || afterSample === null || critical === null
-            || beforeCount < 0 || afterCount < 0 || beforeSample <= 0 || afterSample <= 0 || critical <= 0) return null;
-        const correctedBefore = beforeCount + 0.5;
-        const correctedAfter = afterCount + 0.5;
-        const ratio = (correctedAfter / afterSample) / (correctedBefore / beforeSample);
-        const standardError = Math.sqrt((1 / correctedBefore) + (1 / correctedAfter));
-        const logRatio = Math.log(ratio);
+        const afterCount = finiteOrNull(afterEvents); const afterSample = finiteOrNull(afterExposure); const confidence = finiteOrNull(confidenceLevel);
+        if (![beforeCount, beforeSample, afterCount, afterSample, confidence].every(Number.isFinite)
+            || !Number.isSafeInteger(beforeCount) || !Number.isSafeInteger(afterCount) || beforeCount < 0 || afterCount < 0
+            || beforeCount + afterCount > HEALTH_RULES.maximumExactExperimentEvents
+            || beforeSample <= 0 || afterSample <= 0 || confidence <= 0 || confidence >= 1 || beforeCount + afterCount === 0) return null;
+        const total = beforeCount + afterCount;
+        const alpha = 1 - confidence;
+        const lowerProbability = afterCount === 0 ? 0 : inverseRegularizedBeta(alpha / 2, afterCount, beforeCount + 1);
+        const upperProbability = afterCount === total ? 1 : inverseRegularizedBeta(1 - alpha / 2, afterCount + 1, beforeCount);
+        if (!Number.isFinite(lowerProbability) || !Number.isFinite(upperProbability)) return null;
+        const toRatio = (probability) => {
+            if (probability <= 0) return 0;
+            if (probability >= 1) return null;
+            return (probability * beforeSample) / (afterSample * (1 - probability));
+        };
+        const nullProbability = afterSample / (beforeSample + afterSample);
+        const pIncrease = afterCount === 0 ? 1 : regularizedBeta(nullProbability, afterCount, beforeCount + 1);
+        const pDecrease = beforeCount === 0 ? 1 : regularizedBeta(1 - nullProbability, beforeCount, afterCount + 1);
+        const low = toRatio(lowerProbability); const high = toRatio(upperProbability);
+        if (![pIncrease, pDecrease, low].every(Number.isFinite) || (high !== null && (!Number.isFinite(high) || low > high))) return null;
+        const ratioKind = beforeCount === 0 ? 'infinite' : afterCount === 0 ? 'zero' : 'finite';
         return {
-            ratio,
-            low: Math.exp(logRatio - critical * standardError),
-            high: Math.exp(logRatio + critical * standardError),
-            beforeEvents: beforeCount,
-            beforeExposure: beforeSample,
-            afterEvents: afterCount,
-            afterExposure: afterSample,
-            criticalZ: critical,
+            method: 'conditional-exact-poisson', confidenceLevel: confidence,
+            ratio: ratioKind === 'finite' ? (afterCount / afterSample) / (beforeCount / beforeSample) : ratioKind === 'zero' ? 0 : null,
+            ratioKind, low, high, highOpen: upperProbability === 1,
+            pValueIncrease: pIncrease, pValueDecrease: pDecrease, pValueTwoSided: Math.min(1, 2 * Math.min(pIncrease, pDecrease)),
+            beforeEvents: beforeCount, beforeExposure: beforeSample, afterEvents: afterCount, afterExposure: afterSample,
         };
     }
     function separatedRateDirection(beforeSuccesses, beforeTrials, afterSuccesses, afterTrials) {
-        const comparison = poissonRateRatioInterval(beforeSuccesses, beforeTrials, afterSuccesses, afterTrials);
+        const comparison = exactPoissonRateRatioInterval(beforeSuccesses, beforeTrials, afterSuccesses, afterTrials);
         return {
             comparison,
             winner: Boolean(comparison && comparison.low > 1),
-            underperformed: Boolean(comparison && comparison.high < 1),
+            underperformed: Boolean(comparison && comparison.high !== null && comparison.high < 1),
         };
     }
     function fnv1a(value) {
@@ -1436,6 +1549,91 @@
             renewals: parseCountFromRows(source, ['renewal', 'renewals', 'yenileme', 'yenilemeler']),
             currency: revenuePrefix === null ? '' : currencyMarker(revenuePrefix),
         };
+    }
+
+    const LISTING_METRIC_LABELS = Object.freeze({
+        visits: Object.freeze(['visit', 'visits', 'ziyaret', 'ziyaretler']),
+        favorites: Object.freeze(['favorite', 'favorites', 'favori', 'favoriler']),
+        sales: Object.freeze(['sale', 'sales', 'satış']),
+        revenue: Object.freeze(['revenue', 'gelir']),
+        renewals: Object.freeze(['renewal', 'renewals', 'yenileme', 'yenilemeler']),
+    });
+
+    function metricHeadingScope(value) {
+        const heading = normalizeSpace(value).toLowerCase();
+        if (LISTING_METRIC_CONTRACT.rollingHeadings.includes(heading)) return 'rolling-30d';
+        if (LISTING_METRIC_CONTRACT.lifetimeHeadings.includes(heading)) return 'lifetime';
+        return '';
+    }
+
+    function parseScopedListingMetrics(sections) {
+        const source = (Array.isArray(sections) ? sections : []).map((section) => ({
+            heading: normalizeSpace(section?.heading),
+            scope: metricHeadingScope(section?.heading),
+            rows: Array.isArray(section?.rows) ? section.rows.map(normalizeSpace).filter(Boolean) : [],
+        })).filter((section) => section.scope);
+        const rolling = source.filter((section) => section.scope === 'rolling-30d');
+        const lifetime = source.filter((section) => section.scope === 'lifetime');
+        if (rolling.length !== 1 || lifetime.length !== 1) return { valid: false, reason: 'metric-heading-contract' };
+        const expected = { 'rolling-30d': ['visits', 'favorites'], lifetime: ['sales', 'revenue', 'renewals'] };
+        const values = {}; const countPrecision = {}; let currency = '';
+        for (const section of [rolling[0], lifetime[0]]) {
+            const found = new Map();
+            for (const row of section.rows) {
+                const matching = Object.entries(LISTING_METRIC_LABELS).filter(([, labels]) => labeledPrefix([row], labels) !== null);
+                if (matching.length !== 1) continue;
+                const [field, labels] = matching[0];
+                if (!expected[section.scope].includes(field) || found.has(field)) return { valid: false, reason: 'metric-row-contract' };
+                const prefix = labeledPrefix([row], labels);
+                if (field === 'revenue' && /[kmb]\s*$/i.test(prefix)) return { valid: false, reason: 'metric-value-contract' };
+                const value = field === 'revenue' ? parseDecimal(prefix) : parseCountValue(prefix);
+                if (!Number.isFinite(value)) return { valid: false, reason: 'metric-value-contract' };
+                found.set(field, value);
+                if (field !== 'revenue') countPrecision[field] = /[kmb]\s*$/i.test(prefix) ? 'approximate' : 'exact';
+                if (field === 'revenue') currency = currencyMarker(prefix);
+            }
+            if (expected[section.scope].some((field) => !found.has(field))) return { valid: false, reason: 'metric-row-contract' };
+            found.forEach((value, field) => { values[field] = value; });
+        }
+        return {
+            valid: true,
+            metrics: { ...values, currency },
+            contract: {
+                id: LISTING_METRIC_CONTRACT.id, version: 1, verified: true, source: 'etsy-listings-visible-dom',
+                scopes: { ...LISTING_METRIC_CONTRACT.scopes },
+                headings: { rolling30d: rolling[0].heading, lifetime: lifetime[0].heading },
+                countPrecision,
+                sourceUpdatedAt: null, sourceTimeStatus: 'unknown',
+            },
+        };
+    }
+
+    function normalizeMetricContract(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        const scopes = raw.scopes && typeof raw.scopes === 'object' ? raw.scopes : {};
+        const validScopes = HEALTH_METRIC_FIELDS.every((field) => scopes[field] === LISTING_METRIC_CONTRACT.scopes[field]);
+        const headings = raw.headings && typeof raw.headings === 'object' ? raw.headings : {};
+        const validHeadings = metricHeadingScope(headings.rolling30d) === 'rolling-30d' && metricHeadingScope(headings.lifetime) === 'lifetime';
+        const countPrecision = raw.countPrecision && typeof raw.countPrecision === 'object' ? raw.countPrecision : {};
+        const countFields = ['visits', 'favorites', 'sales', 'renewals'];
+        const validPrecision = countFields.every((field) => ['exact', 'approximate'].includes(countPrecision[field]));
+        if (raw.id !== LISTING_METRIC_CONTRACT.id || Number(raw.version) !== 1 || raw.verified !== true
+            || raw.source !== 'etsy-listings-visible-dom' || !validScopes || !validHeadings || !validPrecision) return null;
+        const sourceUpdatedAt = validTime(raw.sourceUpdatedAt) === null ? null : new Date(validTime(raw.sourceUpdatedAt)).toISOString();
+        return {
+            id: LISTING_METRIC_CONTRACT.id, version: 1, verified: true,
+            source: 'etsy-listings-visible-dom',
+            scopes: { ...LISTING_METRIC_CONTRACT.scopes },
+            headings: { rolling30d: normalizeSpace(headings.rolling30d), lifetime: normalizeSpace(headings.lifetime) },
+            countPrecision: Object.fromEntries(countFields.map((field) => [field, countPrecision[field]])),
+            sourceUpdatedAt,
+            sourceTimeStatus: sourceUpdatedAt && raw.sourceTimeStatus === 'etsy-reported' ? 'etsy-reported' : 'unknown',
+        };
+    }
+
+    function snapshotCountsAreExact(snapshot, fields) {
+        const contract = normalizeMetricContract(snapshot?.metricContract);
+        return Boolean(contract && (fields || []).every((field) => contract.countPrecision?.[field] === 'exact'));
     }
 
     function parsePriceRange(text) {
@@ -1569,6 +1767,7 @@
             state.settings.language = ['tr', 'en'].includes(state.settings.language) ? state.settings.language : 'tr';
             state.settings.retentionDays = clamp(state.settings.retentionDays, 30, APP.retentionDays);
             state.settings.maxSnapshots = clamp(state.settings.maxSnapshots, 10, APP.maxSnapshots);
+            Object.assign(state.settings, normalizeHealthThresholds(state.settings));
             return state.settings;
         },
         async saveSettings() { return GMX.set(KEYS.settings, state.settings); },
@@ -1749,6 +1948,20 @@
         async saveProposal(listingId, proposal) {
             return withNamedLock(STORAGE_MUTATION_LOCK, () => this.saveProposalLocked(listingId, proposal));
         },
+        async saveListingContext(listingId, context) {
+            return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const record = await this.getRecord(listingId);
+                if (!record || record.unsupportedSchema) throw new Error(`Unknown listing ${listingId}`);
+                const from = { seasonality: normalizeSeasonality(record.meta?.seasonality, record.meta?.seasonal), listingType: normalizeListingType(record.meta?.listingType) };
+                const to = { seasonality: normalizeSeasonality(context?.seasonality), listingType: normalizeListingType(context?.listingType) };
+                const changedAt = nowIso();
+                record.meta = { ...record.meta, ...to, contextUpdatedAt: changedAt, contextSource: 'user' };
+                delete record.meta.seasonal;
+                const saved = await this.putRecordLocked(record);
+                await this.appendAuditLocked({ type: 'listing-context-set', listingId: String(listingId), from, to });
+                return saved;
+            });
+        },
         async loadQueue() {
             const queue = await GMX.get(KEYS.queue, null);
             state.queue = queue && typeof queue === 'object' ? queue : null;
@@ -1771,8 +1984,7 @@
             state.collection = normalizeCollection(await GMX.get(KEYS.collection, null));
             return state.collection;
         },
-        async saveCollection(collection, expected = {}) {
-            return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+        async saveCollectionLocked(collection, expected = {}) {
                 const normalized = normalizeCollection(collection);
                 const stored = normalizeCollection(await GMX.get(KEYS.collection, null));
                 if (normalized?.unsupportedSchema || stored?.unsupportedSchema) {
@@ -1780,26 +1992,45 @@
                     error.code = 'COLLECTION_NEWER_SCHEMA';
                     throw error;
                 }
-                if (expected.id && (!stored || stored.id !== expected.id)) {
+                if (Object.hasOwn(expected, 'id') && (!stored || stored.id !== expected.id)) {
                     const error = new Error('Collection ownership changed.'); error.code = 'COLLECTION_LEASE_LOST'; throw error;
                 }
-                if (expected.token && stored?.leaseToken !== expected.token) {
+                if (Object.hasOwn(expected, 'token') && stored?.leaseToken !== expected.token) {
                     const error = new Error('Collection fencing token changed.'); error.code = 'COLLECTION_LEASE_LOST'; throw error;
                 }
-                if (expected.leaseToken) {
+                const sameCollection = Boolean(stored && stored.id === normalized?.id);
+                if (sameCollection) {
+                    const expectedRevision = Number(expected.writeRevision);
+                    const expectedFingerprint = String(expected.manifestFingerprint || '');
+                    if (!Object.hasOwn(expected, 'writeRevision') || !Number.isSafeInteger(expectedRevision)
+                        || stored.writeRevision !== expectedRevision
+                        || !Object.hasOwn(expected, 'manifestFingerprint')
+                        || collectionManifestFingerprint(stored) !== expectedFingerprint) {
+                        const error = new Error('Collection changed before the write completed.'); error.code = 'COLLECTION_LEASE_LOST'; throw error;
+                    }
+                }
+                if (Object.hasOwn(expected, 'leaseToken')) {
                     const lease = await GMX.get(KEYS.collectionLease, null);
                     const validLease = lease?.owner === tabId && lease?.instanceId === pageInstanceId
                         && lease?.token === expected.leaseToken && Number(lease.expiresAt) > Date.now();
                     if (!validLease) { const error = new Error('Collection lease changed.'); error.code = 'COLLECTION_LEASE_LOST'; throw error; }
                 }
+                normalized.writeRevision = sameCollection ? stored.writeRevision + 1 : 1;
+                if (!Number.isSafeInteger(normalized.writeRevision)) {
+                    const error = new Error('Collection revision is exhausted.'); error.code = 'COLLECTION_LEASE_LOST'; throw error;
+                }
                 await requireStored(KEYS.collection, normalized);
                 const verified = normalizeCollection(await GMX.get(KEYS.collection, null));
-                if (!verified || verified.id !== normalized.id || verified.updatedAt !== normalized.updatedAt || verified.leaseToken !== normalized.leaseToken) {
+                if (!verified || verified.id !== normalized.id || verified.writeRevision !== normalized.writeRevision
+                    || verified.leaseToken !== normalized.leaseToken
+                    || collectionManifestFingerprint(verified) !== collectionManifestFingerprint(normalized)) {
                     const error = new Error('Collection write verification failed.'); error.code = 'STORAGE_WRITE_FAILED'; throw error;
                 }
-                state.collection = normalized;
+                state.collection = verified;
                 return state.collection;
-            });
+        },
+        async saveCollection(collection, expected = {}) {
+            return withNamedLock(STORAGE_MUTATION_LOCK, () => this.saveCollectionLocked(collection, expected));
         },
         async appendAuditLocked(entry) {
             const audit = await GMX.get(KEYS.audit, []);
@@ -2108,6 +2339,19 @@
         return { active: 'Active', draft: 'Draft', expired: 'Expired', sold_out: 'Sold out', inactive: 'Inactive' }[normalizeListingState(value)] || '';
     }
 
+    function normalizeSeasonality(value, legacyValue = undefined) {
+        const normalized = normalizeSpace(value).toLocaleLowerCase('en-US');
+        if (['seasonal', 'non-seasonal', 'unknown'].includes(normalized)) return normalized;
+        if (legacyValue === true) return 'seasonal';
+        if (legacyValue === false) return 'non-seasonal';
+        return 'unknown';
+    }
+
+    function normalizeListingType(value) {
+        const normalized = normalizeSpace(value).toLocaleLowerCase('en-US');
+        return ['digital', 'physical', 'unknown'].includes(normalized) ? normalized : 'unknown';
+    }
+
     function pageListingState(root = document, href = location.href) {
         const signals = [];
         try {
@@ -2154,19 +2398,21 @@
     }
 
     function snapshotFromListing(listing, capturedAt) {
+        const metricContract = normalizeMetricContract(listing.metricContract);
         const snapshot = {
             at: capturedAt, day: dayKey(capturedAt), visits: finiteOrNull(listing.visits), favorites: finiteOrNull(listing.favorites),
             sales: finiteOrNull(listing.sales), revenue: finiteOrNull(listing.revenue), renewals: finiteOrNull(listing.renewals), stock: finiteOrNull(listing.stock),
             priceMin: finiteOrNull(listing.price?.min), priceMax: finiteOrNull(listing.price?.max), priceLabel: normalizeSpace(listing.price?.label),
             currency: normalizeSpace(listing.currency), listingState: normalizeListingState(listing.listingState),
-            statusLabel: normalizeSpace(listing.statusLabel), renewalLabel: normalizeSpace(listing.renewalLabel), observedAt: {},
+            statusLabel: normalizeSpace(listing.statusLabel), renewalLabel: normalizeSpace(listing.renewalLabel), observedAt: {}, metricContract,
         };
         SNAPSHOT_NUMBER_FIELDS.forEach((field) => { if (Number.isFinite(snapshot[field])) snapshot.observedAt[field] = capturedAt; });
         snapshot.quality = {
-            parserVersion: 3,
+            parserVersion: LISTING_METRIC_CONTRACT.parserVersion,
             observedFields: HEALTH_METRIC_FIELDS.filter((field) => Number.isFinite(snapshot[field])),
             missingFields: HEALTH_METRIC_FIELDS.filter((field) => !Number.isFinite(snapshot[field])),
-            capturedAt,
+            metricContractId: metricContract?.id || '', metricScopeVerified: Boolean(metricContract), metricScopes: metricContract?.scopes || null,
+            sourceUpdatedAt: metricContract?.sourceUpdatedAt || null, sourceTimeStatus: metricContract?.sourceTimeStatus || 'unknown', capturedAt,
         };
         return snapshot;
     }
@@ -2174,7 +2420,8 @@
     function normalizeSnapshot(raw) {
         if (!raw || typeof raw !== 'object' || validTime(raw.at) === null) return null;
         const at = new Date(validTime(raw.at)).toISOString();
-        const snapshot = { ...raw, at, day: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.day || '')) ? String(raw.day) : dayKey(at), observedAt: {} };
+        const metricContract = normalizeMetricContract(raw.metricContract);
+        const snapshot = { ...raw, at, day: /^\d{4}-\d{2}-\d{2}$/.test(String(raw.day || '')) ? String(raw.day) : dayKey(at), observedAt: {}, metricContract };
         SNAPSHOT_NUMBER_FIELDS.forEach((field) => {
             snapshot[field] = finiteOrNull(raw[field]);
             const observed = validTime(raw.observedAt?.[field]);
@@ -2190,6 +2437,8 @@
             parserVersion: Number(raw.quality?.parserVersion) || 1,
             observedFields,
             missingFields: HEALTH_METRIC_FIELDS.filter((field) => !observedFields.includes(field)),
+            metricContractId: metricContract?.id || '', metricScopeVerified: Boolean(metricContract), metricScopes: metricContract?.scopes || null,
+            sourceUpdatedAt: metricContract?.sourceUpdatedAt || null, sourceTimeStatus: metricContract?.sourceTimeStatus || 'unknown',
             capturedAt: validTime(raw.quality?.capturedAt) === null ? at : new Date(validTime(raw.quality.capturedAt)).toISOString(),
         };
         return snapshot;
@@ -2201,7 +2450,7 @@
         if (!right) return left;
         if (left.day !== right.day) return validTime(right.at) >= validTime(left.at) ? right : left;
         const [previous, incoming] = validTime(left.at) <= validTime(right.at) ? [left, right] : [right, left];
-        const merged = { ...previous, at: incoming.at, day: previous.day, observedAt: { ...previous.observedAt } };
+        const merged = { ...previous, at: incoming.at, day: previous.day, observedAt: { ...previous.observedAt }, metricContract: incoming.metricContract || null };
         SNAPSHOT_NUMBER_FIELDS.forEach((field) => {
             if (Number.isFinite(incoming[field])) {
                 merged[field] = incoming[field];
@@ -2217,6 +2466,8 @@
             parserVersion: Math.max(Number(previous.quality?.parserVersion) || 1, Number(incoming.quality?.parserVersion) || 1),
             observedFields,
             missingFields: HEALTH_METRIC_FIELDS.filter((field) => !observedFields.includes(field)),
+            metricContractId: merged.metricContract?.id || '', metricScopeVerified: Boolean(merged.metricContract), metricScopes: merged.metricContract?.scopes || null,
+            sourceUpdatedAt: merged.metricContract?.sourceUpdatedAt || null, sourceTimeStatus: merged.metricContract?.sourceTimeStatus || 'unknown',
             capturedAt: merged.at,
             mergedCaptures: (Number(previous.quality?.mergedCaptures) || 1) + 1,
         };
@@ -2236,6 +2487,10 @@
         };
         record.meta.shopKey = record.meta.shopKey || shopKeyFromUrl(record.meta.editUrl);
         record.meta.listingState = normalizeListingState(record.meta.listingState || record.meta.statusLabel);
+        record.meta.seasonality = normalizeSeasonality(record.meta.seasonality, record.meta.seasonal);
+        delete record.meta.seasonal;
+        record.meta.listingType = normalizeListingType(record.meta.listingType);
+        record.meta.contextUpdatedAt = validTime(record.meta.contextUpdatedAt) === null ? null : new Date(validTime(record.meta.contextUpdatedAt)).toISOString();
         const quarantine = Array.isArray(raw.quarantine) ? [...raw.quarantine] : [];
         const historySource = Array.isArray(raw.history) ? raw.history : [];
         if (raw.history !== undefined && !Array.isArray(raw.history)) quarantine.push({ reason: 'invalid-history-container', value: raw.history });
@@ -2255,7 +2510,7 @@
 
     function recordObjectTime(value) {
         if (!value || typeof value !== 'object') return 0;
-        const direct = ['updatedAt', 'appliedAt', 'publishedAt', 'completedAt', 'supersededAt', 'verifiedAt', 'capturedAt', 'lastSeenAt', 'startAt', 'evaluateAt', 'contaminatedAt', 'at'];
+        const direct = ['updatedAt', 'appliedAt', 'publishedAt', 'completedAt', 'supersededAt', 'verifiedAt', 'capturedAt', 'lastSeenAt', 'contextUpdatedAt', 'startAt', 'evaluateAt', 'contaminatedAt', 'at'];
         const nested = ['startAt', 'evaluateAt', 'contaminatedAt', 'completedAt'].map((key) => value.experiment?.[key]);
         return Math.max(0, ...direct.map((key) => validTime(value[key]) || 0), ...nested.map((item) => validTime(item) || 0));
     }
@@ -2269,6 +2524,36 @@
         return { ...older, ...newer };
     }
 
+    function mergeListingMeta(currentMeta, incomingMeta) {
+        const current = currentMeta && typeof currentMeta === 'object' ? currentMeta : {};
+        const incoming = incomingMeta && typeof incomingMeta === 'object' ? incomingMeta : {};
+        const merged = mergeTimedObject(current, incoming) || {};
+        const currentContextAt = validTime(current.contextUpdatedAt);
+        const incomingContextAt = validTime(incoming.contextUpdatedAt);
+        const currentHasContext = currentContextAt !== null
+            || normalizeSeasonality(current.seasonality, current.seasonal) !== 'unknown'
+            || normalizeListingType(current.listingType) !== 'unknown';
+        const incomingHasContext = incomingContextAt !== null
+            || normalizeSeasonality(incoming.seasonality, incoming.seasonal) !== 'unknown'
+            || normalizeListingType(incoming.listingType) !== 'unknown';
+        const contextSource = incomingContextAt !== null && (currentContextAt === null || incomingContextAt >= currentContextAt)
+            ? incoming
+            : currentContextAt !== null
+                ? current
+                : incomingHasContext || !currentHasContext
+                    ? incoming
+                    : current;
+        merged.seasonality = normalizeSeasonality(contextSource.seasonality, contextSource.seasonal);
+        merged.listingType = normalizeListingType(contextSource.listingType);
+        merged.contextUpdatedAt = validTime(contextSource.contextUpdatedAt) === null
+            ? null
+            : new Date(validTime(contextSource.contextUpdatedAt)).toISOString();
+        if (contextSource.contextSource) merged.contextSource = String(contextSource.contextSource);
+        else delete merged.contextSource;
+        delete merged.seasonal;
+        return merged;
+    }
+
     function mergeRecordCopies(currentRaw, incomingRaw) {
         const incoming = normalizeRecord(incomingRaw, incomingRaw?.listingId);
         const current = normalizeRecord(currentRaw, incoming?.listingId);
@@ -2277,7 +2562,7 @@
         if (current.unsupportedSchema || incoming.unsupportedSchema) throw new Error('A newer listing record schema cannot be merged.');
         const merged = { ...current, ...incoming, schema: RECORD_SCHEMA_VERSION, listingId: incoming.listingId || current.listingId };
 
-        merged.meta = mergeTimedObject(current.meta, incoming.meta) || {};
+        merged.meta = mergeListingMeta(current.meta, incoming.meta);
         merged.editor = mergeTimedObject(current.editor, incoming.editor);
         merged.proposal = mergeTimedObject(current.proposal, incoming.proposal);
         merged.deactivation = mergeTimedObject(current.deactivation, incoming.deactivation);
@@ -2320,39 +2605,82 @@
         return merged;
     }
 
-    function healthPolicy(settings = {}) {
-        const thresholds = {
-            minVisitsToImprove: clamp(settings.minVisitsToImprove ?? DEFAULT_SETTINGS.minVisitsToImprove, 0, 1000000),
-            minVisitsToProtect: clamp(settings.minVisitsToProtect ?? DEFAULT_SETTINGS.minVisitsToProtect, 1, 1000000),
-            minRenewalsToReview: clamp(settings.minRenewalsToReview ?? DEFAULT_SETTINGS.minRenewalsToReview, 0, 1000000),
-            declinePercent: clamp(settings.declinePercent ?? DEFAULT_SETTINGS.declinePercent, 1, 100),
-            minimumCohortSize: HEALTH_RULES.minimumCohortSize,
+    function normalizeHealthThresholds(settings = {}) {
+        const valueOrDefault = (value, fallback) => finiteOrNull(value) ?? fallback;
+        const minVisitsToImprove = Math.round(clamp(valueOrDefault(settings.minVisitsToImprove, DEFAULT_SETTINGS.minVisitsToImprove), 1, 999999));
+        const requestedProtect = Math.round(clamp(valueOrDefault(settings.minVisitsToProtect, DEFAULT_SETTINGS.minVisitsToProtect), 2, 1000000));
+        return {
+            minVisitsToImprove,
+            minVisitsToProtect: Math.max(minVisitsToImprove + 1, requestedProtect),
+            minRenewalsToReview: Math.round(clamp(valueOrDefault(settings.minRenewalsToReview, DEFAULT_SETTINGS.minRenewalsToReview), 1, 1000000)),
+            declinePercent: Math.round(clamp(valueOrDefault(settings.declinePercent, DEFAULT_SETTINGS.declinePercent), 1, 100)),
         };
+    }
+
+    function healthPolicy(settings = {}) {
+        const thresholds = { ...normalizeHealthThresholds(settings), minimumCohortSize: HEALTH_RULES.minimumCohortSize };
         return { version: HEALTH_POLICY_VERSION, fingerprint: `hp${HEALTH_POLICY_VERSION}-${fnv1a(JSON.stringify(thresholds))}`, thresholds };
     }
 
-    function recommendationBasis(record) {
+    function recommendationStateFingerprint(record, health = record?.health) {
+        const analysis = health?.result || record?.analysis || {};
+        const latest = record?.history?.at(-1) || null;
+        const metricContract = normalizeMetricContract(latest?.metricContract);
+        const safeguards = (Array.isArray(analysis.safeguards) ? analysis.safeguards : [])
+            .map((item) => [String(item?.key || ''), Boolean(item?.passed)])
+            .sort((left, right) => left[0].localeCompare(right[0]));
+        return fnv1a(JSON.stringify({
+            context: {
+                updatedAt: validTime(record?.meta?.contextUpdatedAt) === null ? null : new Date(validTime(record.meta.contextUpdatedAt)).toISOString(),
+                seasonality: normalizeSeasonality(record?.meta?.seasonality, record?.meta?.seasonal),
+                listingType: normalizeListingType(record?.meta?.listingType),
+            },
+            deactivation: record?.deactivation && typeof record.deactivation === 'object' ? {
+                at: validTime(record.deactivation.at) === null ? null : new Date(validTime(record.deactivation.at)).toISOString(),
+                operationId: String(record.deactivation.operationId || ''),
+            } : null,
+            latest: latest ? {
+                at: latest.at || null,
+                values: Object.fromEntries([...HEALTH_METRIC_FIELDS, 'stock', 'priceMin', 'priceMax'].map((field) => [field, finiteOrNull(latest[field])])),
+                currency: String(latest.currency || ''), listingState: normalizeListingState(latest.listingState || latest.statusLabel),
+                metricContract: metricContract ? { id: metricContract.id, countPrecision: metricContract.countPrecision } : null,
+            } : null,
+            health: {
+                lifecycle: String(analysis.lifecycle || ''), code: String(analysis.code || ''),
+                safeguards, anomalies: uniqueStrings(Array.isArray(analysis.anomalies) ? analysis.anomalies.map(String) : []).sort(),
+            },
+        }));
+    }
+
+    function recommendationBasis(record, health = record?.health) {
         return {
-            engineVersion: Number(record.health?.engineVersion) || HEALTH_ENGINE_VERSION,
-            policyFingerprint: record.health?.policy?.fingerprint || healthPolicy(state.settings).fingerprint,
-            latestAt: record.history?.at(-1)?.at || null,
+            engineVersion: Number(health?.engineVersion) || HEALTH_ENGINE_VERSION,
+            policyFingerprint: health?.policy?.fingerprint || healthPolicy(state.settings).fingerprint,
+            latestAt: record?.history?.at(-1)?.at || null,
+            stateFingerprint: recommendationStateFingerprint(record, health),
         };
     }
 
-    function recommendationBasisMatches(record) {
-        const saved = record.proposal?.basis;
-        const current = recommendationBasis(record);
+    function recommendationBasisEquals(saved, current) {
         return Boolean(saved)
             && Number(saved.engineVersion) === Number(current.engineVersion)
             && saved.policyFingerprint === current.policyFingerprint
-            && saved.latestAt === current.latestAt;
+            && saved.latestAt === current.latestAt
+            && typeof saved.stateFingerprint === 'string'
+            && saved.stateFingerprint === current.stateFingerprint;
+    }
+
+    function recommendationBasisMatches(record, proposal = record?.proposal, health = record?.health) {
+        return recommendationBasisEquals(proposal?.basis, recommendationBasis(record, health));
     }
 
     function findAnchor(history, current, targetDays) {
         const tolerance = HEALTH_RULES.anchorToleranceDays[targetDays] ?? 7;
+        if (!normalizeMetricContract(current?.metricContract)) return { snapshot: null, targetDays, actualDays: null, distance: null, complete: false };
         let best = null;
         history.forEach((snapshot) => {
             if (snapshot === current) return;
+            if (!normalizeMetricContract(snapshot?.metricContract)) return;
             if (!HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot?.[field]))) return;
             const actualDays = daysBetween(current.at, snapshot.at);
             if (!Number.isFinite(actualDays) || actualDays <= 0) return;
@@ -2360,6 +2688,39 @@
             if (!best || distance < best.distance || (distance === best.distance && actualDays > best.actualDays)) best = { snapshot, targetDays, actualDays, distance };
         });
         return best && best.distance <= tolerance ? { ...best, complete: true } : { snapshot: null, targetDays, actualDays: null, distance: best?.distance ?? null, complete: false };
+    }
+
+    function findNonOverlappingTrendAnchor(history, current) {
+        if (!normalizeMetricContract(current?.metricContract) || !snapshotCountsAreExact(current, ['visits'])) {
+            return { snapshot: null, targetDays: 30, actualDays: null, distance: null, complete: false };
+        }
+        let best = null;
+        history.forEach((snapshot) => {
+            if (snapshot === current || !normalizeMetricContract(snapshot?.metricContract)) return;
+            if (!snapshotCountsAreExact(snapshot, ['visits'])) return;
+            if (!HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot?.[field]))) return;
+            const actualDays = daysBetween(current.at, snapshot.at);
+            if (!Number.isFinite(actualDays) || actualDays < 30 || actualDays > 31) return;
+            const distance = Math.abs(actualDays - 30);
+            if (!best || distance < best.distance || (distance === best.distance && actualDays < best.actualDays)) {
+                best = { snapshot, targetDays: 30, actualDays, distance, complete: true };
+            }
+        });
+        return best || { snapshot: null, targetDays: 30, actualDays: null, distance: null, complete: false };
+    }
+
+    function currentStateEpoch(history, current) {
+        const source = Array.isArray(history) ? history : [];
+        const currentIndex = source.lastIndexOf(current);
+        const stateValue = normalizeListingState(current?.listingState || current?.statusLabel);
+        if (currentIndex < 0 || !stateValue) return current ? [current] : [];
+        const epoch = [];
+        for (let index = currentIndex; index >= 0; index -= 1) {
+            const snapshot = source[index];
+            if (normalizeListingState(snapshot?.listingState || snapshot?.statusLabel) !== stateValue) break;
+            epoch.unshift(snapshot);
+        }
+        return epoch;
     }
 
     function snapshotForAnalysis(raw) {
@@ -2388,8 +2749,8 @@
         const anomalies = [];
         history.forEach((snapshot, index) => {
             (snapshot.staleObservedFields || []).forEach((field) => anomalies.push(`stale-observation-${field}`));
+            if (!normalizeMetricContract(snapshot.metricContract)) anomalies.push('unverified-metric-scope');
             SNAPSHOT_NUMBER_FIELDS.forEach((field) => { if (Number.isFinite(snapshot[field]) && snapshot[field] < 0) anomalies.push(`negative-${field}`); });
-            if (snapshot.visits === 0 && Number(snapshot.favorites) > 0) anomalies.push('favorites-without-visits');
             if (snapshot.sales === 0 && Number(snapshot.revenue) > 0) anomalies.push('revenue-without-sales');
             if (daysBetween(snapshot.at, evaluatedAt) > 1) anomalies.push('future-snapshot');
             if (index > 0) {
@@ -2405,8 +2766,13 @@
         const history = Array.isArray(record.history) ? record.history.map(snapshotForAnalysis).filter(Boolean).sort((a, b) => String(a.at).localeCompare(String(b.at))) : [];
         const current = history.at(-1) || null;
         if (!current) return { history, current: null, anchors: {}, anomalies: ['missing-history'], complete: false, snapshotCount: 0, completeSnapshotCount: 0, historySpanDays: 0 };
-        const anchors = { d30: findAnchor(history, current, 30), d60: findAnchor(history, current, 60), d90: findAnchor(history, current, 90) };
-        anchors.prior30 = anchors.d30.snapshot ? findAnchor(history, anchors.d30.snapshot, 30) : { snapshot: null, targetDays: 30, actualDays: null, distance: null, complete: false };
+        const epochHistory = currentStateEpoch(history, current);
+        const anchors = { d30: findAnchor(epochHistory, current, 30), d60: findAnchor(epochHistory, current, 60), d90: findAnchor(epochHistory, current, 90) };
+        anchors.prior30 = anchors.d30.snapshot ? findAnchor(epochHistory, anchors.d30.snapshot, 30) : { snapshot: null, targetDays: 30, actualDays: null, distance: null, complete: false };
+        anchors.trend30 = findNonOverlappingTrendAnchor(epochHistory, current);
+        anchors.priorTrend30 = anchors.trend30.snapshot
+            ? findNonOverlappingTrendAnchor(epochHistory, anchors.trend30.snapshot)
+            : { snapshot: null, targetDays: 30, actualDays: null, distance: null, complete: false };
         const sales30 = cumulativeWindow(current, anchors.d30, 'sales', 30);
         const revenue30 = cumulativeWindow(current, anchors.d30, 'revenue', 30);
         const renewals30 = cumulativeWindow(current, anchors.d30, 'renewals', 30);
@@ -2414,25 +2780,36 @@
         const revenue60 = cumulativeWindow(current, anchors.d60, 'revenue', 60);
         const renewals60 = cumulativeWindow(current, anchors.d60, 'renewals', 60);
         const trafficChangePercent = percentChange(current.visits, anchors.d30.snapshot?.visits);
-        const priorTrafficChangePercent = anchors.d30.snapshot && anchors.prior30.snapshot ? percentChange(anchors.d30.snapshot.visits, anchors.prior30.snapshot.visits) : null;
-        const completeSnapshots = history.filter((snapshot) => HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot[field])));
+        const priorTrafficChangePercent = anchors.d30.snapshot && anchors.prior30.snapshot
+            ? percentChange(anchors.d30.snapshot.visits, anchors.prior30.snapshot.visits)
+            : null;
+        const trendTrafficChangePercent = percentChange(current.visits, anchors.trend30.snapshot?.visits);
+        const priorTrendTrafficChangePercent = anchors.trend30.snapshot && anchors.priorTrend30.snapshot
+            ? percentChange(anchors.trend30.snapshot.visits, anchors.priorTrend30.snapshot.visits)
+            : null;
+        const completeSnapshots = epochHistory.filter((snapshot) => normalizeMetricContract(snapshot.metricContract) && HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot[field])));
         const completeSnapshotCount = completeSnapshots.length;
-        const historySpanDays = Math.max(0, daysBetween(current.at, history[0]?.at) || 0);
+        const historySpanDays = Math.max(0, daysBetween(current.at, epochHistory[0]?.at) || 0);
         const completeHistorySpanDays = Math.max(0, daysBetween(current.at, completeSnapshots[0]?.at) || 0);
+        const decisionSnapshots = [anchors.priorTrend30?.snapshot, anchors.trend30?.snapshot, anchors.prior30?.snapshot, anchors.d60?.snapshot, anchors.d30?.snapshot, current].filter(Boolean);
+        const decisionStart = Math.min(...decisionSnapshots.map((snapshot) => validTime(snapshot.at)).filter(Number.isFinite));
+        const decisionHistory = epochHistory.filter((snapshot) => validTime(snapshot.at) >= decisionStart && validTime(snapshot.at) <= validTime(current.at));
+        const anomalies = inspectHistory(decisionHistory, evaluatedAt);
         return {
-            history, current, anchors, snapshotCount: history.length, completeSnapshotCount, historySpanDays, completeHistorySpanDays,
+            history: epochHistory, fullHistory: history, current, anchors, snapshotCount: epochHistory.length, completeSnapshotCount, historySpanDays, completeHistorySpanDays,
+            stateEpochStartAt: epochHistory[0]?.at || current.at, stateEpochSpanDays: historySpanDays, stateEpochSnapshotCount: epochHistory.length,
             complete: HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(current[field])),
             observedMetrics: HEALTH_METRIC_FIELDS.filter((field) => Number.isFinite(current[field])),
             missingMetrics: HEALTH_METRIC_FIELDS.filter((field) => !Number.isFinite(current[field])),
-            anomalies: inspectHistory(history, evaluatedAt), freshnessDays: Math.max(0, daysBetween(evaluatedAt, current.at) || 0),
+            anomalies, historicalAnomalies: inspectHistory(history, evaluatedAt), freshnessDays: Math.max(0, daysBetween(evaluatedAt, current.at) || 0),
             visits30: current.visits, favorites30: current.favorites,
             favoriteRate: safeRatio(current.favorites, current.visits, 100),
-            favoriteRateSmoothed: bayesianRate(current.favorites, current.visits),
+            favoriteRateSmoothed: Number(current.visits) > 0 ? bayesianRate(current.favorites, current.visits) : null,
             salesRateProxy: safeRatio(sales30.normalized, current.visits, 100),
             revenuePerVisitProxy: safeRatio(revenue30.normalized, current.visits),
             sales30: sales30.normalized, sales30Raw: sales30.raw, revenue30: revenue30.normalized, revenue30Raw: revenue30.raw, renewals30: renewals30.normalized, renewals30Raw: renewals30.raw,
             sales60: sales60.normalized, sales60Raw: sales60.raw, revenue60: revenue60.normalized, revenue60Raw: revenue60.raw, renewals60: renewals60.normalized, renewals60Raw: renewals60.raw,
-            trafficChangePercent, priorTrafficChangePercent,
+            trafficChangePercent, priorTrafficChangePercent, trendTrafficChangePercent, priorTrendTrafficChangePercent,
             deltas: {
                 visits: anchors.d30.snapshot && Number.isFinite(current.visits) && Number.isFinite(anchors.d30.snapshot.visits) ? current.visits - anchors.d30.snapshot.visits : null,
                 favorites: anchors.d30.snapshot && Number.isFinite(current.favorites) && Number.isFinite(anchors.d30.snapshot.favorites) ? current.favorites - anchors.d30.snapshot.favorites : null,
@@ -2451,19 +2828,29 @@
 
     function activeExperiment(record, evaluatedAt) {
         const entries = Array.isArray(record.improvements) ? record.improvements : [];
-        return [...entries].reverse().find((entry) => entry?.action === 'UPDATE' && entry?.status === 'published' && entry?.experiment?.state === 'observing' && (!entry.experiment.evaluateAt || validTime(entry.experiment.evaluateAt) >= validTime(evaluatedAt))) || null;
+        return [...entries].reverse().find((entry) => {
+            if (entry?.action !== 'UPDATE' || entry?.status !== 'published' || entry?.experiment?.state !== 'observing') return false;
+            const deadline = addDays(entry.experiment.evaluateAt || addDays(entry.publishedAt, HEALTH_RULES.experimentDays), HEALTH_RULES.experimentEvaluationGraceDays);
+            return !deadline || validTime(deadline) >= validTime(evaluatedAt);
+        }) || null;
     }
 
     function buildCohortBenchmark(record, derivations, records, evaluatedAt, policy) {
         const target = derivations.get(record.listingId);
         const targetShop = record.meta?.shopKey || shopKeyFromUrl(record.meta?.editUrl);
+        const targetType = normalizeListingType(record.meta?.listingType);
+        const targetSeasonality = normalizeSeasonality(record.meta?.seasonality, record.meta?.seasonal);
         let cohort = records.filter((candidate) => {
             const derived = derivations.get(candidate.listingId);
             if (!/^etsy-shop:[a-z0-9]+$/.test(targetShop)) return false;
+            if (String(candidate.listingId) === String(record.listingId) || Number(target?.stateEpochSpanDays) < 29) return false;
             if (!derived?.complete || recordListingState(candidate, derived) !== 'active') return false;
+            if (Number(derived.stateEpochSpanDays) < 29) return false;
             if (derived.freshnessDays > 1 || derived.anomalies?.length) return false;
             if (!Number.isFinite(derived.current?.stock) || derived.current.stock <= 0) return false;
             if ((candidate.meta?.shopKey || shopKeyFromUrl(candidate.meta?.editUrl)) !== targetShop) return false;
+            if (targetType !== 'unknown' && normalizeListingType(candidate.meta?.listingType) !== targetType) return false;
+            if (targetSeasonality !== 'unknown' && normalizeSeasonality(candidate.meta?.seasonality, candidate.meta?.seasonal) !== targetSeasonality) return false;
             if (activeExperiment(candidate, evaluatedAt)) return false;
             const recentChange = [...(candidate.improvements || [])].reverse().find((entry) => entry?.publishedAt && daysBetween(evaluatedAt, entry.publishedAt) <= HEALTH_RULES.improvementCooldownDays);
             return !recentChange;
@@ -2473,7 +2860,7 @@
         if (targetPrice !== null) {
             const priceBand = cohort.filter((candidate) => {
                 const price = finiteOrNull(derivations.get(candidate.listingId)?.current?.priceMin);
-                return price !== null && price >= targetPrice * 0.7 && price <= targetPrice * 1.3;
+                return price !== null && price > 0 && targetPrice > 0 && Math.abs(Math.log(price / targetPrice)) <= Math.log(1.3);
             });
             if (priceBand.length >= policy.thresholds.minimumCohortSize) {
                 cohort = priceBand;
@@ -2485,21 +2872,26 @@
         metricNames.forEach((name) => {
             const metricValue = (derived) => name === 'favoriteRate' ? derived?.favoriteRateSmoothed : derived?.[name];
             const values = cohort.map((candidate) => metricValue(derivations.get(candidate.listingId))).filter(Number.isFinite);
+            const reliable = values.length >= policy.thresholds.minimumCohortSize;
             metrics[name] = {
                 median: median(values), p25: quantile(values, 0.25), p75: quantile(values, 0.75),
                 percentile: percentileRank(values, metricValue(target)), samples: values.length,
-                reliable: values.length >= policy.thresholds.minimumCohortSize,
+                reliable,
+                strength: reliable ? clamp((values.length - HEALTH_RULES.minimumCohortSize + 1) / (HEALTH_RULES.fullStrengthCohortSize - HEALTH_RULES.minimumCohortSize + 1), 0, 1) : 0,
             };
         });
         const reliable = cohort.length >= policy.thresholds.minimumCohortSize;
-        return { size: cohort.length, reliable, scope: priceBandApplied ? 'shop-price-band' : 'shop', metrics };
+        const strength = reliable ? clamp((cohort.length - HEALTH_RULES.minimumCohortSize + 1) / (HEALTH_RULES.fullStrengthCohortSize - HEALTH_RULES.minimumCohortSize + 1), 0, 1) : 0;
+        const segments = [targetType !== 'unknown' ? targetType : '', targetSeasonality !== 'unknown' ? targetSeasonality : ''].filter(Boolean);
+        const limitations = [targetType === 'unknown' ? 'listing-type-unknown' : '', targetSeasonality === 'unknown' ? 'seasonality-unknown' : ''].filter(Boolean);
+        return { size: cohort.length, reliable, strength, scope: `${priceBandApplied ? 'active-shop-price-band' : 'active-shop'}${segments.length ? `-${segments.join('-')}` : ''}`, limitations, metrics };
     }
 
     function bootstrapMetricScore(metric, absoluteScore, percentileWeight = 0.65) {
         const absolute = clamp(Math.round(Number(absoluteScore) || 0), 0, 100);
         if (absolute === 0) return 0;
         const percentile = metric?.reliable ? finiteOrNull(metric.percentile) : null;
-        const relativeWeight = clamp(Number(percentileWeight) || 0, 0, 1);
+        const relativeWeight = clamp(Number(percentileWeight) || 0, 0, 1) * clamp(Number(metric?.strength) || 0, 0, 1);
         return percentile === null || relativeWeight === 0 ? absolute : clamp(Math.round(percentile * relativeWeight + absolute * (1 - relativeWeight)), 0, 100);
     }
 
@@ -2533,7 +2925,9 @@
         const provenDemand = sales > 0 || revenue > 0;
         const renewalMature = renewals >= minRenewals;
         const lowDiscovery = visits < minVisits || visibility <= 25;
-        const weakEngagement = engagementEligible && (Number(derived.favoriteRate) < 3 || engagement <= 25);
+        const decisionFavoriteRate = finiteOrNull(derived.favoriteRateSmoothed);
+        const weakEngagement = engagementEligible && (Number(decisionFavoriteRate) < 3 || engagement <= 25);
+        const purchaseInterest = engagementEligible && Number(decisionFavoriteRate) >= 5;
         let funnelSignal = 'MIXED'; let diagnosis = 'HEALTHY_OR_MIXED';
         if (visits === 0 && favorites === 0) { funnelSignal = 'NO_ACTIVITY'; diagnosis = 'DISCOVERY_WEAK'; }
         else if (lowDiscovery) { funnelSignal = 'WEAK_DISCOVERY'; diagnosis = 'DISCOVERY_WEAK'; }
@@ -2553,7 +2947,7 @@
             code = 'improve'; priority = 1;
         } else if (funnelSignal === 'WEAK_ENGAGEMENT') {
             code = 'improve'; priority = 2;
-        } else if (noDemand && (favorites > 0 || engagementEligible || renewalMature)) {
+        } else if (noDemand && (purchaseInterest || renewalMature)) {
             signal = 'PURCHASE_FRICTION'; diagnosis = 'PURCHASE_FRICTION'; code = 'improve'; reasonKey = 'reasonSnapshotPurchase'; priority = 3;
         }
         const severity = signal === 'RENEWAL_WASTE' ? renewals
@@ -2574,8 +2968,7 @@
         const repeatedZeroEvidence = derived.current?.visits === 0 && zeroTrafficSnapshots.some((left, index) => zeroTrafficSnapshots.slice(index + 1)
             .some((right) => Math.abs(daysBetween(right.at, left.at) || 0) >= HEALTH_RULES.deactivationZeroObservationGapDays));
         const trafficSample = repeatedZeroEvidence ? 100 : Math.round(Math.min(100, ((finiteOrNull(derived.current?.visits) || 0) / Math.max(1, policy.thresholds.minVisitsToProtect)) * 100));
-        const comparableSamples = Number(benchmark.metrics?.visits30?.samples) || 0;
-        const cohortStrength = Math.round(Math.min(100, (comparableSamples / HEALTH_RULES.fullStrengthCohortSize) * 100));
+        const cohortStrength = Math.round(clamp(Number(benchmark.metrics?.visits30?.strength) || 0, 0, 1) * 100);
         const freshness = derived.freshnessDays <= 1 ? 100 : derived.freshnessDays <= 7 ? 75 : derived.freshnessDays <= 30 ? 35 : 0;
         const integrity = Math.max(0, 100 - (derived.anomalies?.length || 0) * 25);
         const components = { dataQuality: completeness, historyDepth, trafficSample, cohortStrength, freshness, dataIntegrity: integrity };
@@ -2584,15 +2977,15 @@
         if (!derived.complete) { score = Math.min(score, 39); caps.push('missing-metrics'); }
         if (!derived.anchors?.d30?.complete) { score = Math.min(score, 39); caps.push('insufficient-30-day-history'); }
         else if (!derived.anchors?.d60?.complete || derived.completeSnapshotCount < 3) { score = Math.min(score, 69); caps.push('insufficient-60-day-history'); }
-        if ((derived.anomalies || []).some((item) => /future|cumulative-decrease|favorites-without|revenue-without-sales|stale-observation|negative-/.test(item))) { score = Math.min(score, 39); caps.push('data-integrity'); }
+        if ((derived.anomalies || []).some((item) => /future|cumulative-decrease|unverified-metric-scope|revenue-without-sales|stale-observation|negative-/.test(item))) { score = Math.min(score, 39); caps.push('data-integrity'); }
         const band = score < 40 ? 'low' : score < 70 ? 'medium' : score < 85 ? 'high' : 'veryHigh';
         return { score, band, components, caps };
     }
 
     function diagnosePerformance(derived, benchmark, policy, confidence) {
         if (!derived.complete || confidence.score < 40) return 'INSUFFICIENT_SIGNAL';
-        const visits = derived.visits30; const favoriteRate = derived.favoriteRate; const sales = derived.sales30;
-        if (benchmark.reliable) {
+        const visits = derived.visits30; const favoriteRate = derived.favoriteRateSmoothed; const sales = derived.sales30;
+        if (benchmark.reliable && benchmark.strength >= 1) {
             const visitsRank = benchmark.metrics.visits30.reliable ? benchmark.metrics.visits30.percentile : null;
             const favoriteRank = benchmark.metrics.favoriteRate.reliable ? benchmark.metrics.favoriteRate.percentile : null;
             const salesRank = benchmark.metrics.salesRateProxy.reliable ? benchmark.metrics.salesRateProxy.percentile : null;
@@ -2618,6 +3011,7 @@
         const separatedZeros = zeroObservations.some((left, index) => zeroObservations.slice(index + 1).some((right) => Math.abs(daysBetween(right.at, left.at) || 0) >= HEALTH_RULES.deactivationZeroObservationGapDays));
         const recentImprovement = [...(record.improvements || [])].reverse().find((entry) => entry?.publishedAt && daysBetween(evaluatedAt, entry.publishedAt) <= HEALTH_RULES.improvementCooldownDays);
         const experiment = activeExperiment(record, evaluatedAt);
+        const integrityAnomalies = inspectHistory(within60, evaluatedAt);
         const checks = [
             { key: 'guardHistory', passed: derived.completeHistorySpanDays >= 58 && derived.completeSnapshotCount >= 3 },
             { key: 'guardZeroTraffic', passed: currentZeroObservation && zeroObservations.length >= 2 && separatedZeros },
@@ -2626,7 +3020,8 @@
             { key: 'guardActiveStock', passed: recordListingState(record, derived) === 'active' && Number(derived.current.stock) > 0 },
             { key: 'guardNoExperiment', passed: !experiment },
             { key: 'guardCooldown', passed: !recentImprovement },
-            { key: 'guardSeasonal', passed: record.meta?.seasonal === false },
+            { key: 'guardSeasonal', passed: normalizeSeasonality(record.meta?.seasonality, record.meta?.seasonal) === 'non-seasonal' },
+            { key: 'guardDataIntegrity', passed: integrityAnomalies.length === 0 },
             { key: 'guardConfidence', passed: confidence.score >= 80 },
         ];
         return { checks, passed: checks.every((item) => item.passed), zeroObservationCount: zeroObservations.length };
@@ -2667,8 +3062,20 @@
         const deactivation = derived.current ? deactivationSafeguards(record, derived, confidence, evaluatedAt, policy) : { checks: [], passed: false };
         const experiment = activeExperiment(record, evaluatedAt);
         const inactive = Boolean(listingState && listingState !== 'active');
-        const persistentGrowth = Number(derived.trafficChangePercent) >= 15 && Number(derived.priorTrafficChangePercent) >= 5;
-        const persistentDecline = Number(derived.trafficChangePercent) <= -policy.thresholds.declinePercent && Number(derived.priorTrafficChangePercent) <= -10;
+        const recentTrafficExact = derived.anchors?.trend30?.complete
+            && snapshotCountsAreExact(derived.anchors.trend30.snapshot, ['visits']) && snapshotCountsAreExact(derived.current, ['visits']);
+        const priorTrafficExact = derived.anchors?.priorTrend30?.complete
+            && snapshotCountsAreExact(derived.anchors.priorTrend30.snapshot, ['visits']) && snapshotCountsAreExact(derived.anchors.trend30?.snapshot, ['visits']);
+        const recentTrafficDirection = recentTrafficExact
+            ? separatedRateDirection(derived.anchors?.trend30?.snapshot?.visits, 30, derived.current?.visits, 30)
+            : { comparison: null, winner: false, underperformed: false };
+        const priorTrafficDirection = priorTrafficExact
+            ? separatedRateDirection(derived.anchors?.priorTrend30?.snapshot?.visits, 30, derived.anchors?.trend30?.snapshot?.visits, 30)
+            : { comparison: null, winner: false, underperformed: false };
+        const persistentGrowth = Number(derived.trendTrafficChangePercent) >= 15 && Number(derived.priorTrendTrafficChangePercent) >= 5
+            && recentTrafficDirection.winner && priorTrafficDirection.winner;
+        const persistentDecline = Number(derived.trendTrafficChangePercent) <= -policy.thresholds.declinePercent && Number(derived.priorTrendTrafficChangePercent) <= -10
+            && recentTrafficDirection.underperformed && priorTrafficDirection.underperformed;
         const recentStrength = Number(derived.sales30) >= 2 || Number(derived.salesRateProxy) >= 2 || Number(derived.revenue30) > 0;
         let lifecycle = 'ACTIVE_STABLE';
         if (record.unsupportedSchema || !derived.current || !derived.complete || !listingState || confidence.caps.includes('data-integrity')) lifecycle = 'DATA_GAP';
@@ -2710,12 +3117,13 @@
         const score = currentAssessment?.score ?? null;
         const deactivationHistoryReady = Boolean(assessmentEligible && derived.anchors?.d60?.complete
             && deactivation.checks.find((item) => item.key === 'guardHistory')?.passed);
+        const trendInferenceReady = Boolean(longitudinalReady && recentTrafficDirection.comparison && priorTrafficDirection.comparison);
         return {
             algorithmVersion: HEALTH_ENGINE_VERSION, lifecycle, diagnosis, code, tone, reasonKey,
             reasonParams: { renewals: bootstrapLifecycle ? bootstrap.evidence.renewals : policy.thresholds.minRenewalsToReview, percent: policy.thresholds.declinePercent },
             score, assessmentMode, scoreBasis: currentAssessment ? 'current-30d-reach-engagement' : 'insufficient',
             currentAssessment, bootstrap: assessmentMode === 'snapshot' ? bootstrap : null,
-            readiness: { snapshot: bootstrap.available, trend: longitudinalReady, deactivationHistory: deactivationHistoryReady },
+            readiness: { snapshot: bootstrap.available, trend: trendInferenceReady, deactivationHistory: deactivationHistoryReady },
             confidence: confidence.score, confidenceBand: confidence.band, confidenceComponents: confidence.components, confidenceCaps: confidence.caps,
             derived: {
                 visits30: derived.visits30 ?? null, favorites30: derived.favorites30 ?? null, favoriteRate: derived.favoriteRate ?? null,
@@ -2724,10 +3132,14 @@
                 sales60: derived.sales60 ?? null, revenue60: derived.revenue60 ?? null, renewals60: derived.renewals60 ?? null,
                 salesRateProxy: derived.salesRateProxy ?? null, revenuePerVisitProxy: derived.revenuePerVisitProxy ?? null,
                 trafficChangePercent: derived.trafficChangePercent ?? null, previousTrafficChangePercent: derived.priorTrafficChangePercent ?? null,
+                trendTrafficChangePercent: derived.trendTrafficChangePercent ?? null,
+                previousTrendTrafficChangePercent: derived.priorTrendTrafficChangePercent ?? null,
                 historySpanDays: Math.round(derived.historySpanDays || 0), completeHistorySpanDays: Math.round(derived.completeHistorySpanDays || 0), snapshotCount: derived.snapshotCount || 0,
+                stateEpochStartAt: derived.stateEpochStartAt || null, stateEpochSpanDays: Math.round(derived.stateEpochSpanDays || 0),
+                trendIntervals: { recent: recentTrafficDirection.comparison, prior: priorTrafficDirection.comparison },
                 anchors: Object.fromEntries(Object.entries(derived.anchors || {}).map(([key, anchor]) => [key, anchor?.snapshot ? { at: anchor.snapshot.at, actualDays: Math.round(anchor.actualDays * 10) / 10 } : null])),
             },
-            benchmark, evidence: evidenceFor(derived, benchmark, bootstrap), safeguards: deactivation.checks, anomalies: derived.anomalies || [], experiment: experiment?.experiment || null,
+            benchmark, evidence: evidenceFor(derived, benchmark, bootstrap), safeguards: deactivation.checks, anomalies: derived.anomalies || [], historicalAnomalies: derived.historicalAnomalies || [], experiment: experiment?.experiment || null,
             deltas: derived.deltas || {}, declinePercent: Number(derived.trafficChangePercent) < 0 ? Math.abs(Math.round(derived.trafficChangePercent)) : 0,
             nextReviewAt, calculatedAt: evaluatedAt,
         };
@@ -2994,9 +3406,10 @@
 
     function thresholdImpactCounts(records = null, values = state.settings, evaluatedAt = nowIso()) {
         const readable = readableCalibrationRows(records, evaluatedAt);
+        const thresholds = normalizeHealthThresholds(values);
         return {
-            improve: readable.filter(({ derived }) => derived.sales30 === 0 && derived.visits30 >= Number(values.minVisitsToImprove)).length,
-            protect: readable.filter(({ derived }) => derived.sales30 > 0 && derived.visits30 >= Number(values.minVisitsToProtect)).length,
+            improve: readable.filter(({ derived }) => derived.sales30 === 0 && derived.visits30 >= thresholds.minVisitsToImprove).length,
+            protect: readable.filter(({ derived }) => derived.sales30 > 0 && derived.visits30 >= thresholds.minVisitsToProtect).length,
         };
     }
 
@@ -3012,18 +3425,26 @@
             && derived.sales60Raw === 0 && derived.revenue60Raw === 0
             && derived.current?.sales === 0 && derived.current?.revenue === 0)
             .map(({ derived }) => finiteOrNull(derived.current?.renewals)).filter(Number.isFinite);
-        const declines = readable.map(({ derived }) => finiteOrNull(derived.trafficChangePercent))
+        const declines = readable.map(({ derived }) => finiteOrNull(derived.trendTrafficChangePercent))
             .filter((value) => Number.isFinite(value) && value < 0).map(Math.abs);
-        const improve = Math.max(10, Math.round(quantile(noSaleVisits.length >= 5 ? noSaleVisits : visits, 0.75) || DEFAULT_SETTINGS.minVisitsToImprove));
-        const protectBase = Math.round(quantile(sellingVisits.length >= 5 ? sellingVisits : visits, 0.50) || DEFAULT_SETTINGS.minVisitsToProtect);
+        const enough = (values) => values.length >= HEALTH_RULES.minimumCalibrationGroupSize;
+        const improve = enough(noSaleVisits) ? Math.max(10, Math.round(quantile(noSaleVisits, 0.75))) : DEFAULT_SETTINGS.minVisitsToImprove;
+        const protectBase = enough(sellingVisits) ? Math.round(quantile(sellingVisits, 0.50)) : DEFAULT_SETTINGS.minVisitsToProtect;
+        const groupSizes = { noSaleVisits: noSaleVisits.length, sellingVisits: sellingVisits.length, dormantRenewals: dormantRenewals.length, declines: declines.length };
+        const calibratedFields = {
+            minVisitsToImprove: enough(noSaleVisits), minVisitsToProtect: enough(sellingVisits),
+            minRenewalsToReview: enough(dormantRenewals), declinePercent: enough(declines),
+        };
         return {
             available: true,
             sampleSize: readable.length,
+            groupSizes,
+            calibratedFields,
             values: {
                 minVisitsToImprove: improve,
                 minVisitsToProtect: Math.max(improve + 10, protectBase),
-                minRenewalsToReview: clamp(Math.round(median(dormantRenewals) || DEFAULT_SETTINGS.minRenewalsToReview), 2, 10),
-                declinePercent: clamp(Math.round(quantile(declines, 0.75) || DEFAULT_SETTINGS.declinePercent), 20, 60),
+                minRenewalsToReview: enough(dormantRenewals) ? clamp(Math.round(median(dormantRenewals)), 2, 10) : DEFAULT_SETTINGS.minRenewalsToReview,
+                declinePercent: enough(declines) ? clamp(Math.round(quantile(declines, 0.75)), 20, 60) : DEFAULT_SETTINGS.declinePercent,
             },
         };
     }
@@ -3702,64 +4123,137 @@
         return 'favoriteRate';
     }
 
-    function relativeEffectPercent(before, after) {
-        if (!Number.isFinite(before) || !Number.isFinite(after) || before < 0 || after < 0) return null;
-        if (before === 0) return after > 0 ? 100 : 0;
-        return Math.round(((after - before) / before) * 1000) / 10;
+    function experimentRate(events, exposure) {
+        const count = finiteOrNull(events); const sample = finiteOrNull(exposure);
+        return count === null || sample === null || count < 0 || sample <= 0 ? null : count / sample;
     }
 
-    function experimentMetricResult(metric, baseline, current, baselineHistory) {
+    function relativeEffectSummary(before, after) {
+        if (!Number.isFinite(before) || !Number.isFinite(after) || before < 0 || after < 0) return { kind: 'invalid', percent: null, absolute: null };
+        const absolute = Math.round((after - before) * 1000000) / 1000000;
+        if (before === 0) return after > 0 ? { kind: 'from-zero', percent: null, absolute } : { kind: 'unchanged', percent: 0, absolute: 0 };
+        return { kind: 'relative', percent: Math.round(((after - before) / before) * 1000) / 10, absolute };
+    }
+
+    function relativeEffectPercent(before, after) { return relativeEffectSummary(before, after).percent; }
+
+    function findExperimentMetricAnchor(history, current, requiredFields, targetDays = 30, toleranceDays = HEALTH_RULES.experimentMatchedWindowToleranceDays, notBefore = null, exactFields = []) {
+        if (!current || !normalizeMetricContract(current.metricContract) || !snapshotCountsAreExact(current, exactFields)) return null;
+        const minimumTime = validTime(notBefore);
+        let best = null;
+        (Array.isArray(history) ? history : []).forEach((snapshot) => {
+            if (!snapshot || snapshot === current || !normalizeMetricContract(snapshot.metricContract)) return;
+            if (!snapshotCountsAreExact(snapshot, exactFields)) return;
+            if (normalizeListingState(snapshot.listingState) !== 'active' || Number(snapshot.stock) <= 0) return;
+            if ((requiredFields || []).some((field) => !Number.isFinite(snapshot[field]))) return;
+            const snapshotTime = validTime(snapshot.at);
+            if (minimumTime !== null && snapshotTime < minimumTime) return;
+            const actualDays = daysBetween(current.at, snapshot.at);
+            if (!Number.isFinite(actualDays) || actualDays <= 0) return;
+            const distance = Math.abs(actualDays - targetDays);
+            if (distance > toleranceDays) return;
+            if (!best || distance < best.distance || (distance === best.distance && actualDays > best.actualDays)) best = { snapshot, actualDays, distance };
+        });
+        return best;
+    }
+
+    function experimentExposureIssue(history, baseline, current) {
+        if (!baseline || !current || normalizeListingState(baseline.listingState) !== 'active' || normalizeListingState(current.listingState) !== 'active') return 'listing-state-changed';
+        const start = validTime(baseline.at); const end = validTime(current.at);
+        if (start === null || end === null || start > end) return 'listing-state-changed';
+        const observedByTime = new Map([...(Array.isArray(history) ? history : []), baseline, current].map((snapshot) => [String(snapshot?.at || ''), snapshot]));
+        const observed = [...observedByTime.values()].filter((snapshot) => {
+            const time = validTime(snapshot?.at);
+            return time !== null && time >= start && time <= end;
+        }).sort((left, right) => validTime(left.at) - validTime(right.at));
+        const baselineMin = finiteOrNull(baseline.priceMin); const baselineMax = finiteOrNull(baseline.priceMax);
+        const baselineCurrency = normalizeSpace(baseline.currency);
+        if (baselineMin === null || baselineMax === null || !baselineCurrency) return 'price-exposure-unverified';
+        let previous = null;
+        for (const snapshot of observed) {
+            if (!normalizeMetricContract(snapshot.metricContract)) return 'metric-scope-unverified';
+            if (normalizeListingState(snapshot.listingState) !== 'active') return 'listing-state-changed';
+            if (!Number.isFinite(snapshot.stock) || Number(snapshot.stock) <= 0) return 'stock-exposure-changed';
+            const priceMin = finiteOrNull(snapshot.priceMin); const priceMax = finiteOrNull(snapshot.priceMax);
+            const currency = normalizeSpace(snapshot.currency);
+            if (priceMin === null || priceMax === null || !currency) return 'price-exposure-unverified';
+            if (Math.abs(priceMin - baselineMin) > 1e-9 || Math.abs(priceMax - baselineMax) > 1e-9 || currency !== baselineCurrency) return 'price-changed';
+            if (previous && ['sales', 'revenue', 'renewals'].some((field) => Number.isFinite(previous[field])
+                && Number.isFinite(snapshot[field]) && snapshot[field] < previous[field])) return 'cumulative-counter-decreased';
+            previous = snapshot;
+        }
+        return '';
+    }
+
+    function experimentMetricResult(metric, baseline, current, history) {
+        if (!normalizeMetricContract(baseline?.metricContract) || !normalizeMetricContract(current?.metricContract)) {
+            return { valid: false, reason: 'metric-scope-unverified', effect: { kind: 'invalid', percent: null, absolute: null }, baseline: {}, current: {}, winnerReady: false, underperformedReady: false };
+        }
         const baselineVisits = finiteOrNull(baseline?.visits);
         const currentVisits = finiteOrNull(current?.visits);
         if (metric === 'visits30') {
-            const before = baselineVisits; const after = currentVisits;
-            const direction = separatedRateDirection(before, HEALTH_RULES.experimentDays, after, HEALTH_RULES.experimentDays);
+            if (!snapshotCountsAreExact(baseline, ['visits']) || !snapshotCountsAreExact(current, ['visits'])) {
+                return { valid: false, reason: 'approximate-counts', effect: { kind: 'invalid', percent: null, absolute: null }, baseline: {}, current: {}, winnerReady: false, underperformedReady: false };
+            }
+            const before = experimentRate(baselineVisits, HEALTH_RULES.experimentDays); const after = experimentRate(currentVisits, HEALTH_RULES.experimentDays);
+            const direction = separatedRateDirection(baselineVisits, HEALTH_RULES.experimentDays, currentVisits, HEALTH_RULES.experimentDays);
+            const effect = relativeEffectSummary(baselineVisits, currentVisits);
             return {
-                valid: Number.isFinite(before) && Number.isFinite(after), effect: relativeEffectPercent(before, after),
-                baseline: { metricValue: before, visits: baselineVisits },
-                current: { metricValue: after, visits: currentVisits, rateRatioInterval: direction.comparison },
-                winnerReady: direction.winner && Number(after) >= 20,
-                underperformedReady: direction.underperformed && Number(before) >= 20,
+                valid: Number.isFinite(before) && Number.isFinite(after), effect,
+                baseline: { metricValue: baselineVisits, visits: baselineVisits, windowStartAt: baseline.at },
+                current: { metricValue: currentVisits, visits: currentVisits, rateRatioInterval: direction.comparison, windowEndAt: current.at },
+                winnerReady: direction.winner && Number(currentVisits) >= 20,
+                underperformedReady: direction.underperformed && Number(baselineVisits) >= 20,
             };
         }
         if (metric === 'favoriteRate') {
+            if (!snapshotCountsAreExact(baseline, ['visits', 'favorites']) || !snapshotCountsAreExact(current, ['visits', 'favorites'])) {
+                return { valid: false, reason: 'approximate-counts', effect: { kind: 'invalid', percent: null, absolute: null }, baseline: {}, current: {}, winnerReady: false, underperformedReady: false };
+            }
             const baselineFavorites = finiteOrNull(baseline?.favorites);
             const currentFavorites = finiteOrNull(current?.favorites);
-            const before = safeRatio(baselineFavorites, baselineVisits, 100);
-            const after = safeRatio(currentFavorites, currentVisits, 100);
+            const beforeRate = experimentRate(baselineFavorites, baselineVisits);
+            const afterRate = experimentRate(currentFavorites, currentVisits);
+            const before = Number.isFinite(beforeRate) ? beforeRate * 100 : null;
+            const after = Number.isFinite(afterRate) ? afterRate * 100 : null;
             const direction = separatedRateDirection(baselineFavorites, baselineVisits, currentFavorites, currentVisits);
             return {
-                valid: Number.isFinite(before) && Number.isFinite(after), effect: relativeEffectPercent(before, after),
+                valid: Number.isFinite(before) && Number.isFinite(after), effect: relativeEffectSummary(before, after),
                 baseline: { metricValue: before, rate: before, favorites: baselineFavorites, visits: baselineVisits },
                 current: { metricValue: after, rate: after, favorites: currentFavorites, visits: currentVisits, rateRatioInterval: direction.comparison },
                 winnerReady: direction.winner,
                 underperformedReady: direction.underperformed,
             };
         }
-        const baselineAnchor = findAnchor(baselineHistory, baseline, 30);
-        const baselineWindow = cumulativeWindow(baseline, baselineAnchor, 'sales', 30);
-        const baselineSales = baselineWindow.normalized;
-        const afterSalesRaw = Number.isFinite(current?.sales) && Number.isFinite(baseline?.sales) ? current.sales - baseline.sales : null;
-        const exposureDays = daysBetween(current?.at, baseline?.at);
-        const afterSales = Number.isFinite(afterSalesRaw) && afterSalesRaw >= 0 && Number.isFinite(exposureDays) && exposureDays > 0
-            ? Math.round(afterSalesRaw * (HEALTH_RULES.experimentDays / exposureDays) * 1000) / 1000
-            : null;
-        const before = safeRatio(baselineSales, baselineVisits, 100);
-        const after = safeRatio(afterSales, currentVisits, 100);
-        const baselineExposure = Number.isFinite(baselineWindow.actualDays) && baselineWindow.actualDays > 0 && Number.isFinite(baselineVisits)
-            ? baselineVisits * (baselineWindow.actualDays / HEALTH_RULES.experimentDays)
-            : null;
-        const currentExposure = Number.isFinite(exposureDays) && exposureDays > 0 && Number.isFinite(currentVisits)
-            ? currentVisits * (exposureDays / HEALTH_RULES.experimentDays)
-            : null;
-        const direction = separatedRateDirection(baselineWindow.raw, baselineExposure, afterSalesRaw, currentExposure);
+        if (![baseline, current].every((snapshot) => snapshotCountsAreExact(snapshot, ['visits', 'sales']))) {
+            return { valid: false, reason: 'approximate-counts', effect: { kind: 'invalid', percent: null, absolute: null }, baseline: {}, current: {}, winnerReady: false, underperformedReady: false };
+        }
+        const baselineAnchor = findExperimentMetricAnchor(history, baseline, ['visits', 'sales'], 30, HEALTH_RULES.experimentMatchedWindowToleranceDays, null, ['visits', 'sales']);
+        const currentAnchor = findExperimentMetricAnchor(history, current, ['visits', 'sales'], 30, HEALTH_RULES.experimentMatchedWindowToleranceDays, baseline.at, ['visits', 'sales']);
+        if (!baselineAnchor || !currentAnchor) return { valid: false, reason: 'window-mismatch', effect: { kind: 'invalid', percent: null, absolute: null }, baseline: {}, current: {}, winnerReady: false, underperformedReady: false };
+        if (Math.abs(baselineAnchor.actualDays - currentAnchor.actualDays) > HEALTH_RULES.experimentMatchedWindowToleranceDays) {
+            return { valid: false, reason: 'window-mismatch', effect: { kind: 'invalid', percent: null, absolute: null }, baseline: {}, current: {}, winnerReady: false, underperformedReady: false };
+        }
+        if (![baselineAnchor.snapshot, baseline, currentAnchor.snapshot, current].every((snapshot) => snapshotCountsAreExact(snapshot, ['visits', 'sales']))) {
+            return { valid: false, reason: 'approximate-counts', effect: { kind: 'invalid', percent: null, absolute: null }, baseline: {}, current: {}, winnerReady: false, underperformedReady: false };
+        }
+        const baselineWindowIssue = experimentExposureIssue(history, baselineAnchor.snapshot, baseline);
+        const currentWindowIssue = experimentExposureIssue(history, currentAnchor.snapshot, current);
+        if (baselineWindowIssue || currentWindowIssue) return { valid: false, reason: baselineWindowIssue || currentWindowIssue, effect: { kind: 'invalid', percent: null, absolute: null }, baseline: {}, current: {}, winnerReady: false, underperformedReady: false };
+        const baselineSales = Number.isFinite(baseline.sales) && Number.isFinite(baselineAnchor.snapshot.sales) ? baseline.sales - baselineAnchor.snapshot.sales : null;
+        const afterSales = Number.isFinite(current.sales) && Number.isFinite(currentAnchor.snapshot.sales) ? current.sales - currentAnchor.snapshot.sales : null;
+        const beforeRate = experimentRate(baselineSales, baselineVisits);
+        const afterRate = experimentRate(afterSales, currentVisits);
+        const before = Number.isFinite(beforeRate) ? beforeRate * 100 : null;
+        const after = Number.isFinite(afterRate) ? afterRate * 100 : null;
+        const direction = separatedRateDirection(baselineSales, baselineVisits, afterSales, currentVisits);
         return {
-            valid: Number.isFinite(afterSalesRaw) && afterSalesRaw >= 0 && Number.isFinite(afterSales) && Number.isFinite(before) && Number.isFinite(after),
-            effect: relativeEffectPercent(before, after),
-            baseline: { metricValue: before, sales: baselineSales, rawSales: baselineWindow.raw, rate: before, visits: baselineVisits, effectiveVisitExposure: baselineExposure },
-            current: { metricValue: after, sales: afterSales, rawSales: afterSalesRaw, exposureDays, rate: after, visits: currentVisits, effectiveVisitExposure: currentExposure, rateRatioInterval: direction.comparison },
-            winnerReady: direction.winner && Number(afterSalesRaw) >= 2,
-            underperformedReady: direction.underperformed && Number(baselineWindow.raw) >= 2,
+            valid: Number.isInteger(baselineSales) && baselineSales >= 0 && Number.isInteger(afterSales) && afterSales >= 0 && Number.isFinite(before) && Number.isFinite(after),
+            effect: relativeEffectSummary(before, after),
+            baseline: { metricValue: before, sales: baselineSales, rawSales: baselineSales, rate: before, visits: baselineVisits, windowStartAt: baselineAnchor.snapshot.at, windowEndAt: baseline.at, windowDays: baselineAnchor.actualDays },
+            current: { metricValue: after, sales: afterSales, rawSales: afterSales, rate: after, visits: currentVisits, windowStartAt: currentAnchor.snapshot.at, windowEndAt: current.at, windowDays: currentAnchor.actualDays, rateRatioInterval: direction.comparison },
+            winnerReady: direction.winner && Number(afterSales) >= 2,
+            underperformedReady: direction.underperformed && Number(baselineSales) >= 2,
         };
     }
 
@@ -3768,43 +4262,82 @@
         const published = (record.improvements || []).filter((entry) => entry?.action === 'UPDATE' && entry?.status === 'published' && entry?.publishedAt).sort((a, b) => String(a.publishedAt).localeCompare(String(b.publishedAt)));
         const terminalStates = new Set(['winner', 'underperformed', 'inconclusive', 'contaminated', 'stopped']);
         published.forEach((entry, index) => {
-            entry.experiment = { state: 'observing', durationDays: HEALTH_RULES.experimentDays, primaryMetric: primaryMetricForFields(entry.fields || []), ...(entry.experiment || {}) };
+            const requiresMethodMigration = Number(entry.experiment?.methodVersion) !== 2;
+            entry.experiment = { state: 'observing', durationDays: HEALTH_RULES.experimentDays, primaryMetric: primaryMetricForFields(entry.fields || []), ...(entry.experiment || {}), methodVersion: 2 };
             const finishExperiment = (nextState, at = evaluatedAt) => {
                 entry.experiment.state = nextState;
+                entry.experiment.waitingForSnapshot = false;
                 if (!entry.experiment.evaluatedAt) entry.experiment.evaluatedAt = at;
             };
             const startAt = entry.publishedAt;
             const evaluateAt = entry.experiment.evaluateAt || addDays(startAt, HEALTH_RULES.experimentDays);
+            const evaluationDeadlineAt = addDays(evaluateAt, HEALTH_RULES.experimentEvaluationGraceDays);
             const day = Math.max(0, Math.floor(daysBetween(evaluatedAt, startAt) || 0));
-            Object.assign(entry.experiment, { startAt, evaluateAt, day });
-            if (terminalStates.has(entry.experiment.state) && entry.experiment.evaluatedAt) return;
+            Object.assign(entry.experiment, { startAt, evaluateAt, evaluationDeadlineAt, day });
+            if (terminalStates.has(entry.experiment.state) && entry.experiment.evaluatedAt && !requiresMethodMigration) return;
+            if (requiresMethodMigration) {
+                entry.experiment.state = 'observing';
+                delete entry.experiment.evaluatedAt; delete entry.experiment.evaluationSnapshotAt;
+                delete entry.experiment.effectPercent; delete entry.experiment.effectAbsolute; delete entry.experiment.effectKind;
+                delete entry.experiment.baseline; delete entry.experiment.current;
+            }
             if (published[index + 1] && validTime(published[index + 1].publishedAt) < validTime(evaluateAt)) {
                 entry.experiment.contaminatedAt = published[index + 1].publishedAt; finishExperiment('contaminated', entry.experiment.contaminatedAt); return;
             }
-            if (day < HEALTH_RULES.experimentDays) { entry.experiment.state = 'observing'; return; }
+            if (day < HEALTH_RULES.experimentDays) { entry.experiment.state = 'observing'; entry.experiment.waitingForSnapshot = false; return; }
             const baselineCandidates = [normalizeSnapshot(entry.baselineSnapshot), ...history]
                 .filter((snapshot) => snapshot && validTime(snapshot.at) <= validTime(startAt))
                 .sort((left, right) => validTime(left.at) - validTime(right.at));
             const baseline = baselineCandidates.at(-1) || null;
-            const current = history.find((snapshot) => validTime(snapshot.at) >= validTime(evaluateAt));
             const baselineAge = baseline ? daysBetween(startAt, baseline.at) : null;
-            const evaluationDelay = current ? daysBetween(current.at, evaluateAt) : null;
-            if (!baseline || !current || !Number.isFinite(baselineAge) || baselineAge < 0 || baselineAge > HEALTH_RULES.experimentBaselineMaxAgeDays
-                || !Number.isFinite(evaluationDelay) || evaluationDelay < 0 || evaluationDelay > HEALTH_RULES.experimentEvaluationGraceDays) {
+            if (!baseline || !Number.isFinite(baselineAge) || baselineAge < 0 || baselineAge > HEALTH_RULES.experimentBaselineMaxAgeDays
+                || !normalizeMetricContract(baseline.metricContract) || normalizeListingState(baseline.listingState) !== 'active' || Number(baseline.stock) <= 0) {
+                entry.experiment.invalidReason = 'invalid-baseline'; finishExperiment('inconclusive'); return;
+            }
+            const metric = entry.experiment.primaryMetric || primaryMetricForFields(entry.fields || []);
+            const candidates = history.filter((snapshot) => validTime(snapshot.at) >= validTime(evaluateAt)
+                && validTime(snapshot.at) <= validTime(evaluationDeadlineAt) && validTime(snapshot.at) <= validTime(evaluatedAt));
+            const nextPublished = published[index + 1] || null;
+            let selected = null; let contamination = ''; let lastInvalidReason = 'missing-evaluation-snapshot';
+            for (const current of candidates) {
+                if (nextPublished && validTime(nextPublished.publishedAt) <= validTime(current.at)) { contamination = 'subsequent-publish'; break; }
+                contamination = experimentExposureIssue(history, baseline, current);
+                if (contamination) break;
+                const result = experimentMetricResult(metric, baseline, current, history);
+                if (result.valid) { selected = { current, result }; break; }
+                lastInvalidReason = result.reason || 'invalid-metric-window';
+            }
+            if (!contamination && nextPublished && validTime(nextPublished.publishedAt) <= Math.min(validTime(evaluatedAt) || 0, validTime(evaluationDeadlineAt) || 0)) contamination = 'subsequent-publish';
+            if (contamination) {
+                entry.experiment.invalidReason = contamination;
+                entry.experiment.contaminatedAt = nextPublished && contamination === 'subsequent-publish' ? nextPublished.publishedAt : evaluatedAt;
+                finishExperiment('contaminated', entry.experiment.contaminatedAt); return;
+            }
+            if (!selected) {
+                entry.experiment.invalidReason = lastInvalidReason;
+                if ((validTime(evaluatedAt) || 0) <= (validTime(evaluationDeadlineAt) || 0)) {
+                    entry.experiment.state = 'observing'; entry.experiment.waitingForSnapshot = true; return;
+                }
                 finishExperiment('inconclusive'); return;
             }
-            const baselineHistory = history.filter((snapshot) => validTime(snapshot.at) <= validTime(baseline.at));
-            const metric = entry.experiment.primaryMetric || primaryMetricForFields(entry.fields || []);
-            const result = experimentMetricResult(metric, baseline, current, baselineHistory);
+            const { current, result } = selected;
+            const evaluationDelay = daysBetween(current.at, evaluateAt);
             entry.experiment.baseline = result.baseline;
             entry.experiment.current = result.current;
-            entry.experiment.effectPercent = result.effect;
+            entry.experiment.effectPercent = result.effect.percent;
+            entry.experiment.effectAbsolute = result.effect.absolute;
+            entry.experiment.effectKind = result.effect.kind;
             entry.experiment.evaluationSnapshotAt = current.at;
             entry.experiment.baselineAgeDays = Math.round(baselineAge * 10) / 10;
             entry.experiment.evaluationDelayDays = Math.round(evaluationDelay * 10) / 10;
-            if (!result.valid || !Number.isFinite(result.effect)) finishExperiment('inconclusive');
-            else if (result.winnerReady && result.effect >= 15) finishExperiment('winner');
-            else if (result.underperformedReady && result.effect <= -15) finishExperiment('underperformed');
+            entry.experiment.baselineSourceTimeStatus = baseline.metricContract?.sourceTimeStatus || 'unknown';
+            entry.experiment.evaluationSourceTimeStatus = current.metricContract?.sourceTimeStatus || 'unknown';
+            delete entry.experiment.invalidReason;
+            const materiallyPositive = result.effect.kind === 'from-zero' ? result.winnerReady : Number.isFinite(result.effect.percent) && result.effect.percent >= 15;
+            const materiallyNegative = Number.isFinite(result.effect.percent) && result.effect.percent <= -15;
+            if (!result.valid || result.effect.kind === 'invalid') finishExperiment('inconclusive');
+            else if (result.winnerReady && materiallyPositive) finishExperiment('winner');
+            else if (result.underperformedReady && materiallyNegative) finishExperiment('underperformed');
             else finishExperiment('inconclusive');
         });
         return record;
@@ -3860,6 +4393,13 @@
         return pathname.match(/\/listing-editor\/edit\/(\d+)/i)?.[1] || '';
     }
 
+    function statsViewEnabled(href = location.href) {
+        try {
+            const values = new URL(href, location.href).searchParams.getAll('stats');
+            return values.length === 1 && values[0].toLowerCase() === 'true';
+        } catch { return false; }
+    }
+
     function elementIsUsable(element) {
         if (!element || element.closest?.('[hidden],[aria-hidden="true"],[inert]')) return false;
         try {
@@ -3888,9 +4428,17 @@
             });
             return found;
         },
+        metricSections(link) {
+            return Array.from(link?.querySelectorAll('.card-meta') || []).filter(elementIsUsable).map((container) => {
+                const heading = container.querySelector('h6');
+                if (!heading || !elementIsUsable(heading)) return null;
+                const rows = Array.from(container.querySelectorAll('.card-meta-row .card-meta-row-item')).filter(elementIsUsable)
+                    .map((item) => normalizeSpace(item.textContent)).filter(Boolean);
+                return { heading: normalizeSpace(heading.textContent), rows };
+            }).filter(Boolean);
+        },
         metricRows(link) {
-            const containers = Array.from(link?.querySelectorAll('.card-meta') || []).filter((container) => container.querySelector('h6'));
-            return containers.flatMap((container) => Array.from(container.querySelectorAll('.card-meta-row-item')).map((item) => normalizeSpace(item.textContent))).filter(Boolean);
+            return this.metricSections(link).flatMap((section) => section.rows);
         },
         parseCard(link, verifiedShopKey = currentShopKey(), verifiedListingState = pageListingState()) {
             const card = link?.closest('li.wt-block-grid__item');
@@ -3908,9 +4456,10 @@
             const priceText = normalizeSpace(card.querySelector('.card-meta-row-price span, .card-meta-row-price')?.textContent);
             const renewalLabel = normalizeSpace(card.querySelector('.card-meta-row-status')?.textContent);
             const image = card.querySelector('.card-img-wrap img, img');
-            const metrics = parseListingMetrics(this.metricRows(link));
+            const parsedMetrics = parseScopedListingMetrics(this.metricSections(link));
+            const metrics = parsedMetrics.metrics || {};
             if (!verifiedShopKey || !normalizeListingState(verifiedListingState) || !title
-                || !HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(metrics[field]))) return null;
+                || !parsedMetrics.valid || !HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(metrics[field]))) return null;
             const listingState = normalizeListingState(verifiedListingState);
             return {
                 listingId: editId, title, sku, editUrl: link.href, shopKey: verifiedShopKey,
@@ -3919,13 +4468,13 @@
                 price: parsePriceRange(priceText), currency: metrics.currency || currencyMarker(priceText),
                 listingState, statusLabel: listingStateLabel(listingState), renewalLabel,
                 visits: metrics.visits, favorites: metrics.favorites, sales: metrics.sales,
-                revenue: metrics.revenue, renewals: metrics.renewals, capturedAt: nowIso(),
+                revenue: metrics.revenue, renewals: metrics.renewals, metricContract: parsedMetrics.contract, capturedAt: nowIso(),
             };
         },
         scan() {
             const shopKey = currentShopKey();
             const listingState = pageListingState();
-            if (!shopKey || !listingState) return [];
+            if (!shopKey || !listingState || !statsViewEnabled()) return [];
             return this.cardLinks().map((link) => this.parseCard(link, shopKey, listingState)).filter(Boolean);
         },
         contentSignature(listings = this.scan()) {
@@ -3935,6 +4484,7 @@
             return JSON.stringify([...listings].sort((left, right) => String(left.listingId).localeCompare(String(right.listingId))).map((item) => [
                 String(item.listingId), item.title, item.sku, item.listingState, item.statusLabel, item.renewalLabel, item.stock,
                 item.price?.min, item.price?.max, item.visits, item.favorites, item.sales, item.revenue, item.renewals,
+                item.metricContract?.id || '', item.metricContract?.headings || null, item.metricContract?.countPrecision || null,
             ]));
         },
         paginationNav() {
@@ -3991,12 +4541,14 @@
             const listings = this.scan();
             const expectedCount = Math.max(0, Number(options.expectedCount) || 0);
             let valid = pageInfo.valid && links.length > 0 && listings.length === links.length;
+            const contractIds = uniqueStrings(listings.map((listing) => listing.metricContract?.id).filter(Boolean));
+            valid = valid && contractIds.length === 1 && contractIds[0] === LISTING_METRIC_CONTRACT.id;
             if (options.requirePagination && !pageInfo.hasPagination) valid = false;
             if (expectedCount) valid = valid && listings.length === expectedCount;
             else if (pageInfo.total > 1 && pageInfo.current < pageInfo.total) valid = valid && listings.length === ANALYSIS_BATCH_SIZE;
             else valid = valid && listings.length <= ANALYSIS_BATCH_SIZE;
             const signature = valid ? JSON.stringify([pageInfo.current, pageInfo.total, this.readSignature(listings)]) : '';
-            return { valid, pageInfo, links, listings, signature };
+            return { valid, pageInfo, links, listings, signature, metricContractId: valid ? contractIds[0] : '' };
         },
         async readStable(options = {}) {
             const timeout = window.__MAKAYTRON_LISTING_TEST__ === true
@@ -4433,6 +4985,60 @@
         return error;
     }
 
+    function durableLeaseIsActive(lease, referenceTime = Date.now()) {
+        return Boolean((lease?.token || lease?.owner) && Number(lease.expiresAt) > Number(referenceTime));
+    }
+
+    function storedQueueHasActiveItem(queue) {
+        return Boolean(queue && ['ready', 'running'].includes(String(queue.status || ''))
+            && Array.isArray(queue.items) && queue.items[Number(queue.cursor)]);
+    }
+
+    const UNCERTAIN_PROVIDER_SUBMISSION_STATUSES = Object.freeze([
+        'submitted',
+        'submitted-unverified',
+        'deactivation-submitted',
+        'deactivation-submitted-unverified',
+    ]);
+
+    async function blockCollectionForUncertainQueueStopLocked(queue, item) {
+        if (!UNCERTAIN_PROVIDER_SUBMISSION_STATUSES.includes(String(item?.status || ''))) return null;
+        const stored = normalizeCollection(await GMX.get(KEYS.collection, null));
+        if (!stored || stored.unsupportedSchema
+            || !['starting', 'running', 'paused', 'completed'].includes(String(stored.status || ''))) return stored;
+        const collectionScope = collectionScopeParts(stored.scopeKey);
+        const queueScope = collectionScopeParts(queue?.scopeKey);
+        const record = await Store.getRecord(item?.listingId);
+        const recordShopKey = String(record?.meta?.shopKey || '').toLowerCase();
+        const queueShopKey = queueScope?.shopKey || (/^etsy-shop:[a-z0-9]+$/.test(recordShopKey) ? recordShopKey : '');
+        const sameSourceCollection = Boolean(queue?.collectionId && String(queue.collectionId) === stored.id);
+        const sameKnownShop = Boolean(collectionScope && queueShopKey && collectionScope.shopKey === queueShopKey);
+        const overlappingRun = ['starting', 'running'].includes(String(stored.status || ''));
+        if (!overlappingRun && !sameSourceCollection && !sameKnownShop) return stored;
+        const blockedAt = nowIso();
+        return Store.saveCollectionLocked({
+            ...stored,
+            status: 'blocked',
+            stoppedAt: blockedAt,
+            updatedAt: blockedAt,
+            leaseToken: '',
+            handoffToken: '',
+            handoffPage: 0,
+            handoffExpiresAt: '',
+            retry: null,
+            error: {
+                key: 'collectionPageChanged',
+                reason: 'An unverified Etsy submission may have changed listing data; run a new full scan.',
+                reportId: '',
+            },
+        }, {
+            id: stored.id,
+            token: stored.leaseToken,
+            writeRevision: stored.writeRevision,
+            manifestFingerprint: collectionManifestFingerprint(stored),
+        });
+    }
+
     const Lease = {
         async assertOwnerLocked(expectedToken = state.leaseToken) {
             const token = String(expectedToken || '');
@@ -4454,11 +5060,16 @@
                 return callback();
             });
         },
-        async acquire() {
+        async acquire(options = {}) {
             clearInterval(state.leaseTimer);
             const acquired = await withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const collectionLease = await GMX.get(KEYS.collectionLease, null);
+                const storedCollection = normalizeCollection(await GMX.get(KEYS.collection, null));
+                const allowCollectionConflictForQueueStop = options.allowCollectionConflictForQueueStop === true;
+                if (!allowCollectionConflictForQueueStop && (durableLeaseIsActive(collectionLease)
+                    || ['starting', 'running'].includes(String(storedCollection?.status || '')))) return false;
                 const current = await GMX.get(KEYS.lease, null);
-                const active = (current?.token || current?.owner) && Number(current.expiresAt) > Date.now();
+                const active = durableLeaseIsActive(current);
                 const sameOwner = current?.owner === tabId && current?.instanceId === pageInstanceId;
                 if (active && !sameOwner) return false;
                 const token = active && sameOwner ? String(current.token) : randomId('action-lease');
@@ -4557,6 +5168,7 @@
         },
         async stopFenced(reason, fenceToken, expectedStatuses = [], expectedIdentity = this.activeIdentity()) {
             return this.withFencedActiveItem(fenceToken, expectedStatuses, async (queue, item) => {
+                await blockCollectionForUncertainQueueStopLocked(queue, item);
                 queue.status = 'stopped';
                 queue.stoppedAt = nowIso();
                 queue.stopReason = reason;
@@ -4577,9 +5189,14 @@
             const requestedIds = uniqueStrings(records.map((record) => String(record.listingId)));
             return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
                 const existingQueue = await GMX.get(KEYS.queue, null);
-                if (existingQueue && ['ready', 'running'].includes(String(existingQueue.status || ''))
-                    && Array.isArray(existingQueue.items) && existingQueue.items[Number(existingQueue.cursor)]) {
+                if (storedQueueHasActiveItem(existingQueue)) {
                     const error = new Error('An action queue is already active.'); error.code = 'QUEUE_ACTIVE'; throw error;
+                }
+                const collectionLease = await GMX.get(KEYS.collectionLease, null);
+                const storedCollection = normalizeCollection(await GMX.get(KEYS.collection, null));
+                if (durableLeaseIsActive(collectionLease)
+                    || ['starting', 'running'].includes(String(storedCollection?.status || ''))) {
+                    const error = new Error('All-page collection is active.'); error.code = 'COLLECTION_ACTIVE'; throw error;
                 }
                 const fenced = await assertFreshCollectionLocked(expectedIdentity);
                 const latestById = new Map(fenced.records.map((record) => [String(record.listingId), record]));
@@ -4650,7 +5267,8 @@
         const schema = Math.max(1, Number(raw.schema) || 1);
         if (schema > COLLECTION_SCHEMA_VERSION) {
             return {
-                schema, id: String(raw.id || 'unsupported-collection'), status: 'blocked', scopeKey: String(raw.scopeKey || ''),
+                schema, id: String(raw.id || 'unsupported-collection'), status: 'blocked', scopeKey: String(raw.scopeKey || ''), metricContractId: '',
+                writeRevision: Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(Number(raw.writeRevision) || 0))),
                 startedAt: String(raw.startedAt || ''), updatedAt: String(raw.updatedAt || ''), completedAt: null, stoppedAt: null,
                 expectedPage: 1, totalPages: 1, pages: {}, uniqueIds: [], duplicateCount: 0, returningToFirst: false,
                 leaseToken: '', handoffToken: '', handoffPage: 0, handoffExpiresAt: '', unsupportedSchema: true, legacySchema: false,
@@ -4667,7 +5285,7 @@
             pages[String(page)] = {
                 signature: String(value.signature || ''), contentSignature: String(value.contentSignature || ''),
                 ids: uniqueStrings(Array.isArray(value.ids) ? value.ids.map(String) : []),
-                count: Math.max(0, Number(value.count) || 0), capturedAt: String(value.capturedAt || ''),
+                count: Math.max(0, Number(value.count) || 0), capturedAt: String(value.capturedAt || ''), metricContractId: String(value.metricContractId || ''),
             };
         });
         const pageIds = Object.values(pages).flatMap((page) => page.ids);
@@ -4693,7 +5311,8 @@
         } : null;
         return {
             schema, id: String(raw.id || `collection-${Date.now()}`),
-            status: legacySchema ? 'blocked' : (allowedStatuses.includes(raw.status) ? raw.status : 'blocked'), scopeKey: String(raw.scopeKey || ''),
+            writeRevision: Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.trunc(Number(raw.writeRevision) || 0))),
+            status: legacySchema ? 'blocked' : (allowedStatuses.includes(raw.status) ? raw.status : 'blocked'), scopeKey: String(raw.scopeKey || ''), metricContractId: String(raw.metricContractId || ''),
             startedAt: String(raw.startedAt || nowIso()), updatedAt: String(raw.updatedAt || nowIso()),
             completedAt: legacySchema ? null : (raw.completedAt ? String(raw.completedAt) : null), stoppedAt: raw.stoppedAt ? String(raw.stoppedAt) : null,
             expectedPage: Math.max(1, Number(raw.expectedPage) || 1), totalPages: Math.max(1, Number(raw.totalPages) || 1), pages,
@@ -4712,6 +5331,7 @@
     function collectionManifestIsComplete(collection) {
         const totalPages = Number(collection?.totalPages);
         if (!collection || !Number.isInteger(totalPages) || totalPages < 1 || totalPages > MAX_COLLECTION_PAGES) return false;
+        if (collection.metricContractId !== LISTING_METRIC_CONTRACT.id) return false;
         if (Number(collection.duplicateCount) !== 0 || !Array.isArray(collection.uniqueIds) || !collection.uniqueIds.length) return false;
         const pageKeys = Object.keys(collection.pages || {});
         if (pageKeys.length !== totalPages || pageKeys.some((key) => !/^\d+$/.test(key) || Number(key) < 1 || Number(key) > totalPages)) return false;
@@ -4721,6 +5341,7 @@
             const ids = Array.isArray(manifest?.ids) ? manifest.ids.map(String) : [];
             const count = Number(manifest?.count);
             if (!manifest || !Number.isInteger(count) || count < 1 || count > ANALYSIS_BATCH_SIZE || ids.length !== count) return false;
+            if (manifest.metricContractId !== collection.metricContractId) return false;
             if (page < totalPages && count !== ANALYSIS_BATCH_SIZE) return false;
             if (new Set(ids).size !== ids.length || ids.some((id) => !id)) return false;
             const contentSignature = [...ids].sort().join('\u001f');
@@ -4753,17 +5374,90 @@
         });
     }
 
+    function collectionManifestFingerprint(collection) {
+        if (!collection || typeof collection !== 'object') return '';
+        const pageManifest = Object.keys(collection.pages || {}).sort((left, right) => Number(left) - Number(right)).map((page) => {
+            const entry = collection.pages[page] || {};
+            return [
+                String(page), String(entry.signature || ''), String(entry.contentSignature || ''), String(entry.metricContractId || ''),
+                Math.max(0, Number(entry.count) || 0), String(entry.capturedAt || ''), (entry.ids || []).map(String),
+            ];
+        });
+        const metricContractId = String(collection.metricContractId || '');
+        return fnv1a(JSON.stringify({
+            schema: Number(collection.schema) || 0, id: String(collection.id || ''), scopeKey: String(collection.scopeKey || ''),
+            metricContractId, totalPages: Math.max(1, Number(collection.totalPages) || 1),
+            duplicateCount: Math.max(0, Number(collection.duplicateCount) || 0), pageManifest,
+            uniqueIds: (collection.uniqueIds || []).map(String),
+        }));
+    }
+
     function collectionIdentity(collection = state.collection) {
-        return collection ? {
-            id: String(collection.id || ''), scopeKey: String(collection.scopeKey || ''),
+        if (!collection) return null;
+        const metricContractId = String(collection.metricContractId || '');
+        const manifestFingerprint = collectionManifestFingerprint(collection);
+        return {
+            id: String(collection.id || ''), scopeKey: String(collection.scopeKey || ''), metricContractId, manifestFingerprint,
+            writeRevision: Math.max(0, Number(collection.writeRevision) || 0),
             completedAt: String(collection.completedAt || ''), totalPages: Math.max(1, Number(collection.totalPages) || 1),
-        } : null;
+        };
+    }
+
+    function collectionScopeParts(scopeKey) {
+        const match = String(scopeKey || '').match(/^(etsy-shop:[a-z0-9]+)\|status:([a-z_]+)\|/i);
+        if (!match) return null;
+        const listingState = normalizeListingState(match[2]);
+        return listingState ? { shopKey: match[1].toLowerCase(), listingState } : null;
+    }
+
+    function collectionPageObservationTimes(collection) {
+        const observedById = new Map();
+        Object.values(collection?.pages || {}).forEach((page) => {
+            const observedAt = validTime(page?.capturedAt);
+            (Array.isArray(page?.ids) ? page.ids : []).forEach((listingId) => {
+                const id = String(listingId || '');
+                if (id && !observedById.has(id)) observedById.set(id, observedAt);
+            });
+        });
+        return observedById;
+    }
+
+    function collectionListingsObservedAt(listings) {
+        const source = Array.isArray(listings) ? listings : [];
+        if (!source.length) return '';
+        const observations = source.map((listing) => validTime(listing?.capturedAt));
+        if (observations.some((value) => value === null)) return '';
+        return new Date(Math.min(...observations)).toISOString();
     }
 
     function collectionHasAllRecords(collection = state.collection, records = state.records) {
         if (!collection || collection.status !== 'completed' || !collectionManifestIsComplete(collection)) return false;
-        const readableIds = new Set((records || []).filter((record) => record && !record.unsupportedSchema).map((record) => String(record.listingId)));
-        return (collection.uniqueIds || []).every((listingId) => readableIds.has(String(listingId)));
+        const startedAt = validTime(collection.startedAt);
+        if (startedAt === null) return false;
+        const readableById = new Map((records || [])
+            .filter((record) => record && !record.unsupportedSchema)
+            .map((record) => [String(record.listingId), record]));
+        const observationById = collectionPageObservationTimes(collection);
+        const scope = collectionScopeParts(collection.scopeKey);
+        const collectedIds = new Set((collection.uniqueIds || []).map(String));
+        if (scope?.listingState === 'inactive') {
+            const enteredInactiveScopeDuringOrAfterCollection = [...readableById.values()].some((record) => (
+                !collectedIds.has(String(record.listingId))
+                && String(record.meta?.shopKey || '').toLowerCase() === scope.shopKey
+                && validTime(record.deactivation?.at) !== null
+                && validTime(record.deactivation.at) >= startedAt
+            ));
+            if (enteredInactiveScopeDuringOrAfterCollection) return false;
+        }
+        return (collection.uniqueIds || []).every((listingId) => {
+            const record = readableById.get(String(listingId));
+            if (!record) return false;
+            if (!['active', 'inactive'].includes(String(scope?.listingState || ''))) return true;
+            const observedAt = observationById.get(String(listingId));
+            if (observedAt === null || observedAt === undefined) return false;
+            const deactivatedAt = validTime(record.deactivation?.at);
+            return deactivatedAt === null || deactivatedAt < observedAt;
+        });
     }
 
     function analysisCollectionIsFresh(collection = state.collection, records = state.records, referenceTime = Date.now()) {
@@ -4775,7 +5469,10 @@
         const identity = collectionIdentity(stored);
         const matches = expectedIdentity && identity && identity.id === expectedIdentity.id
             && identity.scopeKey === expectedIdentity.scopeKey && identity.completedAt === expectedIdentity.completedAt
-            && identity.totalPages === expectedIdentity.totalPages;
+            && identity.totalPages === expectedIdentity.totalPages && identity.metricContractId === expectedIdentity.metricContractId
+            && identity.manifestFingerprint === expectedIdentity.manifestFingerprint
+            && Number.isSafeInteger(Number(expectedIdentity.writeRevision))
+            && identity.writeRevision === Number(expectedIdentity.writeRevision);
         if (!matches || !collectionIsFresh(stored, Date.now(), { scopeKey: expectedIdentity?.scopeKey, totalPages: expectedIdentity?.totalPages })) {
             const error = new Error('The completed listing collection changed or expired.'); error.code = 'COLLECTION_STALE'; throw error;
         }
@@ -4788,7 +5485,74 @@
             }
             records.push(record);
         }
+        let freshnessRecords = records;
+        const scope = collectionScopeParts(stored.scopeKey);
+        if (scope?.listingState === 'inactive') {
+            const collectedIds = new Set(records.map((record) => String(record.listingId)));
+            const extraRecords = [];
+            for (const listingId of await Store.getIndex()) {
+                if (collectedIds.has(String(listingId))) continue;
+                const candidate = await Store.getRecord(listingId);
+                if (candidate && !candidate.unsupportedSchema
+                    && String(candidate.meta?.shopKey || '').toLowerCase() === scope.shopKey
+                    && validTime(candidate.deactivation?.at) !== null) extraRecords.push(candidate);
+            }
+            freshnessRecords = [...records, ...extraRecords];
+        }
+        if (!collectionHasAllRecords(stored, freshnessRecords)) {
+            const error = new Error('A listing state changed after the completed collection.'); error.code = 'COLLECTION_STALE'; throw error;
+        }
         return { collection: stored, records };
+    }
+
+    async function invalidateCollectionForRecordMutationLocked(listingId, changedAt, knownShopKey = '') {
+        const stored = normalizeCollection(await GMX.get(KEYS.collection, null));
+        const mutationAt = validTime(changedAt);
+        if (!stored || !['running', 'paused', 'completed'].includes(String(stored.status || '')) || mutationAt === null) return stored;
+        const scope = collectionScopeParts(stored.scopeKey);
+        if (!scope || !['active', 'inactive'].includes(scope.listingState)) return stored;
+        const record = await Store.getRecord(listingId);
+        const candidateShopKey = String(knownShopKey || record?.meta?.shopKey || '').toLowerCase();
+        if (!/^etsy-shop:[a-z0-9]+$/.test(candidateShopKey) || candidateShopKey !== scope.shopKey) return stored;
+        let invalidated = false;
+        if (scope.listingState === 'inactive') {
+            const startedAt = validTime(stored.startedAt);
+            invalidated = startedAt === null || mutationAt >= startedAt;
+        } else {
+            const observedAt = collectionPageObservationTimes(stored).get(String(listingId));
+            invalidated = observedAt === null || observedAt === undefined
+                ? false
+                : mutationAt >= observedAt;
+        }
+        if (!invalidated) return stored;
+        return Store.saveCollectionLocked({
+            ...stored, status: 'blocked', updatedAt: nowIso(),
+            error: {
+                key: 'collectionPageChanged',
+                reason: 'A listing state changed during or after this collection; run a new full scan.',
+                reportId: '',
+            },
+        }, {
+            id: stored.id, token: stored.leaseToken, writeRevision: stored.writeRevision,
+            manifestFingerprint: collectionManifestFingerprint(stored),
+        });
+    }
+
+    async function assertCollectionPageObservationsCurrentLocked(listings) {
+        const observedAt = validTime(collectionListingsObservedAt(listings));
+        if (observedAt === null) {
+            const error = new Error('The listing page observation time is unavailable.'); error.code = 'COLLECTION_STATE_CHANGED'; throw error;
+        }
+        for (const listing of listings) {
+            const record = await Store.getRecord(listing.listingId);
+            const deactivatedAt = validTime(record?.deactivation?.at);
+            if (deactivatedAt !== null && deactivatedAt >= observedAt) {
+                const error = new Error(`Listing ${listing.listingId} changed after the page was observed.`);
+                error.code = 'COLLECTION_STATE_CHANGED';
+                throw error;
+            }
+        }
+        return new Date(observedAt).toISOString();
     }
 
     async function assertFreshCollection(expectedIdentity = collectionIdentity()) {
@@ -4823,7 +5587,15 @@
             const error = new Error('Collection lease was lost.'); error.code = 'COLLECTION_LEASE_LOST'; throw error;
         },
         async acquire(options = {}) {
+            const expectedCollectionId = Object.hasOwn(options, 'expectedCollectionId') ? String(options.expectedCollectionId || '') : '';
+            const allowedCollectionStatuses = expectedCollectionId
+                ? uniqueStrings(Array.isArray(options.allowedCollectionStatuses) && options.allowedCollectionStatuses.length
+                    ? options.allowedCollectionStatuses.map(String)
+                    : ['running'])
+                : [];
             const pendingHandoff = normalizeCollection(await GMX.get(KEYS.collection, null));
+            if (expectedCollectionId && (pendingHandoff?.id !== expectedCollectionId
+                || !allowedCollectionStatuses.includes(String(pendingHandoff?.status || '')))) return false;
             const pendingLease = await GMX.get(KEYS.collectionLease, null);
             const pendingLeaseActive = Boolean((pendingLease?.token || pendingLease?.owner) && Number(pendingLease.expiresAt) > Date.now());
             const pendingHandoffActive = pendingHandoff?.status === 'running' && pendingHandoff.handoffToken
@@ -4840,11 +5612,16 @@
             clearInterval(state.collectionLeaseTimer);
             state.collectionLeaseTimer = 0;
             const acquired = await withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const actionLease = await GMX.get(KEYS.lease, null);
+                const storedQueue = await GMX.get(KEYS.queue, null);
+                if (durableLeaseIsActive(actionLease) || storedQueueHasActiveItem(storedQueue)) return false;
                 const current = await GMX.get(KEYS.collectionLease, null);
-                const active = (current?.token || current?.owner) && Number(current.expiresAt) > Date.now();
+                const active = durableLeaseIsActive(current);
                 const sameOwner = current?.owner === tabId && current?.instanceId === pageInstanceId;
                 const handoff = readCollectionHandoff();
                 const stored = normalizeCollection(await GMX.get(KEYS.collection, null));
+                if (expectedCollectionId && (!stored || stored.unsupportedSchema || stored.id !== expectedCollectionId
+                    || !allowedCollectionStatuses.includes(String(stored.status || '')))) return false;
                 const storedHandoffActive = Boolean(stored && stored.status === 'running' && stored.handoffToken
                     && (validTime(stored.handoffExpiresAt) || 0) > Date.now());
                 const handoffValid = Boolean(handoff && storedHandoffActive && !stored.unsupportedSchema
@@ -4853,7 +5630,7 @@
                     && (validTime(stored.handoffExpiresAt) || 0) > Date.now());
                 const mayAdoptActiveHandoff = handoffValid && active && current?.owner === tabId && current?.token === stored.leaseToken;
                 const mayRecoverAbandonedHandoff = Boolean(options.allowAbandonedHandoff && !active && stored?.status === 'running'
-                    && stored?.id === state.collection?.id && stored?.scopeKey === collectionScopeKey());
+                    && stored?.id === (expectedCollectionId || state.collection?.id) && stored?.scopeKey === collectionScopeKey());
                 if (active && !sameOwner && !mayAdoptActiveHandoff) return false;
                 if (!active && storedHandoffActive && !handoffValid && !mayRecoverAbandonedHandoff) return false;
                 const token = active && sameOwner ? String(current.token) : randomId('collection-lease');
@@ -4861,19 +5638,27 @@
                 if (!await GMX.set(KEYS.collectionLease, claim)) return false;
                 const verified = await GMX.get(KEYS.collectionLease, null);
                 if (verified?.owner !== tabId || verified?.instanceId !== pageInstanceId || verified?.token !== token) return false;
-                if (handoffValid || mayRecoverAbandonedHandoff) {
-                    const rotated = normalizeCollection({
-                        ...stored, leaseToken: token, handoffToken: '', handoffPage: 0, handoffExpiresAt: '', updatedAt: nowIso(),
-                    });
-                    try { await requireStored(KEYS.collection, rotated); }
-                    catch (error) { await GMX.remove(KEYS.collectionLease); throw error; }
-                    const rotatedReadback = normalizeCollection(await GMX.get(KEYS.collection, null));
-                    if (!rotatedReadback || rotatedReadback.id !== rotated.id || rotatedReadback.leaseToken !== token || rotatedReadback.handoffToken) {
-                        await GMX.remove(KEYS.collectionLease);
-                        return false;
+                const bindsStoredCollection = Boolean(stored && (expectedCollectionId || handoffValid || mayRecoverAbandonedHandoff));
+                if (bindsStoredCollection) {
+                    const clearHandoff = handoffValid || mayRecoverAbandonedHandoff;
+                    const needsWrite = stored.leaseToken !== token || (clearHandoff && Boolean(stored.handoffToken || stored.handoffPage || stored.handoffExpiresAt));
+                    try {
+                        state.collection = needsWrite
+                            ? await Store.saveCollectionLocked({
+                                ...stored, leaseToken: token,
+                                ...(clearHandoff ? { handoffToken: '', handoffPage: 0, handoffExpiresAt: '' } : {}),
+                                updatedAt: nowIso(),
+                            }, {
+                                id: stored.id, token: stored.leaseToken, writeRevision: stored.writeRevision,
+                                manifestFingerprint: collectionManifestFingerprint(stored), leaseToken: token,
+                            })
+                            : stored;
+                    } catch (error) {
+                        const held = await GMX.get(KEYS.collectionLease, null);
+                        if (held?.owner === tabId && held?.instanceId === pageInstanceId && held?.token === token) await GMX.remove(KEYS.collectionLease);
+                        throw error;
                     }
-                    state.collection = rotatedReadback;
-                    clearCollectionHandoff();
+                    if (clearHandoff) clearCollectionHandoff();
                 }
                 state.collectionLeaseToken = token;
                 return true;
@@ -4970,7 +5755,9 @@
         const manifest = collection?.pages?.[String(current)];
         if (!manifest) return true;
         const listings = Array.isArray(snapshot?.listings) ? snapshot.listings : [];
-        return manifest.signature === ListingPageAdapter.pageSignature(listings, current);
+        return manifest.metricContractId === snapshot?.metricContractId
+            && snapshot.metricContractId === collection?.metricContractId
+            && manifest.signature === ListingPageAdapter.pageSignature(listings, current);
     }
 
     function pageIdentityMatchesCollection(pageInfo, collection) {
@@ -4986,14 +5773,14 @@
                 const activeOwner = Boolean((lease?.token || lease?.owner) && Number(lease.expiresAt) > Date.now());
                 const stored = normalizeCollection(await GMX.get(KEYS.collection, null));
                 if (stored?.id === expectedCollectionId && stored.status === 'running' && !activeOwner) {
-                    const paused = normalizeCollection({
+                    const paused = await Store.saveCollectionLocked({
                         ...stored, status: 'paused', stoppedAt: nowIso(), updatedAt: nowIso(), leaseToken: '',
                         handoffToken: '', handoffPage: 0, handoffExpiresAt: '', retry: null,
+                    }, {
+                        id: stored.id, token: stored.leaseToken, writeRevision: stored.writeRevision,
+                        manifestFingerprint: collectionManifestFingerprint(stored),
                     });
-                    await requireStored(KEYS.collection, paused);
-                    const verified = normalizeCollection(await GMX.get(KEYS.collection, null));
-                    if (!verified || verified.id !== paused.id || verified.status !== 'paused') throw new Error('Collection pause reconciliation failed.');
-                    state.collection = verified;
+                    if (!paused || paused.status !== 'paused') throw new Error('Collection pause reconciliation failed.');
                     clearCollectionHandoff();
                     return { paused: true, activeOwner: false };
                 }
@@ -5053,13 +5840,20 @@
             if (lastError) report.message = `${report.message} (${normalizeSpace(lastError?.message || lastError).slice(0, 160)})`;
             return { ok: false, value: null, attempts: COLLECTION_RETRY_ATTEMPTS, report };
         },
-        async persist(patch = {}) {
+        async persist(patch = {}, options = {}) {
             if (!state.collection) return null;
             const token = state.collectionLeaseToken;
-            await CollectionLease.assertOwns(token);
-            const previousToken = state.collection.leaseToken;
-            const candidate = { ...state.collection, ...patch, leaseToken: token, updatedAt: nowIso() };
-            const saved = await Store.saveCollection(candidate, { id: state.collection.id, token: previousToken, leaseToken: token });
+            const base = state.collection;
+            const candidate = { ...base, ...patch, leaseToken: token, updatedAt: nowIso() };
+            const observedListings = Array.isArray(options.observedListings) ? options.observedListings : [];
+            const saved = await withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                await CollectionLease.assertOwns(token);
+                if (observedListings.length) await assertCollectionPageObservationsCurrentLocked(observedListings);
+                return Store.saveCollectionLocked(candidate, {
+                    id: base.id, token: base.leaseToken, writeRevision: base.writeRevision,
+                    manifestFingerprint: collectionManifestFingerprint(base), leaseToken: token,
+                });
+            });
             await CollectionLease.assertOwns(token);
             return saved;
         },
@@ -5089,7 +5883,7 @@
             try {
                 await Store.saveCollection({
                     schema: COLLECTION_SCHEMA_VERSION, id: `collection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, status: 'running',
-                    scopeKey: collectionScopeKey(), startedAt: createdAt, updatedAt: createdAt, expectedPage: 1,
+                    scopeKey: collectionScopeKey(), metricContractId: initial.metricContractId, startedAt: createdAt, updatedAt: createdAt, expectedPage: 1,
                     totalPages: pageInfo.total, pages: {}, uniqueIds: [], duplicateCount: 0, returningToFirst: false, leaseToken: state.collectionLeaseToken,
                     handoffToken: '', handoffPage: 0, handoffExpiresAt: '', retry: null, failureReports: [], error: null,
                 }, { leaseToken: state.collectionLeaseToken });
@@ -5107,12 +5901,22 @@
             state.collectionPauseRequested = false;
             if (routeKind() !== 'listings') { UI.setStatus('collectionRouteRequired', 'blocked'); UI.render(); return null; }
             if (!state.collection || !['paused', 'running'].includes(state.collection.status)) return this.startOnce();
+            const expectedCollectionId = state.collection.id;
             const observed = await ListingPageAdapter.readStable({ requirePagination: state.collection.totalPages > 1 });
             if (!observed?.pageInfo?.valid || state.collection.schema !== COLLECTION_SCHEMA_VERSION
-                || state.collection.scopeKey !== collectionScopeKey() || state.collection.totalPages !== observed.pageInfo.total) {
+                || state.collection.scopeKey !== collectionScopeKey() || state.collection.totalPages !== observed.pageInfo.total
+                || state.collection.metricContractId !== observed.metricContractId) {
                 UI.setStatus('collectionPageChanged', 'blocked'); UI.render(); return null;
             }
-            if (!await CollectionLease.acquire({ allowAbandonedHandoff: true })) { UI.setStatus('collectionBusy', 'blocked'); UI.render(); return null; }
+            if (!await CollectionLease.acquire({
+                allowAbandonedHandoff: true, expectedCollectionId, allowedCollectionStatuses: ['paused', 'running'],
+            })) { UI.setStatus('collectionBusy', 'blocked'); UI.render(); return null; }
+            if (!state.collection || state.collection.id !== expectedCollectionId || !['paused', 'running'].includes(state.collection.status)
+                || state.collection.schema !== COLLECTION_SCHEMA_VERSION || state.collection.scopeKey !== collectionScopeKey()
+                || state.collection.totalPages !== observed.pageInfo.total || state.collection.metricContractId !== observed.metricContractId) {
+                await CollectionLease.release();
+                UI.setStatus('collectionPageChanged', 'blocked'); UI.render(); return null;
+            }
             const firstMissing = Array.from({ length: state.collection.totalPages }, (_, index) => index + 1).find((page) => !state.collection.pages[String(page)]);
             const expectedPage = state.collection.returningToFirst ? 1 : firstMissing || state.collection.totalPages;
             try { await this.persist({ status: 'running', expectedPage, stoppedAt: null, retry: null, error: null }); }
@@ -5227,7 +6031,7 @@
             }, COLLECTION_TRANSITION_TIMEOUT_MS, 250);
             if (!transitioned) return false;
             if (state.collection?.status !== 'running') return true;
-            return CollectionLease.acquire();
+            return CollectionLease.acquire({ expectedCollectionId: state.collection.id });
         },
         async navigateWithRetry(page, beforeContentSignature) {
             return this.retryTransient('navigation', async () => {
@@ -5236,7 +6040,7 @@
                         requirePagination: state.collection?.totalPages > 1,
                         expectedCount: state.collection?.pages?.[String(page)]?.count || 0,
                     });
-                    if (stable) return CollectionLease.acquire();
+                    if (stable) return CollectionLease.acquire({ expectedCollectionId: state.collection.id });
                 }
                 return this.navigateTo(page, beforeContentSignature);
             }, 'collectionPageChanged');
@@ -5246,7 +6050,7 @@
             state.collectionLoop = (async () => {
                 if (!state.collection || state.collection.status !== 'running') return null;
                 const expectedCollectionId = state.collection.id;
-                if (!await CollectionLease.acquire({ allowAbandonedHandoff: true })) {
+                if (!await CollectionLease.acquire({ allowAbandonedHandoff: true, expectedCollectionId })) {
                     UI.setStatus('collectionBusy', 'blocked'); UI.render();
                     return null;
                 }
@@ -5339,7 +6143,8 @@
                     }
                     const { links, listings } = pageRead.value;
                     pageInfo = pageRead.value.pageInfo;
-                    if (pageInfo.current !== state.collection.expectedPage || pageInfo.total !== state.collection.totalPages) return this.block('collectionPageChanged');
+                    if (pageInfo.current !== state.collection.expectedPage || pageInfo.total !== state.collection.totalPages
+                        || pageRead.value.metricContractId !== state.collection.metricContractId) return this.block('collectionPageChanged');
                     const signature = ListingPageAdapter.pageSignature(listings);
                     const contentSignature = ListingPageAdapter.contentSignature(listings);
                     if (state.collection.returningToFirst) {
@@ -5351,11 +6156,22 @@
                         const previousIds = new Set(state.collection.uniqueIds);
                         const duplicateCount = listings.reduce((count, item) => count + (previousIds.has(String(item.listingId)) ? 1 : 0), 0);
                         if (duplicateCount > 0) return this.block('collectionOverlap');
+                        const pageCapturedAt = collectionListingsObservedAt(listings);
+                        if (!pageCapturedAt) return this.block('collectionPageChanged');
                         await scanCurrentPage({ listings, deferEvaluation: true, silentStatus: true, collectionLeaseToken: state.collectionLeaseToken });
                         await CollectionLease.assertOwns();
                         listings.forEach((item) => previousIds.add(String(item.listingId)));
-                        state.collection.pages[String(pageInfo.current)] = { signature, contentSignature, ids: listings.map((item) => String(item.listingId)), count: listings.length, capturedAt: nowIso() };
-                        await this.persist({ uniqueIds: [...previousIds], duplicateCount: state.collection.duplicateCount + duplicateCount });
+                        const pages = {
+                            ...state.collection.pages,
+                            [String(pageInfo.current)]: {
+                                signature, contentSignature, ids: listings.map((item) => String(item.listingId)), count: listings.length,
+                                capturedAt: pageCapturedAt, metricContractId: pageRead.value.metricContractId,
+                            },
+                        };
+                        await this.persist(
+                            { pages, uniqueIds: [...previousIds], duplicateCount: state.collection.duplicateCount + duplicateCount },
+                            { observedListings: listings },
+                        );
                         await Store.appendAudit({ type: 'collection-page', collectionId: state.collection.id, page: pageInfo.current, totalPages: pageInfo.total, count: listings.length });
                     } else if (state.collection.pages[String(pageInfo.current)].signature !== signature) return this.block('collectionPageChanged');
                     UI.setStatus('collectionProgress', 'scanning', this.progressParams(pageInfo)); UI.render();
@@ -5529,10 +6345,7 @@
         const settingsRaw = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
         const settings = {
             ...DEFAULT_SETTINGS,
-            minVisitsToImprove: clamp(settingsRaw.minVisitsToImprove ?? DEFAULT_SETTINGS.minVisitsToImprove, 0, 100000),
-            minVisitsToProtect: clamp(settingsRaw.minVisitsToProtect ?? DEFAULT_SETTINGS.minVisitsToProtect, 0, 100000),
-            minRenewalsToReview: clamp(settingsRaw.minRenewalsToReview ?? DEFAULT_SETTINGS.minRenewalsToReview, 0, 1000),
-            declinePercent: clamp(settingsRaw.declinePercent ?? DEFAULT_SETTINGS.declinePercent, 0, 100),
+            ...normalizeHealthThresholds(settingsRaw),
             retentionDays: clamp(settingsRaw.retentionDays || APP.retentionDays, 30, APP.retentionDays),
             maxSnapshots: clamp(settingsRaw.maxSnapshots || APP.maxSnapshots, 10, APP.maxSnapshots),
         };
@@ -5622,7 +6435,8 @@
     async function persistThresholdSettings(values) {
         const fields = ['minVisitsToImprove', 'minVisitsToProtect', 'minRenewalsToReview', 'declinePercent'];
         const previous = Object.fromEntries(fields.map((key) => [key, state.settings[key]]));
-        fields.forEach((key) => { state.settings[key] = values[key]; });
+        const normalized = normalizeHealthThresholds(values);
+        fields.forEach((key) => { state.settings[key] = normalized[key]; });
         let saved = false;
         try { saved = await Store.saveSettings(); } catch { saved = false; }
         if (!saved) fields.forEach((key) => { state.settings[key] = previous[key]; });
@@ -5883,7 +6697,7 @@
             if (mismatch) return `<p>${escapeHtml(t('routeMismatch'))}</p><div class="meli-actions"><button class="meli-btn" data-action="go-current" type="button">${escapeHtml(t('goFirst'))}</button></div>`;
             if (item.proposal?.action === 'DEACTIVATE_REVIEW') {
                 if (String(item.status || '') === 'awaiting-user-deactivation') {
-                    return `<div class="meli-actions"><button class="meli-btn primary" data-action="deactivate" type="button">${escapeHtml(t('openDeactivate'))}</button><button class="meli-btn" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
+                    return `<div class="meli-actions"><button class="meli-btn primary" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
                 }
                 if (DEACTIVATION_VERIFY_STATUSES.includes(String(item.status || ''))) {
                     return `<div class="meli-actions"><button class="meli-btn primary" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
@@ -6459,17 +7273,42 @@
             const basisKey = analysis.assessmentMode === 'snapshot' ? 'snapshotBasis' : analysis.assessmentMode === 'longitudinal' ? 'longitudinalBasis' : 'insufficientBasis';
             const capKey = analysis.assessmentMode === 'snapshot' ? 'snapshotConfidenceLimited' : 'confidenceLimited';
             const summary = `<section class="meli-health-summary"><div><span class="meli-pill ${escapeHtml(analysis.tone)}">${escapeHtml(lifecycleLabel(analysis.lifecycle))}</span><strong>${escapeHtml(analysisScoreLabel(analysis))}: ${escapeHtml(Number.isFinite(analysis.score) ? t('scoreOutOf', { score: formatNumber(analysis.score) }) : '—')}</strong></div><h3>${escapeHtml(assessmentLabel(analysis))}</h3><div class="meli-meta">${escapeHtml(analysisConfidenceLabel(analysis))}: ${formatNumber(analysis.confidence)}/100 · ${escapeHtml(confidenceLabel(analysis.confidenceBand))}</div><div class="meli-meta">${escapeHtml(t(basisKey))}</div><div class="meli-meta">${escapeHtml(t('nextReview'))}: ${escapeHtml(formatDate(analysis.nextReviewAt))}</div>${analysis.confidenceCaps?.length ? `<div class="meli-health-cap">${escapeHtml(t(capKey))}</div>` : ''}</section>`;
+            const seasonality = normalizeSeasonality(record.meta?.seasonality, record.meta?.seasonal);
+            const listingType = normalizeListingType(record.meta?.listingType);
+            const option = (value, label, selected) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${escapeHtml(t(label))}</option>`;
+            const contextCard = `<section class="meli-detail-card"><h3>${escapeHtml(t('listingContext'))}</h3><div class="meli-form-grid"><label class="meli-field"><span class="meli-field-head">${escapeHtml(t('seasonality'))}</span><select class="meli-select" data-seasonality>${option('unknown', 'contextUnknown', seasonality)}${option('non-seasonal', 'contextNonSeasonal', seasonality)}${option('seasonal', 'contextSeasonal', seasonality)}</select></label><label class="meli-field"><span class="meli-field-head">${escapeHtml(t('listingType'))}</span><select class="meli-select" data-listing-type>${option('unknown', 'contextUnknown', listingType)}${option('digital', 'contextDigital', listingType)}${option('physical', 'contextPhysical', listingType)}</select></label></div><p class="meli-meta">${escapeHtml(t('sourceTimeUnknown'))}</p><div class="meli-actions"><button class="meli-btn" data-save-listing-context type="button">${escapeHtml(t('saveContext'))}</button></div><div class="meli-feedback" data-listing-context-feedback role="status" aria-live="polite"></div></section>`;
             const evidenceCard = `<section class="meli-detail-card"><h3>${escapeHtml(t('evidence'))}</h3><ul class="meli-evidence">${evidence.slice(0, 3).map((item) => `<li>${escapeHtml(t(item.key, item.params))}</li>`).join('')}</ul>${extraEvidence.length ? `<div data-extra-evidence hidden><ul class="meli-evidence">${extraEvidence.map((item) => `<li>${escapeHtml(t(item.key, item.params))}</li>`).join('')}</ul></div><button class="meli-mini" data-show-evidence type="button">${escapeHtml(t('showAllEvidence', { count: evidence.length }))}</button>` : ''}</section>`;
             const confidenceCard = `<section class="meli-detail-card"><h3>${escapeHtml(t('confidenceDetails'))}</h3><div class="meli-confidence-list">${componentKeys.map((key) => `<div class="meli-confidence-row"><span>${escapeHtml(t(key))}</span><div><i style="width:${clamp(components[key], 0, 100)}%"></i></div><b>${formatNumber(components[key])}</b></div>`).join('')}</div></section>`;
-            const experimentCard = experiment ? `<section class="meli-detail-card"><h3>${escapeHtml(t('experiment'))}</h3><div class="meli-history-metrics"><span>${escapeHtml(t('experimentState'))}: <b>${escapeHtml(experimentStateLabel(experiment))}</b></span><span>${escapeHtml(t('primaryMetric'))}: <b>${escapeHtml(experiment.primaryMetric || '—')}</b></span><span>${escapeHtml(t('adjustedEffect'))}: <b>${Number.isFinite(experiment.effectPercent) ? `${experiment.effectPercent > 0 ? '+' : ''}${experiment.effectPercent}%` : '—'}</b></span></div></section>` : '';
+            const interval = experiment?.current?.rateRatioInterval;
+            const effectText = Number.isFinite(experiment?.effectPercent)
+                ? `${experiment.effectPercent > 0 ? '+' : ''}${experiment.effectPercent}%`
+                : experiment?.effectKind === 'from-zero' ? t('effectFromZero', { amount: formatNumber(experiment.effectAbsolute) }) : '—';
+            const intervalText = interval ? `${t('exactInterval', { confidence: Math.round(Number(interval.confidenceLevel) * 100) })}: ${Number(interval.low).toFixed(3)}–${interval.highOpen ? '∞' : Number(interval.high).toFixed(3)}` : '';
+            const experimentCard = experiment ? `<section class="meli-detail-card"><h3>${escapeHtml(t('experiment'))}</h3><div class="meli-history-metrics"><span>${escapeHtml(t('experimentState'))}: <b>${escapeHtml(experimentStateLabel(experiment))}</b></span><span>${escapeHtml(t('primaryMetric'))}: <b>${escapeHtml(experiment.primaryMetric || '—')}</b></span><span>${escapeHtml(t('adjustedEffect'))}: <b>${escapeHtml(effectText)}</b></span>${intervalText ? `<span>${escapeHtml(intervalText)}</span>` : ''}</div></section>` : '';
             const safeguardCard = ['DEACTIVATION_REVIEW', 'DORMANT'].includes(analysis.lifecycle) && analysis.safeguards?.length ? `<section class="meli-detail-card"><h3>${escapeHtml(t('deactivateReview'))}</h3><ul class="meli-safeguards">${analysis.safeguards.map((item) => `<li data-passed="${item.passed}"><span>${item.passed ? '✓' : '—'}</span>${escapeHtml(t(item.key))}</li>`).join('')}</ul></section>` : '';
             const charts = `<section class="meli-detail-card"><h3>${escapeHtml(t('historyCharts'))}</h3><div class="meli-chart-grid">${this.historyChart(record.history, 'visits', t('visits30dLabel'))}${this.historyChart(record.history, 'favorites', t('favorites30dLabel'))}${this.historyChart(record.history, 'sales', t('salesAllTimeLabel'))}${this.historyChart(record.history, 'revenue', t('revenueAllTimeLabel'), currency)}${this.historyChart(record.history, 'renewals', t('renewalsAllTimeLabel'))}</div></section>`;
             const experimentTimeline = this.experimentTimeline(record);
             const timeline = `<section class="meli-detail-card"><h3>${escapeHtml(t('historyTitle'))}</h3><div class="meli-history">${history.length ? history.map((item) => `<article class="meli-history-item"><b>${escapeHtml(formatDate(item.at))}</b><div class="meli-history-metrics"><span>${t('visits30dLabel')}: ${formatNumber(item.visits)}</span><span>${t('favorites30dLabel')}: ${formatNumber(item.favorites)}</span><span>${t('salesAllTimeLabel')}: ${formatNumber(item.sales)}</span><span>${t('revenueAllTimeLabel')}: ${formatMoney(item.revenue, normalizeSpace(item.currency) || currency)}</span><span>${t('renewalsAllTimeLabel')}: ${formatNumber(item.renewals)}</span></div></article>`).join('') : `<div class="meli-empty">${escapeHtml(t('noHistory'))}</div>`}${improvements.map((item) => `<article class="meli-history-item"><span class="meli-pill warning">${escapeHtml(item.experiment ? experimentStateLabel(item.experiment) : item.status || 'planned')}</span> <b>${escapeHtml(formatDate(item.at))}</b><div class="meli-meta">${escapeHtml(item.note || item.action || '')}</div></article>`).join('')}</div></section>`;
-            this.openModal(`${t('healthAndHistory')} · ${record.listingId}`, `<div class="meli-health-detail">${summary}${evidenceCard}${confidenceCard}${experimentCard}${safeguardCard}${charts}${experimentTimeline}${timeline}</div>`, { small: true });
+            this.openModal(`${t('healthAndHistory')} · ${record.listingId}`, `<div class="meli-health-detail">${summary}${contextCard}${evidenceCard}${confidenceCard}${experimentCard}${safeguardCard}${charts}${experimentTimeline}${timeline}</div>`, { small: true });
             state.modal?.querySelector('[data-show-evidence]')?.addEventListener('click', (event) => {
                 const extra = state.modal?.querySelector('[data-extra-evidence]'); if (!extra) return;
                 extra.hidden = false; event.currentTarget.remove();
+            });
+            state.modal?.querySelector('[data-save-listing-context]')?.addEventListener('click', async (event) => {
+                const button = event.currentTarget; const feedback = state.modal?.querySelector('[data-listing-context-feedback]');
+                button.disabled = true;
+                try {
+                    await Store.saveListingContext(record.listingId, {
+                        seasonality: state.modal?.querySelector('[data-seasonality]')?.value,
+                        listingType: state.modal?.querySelector('[data-listing-type]')?.value,
+                    });
+                    await refreshRecords({ persist: true, render: false });
+                    const updated = state.records.find((item) => String(item.listingId) === String(record.listingId));
+                    this.closeModal(); this.render(true); if (updated) this.openHistory(updated);
+                    this.toast(t('contextSaved'), 'success');
+                } catch (error) {
+                    button.disabled = false; if (feedback) feedback.textContent = normalizeSpace(error?.message || error);
+                }
             });
         },
         openCollectionErrorReport() {
@@ -6686,6 +7525,42 @@
         return listings;
     }
 
+    function aiListingPayload(record, reference) {
+        const latest = record.history?.at(-1) || {};
+        const editable = captureEditableFieldsFromRecord(record);
+        const analysis = record.analysis || record.health?.result || {};
+        return {
+            reference, editableDataCaptured: Boolean(record.editor?.capturedAt),
+            title: editable.title, description: editable.description, tags: editable.tags, materials: editable.materials,
+            metrics: {
+                visits30d: latest.visits ?? null, favorites30d: latest.favorites ?? null, salesAllTime: latest.sales ?? null,
+                revenueAllTime: latest.revenue ?? null, renewalsAllTime: latest.renewals ?? null,
+                salesApprox30d: analysis.derived?.sales30 ?? null, revenueApprox30d: analysis.derived?.revenue30 ?? null,
+                favoriteRate: analysis.derived?.favoriteRate ?? null, salesRateProxy: analysis.derived?.salesRateProxy ?? null,
+            },
+            health: {
+                engineVersion: HEALTH_ENGINE_VERSION, lifecycle: analysis.lifecycle || 'DATA_GAP', diagnosis: analysis.diagnosis || 'INSUFFICIENT_SIGNAL',
+                assessmentMode: analysis.assessmentMode || 'insufficient', performanceScore: analysis.score ?? null,
+                scoreBasis: analysis.scoreBasis || 'insufficient', scoreComponents: analysis.currentAssessment?.components || analysis.bootstrap?.components || null,
+                currentSignal: analysis.currentAssessment?.funnelSignal || null, cumulativeSignal: analysis.currentAssessment?.cumulativeSignal || null,
+                snapshotSignal: analysis.bootstrap?.signal || null, confidence: analysis.confidence ?? 0,
+                confidenceBand: analysis.confidenceBand || 'low', confidenceCaps: analysis.confidenceCaps || [],
+                readiness: analysis.readiness || { snapshot: false, trend: false, deactivationHistory: false },
+                evidence: (analysis.evidence || []).map((item) => ({ key: item.key, params: item.params })),
+            },
+            recommendation: analysis.code || 'waiting', reason: analysisReason(record),
+        };
+    }
+
+    async function jsonFingerprint(value) {
+        const serialized = JSON.stringify(value);
+        if (globalThis.crypto?.subtle) {
+            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialized));
+            return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+        }
+        return `fnv1a-${fnv1a(serialized)}`;
+    }
+
     async function aiRequestPackage(records, expectedIdentity) {
         const requestId = `air-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         const requestedIds = uniqueStrings(records.map((record) => String(record.listingId)));
@@ -6702,10 +7577,24 @@
             }
             const aliasMap = {};
             latestRecords.forEach((record, index) => { aliasMap[`L${String(index + 1).padStart(3, '0')}`] = String(record.listingId); });
+            const listingPayloads = latestRecords.map((record, index) => aiListingPayload(record, `L${String(index + 1).padStart(3, '0')}`));
+            const recordFences = {};
+            for (let index = 0; index < latestRecords.length; index += 1) {
+                const reference = `L${String(index + 1).padStart(3, '0')}`;
+                const record = latestRecords[index];
+                recordFences[reference] = {
+                    listingId: String(record.listingId),
+                    editableFingerprint: await contentFingerprint(captureEditableFieldsFromRecord(record)),
+                    payloadFingerprint: await jsonFingerprint(listingPayloads[index]),
+                    proposalFingerprint: await jsonFingerprint(record.proposal || null),
+                    basis: recommendationBasis(record, record.health),
+                };
+            }
             const identity = collectionIdentity(fenced.collection);
             const requestEntry = {
-                createdAt: nowIso(), aliases: aliasMap, collectionId: identity.id,
+                createdAt: nowIso(), aliases: aliasMap, recordFences, collectionId: identity.id,
                 scopeKey: identity.scopeKey, completedAt: identity.completedAt, totalPages: identity.totalPages,
+                metricContractId: identity.metricContractId, manifestFingerprint: identity.manifestFingerprint, writeRevision: identity.writeRevision,
                 writeId: randomId('ai-request-write'),
             };
             const requests = await GMX.get(KEYS.aiRequests, {});
@@ -6717,21 +7606,21 @@
             if (verified?.[requestId]?.writeId !== requestEntry.writeId) {
                 const error = new Error('AI request cache write verification failed.'); error.code = 'STORAGE_WRITE_FAILED'; throw error;
             }
-            return { latestRecords, requestEntry };
+            return { latestRecords, listingPayloads, requestEntry };
         });
         return {
             schema: 'makaytron-listing-ai-request/v1', requestId, generatedAt: nowIso(),
-            collection: { id: prepared.requestEntry.collectionId, scopeKey: prepared.requestEntry.scopeKey, completedAt: prepared.requestEntry.completedAt, totalPages: prepared.requestEntry.totalPages },
+            collection: {
+                id: prepared.requestEntry.collectionId, scopeKey: prepared.requestEntry.scopeKey,
+                completedAt: prepared.requestEntry.completedAt, totalPages: prepared.requestEntry.totalPages,
+                metricContractId: prepared.requestEntry.metricContractId, manifestFingerprint: prepared.requestEntry.manifestFingerprint,
+                writeRevision: prepared.requestEntry.writeRevision,
+            },
             instructions: {
                 outputSchema: 'makaytron-listing-ai-proposals/v1',
                 constraints: ['Return JSON only', 'Echo requestId and each opaque reference exactly', 'Every proposal must include fields: an explicit subset of title, description, tags, materials', 'Fields omitted from fields stay unchanged', 'Use fields:["tags"] with tags:[] only when intentionally clearing every tag', 'title: 1-140 chars when title is selected', 'tags: max 13; each max 20 chars', 'Never invent performance data', 'action: UPDATE, DEACTIVATE_REVIEW, or SKIP; non-UPDATE actions use fields:[]'],
             },
-            listings: prepared.latestRecords.map((record, index) => {
-                const latest = record.history?.at(-1) || {};
-                const editable = captureEditableFieldsFromRecord(record);
-                const analysis = record.analysis || record.health?.result || {};
-                return { reference: `L${String(index + 1).padStart(3, '0')}`, editableDataCaptured: Boolean(record.editor?.capturedAt), title: editable.title, description: editable.description, tags: editable.tags, materials: editable.materials, metrics: { visits30d: latest.visits ?? null, favorites30d: latest.favorites ?? null, salesAllTime: latest.sales ?? null, revenueAllTime: latest.revenue ?? null, renewalsAllTime: latest.renewals ?? null, salesApprox30d: analysis.derived?.sales30 ?? null, revenueApprox30d: analysis.derived?.revenue30 ?? null, favoriteRate: analysis.derived?.favoriteRate ?? null, salesRateProxy: analysis.derived?.salesRateProxy ?? null }, health: { engineVersion: HEALTH_ENGINE_VERSION, lifecycle: analysis.lifecycle || 'DATA_GAP', diagnosis: analysis.diagnosis || 'INSUFFICIENT_SIGNAL', assessmentMode: analysis.assessmentMode || 'insufficient', performanceScore: analysis.score ?? null, scoreBasis: analysis.scoreBasis || 'insufficient', scoreComponents: analysis.currentAssessment?.components || analysis.bootstrap?.components || null, currentSignal: analysis.currentAssessment?.funnelSignal || null, cumulativeSignal: analysis.currentAssessment?.cumulativeSignal || null, snapshotSignal: analysis.bootstrap?.signal || null, confidence: analysis.confidence ?? 0, confidenceBand: analysis.confidenceBand || 'low', confidenceCaps: analysis.confidenceCaps || [], readiness: analysis.readiness || { snapshot: false, trend: false, deactivationHistory: false }, evidence: (analysis.evidence || []).map((item) => ({ key: item.key, params: item.params })) }, recommendation: analysis.code || 'waiting', reason: analysisReason(record) };
-            }),
+            listings: prepared.listingPayloads,
         };
     }
 
@@ -6810,14 +7699,43 @@
                 const requests = requestsRaw && typeof requestsRaw === 'object' ? { ...requestsRaw } : {};
                 const request = requests[requestId];
                 const aliasMap = request?.aliases;
-                if (!requestId || !aliasMap || typeof aliasMap !== 'object') throw aiValidationError('AI_REQUEST', '$.requestId', 'unknown or expired requestId');
+                const recordFences = request?.recordFences;
+                if (!requestId || !aliasMap || typeof aliasMap !== 'object' || !recordFences || typeof recordFences !== 'object') {
+                    throw aiValidationError('AI_REQUEST', '$.requestId', 'unknown, expired, or legacy requestId');
+                }
                 const expectedIdentity = {
                     id: String(request.collectionId || ''), scopeKey: String(request.scopeKey || ''),
                     completedAt: String(request.completedAt || ''), totalPages: Math.max(1, Number(request.totalPages) || 1),
+                    metricContractId: String(request.metricContractId || ''), manifestFingerprint: String(request.manifestFingerprint || ''),
+                    writeRevision: Math.max(0, Number(request.writeRevision) || 0),
                 };
                 const fenced = await assertFreshCollectionLocked(expectedIdentity);
                 const knownIds = new Set((fenced.collection.uniqueIds || []).map(String));
                 if (Object.values(aliasMap).some((listingId) => !knownIds.has(String(listingId)))) throw aiValidationError('AI_REQUEST', '$.requestId', 'AI request contains a listing outside the current collection');
+                const storedSettings = await GMX.get(KEYS.settings, {});
+                const settings = { ...DEFAULT_SETTINGS, ...(storedSettings && typeof storedSettings === 'object' ? storedSettings : {}) };
+                Object.assign(settings, normalizeHealthThresholds(settings));
+                const evaluated = evaluateHealthRecords(fenced.records, settings, nowIso());
+                const currentById = new Map(fenced.records.map((record) => {
+                    const health = evaluated.get(String(record.listingId));
+                    return [String(record.listingId), health ? { ...record, health, analysis: health.result } : record];
+                }));
+                for (const [reference, listingIdValue] of Object.entries(aliasMap)) {
+                    const listingId = String(listingIdValue);
+                    const expectedFence = recordFences[reference];
+                    const currentRecord = currentById.get(listingId);
+                    const editableFingerprint = currentRecord
+                        ? await contentFingerprint(captureEditableFieldsFromRecord(currentRecord))
+                        : '';
+                    const payloadFingerprint = currentRecord ? await jsonFingerprint(aiListingPayload(currentRecord, reference)) : '';
+                    const proposalFingerprint = currentRecord ? await jsonFingerprint(currentRecord.proposal || null) : '';
+                    const fenceMatches = expectedFence && String(expectedFence.listingId || '') === listingId
+                        && expectedFence.editableFingerprint === editableFingerprint
+                        && expectedFence.payloadFingerprint === payloadFingerprint
+                        && expectedFence.proposalFingerprint === proposalFingerprint
+                        && recommendationBasisEquals(expectedFence.basis, recommendationBasis(currentRecord, currentRecord?.health));
+                    if (!fenceMatches) throw aiValidationError('AI_REQUEST', '$.requestId', `record-stale ${reference}`);
+                }
                 const references = documentValue.proposals.map((proposal) => String(proposal?.reference || ''));
                 const duplicateReferences = references.filter((reference, index, array) => reference && array.indexOf(reference) !== index);
                 if (duplicateReferences.length) throw aiValidationError('AI_PROPOSAL', '$.proposals', `duplicate reference ${duplicateReferences[0]}`);
@@ -7178,7 +8096,7 @@
         }
     }
 
-    const DEACTIVATION_START_STATUSES = Object.freeze(['pending', 'failed', 'awaiting-user-deactivation']);
+    const DEACTIVATION_START_STATUSES = Object.freeze(['pending', 'failed']);
     const DEACTIVATION_VERIFY_STATUSES = Object.freeze(['awaiting-user-deactivation', 'deactivation-submitted', 'deactivation-submitted-unverified']);
     const DEACTIVATION_AUTO_RECOVERY_MAX_AGE_MS = 2 * 60 * 1000;
 
@@ -7214,6 +8132,38 @@
         return statuses;
     }
 
+    function deactivationStaleError(message = 'The deactivation recommendation is no longer current.') {
+        const error = new Error(message);
+        error.code = 'DEACTIVATION_STALE';
+        return error;
+    }
+
+    async function assertCurrentDeactivationEligibilityLocked(queue, item) {
+        if (!queue || !item || item.proposal?.action !== 'DEACTIVATE_REVIEW') throw deactivationStaleError();
+        const record = await Store.getRecord(item.listingId);
+        if (!record || record.unsupportedSchema || record.proposal?.action !== 'DEACTIVATE_REVIEW') throw deactivationStaleError();
+        if (!record.proposal.updatedAt || record.proposal.updatedAt !== item.proposal.updatedAt
+            || !recommendationBasisEquals(record.proposal.basis, item.proposal.basis)) throw deactivationStaleError();
+        const storedSettings = await GMX.get(KEYS.settings, {});
+        const settings = { ...DEFAULT_SETTINGS, ...(storedSettings && typeof storedSettings === 'object' ? storedSettings : {}) };
+        Object.assign(settings, normalizeHealthThresholds(settings));
+        const records = await Store.listRecords();
+        const evaluatedAt = nowIso();
+        const health = evaluateHealthRecords(records.length ? records : [record], settings, evaluatedAt).get(String(record.listingId));
+        if (!health) throw deactivationStaleError();
+        const evaluatedRecord = { ...record, health, analysis: health.result };
+        const result = health.result;
+        const safeguards = Array.isArray(result?.safeguards) ? result.safeguards : [];
+        const eligible = result?.lifecycle === 'DEACTIVATION_REVIEW'
+            && result?.code === 'deactivateReview'
+            && safeguards.length > 0 && safeguards.every((check) => check?.passed === true)
+            && (!Array.isArray(result?.anomalies) || result.anomalies.length === 0)
+            && recordListingState(record, deriveRecordMetrics(record, evaluatedAt)) === 'active'
+            && recommendationBasisMatches(evaluatedRecord, item.proposal, health);
+        if (!eligible) throw deactivationStaleError();
+        return evaluatedRecord;
+    }
+
     async function commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter) {
         return Queue.withFencedActiveItem(fenceToken, DEACTIVATION_VERIFY_STATUSES, async (queue, storedItem) => {
             const storedBefore = Array.isArray(storedItem.deactivationStatusBefore) ? storedItem.deactivationStatusBefore : [];
@@ -7223,16 +8173,44 @@
             const completedAt = nowIso();
             const operationId = String(storedItem.deactivationAttemptId || `deactivate-${queue.id}-${queue.cursor}-${storedItem.listingId}`);
             const record = await Store.getRecord(storedItem.listingId);
+            const existingOperationAt = record?.deactivation?.operationId === operationId ? validTime(record.deactivation.at) : null;
+            const submittedIntentAt = validTime(storedItem.deactivationSubmittedIntentAt);
+            const operationAt = new Date(existingOperationAt ?? submittedIntentAt ?? Date.now()).toISOString();
+            let savedRecord = record;
+            let recordWriteError = null;
             if (record && record.deactivation?.operationId !== operationId) {
                 record.deactivation = {
-                    at: completedAt, operationId, reason: storedItem.proposal?.reason || '',
+                    at: operationAt, operationId, reason: storedItem.proposal?.reason || '',
                     baselineSnapshot: record.history?.at(-1) || null, userConfirmed: true, automated: true,
                 };
                 const improvement = (record.improvements || []).find((entry) => entry.id === storedItem.proposal?.improvementId && entry.status === 'planned');
-                if (improvement) { improvement.status = 'deactivated'; improvement.completedAt = completedAt; }
-                await Lease.assertOwnerLocked(fenceToken);
-                await Store.putRecordLocked(record);
+                if (improvement) { improvement.status = 'deactivated'; improvement.completedAt = operationAt; }
+                try {
+                    await Lease.assertOwnerLocked(fenceToken);
+                    savedRecord = await Store.putRecordLocked(record);
+                } catch (error) {
+                    savedRecord = null;
+                    recordWriteError = error;
+                }
             }
+            if (savedRecord?.deactivation?.operationId === operationId) {
+                const stateIndex = state.records.findIndex((entry) => String(entry?.listingId || '') === String(savedRecord.listingId));
+                if (stateIndex >= 0) state.records[stateIndex] = savedRecord;
+                else state.records.push(savedRecord);
+            }
+            let collectionInvalidationError = null;
+            try {
+                await Lease.assertOwnerLocked(fenceToken);
+                await invalidateCollectionForRecordMutationLocked(
+                    storedItem.listingId,
+                    savedRecord?.deactivation?.operationId === operationId ? savedRecord.deactivation.at : operationAt,
+                    savedRecord?.meta?.shopKey || record?.meta?.shopKey || '',
+                );
+            } catch (error) {
+                collectionInvalidationError = error;
+            }
+            if (recordWriteError) throw recordWriteError;
+            if (collectionInvalidationError) throw collectionInvalidationError;
             await Lease.assertOwnerLocked(fenceToken);
             const audit = await GMX.get(KEYS.audit, []);
             const alreadyAudited = Array.isArray(audit) && audit.some((entry) => entry?.type === 'listing-deactivated' && entry?.operationId === operationId);
@@ -7274,14 +8252,16 @@
         if (!DEACTIVATION_START_STATUSES.includes(String(item.status || ''))) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
         const statusBefore = deactivationActiveBaseline(item);
         if (!statusBefore) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
-        const legacyAwaiting = item.status === 'awaiting-user-deactivation';
-        if (!confirm(t(legacyAwaiting ? 'deactivateLegacyConfirm' : 'deactivateConfirm', { id: item.listingId }))) return;
+        if (!confirm(t('deactivateConfirm', { id: item.listingId }))) return;
         if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
         const fenceToken = state.leaseToken;
         let submissionArmed = false;
         let providerClicked = false;
         try {
-            item = await Queue.withFencedActiveItem(fenceToken, DEACTIVATION_START_STATUSES, async (_queue, storedItem) => ({ ...storedItem }), actionIdentity);
+            item = await Queue.withFencedActiveItem(fenceToken, DEACTIVATION_START_STATUSES, async (queue, storedItem) => {
+                await assertCurrentDeactivationEligibilityLocked(queue, storedItem);
+                return { ...storedItem };
+            }, actionIdentity);
             if (!deactivationActiveBaseline(item, statusBefore)) throw actionLeaseLostError('The listing changed before the deactivation dialog opened.');
             if (!await EditorAdapter.openDeactivateDialog()) {
                 await EditorAdapter.cancelDeactivateDialogWhenReady();
@@ -7303,10 +8283,14 @@
             );
             submissionArmed = true;
             await Lease.assertOwner(fenceToken);
-            if (!deactivationModalBaseline(item, statusBefore)) {
-                throw actionLeaseLostError('The listing changed after deactivation submission was armed.');
-            }
-            if (!EditorAdapter.clickDeactivateConfirmation()) throw new Error('The Etsy deactivation confirmation was no longer safe to click.');
+            await Queue.withFencedActiveItem(fenceToken, ['deactivation-submitted'], async (queue, storedItem) => {
+                await assertCurrentDeactivationEligibilityLocked(queue, storedItem);
+                if (!deactivationModalBaseline(storedItem, statusBefore)) {
+                    throw actionLeaseLostError('The listing changed after deactivation submission was armed.');
+                }
+                if (!EditorAdapter.clickDeactivateConfirmation()) throw new Error('The Etsy deactivation confirmation was no longer safe to click.');
+                return true;
+            }, actionIdentity);
             providerClicked = true;
             const statusAfter = await waitForActionVerification(() => {
                 if (currentListingId() !== String(item.listingId)) return null;
@@ -7345,7 +8329,7 @@
             if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
             await Store.loadQueue();
             const uncertain = submissionArmed || ['deactivation-submitted', 'deactivation-submitted-unverified'].includes(String(Queue.activeItem()?.status || ''));
-            UI.setStatus(uncertain ? 'deactivateUnverified' : (error?.code === 'ACTION_LEASE_LOST' ? 'leaseBlocked' : 'formNotReady'), uncertain || error?.code === 'ACTION_LEASE_LOST' ? 'blocked' : 'error');
+            UI.setStatus(uncertain ? 'deactivateUnverified' : (error?.code === 'DEACTIVATION_STALE' ? 'deactivateNotVerified' : error?.code === 'ACTION_LEASE_LOST' ? 'leaseBlocked' : 'formNotReady'), uncertain || ['ACTION_LEASE_LOST', 'DEACTIVATION_STALE'].includes(error?.code) ? 'blocked' : 'error');
             UI.render();
         }
     }
@@ -7424,7 +8408,7 @@
             && ['applying', 'awaiting-user-review'].includes(String(item.status || ''))
             && EditorAdapter.formIsClean() !== true;
         if (dirtyAppliedEditor) { UI.setStatus('formNotReady', 'blocked'); return; }
-        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+        if (!await Lease.acquire({ allowCollectionConflictForQueueStop: true })) { UI.setStatus('leaseBlocked', 'blocked'); return; }
         const fenceToken = state.leaseToken;
         try {
             await Queue.stopFenced(reason, fenceToken, [actionIdentity.itemStatus], actionIdentity);
@@ -7656,10 +8640,15 @@
             versions: Object.freeze({ app: APP_VERSION, recordSchema: RECORD_SCHEMA_VERSION, healthSchema: HEALTH_RESULT_SCHEMA_VERSION, engine: HEALTH_ENGINE_VERSION, policy: HEALTH_POLICY_VERSION, collectionSchema: COLLECTION_SCHEMA_VERSION }),
             parseCountValue,
             parseListingMetrics,
+            parseScopedListingMetrics,
+            normalizeMetricContract,
+            statsViewEnabled,
             currencyMarker,
             finiteOrNull,
             currentShopKey,
             normalizeListingState,
+            normalizeSeasonality,
+            normalizeListingType,
             pageListingState,
             recommendationBasisMatches,
             validateEditableProposal,
@@ -7671,6 +8660,9 @@
             findAnchor,
             median,
             percentileRank,
+            exactPoissonRateRatioInterval,
+            relativeEffectSummary,
+            normalizeHealthThresholds,
             normalizeAnalysisFilters,
             recentPerformanceMetrics,
             recordMatchesAnalysisFilters,
@@ -7681,6 +8673,8 @@
             normalizeCollection,
             collectionManifestIsComplete,
             collectionIsFresh,
+            analysisCollectionIsFresh,
+            assertFreshCollection,
             collectionScopeKey,
             collectionScopeHref,
             collectionScopeMatches,
@@ -7690,7 +8684,11 @@
             evaluationScopeRecords,
             elementIsUsable,
             ListingPageAdapter,
-            collectionRuntime: Object.freeze({ state, Store, KEYS, CollectionLease, Collection }),
+            collectionRuntime: Object.freeze({
+                state, Store, KEYS, CollectionLease, Collection,
+                invalidateCollectionForRecordMutationLocked,
+                collectionListingsObservedAt,
+            }),
             aiRuntime: Object.freeze({ aiRequestPackage, importAiResponse }),
             backupRuntime: Object.freeze({ normalizeBackupDocument, importBackupDocument }),
             currentCollectionIdentity: () => collectionIdentity(),

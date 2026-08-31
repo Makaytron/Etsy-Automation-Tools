@@ -1,5 +1,5 @@
 {
-  "schema": "makaytron-etsy-listing-dom-fixture/v1",
+  "schema": "makaytron-etsy-listing-dom-fixture/v2",
   "source": "sanitized-current-etsy-listings-contract",
   "page": {
     "href": "https://www.etsy.com/your/shops/me/tools/listings?item_status=inactive&stats=true",
@@ -13,13 +13,15 @@
     "stockText": "10 in stock",
     "priceText": "$20.00",
     "renewalLabel": "Renews automatically",
-    "metricHeading": "Performance",
-    "metricRows": [
-      "0 visits",
-      "0 favorite",
-      "0 sales",
-      "$0 revenue",
-      "0 renewal"
+    "metricSections": [
+      {
+        "heading": "LAST 30 DAYS",
+        "rows": ["0 visits", "0 favorite"]
+      },
+      {
+        "heading": "ALL TIME",
+        "rows": ["0 sales", "$0 revenue", "0 renewal"]
+      }
     ]
   },
   "cards": [
