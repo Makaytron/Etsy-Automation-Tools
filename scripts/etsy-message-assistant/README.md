@@ -6,11 +6,11 @@
 
 <p><strong>Türkçe</strong> · <a href="./README.en.md">English</a></p>
 
-Etsy mesajlarını Türkçe önizlemek, Türkçe cevabı müşterinin diline çevirmek, AI destekli taslak hazırlamak ve teslim edilmiş siparişlerde açıkça yetkilendirilen, doğrulamalı Otopilot akışı yürütmek için Tampermonkey userscripti.
+Etsy mesajlarını Türkçe önizlemek, Türkçe cevabı müşterinin diline çevirmek, AI destekli taslak hazırlamak ve teslim edilmiş siparişlerde kontrollü mesaj akışı yürütmek için Tampermonkey userscripti.
 
 Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulması gerekmez.
 
-**Sürüm:** 1.2.5 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.2.4 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
@@ -32,19 +32,12 @@ Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulma
 - Türkçe cevabı müşterinin diline çevirir.
 - OpenAI, Anthropic Claude, Google Gemini, DeepSeek ve OpenRouter için kullanıcıya ait API profillerini destekler.
 - Şablonlar, değişkenler, geçmiş ve teslim edilmiş siparişler için kontrollü mesaj sırası sunar.
-- Çalışma ve araç bölümlerini ayıran premium sade panel, tek ana aksiyonlu **Otomasyon** görünümü, ilerleme özeti ve dar ekranda yatay tablo gerektirmeyen alıcı kartları sunar.
 - Satıcının, alıcının henüz yorum bırakmadığını doğruladığı teslim edilmiş siparişler için yeni/küçük işletme tonunda, İngilizce, baskısız ve teşviksiz dürüst yorum talebi şablonu sunar.
-- Completed Orders satırının kendi içindeki, Etsy ile aynı origin'de bulunan tam `/shop/<shop>/reviews/<numeric>` bağlantısını yalnız görünür etiketi tam **Review** veya **Yorum** olduğunda kesin pozitif kanıt sayar ve siparişi kalıcı `review_exists` olarak engeller. İsim, ürün başlığı, dashboard yorum kartı veya public mağaza HTML'i ile çapraz eşleştirme yapmaz.
-- Kesin permalink bulunmaması **yorum yok** veya otomatik uygunluk anlamına gelmez. Kalan siparişlerin durumu `Kontrol edilmedi / Yorum yok / Yorum var / Ertele / İletişim istemiyor veya sorun var` kararlarıyla sipariş bazında yerel olarak saklanır; manuel **Yorum yok** uygunluk onayı iki saat sonra sona erer ve aynı siparişe ikinci yorum talebi engellenir.
+- Yorum durumunu `Kontrol edilmedi / Yorum yok / Yorum var / Ertele / İletişim istemiyor veya sorun var` kararlarıyla sipariş bazında yerel olarak saklar; **Yorum yok** uygunluk onayı iki saat sonra sona erer ve aynı siparişe ikinci yorum talebi engellenir.
 - Eski bir `gönderildi` kaydının önceki mesaj amacını kanıtlayamadığı siparişi belirsiz olarak kilitler; yalnız Etsy konuşmasını kontrol edip **Önceki mesaj yorum talebi değildi — onayla** seçeneğini seçtikten sonra serbest bırakır. Doğrulayamıyorsanız siparişi kilitli bırakın.
-- Her yeni teslimat kampanyasını yalnız kullanıcının seçili alıcılar ve şablon görünürken bastığı **Otopilotu Başlat** düğmesiyle yetkilendirir. Alıcı seçmek, kuyruk hazırlamak veya eski/global otomatik gönderim ayarı tek başına canlı gönderim izni değildir.
-- **Otopilotu Başlat** öncesindeki Otomasyon yenilemesi kesin pozitifleri kuyruğun dışında tutar. Kanıt, bir sipariş kuyruğa alındıktan veya hazırlandıktan sonra görünürse gönderim anındaki uygunluk koruması o öğeyi Etsy'ye gönderilmeden engeller.
-- Otopilot alıcıları kesinlikle tek tek işler; bir alıcının mesajı için kalıcı kampanya/gönderim durumu yazılmadan ve Etsy'deki yeni outgoing balon doğrulanmadan sıradaki konuşmayı başlatmaz.
-- Etsy teslim edilmiş sipariş çekmecesine gönderimden sonra sayı kimlikli konuşma bağlantısı eklediğinde genel kompozitör kapsamı güvenlik için kapalı kalır; doğrulayıcı yalnız gönderimden önce yakalanmış aynı sipariş kapsamındaki tek bilgi bağlantısı, tek kanonik konuşma bağlantısı ve yeni giden balon birlikte eşleşirse işlemi tamamlar.
-- Sonucu `pending`, şüpheli veya kapsam/metin/alıcı uyuşmaz olan gönderimde Otopilotu durdurur ve otomatik yeniden gönderim yapmaz. Kullanıcının **Gönderildi** olarak uzlaştırdığı sonuç konuşma durumunu ve tekil doğrulama geçmişini tamamlar; **Gönderilmedi** seçimi doğrulama geçmişi üretmez ve kendiliğinden yeniden tıklama başlatmaz.
-- **Duraklat**, mevcut doğrulama güvenle tamamlandıktan sonra sıradaki alıcının başlamasını engeller; **Otomasyonu Bitir / Durdur** kalan gönderilmemiş sırayı sonlandırır. Doğrulaması bekleyen sonuç önce çözülmelidir.
-- Yorum taleplerinde eski/global otomatik gönderim ayarını yetki olarak kullanmaz. Her sipariş için güncel uygunluk kararı ve her yeni kampanya için ayrı **Otopilotu Başlat** onayı gerekir.
-- Bu, Etsy tarafından onaylanmış bir entegrasyon değil, resmî olmayan bir userscripttir. Etsy [API Koşulları](https://www.etsy.com/legal/api/), Etsy verisine erişen, veriyi analiz eden veya tarayan otomatik sistemler ve tarayıcı uzantıları için Etsy'nin açık yazılı yetkisini arar; açık Otopilot onayı tek başına bu yetkiyi sağlamaz.
+- Mesajı Etsy alanında hazırlar; kullanıcı **Gönder ve Sonrakine Geç** düğmesine bastığında Etsy gönderimini başlatır, çıkan mesaj balonunu doğrular ve ancak bundan sonra sıradaki konuşmaya geçer.
+- Yorum taleplerinde global otomatik gönderim ayarını uygulamaz; son gönderim tıklaması her alıcı için kullanıcıya aittir.
+- Bu, Etsy tarafından onaylanmış bir entegrasyon değil, resmî olmayan bir userscripttir. Etsy [API Koşulları](https://www.etsy.com/legal/api/), Etsy verisine erişen, veriyi analiz eden veya tarayan otomatik sistemler ve tarayıcı uzantıları için Etsy'nin açık yazılı yetkisini arar; son tıklamanın kullanıcıda olması tek başına bu yetkiyi sağlamaz.
 - Ayarları ve sağlayıcı profillerini script güncellemesinde korur.
 - Ayar ve API alanları **Kaydet** düğmesine kadar yalnız taslakta kalır; config dışa aktarma veya bağlantı testi görünmeden çalışma ayarını değiştirmez.
 - Kayıtlı API ve agent anahtarları panel HTML'ine yazılmaz; yeni değer girilene veya açık silme eylemi seçilip kaydedilene kadar yerel depoda korunur.

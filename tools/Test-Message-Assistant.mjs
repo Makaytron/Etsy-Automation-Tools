@@ -897,120 +897,6 @@ test('order compose accepts its informational Message history link but still rej
         'the exemption is limited to receipt-bound order compose routes');
 });
 
-test('order compose post-send evidence accepts only one exact numeric Etsy conversation permalink', async () => {
-    const { api, sandbox } = await loadAssistant();
-    const orderId = '9876543210';
-    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
-    const orderHistoryLink = {
-        href: 'https://www.etsy.com/conversations/with/fixturebuyer?ref=order_details',
-    };
-    const createdThreadLink = {
-        href: 'https://www.etsy.com/conversations/1712385939',
-    };
-    const scopeWith = links => ({ querySelectorAll: () => links });
-
-    sandbox.location.pathname = '/your/orders/sold/completed';
-    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
-    sandbox.location.href = orderComposeUrl;
-
-    assert.equal(api.MessageAdapter.isOrderComposePostSendPermalink(createdThreadLink), true);
-    assert.equal(
-        api.MessageAdapter.orderComposePostSendThreadIdentity(scopeWith([orderHistoryLink, createdThreadLink])),
-        '1712385939',
-    );
-    assert.equal(api.MessageAdapter.scopeHasOtherConversation(scopeWith([orderHistoryLink, createdThreadLink])), true,
-        'post-send evidence must not reopen the generic composer scope');
-
-    for (const links of [
-        [createdThreadLink],
-        [orderHistoryLink, { href: 'https://www.etsy.com/messages/1712385939' }],
-        [orderHistoryLink, createdThreadLink, { ...createdThreadLink }],
-        [orderHistoryLink, createdThreadLink, { href: 'https://www.etsy.com/messages/unrelated-thread' }],
-        [orderHistoryLink, { ...orderHistoryLink }, createdThreadLink],
-    ]) {
-        assert.equal(api.MessageAdapter.orderComposePostSendThreadIdentity(scopeWith(links)), '',
-            'only the exact two-link Etsy order-drawer shape is accepted');
-    }
-
-    for (const unsafe of [
-        'https://user@www.etsy.com/conversations/1712385939',
-        'https://www.etsy.com/conversations/1712385939?ref=orders',
-        'https://www.etsy.com/conversations/1712385939#message',
-        'https://www.etsy.com/conversations/0',
-        'https://www.etsy.com/conversations/thread-1712385939',
-        `https://www.etsy.com/conversations/${'1'.repeat(33)}`,
-    ]) {
-        assert.equal(api.MessageAdapter.isOrderComposePostSendPermalink({ href: unsafe }), false, unsafe);
-    }
-});
-
-test('post-send order drawer verification uses only its captured fail-closed scope', async () => {
-    const { api, sandbox } = await loadAssistant();
-    const orderId = '9876543210';
-    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
-    sandbox.location.pathname = '/your/orders/sold/completed';
-    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
-    sandbox.location.href = orderComposeUrl;
-
-    const composer = {};
-    const links = [
-        { href: 'https://www.etsy.com/conversations/with/fixturebuyer?ref=order_details' },
-        { href: 'https://www.etsy.com/conversations/1712385939' },
-    ];
-    const capturedScope = {
-        isConnected: true,
-        contains: candidate => candidate === composer,
-        querySelectorAll: () => links,
-    };
-    const identity = api.Router.conversationIdentity();
-    const pending = {
-        text: 'Exact sent fixture text',
-        baselineMatches: 0,
-        sourceWasCompose: true,
-        sourceComposer: composer,
-        sourceConversationScope: capturedScope,
-        sendCapturedAt: new Date().toISOString(),
-        orderId,
-        conversationId: identity,
-        conversationIdentity: identity,
-        routeFingerprint: api.Router.routeFingerprint(),
-        verificationToken: 4242,
-    };
-    const originalCountOutgoing = api.MessageAdapter.countOutgoing;
-    try {
-        api.MessageAdapter.countOutgoing = (_text, scope) => scope === capturedScope ? 1 : 0;
-        assert.equal(api.Verification.capturedOrderComposePostSendScope(pending), capturedScope);
-        assert.equal(await api.Verification.waitForPendingOutgoing(pending, 50), true);
-
-        assert.equal(api.Verification.capturedOrderComposePostSendScope({ ...pending, sendCapturedAt: '' }), null);
-        assert.equal(api.Verification.capturedOrderComposePostSendScope({ ...pending, orderId: '9876543211' }), null);
-        assert.equal(api.Verification.capturedOrderComposePostSendScope({ ...pending, conversationId: '1712385939' }), null);
-        assert.equal(api.Verification.capturedOrderComposePostSendScope({ ...pending, conversationIdentity: '1712385939' }), null);
-        assert.equal(api.Verification.capturedOrderComposePostSendScope({ ...pending, routeFingerprint: 'stale-route' }), null);
-        assert.equal(api.Verification.capturedOrderComposePostSendScope({
-            ...pending,
-            sourceConversationScope: { ...capturedScope, isConnected: false },
-        }), null);
-        assert.equal(api.Verification.capturedOrderComposePostSendScope({
-            ...pending,
-            sourceConversationScope: { ...capturedScope, contains: () => false },
-        }), null);
-        assert.equal(api.Verification.capturedOrderComposePostSendScope({
-            ...pending,
-            sourceConversationScope: { ...capturedScope, querySelectorAll: () => [links[0], links[1], { ...links[1] }] },
-        }), null);
-        api.Verification.invalidatedTokens.add(pending.verificationToken);
-        assert.equal(api.Verification.capturedOrderComposePostSendScope(pending), null);
-        api.Verification.invalidatedTokens.delete(pending.verificationToken);
-
-        api.MessageAdapter.countOutgoing = () => 0;
-        assert.equal(await api.Verification.waitForPendingOutgoing(pending, 1), false,
-            'the exact post-send links are not sufficient without a new matching outgoing delta');
-    } finally {
-        api.MessageAdapter.countOutgoing = originalCountOutgoing;
-    }
-});
-
 test('post-send compose-to-thread verification stays bound to the same order and customer only', async () => {
     const { api, sandbox } = await loadAssistant();
     const composeUrl = 'https://www.etsy.com/messages/new?with_id=111&recipient_id=111&referring_id=10000001&referring_type=receipt';
@@ -1645,19 +1531,20 @@ test('message-list language controls and rows are width-bounded inside the assis
     assert.match(source, /\.ma-message-list__item \.ma-disclosure__body\{min-width:0;overflow-wrap:anywhere\}/);
 });
 
-test('delivered-order layout uses responsive premium cards inside the narrow assistant panel', async () => {
+test('delivered-order layout contains table overflow inside the narrow assistant panel', async () => {
     const source = readUserscriptSource();
     const { api } = await loadAssistant();
     api.UI.state.ordersTemplateInitialized = false;
     api.UI.refreshOrders();
 
     const markup = api.UI.renderOrders();
-    assert.match(markup, /class="ma-automation-hero"/);
-    assert.match(markup, /class="ma-order-toolbar"/);
-    assert.match(markup, /class="ma-empty-inline"|class="ma-order-grid"/);
+    assert.match(markup, /class="ma-split ma-orders-layout"/);
+    assert.match(markup, /class="ma-stack ma-orders-list"[\s\S]*class="ma-table-wrap"/);
     assert.match(source, /\.ma-main\{container-type:inline-size\}/);
-    assert.match(source, /\.ma-order-grid\{display:grid;grid-template-columns:repeat\(auto-fill,minmax\(350px,1fr\)\)/);
-    assert.match(source, /@container \(max-width:720px\)\{\.ma-view\{padding:16px\}\.ma-order-grid\{grid-template-columns:1fr\}/);
+    assert.match(source, /\.ma-orders-layout,\.ma-orders-layout>\*,\.ma-orders-list\{min-width:0;max-width:100%\}/);
+    assert.match(source, /\.ma-orders-list\{grid-template-columns:minmax\(0,1fr\)\}/);
+    assert.match(source, /\.ma-orders-list>\.ma-table-wrap\{width:100%;min-width:0;max-width:100%;overflow-x:auto\}/);
+    assert.match(source, /@container \(max-width:850px\)\{\.ma-orders-layout\{grid-template-columns:minmax\(0,1fr\)\}\}/);
 });
 
 test('message-list open action validates a canonical Etsy conversation URL before navigation', async () => {
@@ -4502,10 +4389,10 @@ test('delivered-order screen selects the review request and displays the persist
     assert.equal(api.UI.state.selectedTemplateId, 'tpl-review-request');
     const markup = api.UI.renderOrders();
     assert.match(markup, /Yorum rica — küçük işletme/);
-    assert.match(markup, /Yalnız “Yorum yok” olarak güncel biçimde onayladığınız siparişler/);
-    assert.match(markup, /Otopilotu Başlat/);
+    assert.match(markup, /Önce her siparişin yorum durumunu işaretleyin/);
+    assert.match(markup, /Yorum Kontrolü/);
     assert.match(markup, /data-action="orders-select-all">Onaylıları Seç/);
-    assert.match(markup, /aria-label="Otomasyon durumu"/);
+    assert.match(markup, /“Yorum yok” onayı 2 saat geçerlidir/);
 
     api.Store.templates.find((item) => item.id === 'tpl-review-request').archived = true;
     api.UI.refreshOrders();
@@ -4563,16 +4450,6 @@ test('AI campaign instruction allows only an honest request for the dedicated pr
     assert.equal(api.DEFAULT_SETTINGS.autoSendCampaign, false);
     assert.equal(api.campaignAutoSendAllowed({ purpose: 'review_request' }, { autoSendCampaign: true }), false);
     assert.equal(api.campaignAutoSendAllowed({ purpose: 'delivery_followup' }, { autoSendCampaign: true }), true);
-    assert.equal(api.campaignAutoSendAllowed(
-        { purpose: 'review_request' },
-        { autoSendCampaign: false },
-        { runMode: 'autopilot', runState: 'running' },
-    ), true);
-    assert.equal(api.campaignAutoSendAllowed(
-        { purpose: 'review_request' },
-        { autoSendCampaign: true },
-        { runMode: 'autopilot', runState: 'paused' },
-    ), false);
 });
 
 test('status schema migration preserves operational state and fails closed on malformed outreach', async () => {
@@ -4703,7 +4580,7 @@ test('review decision control selects an eligible recipient and renders its dura
     const markup = api.UI.renderOrders();
     assert.match(markup, /data-review-decision="order-1"/);
     assert.match(markup, /value="eligible" selected/);
-    assert.match(markup, /data-order-select="order-1"[^>]*checked/);
+    assert.match(markup, /data-order-select="order-1" checked/);
 });
 
 test('failed review-decision persistence rerenders the durable value instead of leaving a false selection', async () => {
@@ -4987,9 +4864,10 @@ test('pending send verification renders reconciliation guidance without advance 
         status: { status: 'sent_pending_verification' },
     }];
     const ordersMarkup = api.UI.renderOrders();
-    assert.match(ordersMarkup, /Etsy mesaj balonu.*doğrulanamadı.*tekrar gönderilmeyecek/is);
-    assert.match(ordersMarkup, /data-order-open="order-1"[^>]*>.*Konuşmayı Aç/is);
-    assert.doesNotMatch(ordersMarkup, /data-order-confirm-(?:sent|not-sent)=/);
+    assert.match(ordersMarkup, /Gönderim sonucu.*doğrulanmayı bekliyor/i);
+    assert.match(ordersMarkup, /Etsy.*kontrol.*Gönderildi.*Gönderilmedi/is);
+    assert.match(ordersMarkup, /data-order-confirm-sent="order-1"/);
+    assert.match(ordersMarkup, /data-order-confirm-not-sent="order-1"/);
     assert.doesNotMatch(ordersMarkup, /data-action="campaign-(?:start|cancel)"/);
     assert.doesNotMatch(ordersMarkup, /data-order-skip=/);
 });
@@ -5533,8 +5411,7 @@ test('failed outgoing verification remains pending and never moves to the next b
         toast: api.UI.toast,
         refreshCurrent: api.UI.refreshCurrent,
     };
-    const textarea = { value: 'Edited final text', offsetParent: {} };
-    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getTextarea = () => ({ value: 'Edited final text', offsetParent: {} });
     api.MessageAdapter.getSendButton = () => button;
     api.MessageAdapter.context = () => ({ conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1' });
     api.MessageAdapter.countOutgoing = () => 0;
@@ -5760,19 +5637,11 @@ test('manual sent and not-sent reconciliation update campaign, order, and outrea
     const sentEnvironment = await loadAssistant();
     installPendingResolutionFixture(sentEnvironment);
     assert.equal(await sentEnvironment.api.Campaign.resolvePendingSend('order-1', 'sent'), 'sent');
-    await sentEnvironment.api.Store.historyWriteChain;
     assert.equal(sentEnvironment.api.Store.campaign.items[0].status, 'sent');
     assert.equal(sentEnvironment.api.Store.campaign.currentIndex, 1);
     assert.equal(sentEnvironment.api.Store.statuses.orders['order-1'].status, 'sent');
     assert.equal(sentEnvironment.api.Store.statuses.orders['order-1'].manuallyConfirmed, true);
     assert.equal(sentEnvironment.api.Store.statuses.outreach['order-1'].review_request.workflow, 'sent');
-    assert.equal(sentEnvironment.api.Store.statuses.conversations['order-1'].status, 'sent');
-    const manualVerified = sentEnvironment.api.Store.history.filter(event => event.type === 'send_verified');
-    assert.equal(manualVerified.length, 1);
-    assert.equal(manualVerified[0].orderId, 'order-1');
-    assert.equal(manualVerified[0].conversationId, 'order-1');
-    assert.equal(manualVerified[0].detail.manuallyConfirmed, true);
-    assert.equal(sentEnvironment.api.History.stats().verified, 1);
 
     const notSentEnvironment = await loadAssistant();
     const fixture = installPendingResolutionFixture(notSentEnvironment);
@@ -5784,23 +5653,6 @@ test('manual sent and not-sent reconciliation update campaign, order, and outrea
         copy(notSentEnvironment.api.Store.statuses.outreach['order-1'].review_request),
         copy(fixture.previousOutreach),
     );
-    assert.equal(notSentEnvironment.api.Store.history.some(event => event.type === 'send_verified'), false);
-});
-
-test('manual sent reconciliation cannot be blocked by an auxiliary history write', async () => {
-    const environment = await loadAssistant();
-    installPendingResolutionFixture(environment);
-    environment.api.History.tryLogOnce = () => new Promise(() => {});
-
-    const result = await Promise.race([
-        environment.api.Campaign.resolvePendingSend('order-1', 'sent'),
-        new Promise(resolve => setTimeout(() => resolve('blocked'), 100)),
-    ]);
-    assert.equal(result, 'sent');
-    assert.equal(environment.api.Store.campaign.items[0].status, 'sent');
-    assert.equal(environment.api.Store.statuses.orders['order-1'].status, 'sent');
-    assert.equal(environment.api.Store.statuses.outreach['order-1'].review_request.workflow, 'sent');
-    assert.equal(environment.api.Store.statuses.conversations['order-1'].status, 'sent');
 });
 
 test('cancel and skip restore the exact prior non-review order status', async () => {
@@ -6465,8 +6317,7 @@ test('a native Etsy Send click during guided preparation is suppressed before th
             nativeStopped ||= event.immediatePropagationStopped;
         },
     );
-    const textarea = { value: 'Edited final text', offsetParent: {} };
-    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getTextarea = () => ({ value: 'Edited final text', offsetParent: {} });
     api.MessageAdapter.getSendButton = () => button;
     api.MessageAdapter.context = () => ({ conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1' });
     api.MessageAdapter.countOutgoing = () => outgoing ? 1 : 0;
@@ -6574,106 +6425,12 @@ test('not-sent recovery can resume after its first status restore is interrupted
     assert.equal(api.Store.campaign.items[0].sendResolutionToken, fixture.attemptToken);
     assert.equal(api.Store.statuses.orders['order-1'].status, 'sent_pending_verification');
 
-    const recovered = await api.Campaign.recoverDurableSendPartials();
-    assert.deepEqual([...recovered.restoredNotSentItemIds], ['item-1']);
+    assert.equal(await api.Campaign.resolvePendingSend('order-1', 'not_sent'), 'not_sent');
     assert.deepEqual(copy(api.Store.statuses.orders['order-1']), copy(fixture.previousOrderStatus));
     assert.deepEqual(
         copy(api.Store.statuses.outreach['order-1'].review_request),
         copy(fixture.previousOutreach),
     );
-});
-
-test('status-first pre-dispatch interruption is fenced and restored before any retry', async () => {
-    const environment = await loadAssistant();
-    const { api, storage } = environment;
-    const fixture = installGuidedFixture(environment);
-    const draftText = 'Prepared review request';
-    const draftDigest = await api.sha256Text(draftText);
-    const attemptToken = 'pre-dispatch-attempt-1';
-    const campaign = copy(api.Store.campaign);
-    campaign.items[0].draftText = draftText;
-    campaign.items[0].draftDigest = draftDigest;
-    campaign.items[0].reservation = {
-        ownerId: 'interrupted-tab', token: attemptToken, expiresAt: '2099-01-01T00:00:00.000Z',
-    };
-    const previousOrderStatus = {
-        ...copy(api.Store.statuses.orders['order-1']),
-        messageDigest: draftDigest,
-    };
-    const previousOutreach = copy(api.Store.statuses.outreach['order-1'].review_request);
-    const statuses = copy(api.Store.statuses);
-    statuses.orders['order-1'] = {
-        ...previousOrderStatus,
-        status: 'sent_pending_verification',
-        sendAttemptToken: attemptToken,
-        previousOrderStatus,
-        previousOutreach,
-    };
-    statuses.outreach['order-1'].review_request = {
-        ...previousOutreach,
-        workflow: 'sent_pending_verification',
-        sendAttemptToken: attemptToken,
-    };
-    storage.set(api.KEYS.campaign, copy(campaign));
-    storage.set(api.KEYS.statuses, copy(statuses));
-    api.Store.commitCoordinatedState(campaign, statuses, { invalidate: false, refresh: false });
-
-    assert.equal(api.Campaign.hasUnresolvedSend(campaign, statuses), true);
-    const recovered = await api.Campaign.recoverDurableSendPartials();
-    assert.deepEqual([...recovered.restoredPreDispatchItemIds], [fixture.first.id]);
-    assert.deepEqual(copy(api.Store.statuses.orders['order-1']), previousOrderStatus);
-    assert.deepEqual(copy(api.Store.statuses.outreach['order-1'].review_request), previousOutreach);
-    assert.equal(api.Store.campaign.items[0].status, 'inserted');
-});
-
-test('inserted campaign journal repairs its draft and outreach ledger before resume', async () => {
-    const environment = await loadAssistant();
-    const { api, storage } = environment;
-    installGuidedFixture(environment);
-    const draftText = 'Prepared review request';
-    const draftDigest = await api.sha256Text(draftText);
-    const campaign = copy(api.Store.campaign);
-    campaign.items[0].draftText = draftText;
-    campaign.items[0].draftDigest = draftDigest;
-    campaign.items[0].insertedAt = '2026-08-30T10:00:00.000Z';
-    const statuses = copy(api.Store.statuses);
-    statuses.orders['order-1'].status = 'draft';
-    delete statuses.orders['order-1'].messageHash;
-    delete statuses.orders['order-1'].messageDigest;
-    statuses.outreach['order-1'].review_request.workflow = 'queued';
-    delete statuses.outreach['order-1'].review_request.messageHash;
-    storage.set(api.KEYS.campaign, copy(campaign));
-    storage.set(api.KEYS.statuses, copy(statuses));
-    api.Store.commitCoordinatedState(campaign, statuses, { invalidate: false, refresh: false });
-
-    await api.Campaign.recoverDurableSendPartials();
-    assert.equal(api.Store.statuses.orders['order-1'].status, 'inserted');
-    assert.equal(api.Store.statuses.orders['order-1'].messageHash, api.hashText(draftText));
-    assert.equal(api.Store.statuses.orders['order-1'].messageDigest, draftDigest);
-    assert.equal(api.Store.statuses.outreach['order-1'].review_request.workflow, 'prepared');
-    assert.equal(api.Store.statuses.outreach['order-1'].review_request.messageHash, api.hashText(draftText));
-});
-
-test('terminal durable send proof cannot be overwritten by a new campaign', async () => {
-    const environment = await loadAssistant();
-    const { api, storage } = environment;
-    installPendingResolutionFixture(environment);
-    const campaign = copy(api.Store.campaign);
-    campaign.status = 'completed';
-    campaign.completedAt = '2026-08-30T10:00:00.000Z';
-    campaign.items[0].status = 'sent';
-    campaign.items[0].sendResolutionOutcome = 'verified';
-    campaign.items[0].sendResolutionToken = campaign.items[0].sendAttemptToken;
-    storage.set(api.KEYS.campaign, copy(campaign));
-    api.Store.commitCoordinatedState(campaign, api.Store.statuses, { invalidate: false, refresh: false });
-
-    await assert.rejects(
-        api.Store.saveCampaignLocked({
-            id: 'replacement-campaign', status: 'initializing', revision: 0, currentIndex: 0, items: [],
-        }, { expectedRevision: 0 }),
-        /Önceki kampanyanın kalıcı gönderim sonucu/,
-    );
-    assert.equal(storage.get(api.KEYS.campaign).id, campaign.id);
 });
 
 test('a draft resolved as not sent can be dispatched and verified on a fresh attempt', async () => {
@@ -6685,8 +6442,7 @@ test('a draft resolved as not sent can be dispatched and verified on a fresh att
 
     let outgoing = false;
     const button = makeNativeSendButton(() => { outgoing = true; });
-    const textarea = { value: 'Edited final text', offsetParent: {} };
-    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getTextarea = () => ({ value: 'Edited final text', offsetParent: {} });
     api.MessageAdapter.getSendButton = () => button;
     api.MessageAdapter.context = () => ({ conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1' });
     api.MessageAdapter.countOutgoing = () => outgoing ? 1 : 0;
@@ -7128,7 +6884,7 @@ test('campaign resume never overwrites a different occupied composer mounted whi
     }
 });
 
-test('campaign skip is state-preserving and rejects unresolved sends', async () => {
+test('campaign skip is a state-preserving no-op without a matching skippable active item', async () => {
     const mismatchedEnvironment = await loadAssistant();
     const mismatchedFixture = installGuidedFixture(mismatchedEnvironment);
     const mismatchedBefore = {
@@ -7150,10 +6906,8 @@ test('campaign skip is state-preserving and rejects unresolved sends', async () 
         statuses: copy(terminalEnvironment.api.Store.statuses),
     };
 
-    await assert.rejects(
-        terminalEnvironment.api.Campaign.skipOrder('order-1'),
-        /sonucu.*uzla|doğrulama/i,
-    );
+    const terminal = await terminalEnvironment.api.Campaign.skipOrder('order-1');
+    assert.equal(terminal.skipped, false);
     assert.deepEqual(copy(terminalEnvironment.api.Store.campaign), terminalBefore.campaign);
     assert.deepEqual(copy(terminalEnvironment.api.Store.statuses), terminalBefore.statuses);
 });
@@ -9234,873 +8988,4 @@ test('history download defers object URL revocation until after the click turn',
     assert.ok(scheduled?.delay >= 1000, 'object URL revocation must be deferred long enough for the download to begin');
     scheduled.callback();
     assert.deepEqual(events, ['click', 'revoke:blob:test-history']);
-});
-
-test('explicit campaign autopilot authorizes review-request sending only while running', async () => {
-    const { api } = await loadAssistant();
-    const reviewRequest = { purpose: 'review_request' };
-
-    assert.equal(api.campaignAutoSendAllowed(
-        reviewRequest,
-        { autoSendCampaign: false },
-        { runMode: 'autopilot', runState: 'running' },
-    ), true);
-    assert.equal(api.campaignAutoSendAllowed(
-        reviewRequest,
-        { autoSendCampaign: true },
-        { runMode: 'autopilot', runState: 'paused' },
-    ), false);
-});
-
-test('pending verification rejects autopilot pause without mutating campaign state or revision', async () => {
-    const environment = await loadAssistant();
-    const { api, storage } = environment;
-    installPendingResolutionFixture(environment);
-    const runningCampaign = copy(api.Store.campaign);
-    runningCampaign.runMode = 'autopilot';
-    runningCampaign.runState = 'running';
-    storage.set(api.KEYS.campaign, copy(runningCampaign));
-    api.Store.commitCoordinatedState(runningCampaign, api.Store.statuses, { invalidate: false, refresh: false });
-    const beforeCampaign = copy(api.Store.campaign);
-    const beforePersisted = copy(storage.get(api.KEYS.campaign));
-    const beforeGeneration = api.Campaign.workGeneration;
-
-    await assert.rejects(api.Campaign.pauseAutopilot({
-        expectedCampaignId: beforeCampaign.id,
-        expectedRevision: beforeCampaign.revision,
-    }));
-
-    assert.deepEqual(copy(api.Store.campaign), beforeCampaign);
-    assert.deepEqual(copy(storage.get(api.KEYS.campaign)), beforePersisted);
-    assert.equal(api.Store.campaign.runState, 'running');
-    assert.equal(api.Store.campaign.revision, beforeCampaign.revision);
-    assert.equal(api.Campaign.workGeneration, beforeGeneration);
-});
-
-test('stale autopilot Start and Pause controls leave state and work generation unchanged', async () => {
-    const environment = await loadAssistant();
-    const { api, storage } = environment;
-    installGuidedFixture(environment);
-    const pausedCampaign = copy(api.Store.campaign);
-    pausedCampaign.runMode = 'autopilot';
-    pausedCampaign.runState = 'paused';
-    storage.set(api.KEYS.campaign, copy(pausedCampaign));
-    api.Store.commitCoordinatedState(pausedCampaign, api.Store.statuses, { invalidate: false, refresh: false });
-    const beforeStart = copy(api.Store.campaign);
-    const beforeStartGeneration = api.Campaign.workGeneration;
-
-    await assert.rejects(api.Campaign.startAutopilot({
-        expectedCampaignId: 'stale-campaign-id',
-        expectedRevision: beforeStart.revision,
-    }), error => {
-        assert.equal(error?.code, 'CAMPAIGN_REVISION_CONFLICT');
-        return true;
-    });
-    assert.deepEqual(copy(api.Store.campaign), beforeStart);
-    assert.deepEqual(copy(storage.get(api.KEYS.campaign)), beforeStart);
-    assert.equal(api.Campaign.workGeneration, beforeStartGeneration);
-
-    const runningCampaign = copy(api.Store.campaign);
-    runningCampaign.runState = 'running';
-    storage.set(api.KEYS.campaign, copy(runningCampaign));
-    api.Store.commitCoordinatedState(runningCampaign, api.Store.statuses, { invalidate: false, refresh: false });
-    const beforePause = copy(api.Store.campaign);
-    const beforePauseGeneration = api.Campaign.workGeneration;
-
-    await assert.rejects(api.Campaign.pauseAutopilot({
-        expectedCampaignId: beforePause.id,
-        expectedRevision: beforePause.revision + 1,
-    }), error => {
-        assert.equal(error?.code, 'CAMPAIGN_REVISION_CONFLICT');
-        return true;
-    });
-    assert.deepEqual(copy(api.Store.campaign), beforePause);
-    assert.deepEqual(copy(storage.get(api.KEYS.campaign)), beforePause);
-    assert.equal(api.Campaign.workGeneration, beforePauseGeneration);
-});
-
-test('order-compose explicit autopilot journals exact draft SHA before one automatic dispatch', async () => {
-    const environment = await loadAssistant();
-    const { api, sandbox, storage } = environment;
-    const orderId = '9876543210';
-    const customerName = 'Fixture Buyer';
-    const orderComposeUrl = `https://www.etsy.com/your/orders/sold/completed?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
-    const identity = `compose:order:receipt:${orderId}`;
-    const purchasePrefill = `https://www.etsy.com/your/purchases/${orderId}`;
-    sandbox.location.pathname = '/your/orders/sold/completed';
-    sandbox.location.search = `?ref=seller-platform-mcnav&expand_convo=true&order_id=${orderId}`;
-    sandbox.location.href = orderComposeUrl;
-    api.Store.settings.replyInCustomerLanguage = false;
-    api.Store.settings.autoSendCampaign = false;
-    await api.Campaign.create([{
-        orderId,
-        customerName,
-        itemTitle: 'Custom Team Shirt',
-        messageUrl: orderComposeUrl,
-    }], 'tpl-delivered', 'template', { runMode: 'autopilot' });
-    assert.equal(api.Store.campaign.runMode, 'autopilot');
-    assert.equal(api.Store.campaign.runState, 'running');
-
-    const textarea = { value: purchasePrefill, offsetParent: {} };
-    const context = {
-        conversationId: identity,
-        customerName,
-        customerFirstName: 'Fixture',
-        orderId,
-        itemTitle: 'Custom Team Shirt',
-        messages: [],
-        lastCustomerMessage: '',
-        routeFingerprint: api.Router.routeFingerprint(),
-    };
-    const originals = {
-        getTextarea: api.MessageAdapter.getTextarea,
-        waitForTextarea: api.MessageAdapter.waitForTextarea,
-        context: api.MessageAdapter.context,
-        insert: api.MessageAdapter.insert,
-        autoSendIfCurrent: api.Campaign.autoSendIfCurrent,
-        onSendClick: api.Verification.onSendClick,
-        open: api.UI.open,
-        toast: api.UI.toast,
-        setTimeout: sandbox.setTimeout,
-    };
-    let insertCalls = 0;
-    let autoSendCalls = 0;
-    let verificationCalls = 0;
-    let digestAtDispatch = '';
-    api.MessageAdapter.getTextarea = () => textarea;
-    api.MessageAdapter.waitForTextarea = async () => textarea;
-    api.MessageAdapter.context = () => context;
-    api.MessageAdapter.insert = (text, target) => {
-        insertCalls += 1;
-        target.value = text;
-    };
-    api.Campaign.autoSendIfCurrent = async (run) => {
-        autoSendCalls += 1;
-        const persistedCampaign = storage.get(api.KEYS.campaign);
-        const persistedStatuses = storage.get(api.KEYS.statuses);
-        const persistedItem = persistedCampaign?.items?.[persistedCampaign.currentIndex];
-        assert.equal(persistedItem?.draftDigest, run.messageDigest);
-        assert.equal(persistedStatuses?.orders?.[orderId]?.messageDigest, run.messageDigest);
-        digestAtDispatch = run.messageDigest;
-        return true;
-    };
-    api.Verification.onSendClick = async () => {
-        verificationCalls += 1;
-        return true;
-    };
-    api.UI.open = () => {};
-    api.UI.toast = () => {};
-    sandbox.setTimeout = callback => {
-        callback();
-        return 1;
-    };
-
-    try {
-        assert.equal(await api.Campaign.resume(), true);
-        const expectedDigest = await api.sha256Text(textarea.value);
-        const storedCampaign = storage.get(api.KEYS.campaign);
-        const storedItem = storedCampaign.items[storedCampaign.currentIndex];
-        const storedOrder = storage.get(api.KEYS.statuses).orders[orderId];
-        assert.equal(insertCalls, 1);
-        assert.equal(autoSendCalls, 1);
-        assert.equal(verificationCalls, 1);
-        assert.equal(storedItem.status, 'inserted');
-        assert.equal(storedItem.draftText, textarea.value);
-        assert.equal(storedItem.draftDigest, expectedDigest);
-        assert.equal(storedOrder.messageDigest, expectedDigest);
-        assert.equal(digestAtDispatch, expectedDigest);
-    } finally {
-        Object.assign(api.MessageAdapter, {
-            getTextarea: originals.getTextarea,
-            waitForTextarea: originals.waitForTextarea,
-            context: originals.context,
-            insert: originals.insert,
-        });
-        api.Campaign.autoSendIfCurrent = originals.autoSendIfCurrent;
-        api.Verification.onSendClick = originals.onSendClick;
-        api.UI.open = originals.open;
-        api.UI.toast = originals.toast;
-        sandbox.setTimeout = originals.setTimeout;
-    }
-});
-
-test('inserted autopilot reload with a draft digest mismatch pauses without dispatch', async () => {
-    const environment = await loadAssistant();
-    const { api, storage } = environment;
-    installGuidedFixture(environment);
-    const campaign = copy(api.Store.campaign);
-    campaign.runMode = 'autopilot';
-    campaign.runState = 'running';
-    campaign.items[0].draftText = 'Expected exact automation draft';
-    campaign.items[0].draftDigest = await api.sha256Text('Different persisted draft');
-    storage.set(api.KEYS.campaign, copy(campaign));
-    api.Store.commitCoordinatedState(campaign, api.Store.statuses, { invalidate: false, refresh: false });
-    const beforeRevision = api.Store.campaign.revision;
-    const beforeGeneration = api.Campaign.workGeneration;
-    const originals = {
-        sendCurrentByUser: api.Campaign.sendCurrentByUser,
-        autoSendIfCurrent: api.Campaign.autoSendIfCurrent,
-        getSendButton: api.MessageAdapter.getSendButton,
-    };
-    let guidedDispatches = 0;
-    let automaticDispatches = 0;
-    let sendClicks = 0;
-    api.Campaign.sendCurrentByUser = async () => { guidedDispatches += 1; return true; };
-    api.Campaign.autoSendIfCurrent = async () => { automaticDispatches += 1; return true; };
-    api.MessageAdapter.getSendButton = () => ({
-        disabled: false,
-        click() { sendClicks += 1; },
-    });
-
-    try {
-        await assert.rejects(api.Campaign.resume());
-        const persisted = storage.get(api.KEYS.campaign);
-        assert.equal(api.Store.campaign.runMode, 'autopilot');
-        assert.equal(api.Store.campaign.runState, 'paused');
-        assert.equal(api.Store.campaign.revision, beforeRevision + 1);
-        assert.equal(api.Campaign.workGeneration, beforeGeneration + 1);
-        assert.equal(persisted.runState, 'paused');
-        assert.equal(persisted.items[0].draftText, 'Expected exact automation draft');
-        assert.equal(guidedDispatches, 0);
-        assert.equal(automaticDispatches, 0);
-        assert.equal(sendClicks, 0);
-    } finally {
-        api.Campaign.sendCurrentByUser = originals.sendCurrentByUser;
-        api.Campaign.autoSendIfCurrent = originals.autoSendIfCurrent;
-        api.MessageAdapter.getSendButton = originals.getSendButton;
-    }
-});
-
-test('verified autopilot item advances to the next recipient only while running', async () => {
-    const { api, storage, sandbox } = await loadAssistant();
-    const statuses = api.normalizeStatusState({});
-    const campaign = {
-        id: 'campaign-1', status: 'active', revision: 3, currentIndex: 1,
-        runMode: 'autopilot', runState: 'running',
-        items: [
-            { id: 'item-a', status: 'sent', messageUrl: 'https://www.etsy.com/messages/order-a' },
-            { id: 'item-b', status: 'pending', messageUrl: 'https://www.etsy.com/messages/order-b' },
-        ],
-    };
-    storage.set(api.KEYS.campaign, copy(campaign));
-    storage.set(api.KEYS.statuses, copy(statuses));
-    api.Store.commitCoordinatedState(campaign, statuses, { invalidate: false, refresh: false });
-    sandbox.location.pathname = '/messages/order-a';
-    sandbox.location.search = '';
-    sandbox.location.href = 'https://www.etsy.com/messages/order-a';
-    const originalSetTimeout = sandbox.setTimeout;
-    sandbox.setTimeout = callback => {
-        callback();
-        return 1;
-    };
-
-    try {
-        assert.equal(await api.Campaign.advanceAfterVerified({
-            campaignId: campaign.id,
-            campaignItemId: 'item-a',
-            advanceAfterVerified: false,
-        }), true);
-        assert.equal(sandbox.location.href, 'https://www.etsy.com/messages/order-b');
-
-        const pausedCampaign = copy(storage.get(api.KEYS.campaign));
-        pausedCampaign.runState = 'paused';
-        storage.set(api.KEYS.campaign, copy(pausedCampaign));
-        api.Store.commitCoordinatedState(pausedCampaign, api.Store.statuses, { invalidate: false, refresh: false });
-        sandbox.location.href = 'https://www.etsy.com/messages/order-a';
-        assert.equal(await api.Campaign.advanceAfterVerified({
-            campaignId: campaign.id,
-            campaignItemId: 'item-a',
-            advanceAfterVerified: true,
-        }), false);
-        assert.equal(sandbox.location.href, 'https://www.etsy.com/messages/order-a');
-    } finally {
-        sandbox.setTimeout = originalSetTimeout;
-    }
-});
-
-function convertGuidedCampaignFixtureToDeliveryFollowup(environment) {
-    const { api, storage } = environment;
-    const template = api.TemplateEngine.get('tpl-delivered');
-    const templateHash = api.templateFingerprint(template);
-    const campaign = copy(api.Store.campaign);
-    campaign.purpose = 'delivery_followup';
-    campaign.templateId = template.id;
-    campaign.templateHash = templateHash;
-    for (const item of campaign.items) {
-        item.purpose = 'delivery_followup';
-        item.templateId = template.id;
-        item.templateHash = templateHash;
-    }
-    const statuses = copy(api.Store.statuses);
-    statuses.orders['order-1'] = {
-        ...statuses.orders['order-1'],
-        purpose: 'delivery_followup',
-        templateId: template.id,
-        templateHash,
-    };
-    delete statuses.outreach['order-1'];
-    delete statuses.outreach['order-2'];
-    storage.set(api.KEYS.campaign, copy(campaign));
-    storage.set(api.KEYS.statuses, copy(statuses));
-    api.Store.commitCoordinatedState(campaign, statuses, { invalidate: false, refresh: false });
-    return { campaign, statuses, templateHash };
-}
-
-function injectFirstSentStatusWriteFailure(environment, message) {
-    const { api, sandbox } = environment;
-    const originalSetValue = sandbox.GM.setValue;
-    let failures = 0;
-    sandbox.GM.setValue = async (key, value) => {
-        if (key === api.KEYS.statuses
-            && value?.orders?.['order-1']?.status === 'sent'
-            && failures === 0) {
-            failures += 1;
-            throw new Error(message);
-        }
-        return originalSetValue(key, value);
-    };
-    return {
-        failures: () => failures,
-        restore() { sandbox.GM.setValue = originalSetValue; },
-    };
-}
-
-async function recoverDurableSendPartialAfterReload(storage, options = {}) {
-    const environment = await loadAssistant({ storage });
-    const { api, sandbox } = environment;
-    const persistedCampaign = copy(storage.get(api.KEYS.campaign));
-    const persistedStatuses = copy(storage.get(api.KEYS.statuses));
-    api.Store.commitCoordinatedState(persistedCampaign, persistedStatuses, { invalidate: false, refresh: false });
-    const originalSetValue = sandbox.GM.setValue;
-    let advancesAfterSent = 0;
-    sandbox.GM.setValue = async (key, value) => {
-        if (key === api.KEYS.campaign
-            && value?.id === persistedCampaign.id
-            && value?.currentIndex === 1) {
-            advancesAfterSent += 1;
-            assert.equal(storage.get(api.KEYS.statuses)?.orders?.['order-1']?.status, 'sent',
-                'campaign advancement must happen only after the sent status is durable');
-        }
-        return originalSetValue(key, value);
-    };
-    try {
-        assert.equal(typeof api.Campaign.recoverDurableSendPartials, 'function');
-        await api.Campaign.recoverDurableSendPartials();
-    } finally {
-        sandbox.GM.setValue = originalSetValue;
-    }
-
-    const recoveredCampaign = storage.get(api.KEYS.campaign);
-    const recoveredStatuses = storage.get(api.KEYS.statuses);
-    const item = recoveredCampaign.items[0];
-    const order = recoveredStatuses.orders['order-1'];
-    assert.equal(order.status, 'sent');
-    assert.equal(order.campaignId, recoveredCampaign.id);
-    assert.equal(order.campaignItemId, item.id);
-    assert.equal(order.purpose, item.purpose);
-    assert.equal(order.templateId, item.templateId);
-    assert.equal(order.templateHash, item.templateHash);
-    assert.equal(recoveredCampaign.currentIndex, 1);
-    assert.equal(recoveredCampaign.items[1].status, 'pending');
-    assert.equal(advancesAfterSent, 1);
-    if (options.expectReviewOutreach) {
-        const outreach = recoveredStatuses.outreach['order-1']?.review_request;
-        assert.equal(outreach?.workflow, 'sent');
-        assert.equal(outreach?.campaignId, recoveredCampaign.id);
-        assert.equal(outreach?.campaignItemId, item.id);
-        assert.equal(outreach?.templateId, item.templateId);
-        assert.equal(outreach?.templateHash, item.templateHash);
-        assert.equal(outreach?.sendAttemptToken, '');
-    }
-    return { api, environment, recoveredCampaign, recoveredStatuses };
-}
-
-test('verified delivery send recovers its durable campaign-first partial before advancing', async () => {
-    const environment = await loadAssistant();
-    const { api, sandbox, storage } = environment;
-    installGuidedFixture(environment, { twoItems: true });
-    convertGuidedCampaignFixtureToDeliveryFollowup(environment);
-    const initialHref = sandbox.location.href;
-    const button = makeNativeSendButton();
-    const textarea = { value: 'Exact verified delivery follow-up', offsetParent: {} };
-    const originals = {
-        getTextarea: api.MessageAdapter.getTextarea,
-        getSendButton: api.MessageAdapter.getSendButton,
-        context: api.MessageAdapter.context,
-        countOutgoing: api.MessageAdapter.countOutgoing,
-        waitForPendingOutgoing: api.Verification.waitForPendingOutgoing,
-        toast: api.UI.toast,
-        refreshCurrent: api.UI.refreshCurrent,
-    };
-    api.MessageAdapter.getTextarea = () => textarea;
-    api.MessageAdapter.getSendButton = () => button;
-    api.MessageAdapter.context = () => ({
-        conversationId: 'order-1', customerName: 'Ashley', orderId: 'order-1',
-    });
-    api.MessageAdapter.countOutgoing = () => 0;
-    api.Verification.waitForPendingOutgoing = async () => true;
-    api.UI.toast = () => {};
-    api.UI.refreshCurrent = async () => {};
-    const failure = injectFirstSentStatusWriteFailure(environment, 'injected verified status finalize failure');
-
-    try {
-        await assert.rejects(
-            api.Campaign.sendCurrentByUser(),
-            /injected verified status finalize failure/,
-        );
-    } finally {
-        failure.restore();
-        Object.assign(api.MessageAdapter, {
-            getTextarea: originals.getTextarea,
-            getSendButton: originals.getSendButton,
-            context: originals.context,
-            countOutgoing: originals.countOutgoing,
-        });
-        api.Verification.waitForPendingOutgoing = originals.waitForPendingOutgoing;
-        api.UI.toast = originals.toast;
-        api.UI.refreshCurrent = originals.refreshCurrent;
-    }
-
-    const partialCampaign = storage.get(api.KEYS.campaign);
-    const partialStatuses = storage.get(api.KEYS.statuses);
-    assert.equal(failure.failures(), 1);
-    assert.equal(button.clickCount, 1);
-    assert.equal(sandbox.location.href, initialHref);
-    assert.equal(partialCampaign.currentIndex, 0);
-    assert.equal(partialCampaign.items[0].status, 'sent');
-    assert.equal(partialCampaign.items[0].sendResolutionOutcome, 'verified');
-    assert.equal(partialCampaign.items[1].status, 'pending');
-    assert.equal(partialStatuses.orders['order-1'].status, 'sent_pending_verification');
-    assert.equal(partialStatuses.orders['order-1'].campaignId, partialCampaign.id);
-    assert.equal(partialStatuses.orders['order-1'].campaignItemId, partialCampaign.items[0].id);
-
-    const recovered = await recoverDurableSendPartialAfterReload(storage);
-    assert.equal(recovered.recoveredCampaign.items[0].sendResolutionOutcome, 'verified');
-});
-
-test('manual sent resolution recovers its durable review partial before advancing', async () => {
-    const environment = await loadAssistant();
-    const { api, sandbox, storage } = environment;
-    installPendingResolutionFixture(environment);
-    const initialHref = sandbox.location.href;
-    const failure = injectFirstSentStatusWriteFailure(environment, 'injected manual status finalize failure');
-
-    try {
-        await assert.rejects(
-            api.Campaign.resolvePendingSend('order-1', 'sent'),
-            /injected manual status finalize failure/,
-        );
-    } finally {
-        failure.restore();
-    }
-
-    const partialCampaign = storage.get(api.KEYS.campaign);
-    const partialStatuses = storage.get(api.KEYS.statuses);
-    assert.equal(failure.failures(), 1);
-    assert.equal(sandbox.location.href, initialHref);
-    assert.equal(partialCampaign.currentIndex, 0);
-    assert.equal(partialCampaign.items[0].status, 'sent');
-    assert.equal(partialCampaign.items[0].sendResolutionOutcome, 'sent');
-    assert.equal(partialCampaign.items[0].manuallyConfirmed, true);
-    assert.equal(partialCampaign.items[1].status, 'pending');
-    assert.equal(partialStatuses.orders['order-1'].status, 'sent_pending_verification');
-    assert.equal(partialStatuses.outreach['order-1'].review_request.workflow, 'sent_pending_verification');
-
-    const recovered = await recoverDurableSendPartialAfterReload(storage, { expectReviewOutreach: true });
-    assert.equal(recovered.recoveredCampaign.items[0].sendResolutionOutcome, 'sent');
-    assert.equal(recovered.recoveredCampaign.items[0].manuallyConfirmed, true);
-});
-
-test('outgoing evidence requires the complete normalized seller text instead of a 120-character prefix', async () => {
-    const { api } = await loadAssistant();
-    const expected = `${'A'.repeat(60)} ${'B'.repeat(59)}`;
-    assert.equal(expected.length, 120);
-    const prefixWithSuffix = `${expected} UNRELATED SUFFIX`;
-    const normalizedExact = `  ${'A'.repeat(60)} \n\t ${'B'.repeat(59)}  `;
-    const originalGetMessages = api.MessageAdapter.getMessages;
-    try {
-        api.MessageAdapter.getMessages = () => [{ role: 'seller', text: prefixWithSuffix }];
-        assert.equal(api.MessageAdapter.countOutgoing(expected), 0);
-
-        api.MessageAdapter.getMessages = () => [
-            { role: 'seller', text: prefixWithSuffix },
-            { role: 'seller', text: normalizedExact },
-            { role: 'customer', text: expected },
-        ];
-        assert.equal(api.MessageAdapter.countOutgoing(expected), 1);
-    } finally {
-        api.MessageAdapter.getMessages = originalGetMessages;
-    }
-});
-
-async function runFreshExplicitAutopilotVerification(verified) {
-    const environment = await loadAssistant();
-    const { api, sandbox, storage } = environment;
-    const firstUrl = 'https://www.etsy.com/messages/order-1';
-    const secondUrl = 'https://www.etsy.com/messages/order-2';
-    sandbox.location.pathname = '/messages/order-1';
-    sandbox.location.search = '';
-    sandbox.location.href = firstUrl;
-    await api.Outreach.setManualDecision('order-1', 'eligible');
-    await api.Outreach.setManualDecision('order-2', 'eligible');
-    const template = api.TemplateEngine.get('tpl-review-request');
-    const created = await api.Campaign.create([
-        {
-            orderId: 'order-1', customerName: 'Ashley', itemTitle: 'First Shirt', messageUrl: firstUrl,
-        },
-        {
-            orderId: 'order-2', customerName: 'Morgan', itemTitle: 'Second Shirt', messageUrl: secondUrl,
-        },
-    ], template.id, 'template', { runMode: 'autopilot' });
-    assert.equal(created.runMode, 'autopilot');
-    assert.equal(created.runState, 'running');
-    assert.equal(created.currentIndex, 0);
-    assert.equal(created.items[0].status, 'pending');
-
-    const textarea = { value: '', offsetParent: {} };
-    const conversationScope = {
-        isConnected: true,
-        contains: candidate => candidate === textarea,
-        querySelectorAll: () => [],
-    };
-    const outgoingTexts = [];
-    const button = makeNativeSendButton(() => { outgoingTexts.push(textarea.value); });
-    const originals = {
-        getTextarea: api.MessageAdapter.getTextarea,
-        waitForTextarea: api.MessageAdapter.waitForTextarea,
-        getConversationScope: api.MessageAdapter.getConversationScope,
-        getSendButton: api.MessageAdapter.getSendButton,
-        context: api.MessageAdapter.context,
-        insert: api.MessageAdapter.insert,
-        countOutgoing: api.MessageAdapter.countOutgoing,
-        waitForPendingOutgoing: api.Verification.waitForPendingOutgoing,
-        onSendClick: api.Verification.onSendClick,
-        resumeReserved: api.Campaign.resumeReserved,
-        autoSendIfCurrent: api.Campaign.autoSendIfCurrent,
-        finalizeSendAttemptLocked: api.Store.finalizeSendAttemptLocked,
-        navigateToConversation: api.Router.navigateToConversation,
-        open: api.UI.open,
-        toast: api.UI.toast,
-        refreshCurrent: api.UI.refreshCurrent,
-        setTimeout: sandbox.setTimeout,
-    };
-    let waitCalls = 0;
-    let onSendClickCalls = 0;
-    let resumeReservedCalls = 0;
-    let autoSendCalls = 0;
-    let finalizeCalls = 0;
-    let finalizeResolved = false;
-    const navigations = [];
-    api.MessageAdapter.getTextarea = () => textarea;
-    api.MessageAdapter.waitForTextarea = async () => textarea;
-    api.MessageAdapter.getConversationScope = () => conversationScope;
-    api.MessageAdapter.getSendButton = () => button;
-    api.MessageAdapter.context = () => ({
-        conversationId: 'order-1',
-        customerName: 'Ashley',
-        customerFirstName: 'Ashley',
-        orderId: 'order-1',
-        itemTitle: 'First Shirt',
-        messages: [],
-        lastCustomerMessage: '',
-        routeFingerprint: api.Router.routeFingerprint(),
-    });
-    api.MessageAdapter.insert = (text, target) => { target.value = text; };
-    api.MessageAdapter.countOutgoing = text => outgoingTexts.filter(entry => entry === text).length;
-    api.Verification.waitForPendingOutgoing = async pending => {
-        waitCalls += 1;
-        assert.equal(button.clickCount, 1);
-        assert.equal(api.MessageAdapter.countOutgoing(pending.text), 1,
-            'the verification fixture must expose one exact outgoing delta after the click');
-        return verified;
-    };
-    api.Verification.onSendClick = async function (...args) {
-        onSendClickCalls += 1;
-        return originals.onSendClick.apply(this, args);
-    };
-    api.Campaign.resumeReserved = async function (...args) {
-        resumeReservedCalls += 1;
-        return originals.resumeReserved.apply(this, args);
-    };
-    api.Campaign.autoSendIfCurrent = async function (...args) {
-        autoSendCalls += 1;
-        return originals.autoSendIfCurrent.apply(this, args);
-    };
-    api.Store.finalizeSendAttemptLocked = async function (...args) {
-        finalizeCalls += 1;
-        const result = await originals.finalizeSendAttemptLocked.apply(this, args);
-        finalizeResolved ||= result === true;
-        return result;
-    };
-    api.Router.navigateToConversation = function (value) {
-        navigations.push({
-            value,
-            onSendClickCalls,
-            finalizeResolved,
-            campaign: copy(storage.get(api.KEYS.campaign)),
-            statuses: copy(storage.get(api.KEYS.statuses)),
-        });
-        return originals.navigateToConversation.call(this, value);
-    };
-    api.UI.open = () => {};
-    api.UI.toast = () => {};
-    api.UI.refreshCurrent = async () => {};
-    sandbox.setTimeout = callback => {
-        queueMicrotask(callback);
-        return 1;
-    };
-
-    let result;
-    try {
-        result = await api.Campaign.resume();
-    } finally {
-        Object.assign(api.MessageAdapter, {
-            getTextarea: originals.getTextarea,
-            waitForTextarea: originals.waitForTextarea,
-            getConversationScope: originals.getConversationScope,
-            getSendButton: originals.getSendButton,
-            context: originals.context,
-            insert: originals.insert,
-            countOutgoing: originals.countOutgoing,
-        });
-        api.Verification.waitForPendingOutgoing = originals.waitForPendingOutgoing;
-        api.Verification.onSendClick = originals.onSendClick;
-        api.Campaign.resumeReserved = originals.resumeReserved;
-        api.Campaign.autoSendIfCurrent = originals.autoSendIfCurrent;
-        api.Store.finalizeSendAttemptLocked = originals.finalizeSendAttemptLocked;
-        api.Router.navigateToConversation = originals.navigateToConversation;
-        api.UI.open = originals.open;
-        api.UI.toast = originals.toast;
-        api.UI.refreshCurrent = originals.refreshCurrent;
-        sandbox.setTimeout = originals.setTimeout;
-    }
-
-    return {
-        api,
-        sandbox,
-        storage,
-        result,
-        button,
-        firstUrl,
-        secondUrl,
-        navigations,
-        waitCalls,
-        onSendClickCalls,
-        resumeReservedCalls,
-        autoSendCalls,
-        finalizeCalls,
-        finalizeResolved,
-    };
-}
-
-test('fresh explicit autopilot runs resumeReserved through real auto-send and verification before navigating', async () => {
-    const run = await runFreshExplicitAutopilotVerification(true);
-    const { api, storage } = run;
-    const campaign = storage.get(api.KEYS.campaign);
-    const statuses = storage.get(api.KEYS.statuses);
-    const first = campaign.items[0];
-    const outreach = statuses.outreach['order-1'].review_request;
-
-    assert.equal(run.result, true);
-    assert.equal(run.resumeReservedCalls, 1);
-    assert.equal(run.autoSendCalls, 1);
-    assert.equal(run.onSendClickCalls, 1, 'the normal automatic path must invoke Verification.onSendClick exactly once');
-    assert.equal(run.waitCalls, 1);
-    assert.equal(run.button.clickCount, 1);
-    assert.equal(run.finalizeCalls, 1);
-    assert.equal(run.finalizeResolved, true);
-    assert.equal(first.status, 'sent');
-    assert.equal(first.sendResolutionOutcome, 'verified');
-    assert.equal(statuses.orders['order-1'].status, 'sent');
-    assert.equal(outreach.workflow, 'sent');
-    assert.equal(outreach.campaignId, campaign.id);
-    assert.equal(outreach.campaignItemId, first.id);
-    assert.equal(campaign.currentIndex, 1);
-    assert.equal(campaign.items[1].status, 'pending');
-    assert.equal(run.navigations.length, 1);
-    assert.equal(run.navigations[0].value, run.secondUrl);
-    assert.equal(run.navigations[0].onSendClickCalls, 1);
-    assert.equal(run.navigations[0].finalizeResolved, true);
-    assert.equal(run.navigations[0].campaign.items[0].status, 'sent');
-    assert.equal(run.navigations[0].statuses.orders['order-1'].status, 'sent');
-    assert.equal(run.navigations[0].statuses.outreach['order-1'].review_request.workflow, 'sent');
-    assert.equal(run.sandbox.location.href, run.secondUrl);
-});
-
-test('fresh explicit autopilot keeps the first item pending and never navigates when verification fails', async () => {
-    const run = await runFreshExplicitAutopilotVerification(false);
-    const { api, storage } = run;
-    const campaign = storage.get(api.KEYS.campaign);
-    const statuses = storage.get(api.KEYS.statuses);
-
-    assert.equal(run.result, false);
-    assert.equal(run.resumeReservedCalls, 1);
-    assert.equal(run.autoSendCalls, 1);
-    assert.equal(run.onSendClickCalls, 1);
-    assert.equal(run.waitCalls, 1);
-    assert.equal(run.button.clickCount, 1);
-    assert.equal(run.finalizeCalls, 0);
-    assert.equal(run.finalizeResolved, false);
-    assert.equal(campaign.currentIndex, 0);
-    assert.equal(campaign.runMode, 'autopilot');
-    assert.equal(campaign.runState, 'running');
-    assert.equal(campaign.items[0].status, 'sent_pending_verification');
-    assert.equal(campaign.items[1].status, 'pending');
-    assert.equal(statuses.orders['order-1'].status, 'sent_pending_verification');
-    assert.equal(statuses.outreach['order-1'].review_request.workflow, 'sent_pending_verification');
-    assert.equal(run.navigations.length, 0);
-    assert.equal(run.sandbox.location.href, run.firstUrl);
-});
-
-test('completed-order live review permalink is durable evidence and cannot enter a review campaign', async () => {
-    const { api, storage } = await loadAssistant();
-    await api.Outreach.setManualDecision('12345678', 'eligible');
-    await api.Outreach.setManualDecision('12345679', 'eligible');
-
-    const orderLink = {
-        href: 'https://www.etsy.com/your/orders/sold/completed?order_id=12345678',
-        parentElement: { textContent: '$24.00' },
-    };
-    const messageLink = { href: 'https://www.etsy.com/messages/reviewed-order-12345678' };
-    const reviewLink = {
-        href: '/shop/MakayShirts/reviews/987654321',
-        textContent: 'Review',
-        innerText: 'Review',
-        getAttribute: () => '',
-    };
-    const row = {
-        textContent: 'Delivered Order #12345678 Review',
-        querySelectorAll(selector) {
-            if (selector === 'a[href*="order_id="]') return [orderLink];
-            if (selector === 'a[href*="/reviews/"]') return [reviewLink];
-            if (selector.includes('/messages') || selector.includes('/conversations')) return [messageLink];
-            if (selector === 'h2, .wt-text-title-small') return [{ textContent: 'Delivered' }];
-            return [];
-        },
-        querySelector(selector) {
-            if (selector.includes('btn-link.strong.fs-mask')) return { textContent: 'Reviewed Buyer' };
-            return null;
-        },
-    };
-
-    const order = api.OrdersAdapter.fromRow(row, 0);
-    assert.equal(order.reviewExists, true);
-    assert.equal(order.messageUrl, messageLink.href);
-    assert.equal(api.OrdersAdapter.isReviewPermalink(reviewLink), true);
-    assert.equal(api.OrdersAdapter.isReviewPermalink({
-        ...reviewLink,
-        href: 'https://evil.example/shop/MakayShirts/reviews/987654321',
-    }), false);
-    assert.equal(api.OrdersAdapter.isReviewPermalink({
-        ...reviewLink,
-        href: '/shop/MakayShirts/reviews/987654321?ref=orders',
-    }), false);
-    assert.equal(api.OrdersAdapter.isReviewPermalink({
-        ...reviewLink,
-        textContent: 'Review request',
-        innerText: 'Review request',
-    }), false);
-    assert.equal(api.OrdersAdapter.rowHasExistingReview({
-        textContent: 'Buyer left a review',
-        querySelectorAll: selector => selector === '[aria-label]'
-            ? [{ getAttribute: () => '5 out of 5 stars' }]
-            : [],
-    }), false, 'copy and stars without the strict row-local permalink must remain unknown');
-    assert.equal(
-        api.Campaign.orderCanEnterCampaign(order.orderId, api.Store.statuses, 'review_request', order),
-        false,
-        'live DOM evidence must override an earlier manual eligible decision',
-    );
-
-    const campaignOrder = {
-        orderId: order.orderId,
-        customerName: order.customerName,
-        itemTitle: order.itemTitle,
-        messageUrl: order.messageUrl,
-        reviewExists: order.reviewExists,
-    };
-    await assert.rejects(
-        api.Campaign.create([campaignOrder], 'tpl-review-request', 'template', { runMode: 'autopilot' }),
-        /Yorum durumu/i,
-    );
-    assert.equal(storage.has(api.KEYS.campaign), false, 'rejection must happen before a campaign write');
-
-    assert.equal(await api.OrdersAdapter.persistDetectedReviewEvidence([
-        order,
-        { orderId: '12345679', delivered: true, reviewExists: false },
-        { orderId: '12345680', delivered: true, reviewExists: false },
-    ]), 1);
-    const outreach = api.Outreach.record(order.orderId, 'review_request');
-    assert.equal(outreach.decision, 'ineligible');
-    assert.equal(outreach.reason, 'review_exists');
-    assert.equal(outreach.source, 'dom');
-    assert.equal(outreach.evidenceExpiresAt, '');
-    assert.equal(api.Campaign.orderCanEnterCampaign(order.orderId, api.Store.statuses, 'review_request'), false);
-    api.UI.state.orders = [order];
-    api.UI.state.selectedTemplateId = 'tpl-review-request';
-    api.UI.state.selectedOrders = new Set([order.orderId]);
-    const markup = api.UI.renderOrders();
-    assert.match(markup, /Yorum var · Otomatik atlandı/);
-    assert.match(markup, /Etsy yorumu bulundu — otomatik atlandı/);
-    assert.match(markup, /data-review-decision="12345678"[^>]*disabled/);
-    assert.match(markup, /value="review_exists" selected/);
-    assert.doesNotMatch(markup, /data-order-select="12345678"[^>]*checked/);
-    const absentWithManualEvidence = api.Outreach.record('12345679', 'review_request');
-    assert.equal(absentWithManualEvidence.decision, 'eligible');
-    assert.equal(absentWithManualEvidence.source, 'manual');
-    assert.equal(api.Outreach.record('12345680', 'review_request').decision, 'unknown',
-        'absence of a review link must remain unknown rather than auto-authorizing outreach');
-});
-
-test('running review autopilot skips durable review evidence before draft insertion or Etsy send', async () => {
-    const { api, sandbox, storage } = await loadAssistant();
-    await api.Outreach.setManualDecision('order-1', 'eligible');
-    await api.Outreach.setManualDecision('order-2', 'eligible');
-    const firstUrl = 'https://www.etsy.com/messages/review-order-1';
-    const secondUrl = 'https://www.etsy.com/messages/review-order-2';
-    const created = await api.Campaign.create([
-        { orderId: 'order-1', customerName: 'Reviewed Buyer', itemTitle: 'First item', messageUrl: firstUrl },
-        { orderId: 'order-2', customerName: 'Next Buyer', itemTitle: 'Second item', messageUrl: secondUrl },
-    ], 'tpl-review-request', 'template', { runMode: 'autopilot' });
-    sandbox.location.pathname = '/messages/review-order-1';
-    sandbox.location.search = '';
-    sandbox.location.href = firstUrl;
-
-    assert.equal(await api.OrdersAdapter.persistDetectedReviewEvidence([{
-        orderId: 'order-1',
-        reviewExists: true,
-    }]), 1);
-
-    let insertCalls = 0;
-    let autoSendCalls = 0;
-    let onSendClickCalls = 0;
-    const navigations = [];
-    api.MessageAdapter.insert = () => { insertCalls += 1; };
-    api.Campaign.autoSendIfCurrent = async () => { autoSendCalls += 1; return true; };
-    api.Verification.onSendClick = async () => { onSendClickCalls += 1; return true; };
-    api.Router.navigateToConversation = (value) => {
-        navigations.push(value);
-        sandbox.location.href = value;
-        sandbox.location.pathname = new URL(value).pathname;
-    };
-
-    assert.equal(await api.Campaign.driveAutopilot({ recoveryComplete: true }), false);
-    const campaign = storage.get(api.KEYS.campaign);
-    const statuses = storage.get(api.KEYS.statuses);
-    const outreach = statuses.outreach['order-1'].review_request;
-    assert.equal(insertCalls, 0);
-    assert.equal(autoSendCalls, 0);
-    assert.equal(onSendClickCalls, 0);
-    assert.equal(campaign.id, created.id);
-    assert.equal(campaign.items[0].status, 'skipped');
-    assert.equal(campaign.items[1].status, 'pending');
-    assert.equal(campaign.currentIndex, 1);
-    assert.equal(campaign.runState, 'running');
-    assert.equal(statuses.orders['order-1'], undefined);
-    assert.equal(outreach.decision, 'ineligible');
-    assert.equal(outreach.reason, 'review_exists');
-    assert.equal(outreach.source, 'dom');
-    assert.equal(outreach.workflow, 'none');
-    assert.equal(navigations.length, 1);
-    assert.equal(navigations[0], secondUrl);
 });
