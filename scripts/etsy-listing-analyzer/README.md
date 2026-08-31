@@ -2,7 +2,7 @@
 
 <p><strong>Türkçe</strong> · <a href="./README.en.md">English</a></p>
 
-**Sürüm:** 1.0.5 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.1.0 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
@@ -35,12 +35,12 @@ Aşağıdaki her görsel yalnız userscript öğesinden alınmıştır. Etsy say
 - İlk eksiksiz taramada güncel ziyaret/favori ile tüm-zaman satış/gelir/yenileme kanıtlarını ayrı zaman ölçeklerinde değerlendirir. İki veya daha fazla yenilemeye rağmen satış, gelir ve favorisi olmayan listingi **Yenileme verimsizliği** olarak iyileştirme önceliğine alır; satış veya gelir kanıtı olan listingi riskli toplu değişikliklerden korur. Bu anlık değerlendirme büyüme, düşüş veya deaktivasyon kararı değildir.
 - Yeterli ve karşılaştırılabilir kayıt bulunduğunda yalnız güncel, tamamlanmış taramadaki listinglerden mağaza içi karşılaştırma grubu (cohort) kurar; eski, anomalili veya tarama dışı kayıtları emsal yapmaz. Örneklem zayıfsa sonuç düşük güvenli veya belirsiz kalır.
 - Geçmiş ayrıntısında ziyaret, favori, satış, gelir ve yenileme için erişilebilir inline SVG değişim grafikleri gösterir; eksik değerleri sıfıra dönüştürmez.
-- İyileştirme önerilerini, başlangıç snapshotını ve doğrulanmış yayınlama sonucunu kaydeder; planlama, yayınlama, gözlem, değerlendirme tarihi ve sonucu ayrı olaylarla gösteren deney zaman çizelgesi oluşturur.
+- İyileştirme önerilerini, yayın anına en fazla bir gün uzaklıktaki başlangıç snapshotını ve doğrulanmış yayınlama sonucunu kaydeder; planlama, yayınlama, gözlem, değerlendirme tarihi ve sonucu ayrı olaylarla gösteren deney zaman çizelgesi oluşturur. Oran deneylerinde düşük örnekli oynaklığı Poisson oran-oranı güven aralığıyla sınırlar ve kümülatif satış farkını gerçek gözlem süresinden 30 güne normalize eder.
 - Seçili listingler için gerçek listing ID’lerini dışarı vermeyen `L001` benzeri geçici referanslarla AI istek JSON’u oluşturur.
 - Doğrulanmış AI yanıt JSON’unu başlık, açıklama, etiket ve materyal önerisine dönüştürür; yalnız değişmesi istenen alanlar için **Önce / AI önerisi / Doğrulanan sonuç** karşılaştırması gösterir.
 - Tam olarak bir listing seçildiğinde isteğe bağlı **Marketplace Insights ile araştır** akışını başlatır. Ayrı **Etsy Keyword & Market Analyzer** yüklüyse opaque `L001` referansı ve içerik özetiyle araştırmayı teslim eder; doğrulanan 30 günlük arama, arama sonucu/rekabet göstergesi ve Makaytron türetilmiş fırsat puanını başlık/etiket önerisinin yanında gösterir.
 - Listing düzenleme sayfasında öneriyi Etsy formuna uygular; kullanıcı inceleyip her listing için ayrıca onay vermeden `Publish changes` düğmesine basmaz.
-- Deaktivasyon için yalnız Etsy seçenek menüsünü açıp Deactivate öğesine odaklanır. Deactivate ve Etsy final onayını kullanıcı tıklar; script sonucu görmeden kuyruğu ilerletmez.
+- Listing bazındaki açık deaktivasyon onayından sonra yalnız Etsy'nin tek, görünür ve etkin tam eşleşen **Deactivate** menü öğesine ve doğru final **Deactivate** düğmesine tıklar. **Delete** hiçbir zaman seçilmez; script görünür `Active → Inactive` geçişini doğrulamadan kuyruğu ilerletmez veya belirsiz işlemi tekrar göndermez.
 - Yerel JSON yedeği indirir; içe aktarmada dosya boyutunu ve şemayı doğrular, listing/özel preset özetini yazmadan önce gösterir ve ancak açık kullanıcı onayından sonra mevcut verilerle birleştirir. Özel filtre presetleri yedekle taşınır; eski işlem kuyruğu güvenlik nedeniyle etkinleştirilmez. Yerel analiz verileri de yalnız açık kullanıcı onayından sonra temizlenebilir.
 - Tahmini yerel veri kullanımını gösterir. Depolama sınırına yaklaşma veya kota kaynaklı yazma reddinde toplu akışı tamamlanmış saymadan durdurur; yedek alma ve eski verileri azaltma yönlendirmesi sunar.
 - TR/EN görünümlerinde aynı etkileşim yapısını ve anlaşılır erişilebilir adları korur; dil bilgisini uygulama köküne işler. Klavye odağını görünür tutar, modal odağını içeride sınırlar, `Escape` ile kapatır ve odağı açan kontrole geri verir.
@@ -59,20 +59,20 @@ Health Engine yalnız Etsy Shop Manager listing kartında görünür olan başl�
 
 Ziyaret ve favori değerleri kayan son 30 günlük pencere; satış, gelir ve yenileme değerleri ise tüm zamanlar toplamıdır. Bu nedenle motor, iki tarama arasındaki bütün metrikleri aynı tür fark gibi yorumlamaz. Kısa aralıklı değişimler erken sinyal sayılır; daha uzun ve yeterli örneklem içeren pencereler daha yüksek güvenle değerlendirilir.
 
-Karttaki **30 günlük erişim/ilgi** puanı yalnız son 30 günlük ziyaret ile favori oranını ölçer; aynı anlamı ilk ve sonraki taramalarda korur. Tüm-zaman satış/gelir kanıtı listingi riskli değişikliklerden koruyabilir, yenilemeler ise verimsizlik önceliği oluşturabilir; bu tarihsel sayaçlar güncel erişim/ilgi puanını yapay olarak yükseltmez. **Geçmiş güveni** karşılaştırmalı zaman serisinin ne kadar hazır olduğunu ayrıca gösterir. İlk taramada geçmiş güveninin düşük olması, eksiksiz okunan sıfır değerlerin “veri yetersiz” sayılması değildir; büyüme/düşüş için 30 günlük, deaktivasyon incelemesi için en az 58 günlük tam geçmiş ve diğer güvenlik kanıtları yine zorunludur.
+Karttaki **30 günlük erişim/ilgi** puanı son 30 günlük ziyaret ile örneklem boyutuna göre yumuşatılmış favori oranını ölçer; favori bileşeninin ağırlığı yeterli ziyaret oluşana kadar kademeli artar ve aynı anlamı ilk ve sonraki taramalarda korur. Tüm-zaman satış/gelir kanıtı listingi riskli değişikliklerden koruyabilir, yenilemeler ise verimsizlik önceliği oluşturabilir; bu tarihsel sayaçlar güncel erişim/ilgi puanını yapay olarak yükseltmez. **Geçmiş güveni** karşılaştırmalı zaman serisinin ne kadar hazır olduğunu ayrıca gösterir. İlk taramada geçmiş güveninin düşük olması, eksiksiz okunan sıfır değerlerin “veri yetersiz” sayılması değildir; büyüme/düşüş için ardışık 30 günlük, deaktivasyon incelemesi için en az 58 günlük tam geçmiş ve diğer güvenlik kanıtları yine zorunludur.
 
 Health Engine değerlendirmesi tek bir renkli öneriye dayanmaz; aşağıdaki açıklanabilir bağlamları birlikte ele alır:
 
 - **Yaşam döngüsü:** başlangıç verisi toplama, öğrenme, dengeli/yükselen/düşen dönem, deney, pasiflik veya kapatmayı inceleme gibi aşamalar. Kullanılabilir aşama, yerel geçmişin kapsamına bağlıdır.
 - **Performans hipotezi:** görünürlük, ziyaret sonrası ilgi veya satın alma aşamasındaki olası zayıflığı işaretler. Bu, görünür metriklerden türetilen bir inceleme hipotezidir; nedensellik iddiası değildir.
-- **Güven:** veri kalitesi, geçmiş derinliği, trafik örneklemi, karşılaştırma grubu, güncellik ve tutarlılık dikkate alınır. Eksik veri veya kısa geçmiş kesin bir karar için yeterli sayılmaz.
+- **Güven:** veri kalitesi, geçmiş derinliği, trafik örneklemi, karşılaştırma grubu, güncellik ve tutarlılık dikkate alınır. Sekiz listing kohortu kullanılabilir kılar; kohort gücü ancak 30 karşılaştırılabilir listingde tam değere ulaşır. Eksik veri veya kısa geçmiş kesin bir karar için yeterli sayılmaz.
 - **Kanıt ve sonraki inceleme:** mevcut değerler, uygun yerel karşılaştırmalar ve yeni değerlendirme için gereken zaman kararın yanında gösterilmelidir; yeterli kanıt yoksa sonuç belirsiz bırakılır.
 
 Karşılaştırma grubu yalnız aynı mağazada, bu tarayıcıda birikmiş ve anlamlı biçimde karşılaştırılabilen yerel kayıtlardan oluşturulabilir. Yeni değiştirilmiş, deneydeki, pasif, stoksuz veya eksik verili listingler kıyası zayıflatır. Yeterli emsal bulunmadığında cohort sonucu güvenilir bir sinyal gibi sunulmaz. Bu kıyas Etsy geneli pazar verisi değildir.
 
-Kaydedilmiş bir iyileştirme, başlangıç snapshotı ve değiştirilen alanlarla birlikte deney bağlamında karşılaştırılabilir. Başlık/etiket deneyleri ziyaret değişimini, materyal deneyleri favori/ziyaret oranını, açıklama deneyleri ise satış/ziyaret oranını ölçer. Motor 30. gün sonrasındaki ilk snapshotı yalnız yedi günlük tolerans içinde kullanır; daha geç veri kesin sonuç yerine `Belirsiz` kalır. Son 30 gün metrikleri kayan pencere olduğu için değişiklikten sonraki erken kontroller yalnız ön sinyaldir. Aynı listingde üst üste yapılan değişiklikler yorumu zayıflatacağından kontrollü, tek hipotezli ilerleme önerilir.
+Kaydedilmiş bir iyileştirme, yayın anına en fazla bir gün uzaklıktaki başlangıç snapshotı ve değiştirilen alanlarla birlikte deney bağlamında karşılaştırılabilir. Başlık/etiket deneyleri ziyaret değişimini, materyal deneyleri favori/ziyaret oranını, açıklama deneyleri ise 30 güne normalize edilmiş satış/ziyaret oranını ölçer. `Kazandı` veya `Beklentinin altında` sonucu yalnız %90 Poisson oran-oranı güven aralığı 1 değerini dışladığında verilir; satış aralığı normalize edilmiş kesirler yerine gerçek satış sayısını ve gerçek gözlem süresini kullanır. Arayüzdeki yüzde nedensellik iddiası değil **30 günlük göreli değişim**dir. Motor 30. gün sonrasındaki ilk snapshotı yalnız yedi günlük tolerans içinde kullanır; eski baseline veya daha geç veri kesin sonuç yerine `Belirsiz` kalır. Son 30 gün metrikleri kayan pencere olduğu için değişiklikten sonraki erken kontroller yalnız ön sinyaldir. Aynı listingde üst üste yapılan değişiklikler yorumu zayıflatacağından kontrollü, tek hipotezli ilerleme önerilir.
 
-`Kapatmayı incele` otomatik kapatma emri değildir. Eksik veri, düşük güven, yeni değişiklik veya devam eden deney güvenlik kapısıdır. Adaylık oluşsa bile script yalnız Etsy seçenek menüsünü açıp Deactivate öğesine odaklanır; Deactivate ve Etsy'nin final onayını kullanıcı tıklar.
+`Kapatmayı incele` tek başına otomatik kapatma emri değildir. Eksik veri, düşük güven, yeni değişiklik veya devam eden deney güvenlik kapısıdır. Adaylık oluşsa bile kullanıcı listing bazında deaktivasyonu ayrıca onaylar. Ardından script tam DOM sözleşmesini yeniden doğrular, yalnız **Deactivate** ve final **Deactivate** kontrollerine tıklar ve sonucu görünür `Active → Inactive` geçişiyle doğrular.
 
 ## Kullanım
 
@@ -84,7 +84,7 @@ Kaydedilmiş bir iyileştirme, başlangıç snapshotı ve değiştirilen alanlar
 6. Öneriyi iki yoldan hazırlayabilirsiniz. Manuel yolda listing kartındaki **İyileştirme planı**nı açın ve işlemi seçin; **Seçili alanları güncelle** işlemi için değişecek alanları işaretleyip yeni değerleri girin, ardından **Öneriyi kaydet** düğmesine basın. AI yolunda kartları seçin, **AI önerileri** ekranından istek paketini kopyalayın ve doğrulanmış yanıt JSON’unu içe aktarın; geçerli AI önerileri yerelde kaydedilir. Kuyruğa almadan önce öneriyi inceleyip gerekirse düzenleyin.
 7. Kartın seçim kutusu önerinin kendisi değildir; yalnız araştırma, AI dışa aktarımı ve kuyruk kapsamını belirler. Kaydedilmiş önerisi bulunan listing kartlarını seçip **Seçilenlerden kuyruk hazırla** düğmesine basın. Önerisi olmayan veya **İşlem yapma** (`SKIP`) olarak kaydedilen kartlar kuyruğa girmez; güncel tam tarama kimliği, öneri temeli ve değişecek alan listesi kuyruk oluşturulurken yeniden doğrulanır.
 8. Kuyruk listingleri sırayla açar. **Öneriyi forma uygula** yalnız seçili alanları doldurur ve henüz yayınlama yapmaz. Etsy alanlarını inceleyip her listing için **İnceledim, Etsy’de yayımla** onayını ayrıca verin.
-9. Yayın sonucu doğrulanamazsa kuyruk durur ve yazmayı otomatik tekrarlamaz. Deaktivasyonda script yalnız Etsy seçenek menüsünü açar; **Deactivate** ve Etsy final onayı kullanıcıya aittir.
+9. Yayın veya deaktivasyon sonucu doğrulanamazsa kuyruk durur ve yazmayı otomatik tekrarlamaz. Deaktivasyonda kullanıcı listing bazında onay verdikten sonra script yalnız tam eşleşen **Deactivate** öğesini ve Etsy final **Deactivate** düğmesini tıklar; **Delete** kontrolüne dokunmaz ve yalnız `Active → Inactive` doğrulamasından sonra ilerler.
 
 > **“Kuyruk için kaydedilmiş önerisi bulunan en az bir listing seçin” ne demek?** Yalnız kartı işaretlediniz, fakat o listing için uygulanabilir bir öneri kaydetmediniz veya öneriyi **İşlem yapma** olarak kaydettiniz. Önce **İyileştirme planı → Öneriyi kaydet** adımını tamamlayın ya da geçerli AI öneri JSON’unu içe aktarın; sonra önerisi bulunan kartı seçerek kuyruğu yeniden hazırlayın.
 
@@ -150,7 +150,7 @@ Desteklenen işlemler: `UPDATE`, `DEACTIVATE_REVIEW`, `SKIP`. Bilinmeyen/tekrarl
 - Etsy çerezlerini, oturum depolarını veya gizli API uçlarını okumaz.
 - Sayfa açılışında Etsy’ye yazma işlemi yapmaz.
 - Fiyat, miktar ve varyasyonları otomatik değiştirmez.
-- Listing silme otomasyonu içermez.
+- Listing silme işlemi desteklenmez; listing yaşam döngüsündeki tek kaldırma önerisi kullanıcı onaylı `DEACTIVATE_REVIEW` akışıdır.
 - Kuyrukta sekme kilidi kullanır; doğrulanamayan yayınlamada güvenli biçimde durur.
 - Tüm-sayfa veri toplamada ayrı sekme kilidi, sayfa imzası, tekrar döngüsü sınırı ve en fazla 250 sayfalık güvenlik tavanı kullanır. Bu işlem yalnız görünür listing verisini okur; listinglere yazmaz.
 - Geçici sayfa hataları yalnız okuma/geçiş aşamasında sınırlı sayıda yeniden denenir; depolama, şema, sekme sahipliği, tekrar eden sayfa ve Etsy yazma hataları körlemesine yeniden denenmez. Hata raporu çerez, oturum, DOM HTML’i veya başlık metni toplamaz.

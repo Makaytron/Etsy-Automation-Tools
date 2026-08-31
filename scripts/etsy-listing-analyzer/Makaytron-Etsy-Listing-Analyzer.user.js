@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.0.5
+// @version      1.1.0
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -36,7 +36,7 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.0.5';
+    const APP_VERSION = '1.1.0';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -709,7 +709,7 @@
 
     const RECORD_SCHEMA_VERSION = 1;
     const HEALTH_RESULT_SCHEMA_VERSION = 1;
-    const HEALTH_ENGINE_VERSION = 3;
+    const HEALTH_ENGINE_VERSION = 4;
     const HEALTH_POLICY_VERSION = 1;
     const COLLECTION_SCHEMA_VERSION = 2;
     const MAX_COLLECTION_PAGES = 250;
@@ -763,12 +763,18 @@
     const HEALTH_RULES = Object.freeze({
         anchorToleranceDays: Object.freeze({ 30: 7, 60: 10, 90: 14 }),
         minimumCohortSize: 8,
+        fullStrengthCohortSize: 30,
+        minimumCalibrationSize: 20,
+        favoritePriorRate: 3,
+        favoritePriorVisits: 20,
         renewalWasteMinimum: 2,
         deactivationHistoryDays: 60,
         deactivationZeroObservationGapDays: 14,
         improvementCooldownDays: 45,
         experimentDays: 30,
         experimentEvaluationGraceDays: 7,
+        experimentBaselineMaxAgeDays: 1,
+        experimentConfidenceZ: 1.645,
         recentSaleProtectionDays: 30,
     });
     const SNAPSHOT_NUMBER_FIELDS = Object.freeze(['visits', 'favorites', 'sales', 'revenue', 'renewals', 'stock', 'priceMin', 'priceMax']);
@@ -898,7 +904,7 @@
             proposalTitle: 'Listing iyileştirme önerisi',
             actionLabel: 'Planlanan işlem',
             actionUpdate: 'Seçtiğim alanları güncelle',
-            actionDeactivate: 'Deaktivasyonu kullanıcıya öner',
+            actionDeactivate: 'Deaktivasyonu öner (listing silinmez)',
             actionSkip: 'İşlem yapma',
             title: 'Başlık',
             description: 'Açıklama',
@@ -923,8 +929,9 @@
             currentItem: 'Kuyruk {current}/{total}',
             applyForm: 'Öneriyi forma uygula',
             publishAfterReview: 'İnceledim, Etsy’de yayımla',
-            openDeactivate: 'Etsy seçeneklerini aç',
-            deactivateConfirm: '{id} numaralı listing için yalnız Etsy seçenekleri menüsünü açmak istediğinizi onaylıyor musunuz? Deactivate öğesine ve son onaya Etsy’de siz tıklayacaksınız.',
+            openDeactivate: 'Etsy’de deaktive et',
+            deactivateConfirm: '{id} numaralı listingi deaktive etmek istediğinizi onaylıyor musunuz? Script yalnız tam eşleşen Deactivate öğesine ve Etsy’nin son Deactivate onayına tıklar; Delete öğesine asla tıklamaz.',
+            deactivateLegacyConfirm: '{id} numaralı listing eski manuel deaktivasyon adımında bekliyor ve hâlâ Active görünüyor. Bu listing için yeni v1.0.12 otomatik Deactivate akışını başlatmak istediğinizi onaylıyor musunuz? Delete öğesine asla tıklanmaz.',
             verifyDeactivate: 'Deaktivasyonu doğrula ve devam et',
             skipItem: 'Bu listingi atla',
             stopQueue: 'Kuyruğu durdur',
@@ -937,8 +944,10 @@
             publishSubmitted: 'Yayınlama Etsy’ye gönderildi; sonuç doğrulanıyor.',
             publishVerified: 'Etsy kaydı doğrulandı. İşlem geçmişe kaydedildi.',
             publishUnverified: 'Etsy sonucu doğrulanamadı. Körlemesine sonraki listinge geçilmedi.',
-            deactivateOpened: 'Etsy seçenekleri açıldı. Deactivate öğesine ve Etsy’nin son onayına siz tıklayın.',
+            deactivateOpened: 'Script Etsy deaktivasyonunu gönderdi; sonuç doğrulanıyor. Delete işlemi hiçbir zaman kullanılmaz.',
+            deactivateVerified: 'Etsy deaktivasyonu doğrulandı ve işlem geçmişine eklendi.',
             deactivateNotVerified: 'Listing hâlâ aktif görünüyor; kuyruk ilerletilmedi.',
+            deactivateUnverified: 'Deaktivasyon Etsy’ye gönderilmiş olabilir ancak sonuç doğrulanamadı. Çift işlem riskine karşı otomatik tekrar kapalıdır; listing durumunu doğrulayın veya kuyruğu durdurun.',
             queueStopped: 'İşlem kuyruğu durduruldu.',
             queueComplete: 'İşlem kuyruğu tamamlandı.',
             aiTitle: 'AI öneri alışverişi',
@@ -1006,7 +1015,7 @@
             experiment: 'Deney',
             experimentState: 'Deney durumu',
             primaryMetric: 'Ana metrik',
-            adjustedEffect: 'Düzeltilmiş etki',
+            adjustedEffect: '30 günlük göreli değişim',
             nextReview: 'Sonraki inceleme',
             afterNextSnapshot: 'Sonraki snapshot sonrası',
             missingData: 'Eksik veriler',
@@ -1041,7 +1050,7 @@
             evidenceAnomaly: '{count} veri tutarlılığı uyarısı bulundu.',
             guardHistory: '60+ gün ve en az 3 tam snapshot',
             guardZeroTraffic: 'En az 14 gün arayla tekrarlanan sıfır trafik',
-            guardNoSales: 'Son 60 günde yeni satış veya gelir yok',
+            guardNoSales: 'Listingde toplam satış/gelir yok ve son 60 gün de sıfır',
             guardRenewals: 'Satış olmadan yenileme maliyeti devam ediyor',
             guardActiveStock: 'Listing aktif ve stoklu',
             guardNoExperiment: 'Aktif deney yok',
@@ -1060,13 +1069,14 @@
             manualApproval: 'Her Etsy yazma işlemi listing bazında kullanıcı onayı ister.',
         }),
         en: Object.freeze({
-            launcher: 'Open Listing Analyzer panel', panelAria: 'Makaytron Etsy Listing Analyzer control panel', product: 'Listing Analyzer', overview: 'Overview', wideView: 'Wide view', compactView: 'Compact view', ready: 'Ready', scanning: 'Scanning', error: 'Error', blocked: 'Stopped', saved: 'Saved', collapse: 'Hide panel', expand: 'Open panel', switchLanguage: 'Türkçeye geç', pageReady: 'Listings on this page are ready for analysis.', editorReady: 'The edit and action queue is ready for this listing.', unsupportedPage: 'This tool only runs on the listing list and listing editor.', scanPage: 'Scan this page', scanAndNext: 'Scan and open next page', openAnalysis: 'Listing analysis', aiExchange: 'AI proposals', exportData: 'Download backup', queueTitle: 'Action queue', noQueue: 'There is no active action queue.', listings: 'Stored listings', pageListings: 'This page', growing: 'Growing', improve: 'Improve', deactivateReview: 'Review deactivation', protected: 'Protect', monitor: 'Monitor', waiting: 'Waiting for data', declining: 'Declining', scanComplete: '{count} listings read; {saved} records updated.', noCards: 'Listing cards were not found. Enable Etsy statistics view.', nextMissing: 'The next-page control was not found or is disabled.', pageProgress: 'Page {current}/{total}', analysisTitle: 'Listing analysis', search: 'Search title, SKU, or ID', filterAll: 'All recommendations', selected: '{count} selected', selectAll: 'Select visible', clearSelection: 'Clear selection', listing: 'Listing', performance: 'Performance', recommendation: 'Recommendation', trend: 'Change', actions: 'Actions', visits: 'Visits', favorites: 'Favorites', sales: 'Sales', revenue: 'Revenue', renewals: 'Renewals', stock: 'Stock', price: 'Price', noData: 'No listings have been stored yet.', editProposal: 'Improvement plan', history: 'History', openEtsy: 'Open on Etsy', proposalTitle: 'Listing improvement proposal', actionLabel: 'Planned action', actionUpdate: 'Update selected fields', actionDeactivate: 'Recommend deactivation to the user', actionSkip: 'Do nothing', title: 'Title', description: 'Description', tags: 'Tags', materials: 'Materials', tagsHelp: 'Comma-separated; up to 13 tags and 20 characters per tag.', materialsHelp: 'Separate with commas.', reason: 'Reason / note', saveProposal: 'Save proposal', cancel: 'Cancel', close: 'Close', invalidTitle: 'The title must contain 1–140 characters.', invalidTags: 'Use at most 13 tags and no more than 20 characters per tag.', changeField: 'Change this field', selectChangeField: 'Select at least one field to change for an UPDATE action.', proposalSaved: 'Proposal saved and an improvement baseline was recorded.', buildQueue: 'Build queue from selection', queueConfirm: 'Prepare a user-approved action queue for {count} listings? This confirmation will not publish any listing automatically.', queueCreated: '{count} listings were added to the action queue.', noProposalSelection: 'Selection alone does not create a queue. First save an actionable item in Improvement plan or import valid AI proposal JSON; then select the listing with that saved proposal and try again.', goFirst: 'Open first listing', currentItem: 'Queue {current}/{total}', applyForm: 'Apply proposal to form', publishAfterReview: 'Reviewed; publish on Etsy', openDeactivate: 'Open Etsy options', deactivateConfirm: 'Do you confirm opening only Etsy’s options menu for listing {id}? You will click Deactivate and the final confirmation yourself on Etsy.', verifyDeactivate: 'Verify deactivation and continue', skipItem: 'Skip this listing', stopQueue: 'Stop queue', continueQueue: 'Next listing', routeMismatch: 'The queued listing ID does not match the open page. Processing stopped safely.', formNotReady: 'Required Etsy form fields are not ready; no changes were applied.', formApplied: 'Proposal applied to the form. Review the Etsy fields; nothing has been published yet.', publishDisabled: 'Etsy’s “Publish changes” button is not enabled. Check form validation.', publishConfirm: 'Do you confirm publishing {fields} for listing {id} on Etsy?', publishSubmitted: 'Publish was submitted to Etsy; verifying the result.', publishVerified: 'Etsy save was verified and added to history.', publishUnverified: 'The Etsy result could not be verified. The queue did not advance blindly.', deactivateOpened: 'Etsy options opened. Click Deactivate and Etsy’s final confirmation yourself.', deactivateNotVerified: 'The listing still appears active; the queue did not advance.', queueStopped: 'The action queue was stopped.', queueComplete: 'The action queue is complete.', aiTitle: 'AI proposal exchange', aiIntro: 'This version sends no network request to an AI service. Copy selected listings as prompt/JSON, then paste and validate the AI result below.', copyAiRequest: 'Copy AI request', importAiResponse: 'Import AI response', aiResponseLabel: 'AI proposal JSON', aiCopied: 'AI request package for {count} listings copied to the clipboard.', aiImportSuccess: '{count} valid AI proposals imported.', aiImportError: 'AI JSON could not be validated: {message}', selectForAi: 'Select listings from the listing-analysis cards first.', exportComplete: 'Local analysis backup downloaded.', historyTitle: 'Analysis and improvement history', capturedAt: 'Captured at', changes: 'Changes', baseline: 'Baseline', latest: 'Latest', noHistory: 'At least two records from different days are required for comparison.', settingsTitle: 'Analysis thresholds', minVisitsToImprove: 'Improvement threshold when there are no sales (visits)', minVisitsToProtect: 'Strong-listing visit threshold', minRenewalsToReview: 'Deactivation review threshold (renewals)', declinePercent: 'Decline warning percentage', saveSettings: 'Save settings', settingsSaved: 'Analysis thresholds saved.', openSettings: 'Thresholds', editThresholds: 'Edit analysis thresholds', clearData: 'Clear local analysis data', clearDataConfirm: 'Delete all listing snapshots, improvement records, AI mappings, queue, and action history from this browser? Language and threshold settings are preserved.', dataCleared: 'Local listing analysis data was cleared; language and threshold settings were preserved.', deleteUnsupported: 'Deletion is not supported for safety.', leaseBlocked: 'The action queue is open in another tab. No write action started here.', reasonNew: 'New record; more history is needed for comparison.', reasonGrowth: 'Sales, revenue, visits, or favorites increased since the previous record.', reasonProtect: 'A strong revenue-generating listing; protect it from risky bulk changes.', reasonImproveTraffic: 'It has visits but no sales; review title, images, pricing, and offer alignment.', reasonDeactivate: 'No sales, visits, or favorites after at least {renewals} renewals; review deactivation.', reasonDecline: 'Last-30-day visits fell by at least {percent}% since the previous record.', reasonMonitor: 'No urgent action signal; continue collecting data.', reasonUnknown: 'Some performance metrics could not be read; missing values were not treated as zero and no decision was produced.',
+            deactivateVerified: 'Etsy deactivation was verified and added to the action history.',
+            launcher: 'Open Listing Analyzer panel', panelAria: 'Makaytron Etsy Listing Analyzer control panel', product: 'Listing Analyzer', overview: 'Overview', wideView: 'Wide view', compactView: 'Compact view', ready: 'Ready', scanning: 'Scanning', error: 'Error', blocked: 'Stopped', saved: 'Saved', collapse: 'Hide panel', expand: 'Open panel', switchLanguage: 'Türkçeye geç', pageReady: 'Listings on this page are ready for analysis.', editorReady: 'The edit and action queue is ready for this listing.', unsupportedPage: 'This tool only runs on the listing list and listing editor.', scanPage: 'Scan this page', scanAndNext: 'Scan and open next page', openAnalysis: 'Listing analysis', aiExchange: 'AI proposals', exportData: 'Download backup', queueTitle: 'Action queue', noQueue: 'There is no active action queue.', listings: 'Stored listings', pageListings: 'This page', growing: 'Growing', improve: 'Improve', deactivateReview: 'Review deactivation', protected: 'Protect', monitor: 'Monitor', waiting: 'Waiting for data', declining: 'Declining', scanComplete: '{count} listings read; {saved} records updated.', noCards: 'Listing cards were not found. Enable Etsy statistics view.', nextMissing: 'The next-page control was not found or is disabled.', pageProgress: 'Page {current}/{total}', analysisTitle: 'Listing analysis', search: 'Search title, SKU, or ID', filterAll: 'All recommendations', selected: '{count} selected', selectAll: 'Select visible', clearSelection: 'Clear selection', listing: 'Listing', performance: 'Performance', recommendation: 'Recommendation', trend: 'Change', actions: 'Actions', visits: 'Visits', favorites: 'Favorites', sales: 'Sales', revenue: 'Revenue', renewals: 'Renewals', stock: 'Stock', price: 'Price', noData: 'No listings have been stored yet.', editProposal: 'Improvement plan', history: 'History', openEtsy: 'Open on Etsy', proposalTitle: 'Listing improvement proposal', actionLabel: 'Planned action', actionUpdate: 'Update selected fields', actionDeactivate: 'Recommend deactivation (never deletes the listing)', actionSkip: 'Do nothing', title: 'Title', description: 'Description', tags: 'Tags', materials: 'Materials', tagsHelp: 'Comma-separated; up to 13 tags and 20 characters per tag.', materialsHelp: 'Separate with commas.', reason: 'Reason / note', saveProposal: 'Save proposal', cancel: 'Cancel', close: 'Close', invalidTitle: 'The title must contain 1–140 characters.', invalidTags: 'Use at most 13 tags and no more than 20 characters per tag.', changeField: 'Change this field', selectChangeField: 'Select at least one field to change for an UPDATE action.', proposalSaved: 'Proposal saved and an improvement baseline was recorded.', buildQueue: 'Build queue from selection', queueConfirm: 'Prepare a user-approved action queue for {count} listings? This confirmation will not publish any listing automatically.', queueCreated: '{count} listings were added to the action queue.', noProposalSelection: 'Selection alone does not create a queue. First save an actionable item in Improvement plan or import valid AI proposal JSON; then select the listing with that saved proposal and try again.', goFirst: 'Open first listing', currentItem: 'Queue {current}/{total}', applyForm: 'Apply proposal to form', publishAfterReview: 'Reviewed; publish on Etsy', openDeactivate: 'Deactivate on Etsy', deactivateConfirm: 'Do you confirm deactivating listing {id}? The script clicks only the exact Deactivate menu item and Etsy’s final Deactivate confirmation; it never clicks Delete.', deactivateLegacyConfirm: 'Listing {id} is waiting in the old manual deactivation step and is still visibly Active. Do you confirm starting the new v1.0.12 automatic Deactivate flow for this listing? Delete is never clicked.', verifyDeactivate: 'Verify deactivation and continue', skipItem: 'Skip this listing', stopQueue: 'Stop queue', continueQueue: 'Next listing', routeMismatch: 'The queued listing ID does not match the open page. Processing stopped safely.', formNotReady: 'Required Etsy form fields are not ready; no changes were applied.', formApplied: 'Proposal applied to the form. Review the Etsy fields; nothing has been published yet.', publishDisabled: 'Etsy’s “Publish changes” button is not enabled. Check form validation.', publishConfirm: 'Do you confirm publishing {fields} for listing {id} on Etsy?', publishSubmitted: 'Publish was submitted to Etsy; verifying the result.', publishVerified: 'Etsy save was verified and added to history.', publishUnverified: 'The Etsy result could not be verified. The queue did not advance blindly.', deactivateOpened: 'The script submitted the Etsy deactivation and is verifying the result. Delete is never used.', deactivateNotVerified: 'The listing still appears active; the queue did not advance.', deactivateUnverified: 'Deactivation may have been submitted to Etsy, but the result could not be verified. Automatic retry is disabled to avoid a duplicate action; verify the listing state or stop the queue.', queueStopped: 'The action queue was stopped.', queueComplete: 'The action queue is complete.', aiTitle: 'AI proposal exchange', aiIntro: 'This version sends no network request to an AI service. Copy selected listings as prompt/JSON, then paste and validate the AI result below.', copyAiRequest: 'Copy AI request', importAiResponse: 'Import AI response', aiResponseLabel: 'AI proposal JSON', aiCopied: 'AI request package for {count} listings copied to the clipboard.', aiImportSuccess: '{count} valid AI proposals imported.', aiImportError: 'AI JSON could not be validated: {message}', selectForAi: 'Select listings from the listing-analysis cards first.', exportComplete: 'Local analysis backup downloaded.', historyTitle: 'Analysis and improvement history', capturedAt: 'Captured at', changes: 'Changes', baseline: 'Baseline', latest: 'Latest', noHistory: 'At least two records from different days are required for comparison.', settingsTitle: 'Analysis thresholds', minVisitsToImprove: 'Improvement threshold when there are no sales (visits)', minVisitsToProtect: 'Strong-listing visit threshold', minRenewalsToReview: 'Deactivation review threshold (renewals)', declinePercent: 'Decline warning percentage', saveSettings: 'Save settings', settingsSaved: 'Analysis thresholds saved.', openSettings: 'Thresholds', editThresholds: 'Edit analysis thresholds', clearData: 'Clear local analysis data', clearDataConfirm: 'Delete all listing snapshots, improvement records, AI mappings, queue, and action history from this browser? Language and threshold settings are preserved.', dataCleared: 'Local listing analysis data was cleared; language and threshold settings were preserved.', deleteUnsupported: 'Deletion is not supported for safety.', leaseBlocked: 'The action queue is open in another tab. No write action started here.', reasonNew: 'New record; more history is needed for comparison.', reasonGrowth: 'Sales, revenue, visits, or favorites increased since the previous record.', reasonProtect: 'A strong revenue-generating listing; protect it from risky bulk changes.', reasonImproveTraffic: 'It has visits but no sales; review title, images, pricing, and offer alignment.', reasonDeactivate: 'No sales, visits, or favorites after at least {renewals} renewals; review deactivation.', reasonDecline: 'Last-30-day visits fell by at least {percent}% since the previous record.', reasonMonitor: 'No urgent action signal; continue collecting data.', reasonUnknown: 'Some performance metrics could not be read; missing values were not treated as zero and no decision was produced.',
             reasonLearning: 'At least 30 days of comparison history is being collected before a reliable decision.', reasonExperiment: 'The published improvement is being observed through its 30-day evaluation window.', reasonDormant: 'The listing looks dormant, but the safety conditions for a deactivation review are not complete.', reasonDeactivateSafe: 'A 60+ day history, repeated zero traffic, and no sales support a deactivation review; the user makes the final decision.', reasonInactive: 'The listing appears inactive on Etsy; no write action was recommended.',
-            health: 'Health', healthy: 'Protect / monitor', needsReview: 'Needs review', activeExperiments: 'Active experiments', listingHealth: 'Listing health', healthAndHistory: 'Listing health & history', lifecycle: 'Lifecycle', diagnosis: 'Performance diagnosis', confidence: 'Confidence', evidence: 'Evidence', showAllEvidence: 'Show all evidence ({count})', confidenceDetails: 'Confidence details', dataQuality: 'Data quality', historyDepth: 'History depth', trafficSample: 'Traffic sample', cohortStrength: 'Cohort strength', freshness: 'Freshness', dataIntegrity: 'Data integrity', shopBenchmark: 'Shop benchmark', experiment: 'Experiment', experimentState: 'Experiment status', primaryMetric: 'Primary metric', adjustedEffect: 'Adjusted effect', nextReview: 'Next review', afterNextSnapshot: 'After the next snapshot', missingData: 'Missing data', whyRecommendation: 'Why this recommendation?', details: 'Details', confidenceLimited: 'Confidence is limited by insufficient history or data quality.',
+            health: 'Health', healthy: 'Protect / monitor', needsReview: 'Needs review', activeExperiments: 'Active experiments', listingHealth: 'Listing health', healthAndHistory: 'Listing health & history', lifecycle: 'Lifecycle', diagnosis: 'Performance diagnosis', confidence: 'Confidence', evidence: 'Evidence', showAllEvidence: 'Show all evidence ({count})', confidenceDetails: 'Confidence details', dataQuality: 'Data quality', historyDepth: 'History depth', trafficSample: 'Traffic sample', cohortStrength: 'Cohort strength', freshness: 'Freshness', dataIntegrity: 'Data integrity', shopBenchmark: 'Shop benchmark', experiment: 'Experiment', experimentState: 'Experiment status', primaryMetric: 'Primary metric', adjustedEffect: '30-day relative change', nextReview: 'Next review', afterNextSnapshot: 'After the next snapshot', missingData: 'Missing data', whyRecommendation: 'Why this recommendation?', details: 'Details', confidenceLimited: 'Confidence is limited by insufficient history or data quality.',
             lifecycleDataGap: 'Data incomplete', lifecycleBaseline: 'Building baseline', lifecycleLearning: 'Learning', lifecycleStable: 'Stable', lifecycleGrowing: 'Growing', lifecycleDeclining: 'Declining', lifecycleProtected: 'Protected', lifecycleExperiment: 'Experiment running', lifecycleDormant: 'Dormant', lifecycleDeactivate: 'Review deactivation', lifecycleInactive: 'Inactive',
             diagnosisDiscovery: 'Low discovery', diagnosisEngagement: 'Weak post-visit interest', diagnosisPurchase: 'Possible purchase friction', diagnosisScale: 'Ready for more reach', diagnosisHealthy: 'No clear issue', diagnosisInsufficient: 'Not enough signal', confidenceLow: 'Low', confidenceMedium: 'Medium', confidenceHigh: 'High', confidenceVeryHigh: 'Very high',
             evidenceHistory: '{days} days of history · {count} snapshots', evidenceTraffic: '30-day visits: {current}; previous window: {previous} · {percent}%', evidenceRecentSales: 'Approximate last 30 days: {sales} sales · {revenue} revenue', evidenceCohort: 'Traffic percentile among {size} shop listings: {percentile}', evidenceAnomaly: '{count} data-integrity warning(s) found.',
-            guardHistory: '60+ days and at least 3 complete snapshots', guardZeroTraffic: 'Repeated zero traffic at least 14 days apart', guardNoSales: 'No new sales or revenue in the last 60 days', guardRenewals: 'Renewal cost continues without sales', guardActiveStock: 'Listing is active and in stock', guardNoExperiment: 'No active experiment', guardCooldown: 'No published improvement in the last 45 days', guardSeasonal: 'Explicitly confirmed as non-seasonal', guardConfidence: 'Confidence score is at least 80',
+            guardHistory: '60+ days and at least 3 complete snapshots', guardZeroTraffic: 'Repeated zero traffic at least 14 days apart', guardNoSales: 'No lifetime sales/revenue and no new sales/revenue in the last 60 days', guardRenewals: 'Renewal cost continues without sales', guardActiveStock: 'Listing is active and in stock', guardNoExperiment: 'No active experiment', guardCooldown: 'No published improvement in the last 45 days', guardSeasonal: 'Explicitly confirmed as non-seasonal', guardConfidence: 'Confidence score is at least 80',
             experimentPlanned: 'Planned', experimentObserving: 'Observing · day {day}/30', experimentWinner: 'Winner', experimentUnderperformed: 'Underperformed', experimentInconclusive: 'Inconclusive', experimentContaminated: 'Contaminated by another change', experimentStopped: 'Stopped', contentChanged: 'The listing content changed after the proposal was saved. The form was preserved and processing stopped; review the proposal again.', proposalStale: 'Listing data or analysis settings changed after the proposal was saved. No queue was created; review the proposal again.', manualApproval: 'Every Etsy write action requires listing-level user approval.',
         }),
     });
@@ -1078,7 +1088,7 @@
             filters: 'Filtreler', hideFilters: 'Filtreleri gizle', clearFilters: 'Filtreleri sıfırla', resultsCount: '{visible} / {total} listing', showingCount: '{shown} gösteriliyor · {total} eşleşme', scope: 'Kapsam', scopeAll: 'Kayıtlı tüm listingler', scopePage: 'Bu Etsy sayfası', lifecycleFilter: 'Durum', diagnosisFilter: 'Sorun / fırsat', recommendationFilter: 'Öneri', performanceFilter: '30 günlük performans', trendFilter: 'Değişim', stockFilter: 'Stok', confidenceFilter: 'Veri güveni', sortBy: 'Sırala',
             analysisOverdueTitle: 'Analiz saati gecikti.', analysisOverdueCopy: 'Doğru veriler için tüm listinglerin analizi yapılmalı.', startAnalysis: 'Analizi başlat', openListingsForAnalysis: 'Listing sayfasına git', collectionActionStale: 'Listing analizi değişti veya süresi doldu. Doğru veriler için analizi yeniden başlatın.',
             optionAll: 'Tümü', performanceSales: 'Son 30 günde satış', performanceTrafficNoSales: 'Son 30 günde ziyaret var, satış yok', performanceNoActivity: 'Son 30 günde hareket yok', performanceMissing: 'Eksik veya tutarsız veri', trendRising: 'Yükselenler', trendFalling: 'Düşenler', trendStable: 'Değişmeyenler', trendUnknown: 'Karşılaştırması olmayanlar', stockIn: 'Stokta', stockOut: 'Tükendi', stockUnknown: 'Stok bilinmiyor', confidenceLowFilter: 'Düşük güven', confidenceMediumFilter: 'Orta güven', confidenceHighFilter: 'Yüksek / çok yüksek güven', sortPriority: 'Öncelikli öneri', sortScore: 'En yüksek 30 günlük erişim/ilgi', sortVisits: 'Son 30g en çok ziyaret', sortSales: 'Tüm-zaman en çok satış', sortRevenue: 'Tüm-zaman en yüksek gelir', sortConfidence: 'En yüksek güven', sortTitle: 'Başlık A–Z', noFilterResults: 'Bu filtrelere uyan listing bulunamadı.', loadMore: 'Daha fazla göster', hiddenSelected: '{count} seçim filtre nedeniyle gizli',
-            performanceScore: '30 günlük erişim/ilgi', currentFunnelScore: '30 günlük erişim/ilgi', snapshotScore: '30 günlük erişim/ilgi', longitudinalScore: '30 günlük erişim/ilgi', analysisConfidence: 'Analiz güveni', historyConfidence: 'Geçmiş güveni', scoreOutOf: '{score}/100', snapshotBasis: 'Puan yalnızca son 30 günlük ziyaret ve favori oranını ölçer. Tüm-zaman satış, gelir ve yenilemeler karar sinyalidir; puanı yapay olarak yükseltmez.', longitudinalBasis: 'Puan son 30 günlük ziyaret ve favori oranını ölçer; 30/60 günlük kayıtlar ayrıca trend ve güvenlik kararlarında kullanılır.', insufficientBasis: 'Güncel metrik eksik, eski veya tutarsız olduğu için erişim/ilgi puanı üretilmedi.', snapshotConfidenceLimited: 'İlk tarama teşhisi kullanılabilir; büyüme, düşüş ve kapatma güveni 30/60 günlük geçmiş oluşana kadar sınırlıdır.',
+            performanceScore: '30 günlük erişim/ilgi', currentFunnelScore: '30 günlük erişim/ilgi', snapshotScore: '30 günlük erişim/ilgi', longitudinalScore: '30 günlük erişim/ilgi', analysisConfidence: 'Analiz güveni', historyConfidence: 'Geçmiş güveni', scoreOutOf: '{score}/100', snapshotBasis: 'Puan son 30 günlük ziyaret ile örneklem boyutuna göre yumuşatılmış favori oranını ölçer. Tüm-zaman satış, gelir ve yenilemeler karar sinyalidir; puanı yapay olarak yükseltmez.', longitudinalBasis: 'Puan son 30 günlük ziyaret ile örneklem boyutuna göre yumuşatılmış favori oranını ölçer; ardışık 30/60 günlük kayıtlar ayrıca trend ve güvenlik kararlarında kullanılır.', insufficientBasis: 'Güncel metrik eksik, eski veya tutarsız olduğu için erişim/ilgi puanı üretilmedi.', snapshotConfidenceLimited: 'İlk tarama teşhisi kullanılabilir; büyüme, düşüş ve kapatma güveni 30/60 günlük geçmiş oluşana kadar sınırlıdır.',
             visits30dLabel: 'Ziyaret · 30g', favorites30dLabel: 'Favori · 30g', salesAllTimeLabel: 'Satış · tüm-zaman', revenueAllTimeLabel: 'Gelir · tüm-zaman', renewalsAllTimeLabel: 'Yenileme · tüm-zaman',
             evidenceCurrentCounters: 'Son 30g: {visits} ziyaret · {favorites} favori; tüm-zaman: {sales} satış · {revenue} gelir · {renewals} yenileme', evidenceSnapshotScoreCohort: '30 günlük erişim/ilgi: {score}/100 · mağaza içi karşılaştırma', evidenceSnapshotScoreAbsolute: '30 günlük erişim/ilgi: {score}/100 · mutlak eşikler',
             snapshotRenewalWaste: 'Yenileme verimsizliği', snapshotWeakDiscovery: 'Görünürlük zayıf', snapshotWeakEngagement: 'İlgi zayıf', snapshotPurchaseFriction: 'Satış dönüşümü zayıf', snapshotProvenDemand: 'Satış kanıtı var', snapshotStrongCurrent: 'Güncel erişim/ilgi güçlü', snapshotMixed: 'Güncel sinyaller karışık', snapshotNoActivity: 'Güncel hareket yok', snapshotInsufficient: 'Güncel metrik okunamadı',
@@ -1092,7 +1102,7 @@
             storageUsage: 'Tahmini yerel veri', storageUsageValue: '{size} MB', storageQuotaWarning: 'Yerel depolama sınırına yaklaşıldı veya yazma reddedildi. Yedek alın, eski verileri azaltın ve işlemi yeniden deneyin.', storageWriteFailed: 'Yerel veri yazılamadı. Hiçbir toplu işlem eksik kayıtla devam etmedi.',
             errorReportHistory: 'Hata geçmişi', errorReportGuidance: 'Önce sayfanın tamamen yüklendiğini kontrol edin. Ardından taramayı kaldığı yerden güvenle yeniden deneyebilirsiniz.', retryCollection: 'Taramayı yeniden dene', downloadErrorReports: 'Tüm raporları indir', reportDownloaded: 'Hata raporları indirildi.',
             lastAnalysis: 'Son başarılı analiz: {time}', analysisValidity: 'Analizler tamamlandıktan sonra 24 saat geçerlidir.',
-            thresholdCalibration: 'Mağaza verisine göre önerilen eşikler', thresholdCalibrationCopy: 'Öneriler yalnız tam mağaza taramasındaki dağılımlardan hesaplanır; otomatik uygulanmaz.', calibrationAvailable: '{count} listing ile kalibre edildi.', calibrationInsufficient: 'Kalibrasyon için en az 8 okunabilir listing gerekir.', useRecommended: 'Önerilenleri forma uygula', recommendedValue: 'Öneri: {value}', thresholdImpact: 'Bu değerlerle yaklaşık {improve} listing iyileştirme, {protect} listing güçlü performans adayı olur.', thresholdRelationship: 'Güçlü listingleri koruma eşiği, iyileştirme eşiğinden büyük olmalıdır.', thresholdHelpImprove: 'Satış yokken iyileştirme incelemesini başlatacak en düşük ziyaret sayısı.', thresholdHelpProtect: 'Güçlü listing koruması için gereken ziyaret sayısı; iyileştirme eşiğinden yüksek olmalıdır.', thresholdHelpRenewals: 'Deaktivasyon incelemesinden önce gereken en düşük yenileme sayısı.', thresholdHelpDecline: 'Düşüş uyarısını başlatan yüzde değişim.', resetDefaults: 'Güvenli varsayılanlara dön',
+            thresholdCalibration: 'Mağaza verisine göre önerilen eşikler', thresholdCalibrationCopy: 'Öneriler tam mağaza taramasındaki taze, deney dışı dağılımlardan hesaplanır; otomatik uygulanmaz.', calibrationAvailable: '{count} listing ile kalibre edildi.', calibrationInsufficient: 'Kalibrasyon için en az 20 okunabilir listing gerekir.', useRecommended: 'Önerilenleri forma uygula', recommendedValue: 'Öneri: {value}', thresholdImpact: 'Bu değerlerle yaklaşık {improve} listing iyileştirme, {protect} listing güçlü performans adayı olur.', thresholdRelationship: 'Güçlü listingleri koruma eşiği, iyileştirme eşiğinden büyük olmalıdır.', thresholdHelpImprove: 'Satış yokken iyileştirme incelemesini başlatacak en düşük ziyaret sayısı.', thresholdHelpProtect: 'Güçlü listing koruması için gereken ziyaret sayısı; iyileştirme eşiğinden yüksek olmalıdır.', thresholdHelpRenewals: 'Deaktivasyon incelemesinden önce gereken en düşük yenileme sayısı.', thresholdHelpDecline: 'Düşüş uyarısını başlatan yüzde değişim.', resetDefaults: 'Güvenli varsayılanlara dön',
             experimentOverlapTitle: 'Devam eden deneyle çakışma var', experimentOverlapCopy: 'Bu listingde hâlen izlenen bir iyileştirme deneyi var. Yeni değişiklik önceki deneyin sonucunu ayrıştırılamaz duruma getirebilir.', acknowledgeOverlap: 'Çakışmayı anladım; öneriyi yine de hazırlamak istiyorum.', experimentOverlapRequired: 'Devam eden deney çakışmasını onaylamadan bu öneri kuyruğa eklenemez.',
             aiErrorJson: 'JSON biçimi okunamadı. Fazladan virgül, eksik tırnak veya kod bloğu işareti olup olmadığını kontrol edin.', aiErrorSchema: 'Yanıt şeması geçersiz. schema alanı makaytron-listing-ai-proposals/v1 ve proposals alanı bir dizi olmalı.', aiErrorRequest: 'requestId bilinmiyor veya süresi dolmuş. AI istek paketini yeniden kopyalayın.', aiErrorProposal: 'Öneri doğrulanamadı: {path}.', aiErrorHelp: 'Beklenen alanı düzeltip aynı JSON’u yeniden deneyin; geçerli kayıtlar hata varken yazılmaz.', aiFormatHelp: 'tags ve materials alanları JSON dizisi (array), title ve description alanları metin olmalıdır.', copyAiTemplate: 'Örnek JSON’u kopyala', aiTemplateCopied: 'Örnek AI JSON’u panoya kopyalandı.',
             queueRecoveryTitle: 'Yarım kalan işlem kuyruğu bulundu', queueRecoveryCopy: 'Son adım tamamlanmadan sayfa kapanmış olabilir. Listing durumunu incelemeden aynı yazma işlemi tekrarlanmaz.', queueRecoveryRetry: 'Öğeyi güvenle yeniden hazırla', queueRecoveryConfirm: 'Mevcut Etsy formunu önce kontrol ettiniz mi? Öğe yalnız bekleyen duruma alınacak; hiçbir şey otomatik yayımlanmayacak.', queueRecoverySubmitted: 'Bu listing Etsy’ye gönderilmiş ancak sonucu doğrulanamamış olabilir. Çift gönderimi önlemek için otomatik tekrar kapalıdır; Etsy durumunu elle doğrulayın veya kuyruğu durdurun.', queueRecoveryOpen: 'Listing sayfasını güvenli inceleme için aç', queueRecoveryStop: 'Kuyruğu durdur',
@@ -1105,7 +1115,7 @@
             filters: 'Filters', hideFilters: 'Hide filters', clearFilters: 'Reset filters', resultsCount: '{visible} / {total} listings', showingCount: '{shown} shown · {total} matches', scope: 'Scope', scopeAll: 'All stored listings', scopePage: 'This Etsy page', lifecycleFilter: 'Status', diagnosisFilter: 'Issue / opportunity', recommendationFilter: 'Recommendation', performanceFilter: '30-day performance', trendFilter: 'Change', stockFilter: 'Stock', confidenceFilter: 'Data confidence', sortBy: 'Sort',
             analysisOverdueTitle: 'Analysis is overdue.', analysisOverdueCopy: 'All listings must be analyzed to show reliable data.', startAnalysis: 'Start analysis', openListingsForAnalysis: 'Open Listings', collectionActionStale: 'The listing analysis changed or expired. Start the analysis again before continuing.',
             optionAll: 'All', performanceSales: 'Sales in the last 30 days', performanceTrafficNoSales: 'Traffic but no sales in the last 30 days', performanceNoActivity: 'No activity in the last 30 days', performanceMissing: 'Missing or inconsistent data', trendRising: 'Rising', trendFalling: 'Falling', trendStable: 'Unchanged', trendUnknown: 'No comparison', stockIn: 'In stock', stockOut: 'Out of stock', stockUnknown: 'Stock unknown', confidenceLowFilter: 'Low confidence', confidenceMediumFilter: 'Medium confidence', confidenceHighFilter: 'High / very high confidence', sortPriority: 'Action priority', sortScore: 'Highest 30-day reach/engagement', sortVisits: 'Most visits · last 30d', sortSales: 'Most sales · all-time', sortRevenue: 'Highest revenue · all-time', sortConfidence: 'Highest confidence', sortTitle: 'Title A–Z', noFilterResults: 'No listings match these filters.', loadMore: 'Show more', hiddenSelected: '{count} selected item(s) hidden by filters',
-            performanceScore: '30-day reach/engagement', currentFunnelScore: '30-day reach/engagement', snapshotScore: '30-day reach/engagement', longitudinalScore: '30-day reach/engagement', analysisConfidence: 'Analysis confidence', historyConfidence: 'History confidence', scoreOutOf: '{score}/100', snapshotBasis: 'The score measures only last-30-day visits and favorite rate. All-time sales, revenue, and renewals are decision signals and do not artificially raise the score.', longitudinalBasis: 'The score measures last-30-day visits and favorite rate; 30/60-day records separately drive trend and safety decisions.', insufficientBasis: 'No reach/engagement score was produced because a current metric is missing, stale, or inconsistent.', snapshotConfidenceLimited: 'The first-scan diagnosis is usable; growth, decline, and deactivation confidence remain limited until 30/60-day history is available.',
+            performanceScore: '30-day reach/engagement', currentFunnelScore: '30-day reach/engagement', snapshotScore: '30-day reach/engagement', longitudinalScore: '30-day reach/engagement', analysisConfidence: 'Analysis confidence', historyConfidence: 'History confidence', scoreOutOf: '{score}/100', snapshotBasis: 'The score measures last-30-day visits and a sample-size-smoothed favorite rate. All-time sales, revenue, and renewals are decision signals and do not artificially raise the score.', longitudinalBasis: 'The score measures last-30-day visits and a sample-size-smoothed favorite rate; consecutive 30/60-day records separately drive trend and safety decisions.', insufficientBasis: 'No reach/engagement score was produced because a current metric is missing, stale, or inconsistent.', snapshotConfidenceLimited: 'The first-scan diagnosis is usable; growth, decline, and deactivation confidence remain limited until 30/60-day history is available.',
             visits30dLabel: 'Visits · 30d', favorites30dLabel: 'Favorites · 30d', salesAllTimeLabel: 'Sales · all-time', revenueAllTimeLabel: 'Revenue · all-time', renewalsAllTimeLabel: 'Renewals · all-time',
             evidenceCurrentCounters: 'Last 30d: {visits} visits · {favorites} favorites; all-time: {sales} sales · {revenue} revenue · {renewals} renewals', evidenceSnapshotScoreCohort: '30-day reach/engagement: {score}/100 · within-shop comparison', evidenceSnapshotScoreAbsolute: '30-day reach/engagement: {score}/100 · absolute thresholds',
             snapshotRenewalWaste: 'Renewal waste', snapshotWeakDiscovery: 'Weak discovery', snapshotWeakEngagement: 'Weak engagement', snapshotPurchaseFriction: 'Weak sales conversion', snapshotProvenDemand: 'Proven demand', snapshotStrongCurrent: 'Strong current reach/engagement', snapshotMixed: 'Mixed current signals', snapshotNoActivity: 'No current activity', snapshotInsufficient: 'Current metric unreadable',
@@ -1119,7 +1129,7 @@
             storageUsage: 'Estimated local data', storageUsageValue: '{size} MB', storageQuotaWarning: 'Local storage is near its limit or rejected a write. Export a backup, reduce old data, and retry.', storageWriteFailed: 'Local data could not be written. No bulk workflow continued with an incomplete record.',
             errorReportHistory: 'Failure history', errorReportGuidance: 'First verify that the page has fully loaded. You can then retry the collection safely from its saved position.', retryCollection: 'Retry collection', downloadErrorReports: 'Download all reports', reportDownloaded: 'Failure reports downloaded.',
             lastAnalysis: 'Last successful analysis: {time}', analysisValidity: 'Completed analyses remain valid for 24 hours.',
-            thresholdCalibration: 'Thresholds suggested from shop data', thresholdCalibrationCopy: 'Suggestions use distributions from a complete shop collection and are never applied automatically.', calibrationAvailable: 'Calibrated from {count} listings.', calibrationInsufficient: 'At least 8 readable listings are required for calibration.', useRecommended: 'Fill suggested values', recommendedValue: 'Suggested: {value}', thresholdImpact: 'With these values, about {improve} listings qualify for improvement review and {protect} as strong performers.', thresholdRelationship: 'The strong-listing protection threshold must be greater than the improvement threshold.', thresholdHelpImprove: 'Minimum visits that trigger improvement review when there are no sales.', thresholdHelpProtect: 'Visits required to protect a strong listing; this must exceed the improvement threshold.', thresholdHelpRenewals: 'Minimum renewals required before deactivation review.', thresholdHelpDecline: 'Percentage change that triggers a decline warning.', resetDefaults: 'Restore safe defaults',
+            thresholdCalibration: 'Thresholds suggested from shop data', thresholdCalibrationCopy: 'Suggestions use fresh, non-experimental distributions from a complete shop collection and are never applied automatically.', calibrationAvailable: 'Calibrated from {count} listings.', calibrationInsufficient: 'At least 20 readable listings are required for calibration.', useRecommended: 'Fill suggested values', recommendedValue: 'Suggested: {value}', thresholdImpact: 'With these values, about {improve} listings qualify for improvement review and {protect} as strong performers.', thresholdRelationship: 'The strong-listing protection threshold must be greater than the improvement threshold.', thresholdHelpImprove: 'Minimum visits that trigger improvement review when there are no sales.', thresholdHelpProtect: 'Visits required to protect a strong listing; this must exceed the improvement threshold.', thresholdHelpRenewals: 'Minimum renewals required before deactivation review.', thresholdHelpDecline: 'Percentage change that triggers a decline warning.', resetDefaults: 'Restore safe defaults',
             experimentOverlapTitle: 'This conflicts with an active experiment', experimentOverlapCopy: 'This listing still has an observed improvement experiment. A new change can make the earlier result impossible to isolate.', acknowledgeOverlap: 'I understand the overlap and still want to prepare this proposal.', experimentOverlapRequired: 'A proposal that overlaps an active experiment cannot enter the queue until you acknowledge it.',
             aiErrorJson: 'The JSON could not be parsed. Check for a trailing comma, missing quote, or code-fence markers.', aiErrorSchema: 'The response schema is invalid. schema must be makaytron-listing-ai-proposals/v1 and proposals must be an array.', aiErrorRequest: 'The requestId is unknown or expired. Copy a fresh AI request package.', aiErrorProposal: 'The proposal failed validation at {path}.', aiErrorHelp: 'Fix the expected field and retry the same JSON; no proposal is written while an error exists.', aiFormatHelp: 'tags and materials must be JSON arrays; title and description must be strings.', copyAiTemplate: 'Copy example JSON', aiTemplateCopied: 'Example AI JSON copied to the clipboard.',
             queueRecoveryTitle: 'An interrupted action queue was found', queueRecoveryCopy: 'The page may have closed before the last step finished. The same write is never repeated until you inspect the listing state.', queueRecoveryRetry: 'Safely prepare item again', queueRecoveryConfirm: 'Have you checked the current Etsy form? The item will only return to pending; nothing will publish automatically.', queueRecoverySubmitted: 'This listing may have been submitted to Etsy without a verified result. Automatic retry is disabled to prevent a duplicate write; verify Etsy manually or stop the queue.', queueRecoveryOpen: 'Open listing for safe review', queueRecoveryStop: 'Stop queue',
@@ -1144,11 +1154,16 @@
         status: { key: 'ready', tone: 'ready', params: {} },
         menuIds: [],
         routeKey: '',
+        routeGeneration: 0,
+        routeTask: null,
+        routeRetryKey: '',
         routeTimer: 0,
         leaseTimer: 0,
         leaseToken: '',
+        actionTask: null,
         collection: null,
         collectionLoop: null,
+        collectionStartTask: null,
         collectionPauseRequested: false,
         collectionLeaseTimer: 0,
         collectionLeaseToken: '',
@@ -1161,7 +1176,7 @@
         filterPresets: [],
         analysisFilterDrawerOpen: false,
         analysisLimit: ANALYSIS_BATCH_SIZE,
-        updateState: { status: 'idle', latestVersion: '', checkedAt: 0, error: '', commitSha: '', installUrl: '' },
+        updateState: { status: 'idle', latestVersion: '', checkedVersion: '', checkedAt: 0, error: '', commitSha: '', installUrl: '' },
         storageHealth: { estimateBytes: 0, warning: '', failedKey: '', failedAt: '' },
         feedback: [],
         modalReturnFocus: null,
@@ -1254,7 +1269,12 @@
     }
 
     const DAY_MS = 86400000;
-    function finiteOrNull(value) { return Number.isFinite(Number(value)) && value !== '' && value !== null ? Number(value) : null; }
+    function finiteOrNull(value) {
+        if (!['number', 'string'].includes(typeof value)) return null;
+        if (typeof value === 'string' && !value.trim()) return null;
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? numeric : null;
+    }
     function validTime(value) { const time = Date.parse(value); return Number.isFinite(time) ? time : null; }
     function daysBetween(newer, older) {
         const newerTime = validTime(newer); const olderTime = validTime(older);
@@ -1289,6 +1309,41 @@
         const top = finiteOrNull(numerator); const bottom = finiteOrNull(denominator);
         if (top === null || bottom === null || bottom <= 0) return null;
         return Math.round((top / bottom) * multiplier * 1000) / 1000;
+    }
+    function bayesianRate(numerator, denominator, priorRatePercent = HEALTH_RULES.favoritePriorRate, priorTrials = HEALTH_RULES.favoritePriorVisits) {
+        const top = finiteOrNull(numerator); const bottom = finiteOrNull(denominator);
+        const priorRate = finiteOrNull(priorRatePercent); const priorWeight = finiteOrNull(priorTrials);
+        if (top === null || bottom === null || top < 0 || bottom < 0 || priorRate === null || priorRate < 0 || priorWeight === null || priorWeight <= 0) return null;
+        return Math.round(((top + (priorRate / 100) * priorWeight) / (bottom + priorWeight)) * 100000) / 1000;
+    }
+    function poissonRateRatioInterval(beforeEvents, beforeExposure, afterEvents, afterExposure, z = HEALTH_RULES.experimentConfidenceZ) {
+        const beforeCount = finiteOrNull(beforeEvents); const beforeSample = finiteOrNull(beforeExposure);
+        const afterCount = finiteOrNull(afterEvents); const afterSample = finiteOrNull(afterExposure); const critical = finiteOrNull(z);
+        if (beforeCount === null || beforeSample === null || afterCount === null || afterSample === null || critical === null
+            || beforeCount < 0 || afterCount < 0 || beforeSample <= 0 || afterSample <= 0 || critical <= 0) return null;
+        const correctedBefore = beforeCount + 0.5;
+        const correctedAfter = afterCount + 0.5;
+        const ratio = (correctedAfter / afterSample) / (correctedBefore / beforeSample);
+        const standardError = Math.sqrt((1 / correctedBefore) + (1 / correctedAfter));
+        const logRatio = Math.log(ratio);
+        return {
+            ratio,
+            low: Math.exp(logRatio - critical * standardError),
+            high: Math.exp(logRatio + critical * standardError),
+            beforeEvents: beforeCount,
+            beforeExposure: beforeSample,
+            afterEvents: afterCount,
+            afterExposure: afterSample,
+            criticalZ: critical,
+        };
+    }
+    function separatedRateDirection(beforeSuccesses, beforeTrials, afterSuccesses, afterTrials) {
+        const comparison = poissonRateRatioInterval(beforeSuccesses, beforeTrials, afterSuccesses, afterTrials);
+        return {
+            comparison,
+            winner: Boolean(comparison && comparison.low > 1),
+            underperformed: Boolean(comparison && comparison.high < 1),
+        };
     }
     function fnv1a(value) {
         let hash = 0x811c9dc5;
@@ -1411,13 +1466,20 @@
         const installUrl = commitSha ? pinnedUpdateUrl(commitSha) : '';
         const hasVerifiedInstall = Boolean(installUrl && String(source.installUrl || '') === installUrl);
         const requestedStatus = allowed.includes(source.status) && source.status !== 'checking' ? source.status : 'idle';
+        const latestVersion = /^\d+\.\d+\.\d+$/.test(String(source.latestVersion || '')) ? String(source.latestVersion) : '';
+        const checkedVersion = /^\d+\.\d+\.\d+$/.test(String(source.checkedVersion || '')) ? String(source.checkedVersion) : '';
+        const belongsToInstalledVersion = checkedVersion === APP_VERSION;
+        const requiresVerifiedInstall = ['current', 'available'].includes(requestedStatus);
+        const validCachedStatus = requestedStatus === 'idle'
+            || (belongsToInstalledVersion && (!requiresVerifiedInstall || (hasVerifiedInstall && latestVersion)));
         return {
-            status: ['current', 'available'].includes(requestedStatus) && !hasVerifiedInstall ? 'idle' : requestedStatus,
-            latestVersion: /^\d+\.\d+\.\d+$/.test(String(source.latestVersion || '')) ? String(source.latestVersion) : '',
+            status: validCachedStatus ? requestedStatus : 'idle',
+            latestVersion,
+            checkedVersion: belongsToInstalledVersion ? checkedVersion : '',
             checkedAt: Math.max(0, Number(source.checkedAt) || 0),
             error: normalizeSpace(source.error).slice(0, 240),
-            commitSha: hasVerifiedInstall ? commitSha : '',
-            installUrl: hasVerifiedInstall ? installUrl : '',
+            commitSha: hasVerifiedInstall && belongsToInstalledVersion ? commitSha : '',
+            installUrl: hasVerifiedInstall && belongsToInstalledVersion ? installUrl : '',
             source: ['github', 'greasyfork', 'external'].includes(source.source) ? source.source : '',
         };
     }
@@ -1659,10 +1721,10 @@
             let improvementId = null;
             let baselineFingerprint = null;
             const baselineCapturedAt = record.editor?.capturedAt || null;
+            record.improvements.forEach((entry) => {
+                if (entry?.status === 'planned') { entry.status = 'superseded'; entry.supersededAt = savedAt; }
+            });
             if (proposal.action === 'UPDATE') {
-                record.improvements.forEach((entry) => {
-                    if (entry?.status === 'planned') { entry.status = 'superseded'; entry.supersededAt = savedAt; }
-                });
                 improvementId = `improvement-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
                 baselineFingerprint = await contentFingerprint(before);
                 record.improvements.push({
@@ -1900,11 +1962,11 @@
         const manual = Boolean(options.manual);
         const force = Boolean(options.force);
         const age = Date.now() - Number(state.updateState.checkedAt || 0);
-        if (!force && state.updateState.checkedAt && age >= 0 && age < UPDATE_CHECK_INTERVAL_MS) return state.updateState;
+        if (!force && state.updateState.status !== 'idle' && state.updateState.checkedAt && age >= 0 && age < UPDATE_CHECK_INTERVAL_MS) return state.updateState;
         if (state.updateState.status === 'checking') return state.updateState;
         const distributionSource = installedDistributionSource();
         if (distributionSource !== 'github') {
-            state.updateState = { status: 'managed', latestVersion: '', checkedAt: Date.now(), error: '', commitSha: '', installUrl: '', source: distributionSource };
+            state.updateState = { status: 'managed', latestVersion: '', checkedVersion: APP_VERSION, checkedAt: Date.now(), error: '', commitSha: '', installUrl: '', source: distributionSource };
             await Store.saveUpdateState();
             if (manual) { UI.setStatus('updateManagedExternally', 'ready'); UI.render(true); }
             return state.updateState;
@@ -1915,14 +1977,14 @@
             const remote = await requestCanonicalScript();
             const comparison = compareSemver(remote.version, APP_VERSION);
             if (comparison === null) throw new Error('The update version could not be compared.');
-            state.updateState = { status: comparison > 0 ? 'available' : 'current', latestVersion: remote.version, checkedAt: Date.now(), error: '', commitSha: remote.commitSha, installUrl: remote.installUrl, source: 'github' };
+            state.updateState = { status: comparison > 0 ? 'available' : 'current', latestVersion: remote.version, checkedVersion: APP_VERSION, checkedAt: Date.now(), error: '', commitSha: remote.commitSha, installUrl: remote.installUrl, source: 'github' };
             await Store.saveUpdateState();
             UI.setStatus(comparison > 0 ? 'updateAvailable' : 'updateCurrent', comparison > 0 ? 'blocked' : 'ready', { version: remote.version });
             UI.render(true);
             return state.updateState;
         } catch (error) {
             const message = normalizeSpace(error?.message || error || 'Unknown error').slice(0, 240);
-            state.updateState = { status: 'error', latestVersion: '', checkedAt: Date.now(), error: message, commitSha: '', installUrl: '' };
+            state.updateState = { status: 'error', latestVersion: '', checkedVersion: APP_VERSION, checkedAt: Date.now(), error: message, commitSha: '', installUrl: '' };
             await Store.saveUpdateState();
             if (manual) { UI.setStatus('updateFailed', 'error', { message }); UI.render(true); }
             return state.updateState;
@@ -1972,9 +2034,43 @@
         return normalized;
     }
 
+    function validateEditableProposal(proposal) {
+        if (proposal?.action !== 'UPDATE') throw new Error('Only UPDATE proposals can be applied to the Etsy form.');
+        const fields = proposalFields(proposal, true);
+        if (!fields.length) throw new Error('The proposal does not explicitly select an Etsy field to change.');
+        const values = { fields };
+        if (fields.includes('title')) {
+            values.title = normalizeSpace(proposal.title);
+            if (!values.title || values.title.length > 140) throw new Error('The selected title must contain 1-140 characters.');
+        }
+        if (fields.includes('description')) {
+            if (typeof proposal.description !== 'string') throw new Error('The selected description must be a string.');
+            values.description = proposal.description;
+        }
+        for (const field of ['tags', 'materials']) {
+            if (!fields.includes(field)) continue;
+            if (!Array.isArray(proposal[field]) || proposal[field].some((value) => typeof value !== 'string')) {
+                throw new Error(`The selected ${field} field must be an array of strings.`);
+            }
+            values[field] = proposal[field].map(normalizeSpace);
+            const folded = values[field].map((value) => value.toLocaleLowerCase());
+            if (values[field].some((value) => !value) || new Set(folded).size !== folded.length) {
+                throw new Error(`The selected ${field} field contains an empty or duplicate value.`);
+            }
+        }
+        if (fields.includes('tags') && (values.tags.length > 13 || values.tags.some((tag) => tag.length > 20))) {
+            throw new Error('The selected tags must contain at most 13 values and 20 characters per tag.');
+        }
+        if (fields.includes('materials') && (values.materials.length > 13 || values.materials.some((material) => !/^[\p{L}\p{N} ]+$/u.test(material)))) {
+            throw new Error('The selected materials must contain at most 13 values using letters, numbers, and spaces only.');
+        }
+        return values;
+    }
+
     function editorMatchesProposal(editor, proposal) {
         const fields = proposalFields(proposal, true);
         return fields.every((field) => {
+            if ((field === 'tags' || field === 'materials') && editor?.[PILL_READ_INTEGRITY]?.[field] === false) return false;
             if (field === 'title') return normalizeSpace(editor?.title) === normalizeSpace(proposal.title);
             if (field === 'description') return String(editor?.description ?? '') === String(proposal.description ?? '');
             if (field === 'tags') return sameStringSet(editor?.tags, proposal.tags);
@@ -2020,8 +2116,13 @@
         } catch { return ''; }
         Array.from(root?.querySelectorAll?.('input[name="item_status"]') || []).forEach((input) => {
             const label = input.closest?.('label');
-            let selected = Boolean(input.checked || input.getAttribute?.('checked') !== null || input.getAttribute?.('aria-checked') === 'true');
-            try { selected = selected || input.matches?.(':checked'); } catch { /* optional selector support */ }
+            const hasLiveCheckedState = input && typeof input === 'object' && 'checked' in input;
+            let selected = hasLiveCheckedState
+                ? Boolean(input.checked)
+                : Boolean(input.getAttribute?.('checked') !== null || input.getAttribute?.('aria-checked') === 'true');
+            if (!hasLiveCheckedState) {
+                try { selected = selected || input.matches?.(':checked'); } catch { /* optional selector support */ }
+            }
             selected = selected || label?.getAttribute?.('aria-current') === 'true'
                 || Boolean(label?.querySelector?.('[data-clg-id="WtAnnouncement"][role="status"]'));
             const stateValue = selected ? normalizeListingState(input.value) : '';
@@ -2256,7 +2357,7 @@
             const actualDays = daysBetween(current.at, snapshot.at);
             if (!Number.isFinite(actualDays) || actualDays <= 0) return;
             const distance = Math.abs(actualDays - targetDays);
-            if (!best || distance < best.distance || (distance === best.distance && actualDays < best.actualDays)) best = { snapshot, targetDays, actualDays, distance };
+            if (!best || distance < best.distance || (distance === best.distance && actualDays > best.actualDays)) best = { snapshot, targetDays, actualDays, distance };
         });
         return best && best.distance <= tolerance ? { ...best, complete: true } : { snapshot: null, targetDays, actualDays: null, distance: best?.distance ?? null, complete: false };
     }
@@ -2276,11 +2377,11 @@
     }
 
     function cumulativeWindow(current, anchor, field, targetDays) {
-        if (!anchor?.snapshot || !Number.isFinite(current?.[field]) || !Number.isFinite(anchor.snapshot[field])) return { raw: null, normalized: null };
+        if (!anchor?.snapshot || !Number.isFinite(current?.[field]) || !Number.isFinite(anchor.snapshot[field])) return { raw: null, normalized: null, actualDays: null };
         const raw = current[field] - anchor.snapshot[field];
-        if (raw < 0) return { raw: null, normalized: null };
+        if (raw < 0) return { raw: null, normalized: null, actualDays: anchor.actualDays ?? null };
         const normalized = anchor.actualDays > 0 ? Math.round(raw * (targetDays / anchor.actualDays) * 1000) / 1000 : null;
-        return { raw, normalized };
+        return { raw, normalized, actualDays: anchor.actualDays ?? null };
     }
 
     function inspectHistory(history, evaluatedAt) {
@@ -2305,6 +2406,7 @@
         const current = history.at(-1) || null;
         if (!current) return { history, current: null, anchors: {}, anomalies: ['missing-history'], complete: false, snapshotCount: 0, completeSnapshotCount: 0, historySpanDays: 0 };
         const anchors = { d30: findAnchor(history, current, 30), d60: findAnchor(history, current, 60), d90: findAnchor(history, current, 90) };
+        anchors.prior30 = anchors.d30.snapshot ? findAnchor(history, anchors.d30.snapshot, 30) : { snapshot: null, targetDays: 30, actualDays: null, distance: null, complete: false };
         const sales30 = cumulativeWindow(current, anchors.d30, 'sales', 30);
         const revenue30 = cumulativeWindow(current, anchors.d30, 'revenue', 30);
         const renewals30 = cumulativeWindow(current, anchors.d30, 'renewals', 30);
@@ -2312,7 +2414,7 @@
         const revenue60 = cumulativeWindow(current, anchors.d60, 'revenue', 60);
         const renewals60 = cumulativeWindow(current, anchors.d60, 'renewals', 60);
         const trafficChangePercent = percentChange(current.visits, anchors.d30.snapshot?.visits);
-        const priorTrafficChangePercent = anchors.d30.snapshot && anchors.d60.snapshot ? percentChange(anchors.d30.snapshot.visits, anchors.d60.snapshot.visits) : null;
+        const priorTrafficChangePercent = anchors.d30.snapshot && anchors.prior30.snapshot ? percentChange(anchors.d30.snapshot.visits, anchors.prior30.snapshot.visits) : null;
         const completeSnapshots = history.filter((snapshot) => HEALTH_METRIC_FIELDS.every((field) => Number.isFinite(snapshot[field])));
         const completeSnapshotCount = completeSnapshots.length;
         const historySpanDays = Math.max(0, daysBetween(current.at, history[0]?.at) || 0);
@@ -2325,6 +2427,7 @@
             anomalies: inspectHistory(history, evaluatedAt), freshnessDays: Math.max(0, daysBetween(evaluatedAt, current.at) || 0),
             visits30: current.visits, favorites30: current.favorites,
             favoriteRate: safeRatio(current.favorites, current.visits, 100),
+            favoriteRateSmoothed: bayesianRate(current.favorites, current.visits),
             salesRateProxy: safeRatio(sales30.normalized, current.visits, 100),
             revenuePerVisitProxy: safeRatio(revenue30.normalized, current.visits),
             sales30: sales30.normalized, sales30Raw: sales30.raw, revenue30: revenue30.normalized, revenue30Raw: revenue30.raw, renewals30: renewals30.normalized, renewals30Raw: renewals30.raw,
@@ -2380,10 +2483,11 @@
         const metricNames = ['visits30', 'favoriteRate', 'salesRateProxy', 'revenuePerVisitProxy', 'sales30'];
         const metrics = {};
         metricNames.forEach((name) => {
-            const values = cohort.map((candidate) => derivations.get(candidate.listingId)?.[name]).filter(Number.isFinite);
+            const metricValue = (derived) => name === 'favoriteRate' ? derived?.favoriteRateSmoothed : derived?.[name];
+            const values = cohort.map((candidate) => metricValue(derivations.get(candidate.listingId))).filter(Number.isFinite);
             metrics[name] = {
                 median: median(values), p25: quantile(values, 0.25), p75: quantile(values, 0.75),
-                percentile: percentileRank(values, target?.[name]), samples: values.length,
+                percentile: percentileRank(values, metricValue(target)), samples: values.length,
                 reliable: values.length >= policy.thresholds.minimumCohortSize,
             };
         });
@@ -2391,11 +2495,12 @@
         return { size: cohort.length, reliable, scope: priceBandApplied ? 'shop-price-band' : 'shop', metrics };
     }
 
-    function bootstrapMetricScore(metric, absoluteScore) {
+    function bootstrapMetricScore(metric, absoluteScore, percentileWeight = 0.65) {
         const absolute = clamp(Math.round(Number(absoluteScore) || 0), 0, 100);
         if (absolute === 0) return 0;
         const percentile = metric?.reliable ? finiteOrNull(metric.percentile) : null;
-        return percentile === null ? absolute : clamp(Math.round(percentile * 0.65 + absolute * 0.35), 0, 100);
+        const relativeWeight = clamp(Number(percentileWeight) || 0, 0, 1);
+        return percentile === null || relativeWeight === 0 ? absolute : clamp(Math.round(percentile * relativeWeight + absolute * (1 - relativeWeight)), 0, 100);
     }
 
     function bootstrapAssessment(record, derived, benchmark, policy) {
@@ -2413,11 +2518,15 @@
         const protectVisits = Math.max(minVisits, Number(policy.thresholds.minVisitsToProtect) || minVisits);
         const visibilityAbsolute = clamp((visits / protectVisits) * 100, 0, 100);
         const engagementEligible = visits >= minVisits;
-        const engagementAbsolute = engagementEligible ? clamp((Number(derived.favoriteRate) / 5) * 100, 0, 100) : null;
+        const smoothedFavoriteRate = visits > 0 ? bayesianRate(favorites, visits) : null;
+        const engagementAbsolute = smoothedFavoriteRate === null ? null : clamp((smoothedFavoriteRate / 5) * 100, 0, 100);
+        const engagementEvidence = clamp(visits / minVisits, 0, 1);
+        const engagementWeight = engagementAbsolute === null ? 0 : 35 * engagementEvidence;
+        const engagementPercentileWeight = 0.65 * clamp(visits / protectVisits, 0, 1);
         const visibility = bootstrapMetricScore(benchmark.metrics?.visits30, visibilityAbsolute);
-        const engagement = engagementEligible ? bootstrapMetricScore(benchmark.metrics?.favoriteRate, engagementAbsolute) : null;
+        const engagement = engagementAbsolute === null ? null : bootstrapMetricScore(benchmark.metrics?.favoriteRate, engagementAbsolute, engagementPercentileWeight);
         const weighted = [{ value: visibility, weight: 65 }];
-        if (engagement !== null) weighted.push({ value: engagement, weight: 35 });
+        if (engagement !== null && engagementWeight > 0) weighted.push({ value: engagement, weight: engagementWeight });
         const weight = weighted.reduce((sum, item) => sum + item.weight, 0);
         const score = weight ? clamp(Math.round(weighted.reduce((sum, item) => sum + item.value * item.weight, 0) / weight), 0, 100) : null;
         const noDemand = sales === 0 && revenue === 0;
@@ -2453,7 +2562,7 @@
         return {
             available: true, signal, funnelSignal, cumulativeSignal, diagnosis, code, reasonKey, score, priority, severity,
             source: benchmark.metrics?.visits30?.reliable ? 'shop-cohort' : 'absolute-thresholds',
-            components: { visibility, engagement },
+            components: { visibility, engagement, engagementEvidence: Math.round(engagementEvidence * 100), smoothedFavoriteRate },
             evidence: { visits, favorites, sales, revenue, renewals },
         };
     }
@@ -2466,7 +2575,7 @@
             .some((right) => Math.abs(daysBetween(right.at, left.at) || 0) >= HEALTH_RULES.deactivationZeroObservationGapDays));
         const trafficSample = repeatedZeroEvidence ? 100 : Math.round(Math.min(100, ((finiteOrNull(derived.current?.visits) || 0) / Math.max(1, policy.thresholds.minVisitsToProtect)) * 100));
         const comparableSamples = Number(benchmark.metrics?.visits30?.samples) || 0;
-        const cohortStrength = Math.round(Math.min(100, (comparableSamples / HEALTH_RULES.minimumCohortSize) * 100));
+        const cohortStrength = Math.round(Math.min(100, (comparableSamples / HEALTH_RULES.fullStrengthCohortSize) * 100));
         const freshness = derived.freshnessDays <= 1 ? 100 : derived.freshnessDays <= 7 ? 75 : derived.freshnessDays <= 30 ? 35 : 0;
         const integrity = Math.max(0, 100 - (derived.anomalies?.length || 0) * 25);
         const components = { dataQuality: completeness, historyDepth, trafficSample, cohortStrength, freshness, dataIntegrity: integrity };
@@ -2872,10 +2981,15 @@
             const record = normalizeRecord(candidate, candidate?.listingId);
             const derived = record ? deriveRecordMetrics(record, evaluatedAt) : null;
             return { record, derived };
-        }).filter(({ record, derived }) => record && derived?.complete && derived.anchors?.d30?.complete
-            && derived.freshnessDays <= 1 && !derived.anomalies?.length
-            && Number.isFinite(derived.visits30) && Number.isFinite(derived.sales30)
-            && recordListingState(record, derived) === 'active');
+        }).filter(({ record, derived }) => {
+            const recentChange = [...(record?.improvements || [])].reverse().find((entry) => entry?.publishedAt
+                && daysBetween(evaluatedAt, entry.publishedAt) <= HEALTH_RULES.improvementCooldownDays);
+            return record && derived?.complete && derived.anchors?.d30?.complete
+                && derived.freshnessDays <= 1 && !derived.anomalies?.length
+                && Number.isFinite(derived.visits30) && Number.isFinite(derived.sales30)
+                && recordListingState(record, derived) === 'active'
+                && !activeExperiment(record, evaluatedAt) && !recentChange;
+        });
     }
 
     function thresholdImpactCounts(records = null, values = state.settings, evaluatedAt = nowIso()) {
@@ -2888,7 +3002,7 @@
 
     function thresholdCalibration(records = null, evaluatedAt = nowIso()) {
         const readable = readableCalibrationRows(records, evaluatedAt);
-        if (readable.length < 8) return { available: false, sampleSize: readable.length, values: null };
+        if (readable.length < HEALTH_RULES.minimumCalibrationSize) return { available: false, sampleSize: readable.length, values: null };
         const visits = readable.map(({ derived }) => finiteOrNull(derived.visits30)).filter(Number.isFinite);
         const noSaleVisits = readable.filter(({ derived }) => derived.sales30 === 0)
             .map(({ derived }) => finiteOrNull(derived.visits30)).filter((value) => Number.isFinite(value) && value > 0);
@@ -2900,8 +3014,8 @@
             .map(({ derived }) => finiteOrNull(derived.current?.renewals)).filter(Number.isFinite);
         const declines = readable.map(({ derived }) => finiteOrNull(derived.trafficChangePercent))
             .filter((value) => Number.isFinite(value) && value < 0).map(Math.abs);
-        const improve = Math.max(10, Math.round(quantile(noSaleVisits.length >= 3 ? noSaleVisits : visits, 0.25) || DEFAULT_SETTINGS.minVisitsToImprove));
-        const protectBase = Math.round(quantile(sellingVisits.length >= 3 ? sellingVisits : visits, 0.75) || DEFAULT_SETTINGS.minVisitsToProtect);
+        const improve = Math.max(10, Math.round(quantile(noSaleVisits.length >= 5 ? noSaleVisits : visits, 0.75) || DEFAULT_SETTINGS.minVisitsToImprove));
+        const protectBase = Math.round(quantile(sellingVisits.length >= 5 ? sellingVisits : visits, 0.50) || DEFAULT_SETTINGS.minVisitsToProtect);
         return {
             available: true,
             sampleSize: readable.length,
@@ -2909,7 +3023,7 @@
                 minVisitsToImprove: improve,
                 minVisitsToProtect: Math.max(improve + 10, protectBase),
                 minRenewalsToReview: clamp(Math.round(median(dormantRenewals) || DEFAULT_SETTINGS.minRenewalsToReview), 2, 10),
-                declinePercent: clamp(Math.round(median(declines) || DEFAULT_SETTINGS.declinePercent), 20, 60),
+                declinePercent: clamp(Math.round(quantile(declines, 0.75) || DEFAULT_SETTINGS.declinePercent), 20, 60),
             },
         };
     }
@@ -3060,7 +3174,8 @@
         const fromTags = uniqueStrings(editable.tags || []).filter((value) => value.length >= 2 && value.length <= 50);
         const title = normalizeSpace(editable.title);
         const titleParts = uniqueStrings(title.split(/[|,;/]+/)).filter((value) => value.length >= 2 && value.length <= 50);
-        let titleFallback = title.slice(0, 50).replace(/\s+\S*$/, '').trim();
+        let titleFallback = title.slice(0, 50).trim();
+        if (title.length > 50) titleFallback = titleFallback.replace(/\s+\S*$/, '').trim();
         if (!titleFallback) titleFallback = title.slice(0, 50).trim();
         return uniqueStrings([...fromTags, ...titleParts, titleFallback]).slice(0, 3);
     }
@@ -3387,6 +3502,17 @@
         } catch { return stored; }
     }
 
+    function transitionResearchEntry(entry, nextStatus, patch = {}, allowedStatuses = []) {
+        const currentStatus = String(entry?.status || '');
+        if (['completed', 'failed'].includes(currentStatus)) return entry;
+        if (allowedStatuses.length && !allowedStatuses.includes(currentStatus)) return entry;
+        return { ...entry, ...patch, status: nextStatus };
+    }
+
+    function researchResultStatusAccepts(status) {
+        return ['waiting-ready', 'request-sent', 'acknowledged', 'processing'].includes(String(status || ''));
+    }
+
     async function consumeResearchResult(envelope) {
         return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
             const cache = normalizeResearchCache(await GMX.get(KEYS.researchRequests, {}));
@@ -3398,6 +3524,9 @@
                 const duplicateHash = `fnv1a-${fnv1a(JSON.stringify(duplicateResult))}`;
                 if (duplicateHash !== entry.resultHash) throw new Error('conflicting research replay rejected');
                 return { duplicate: true, entry, count: Number(entry.evidenceCount) || 0 };
+            }
+            if (!researchResultStatusAccepts(entry.status)) {
+                throw new Error('research request no longer accepts results');
             }
             if (researchTime(entry.expiresAt) < Date.now()) throw new Error('research request expired');
             const expectedIdentity = entry.collection || {};
@@ -3515,8 +3644,13 @@
         if (envelope.type === 'RESEARCH_ACK') {
             try { validateResearchAckPayload(envelope.payload); }
             catch { return; }
-            await updateResearchEntry(entry.requestId, (current) => ({ ...current, status: 'acknowledged', acknowledgedAt: nowIso() }));
-            UI.updateResearchTransfer('researchAcknowledged', 'scanning');
+            const updated = await updateResearchEntry(entry.requestId, (current) => transitionResearchEntry(
+                current,
+                'acknowledged',
+                { acknowledgedAt: current.acknowledgedAt || nowIso() },
+                ['request-sent', 'acknowledged'],
+            ));
+            if (updated?.status === 'acknowledged') UI.updateResearchTransfer('researchAcknowledged', 'scanning');
             return;
         }
         if (envelope.type === 'ERROR') {
@@ -3524,7 +3658,13 @@
             try { remoteError = validateResearchErrorPayload(envelope.payload); }
             catch { return; }
             const message = remoteError.message.slice(0, 240);
-            await updateResearchEntry(entry.requestId, (current) => ({ ...current, status: 'failed', failedAt: nowIso(), lastError: message }));
+            const updated = await updateResearchEntry(entry.requestId, (current) => transitionResearchEntry(
+                current,
+                'failed',
+                { failedAt: nowIso(), lastError: message },
+                ['waiting-ready', 'request-sent', 'acknowledged', 'processing'],
+            ));
+            if (updated?.status !== 'failed') return;
             clearResearchUiTimer(entry.requestId);
             UI.updateResearchTransfer('researchErrorRemote', 'error', { message });
             return;
@@ -3573,35 +3713,53 @@
         const currentVisits = finiteOrNull(current?.visits);
         if (metric === 'visits30') {
             const before = baselineVisits; const after = currentVisits;
+            const direction = separatedRateDirection(before, HEALTH_RULES.experimentDays, after, HEALTH_RULES.experimentDays);
             return {
                 valid: Number.isFinite(before) && Number.isFinite(after), effect: relativeEffectPercent(before, after),
-                baseline: { metricValue: before, visits: baselineVisits }, current: { metricValue: after, visits: currentVisits },
-                winnerReady: Number(after) >= 20, underperformedReady: Number(after) >= 20,
+                baseline: { metricValue: before, visits: baselineVisits },
+                current: { metricValue: after, visits: currentVisits, rateRatioInterval: direction.comparison },
+                winnerReady: direction.winner && Number(after) >= 20,
+                underperformedReady: direction.underperformed && Number(before) >= 20,
             };
         }
         if (metric === 'favoriteRate') {
-            const before = safeRatio(finiteOrNull(baseline?.favorites), baselineVisits, 100);
-            const after = safeRatio(finiteOrNull(current?.favorites), currentVisits, 100);
+            const baselineFavorites = finiteOrNull(baseline?.favorites);
+            const currentFavorites = finiteOrNull(current?.favorites);
+            const before = safeRatio(baselineFavorites, baselineVisits, 100);
+            const after = safeRatio(currentFavorites, currentVisits, 100);
+            const direction = separatedRateDirection(baselineFavorites, baselineVisits, currentFavorites, currentVisits);
             return {
                 valid: Number.isFinite(before) && Number.isFinite(after), effect: relativeEffectPercent(before, after),
-                baseline: { metricValue: before, rate: before, favorites: finiteOrNull(baseline?.favorites), visits: baselineVisits },
-                current: { metricValue: after, rate: after, favorites: finiteOrNull(current?.favorites), visits: currentVisits },
-                winnerReady: Number(currentVisits) >= 20 && Number(current?.favorites) >= 2,
-                underperformedReady: Number(currentVisits) >= 20,
+                baseline: { metricValue: before, rate: before, favorites: baselineFavorites, visits: baselineVisits },
+                current: { metricValue: after, rate: after, favorites: currentFavorites, visits: currentVisits, rateRatioInterval: direction.comparison },
+                winnerReady: direction.winner,
+                underperformedReady: direction.underperformed,
             };
         }
         const baselineAnchor = findAnchor(baselineHistory, baseline, 30);
-        const baselineSales = cumulativeWindow(baseline, baselineAnchor, 'sales', 30).normalized;
-        const afterSales = Number.isFinite(current?.sales) && Number.isFinite(baseline?.sales) ? current.sales - baseline.sales : null;
+        const baselineWindow = cumulativeWindow(baseline, baselineAnchor, 'sales', 30);
+        const baselineSales = baselineWindow.normalized;
+        const afterSalesRaw = Number.isFinite(current?.sales) && Number.isFinite(baseline?.sales) ? current.sales - baseline.sales : null;
+        const exposureDays = daysBetween(current?.at, baseline?.at);
+        const afterSales = Number.isFinite(afterSalesRaw) && afterSalesRaw >= 0 && Number.isFinite(exposureDays) && exposureDays > 0
+            ? Math.round(afterSalesRaw * (HEALTH_RULES.experimentDays / exposureDays) * 1000) / 1000
+            : null;
         const before = safeRatio(baselineSales, baselineVisits, 100);
         const after = safeRatio(afterSales, currentVisits, 100);
+        const baselineExposure = Number.isFinite(baselineWindow.actualDays) && baselineWindow.actualDays > 0 && Number.isFinite(baselineVisits)
+            ? baselineVisits * (baselineWindow.actualDays / HEALTH_RULES.experimentDays)
+            : null;
+        const currentExposure = Number.isFinite(exposureDays) && exposureDays > 0 && Number.isFinite(currentVisits)
+            ? currentVisits * (exposureDays / HEALTH_RULES.experimentDays)
+            : null;
+        const direction = separatedRateDirection(baselineWindow.raw, baselineExposure, afterSalesRaw, currentExposure);
         return {
-            valid: Number.isFinite(afterSales) && afterSales >= 0 && Number.isFinite(before) && Number.isFinite(after),
+            valid: Number.isFinite(afterSalesRaw) && afterSalesRaw >= 0 && Number.isFinite(afterSales) && Number.isFinite(before) && Number.isFinite(after),
             effect: relativeEffectPercent(before, after),
-            baseline: { metricValue: before, sales: baselineSales, rate: before, visits: baselineVisits },
-            current: { metricValue: after, sales: afterSales, rate: after, visits: currentVisits },
-            winnerReady: Number(afterSales) >= Math.max(2, Number(baselineSales) || 0),
-            underperformedReady: Number(currentVisits) >= 20,
+            baseline: { metricValue: before, sales: baselineSales, rawSales: baselineWindow.raw, rate: before, visits: baselineVisits, effectiveVisitExposure: baselineExposure },
+            current: { metricValue: after, sales: afterSales, rawSales: afterSalesRaw, exposureDays, rate: after, visits: currentVisits, effectiveVisitExposure: currentExposure, rateRatioInterval: direction.comparison },
+            winnerReady: direction.winner && Number(afterSalesRaw) >= 2,
+            underperformedReady: direction.underperformed && Number(baselineWindow.raw) >= 2,
         };
     }
 
@@ -3624,10 +3782,15 @@
                 entry.experiment.contaminatedAt = published[index + 1].publishedAt; finishExperiment('contaminated', entry.experiment.contaminatedAt); return;
             }
             if (day < HEALTH_RULES.experimentDays) { entry.experiment.state = 'observing'; return; }
-            const baseline = normalizeSnapshot(entry.baselineSnapshot) || [...history].reverse().find((snapshot) => validTime(snapshot.at) <= validTime(startAt));
+            const baselineCandidates = [normalizeSnapshot(entry.baselineSnapshot), ...history]
+                .filter((snapshot) => snapshot && validTime(snapshot.at) <= validTime(startAt))
+                .sort((left, right) => validTime(left.at) - validTime(right.at));
+            const baseline = baselineCandidates.at(-1) || null;
             const current = history.find((snapshot) => validTime(snapshot.at) >= validTime(evaluateAt));
+            const baselineAge = baseline ? daysBetween(startAt, baseline.at) : null;
             const evaluationDelay = current ? daysBetween(current.at, evaluateAt) : null;
-            if (!baseline || !current || !Number.isFinite(evaluationDelay) || evaluationDelay > HEALTH_RULES.experimentEvaluationGraceDays) {
+            if (!baseline || !current || !Number.isFinite(baselineAge) || baselineAge < 0 || baselineAge > HEALTH_RULES.experimentBaselineMaxAgeDays
+                || !Number.isFinite(evaluationDelay) || evaluationDelay < 0 || evaluationDelay > HEALTH_RULES.experimentEvaluationGraceDays) {
                 finishExperiment('inconclusive'); return;
             }
             const baselineHistory = history.filter((snapshot) => validTime(snapshot.at) <= validTime(baseline.at));
@@ -3637,6 +3800,8 @@
             entry.experiment.current = result.current;
             entry.experiment.effectPercent = result.effect;
             entry.experiment.evaluationSnapshotAt = current.at;
+            entry.experiment.baselineAgeDays = Math.round(baselineAge * 10) / 10;
+            entry.experiment.evaluationDelayDays = Math.round(evaluationDelay * 10) / 10;
             if (!result.valid || !Number.isFinite(result.effect)) finishExperiment('inconclusive');
             else if (result.winnerReady && result.effect >= 15) finishExperiment('winner');
             else if (result.underperformedReady && result.effect <= -15) finishExperiment('underperformed');
@@ -3906,17 +4071,48 @@
         'button[aria-label="Kaldır"]',
     ].join(',');
 
-    function pillValues(container) {
-        if (!container) return [];
-        return Array.from(container.querySelectorAll('li')).filter((item) => item.querySelector(PILL_REMOVE_SELECTOR)).map((item) => {
-            const clone = item.cloneNode(true);
-            clone.querySelectorAll('button,[aria-label="Remove"],[aria-label="Kaldır"]').forEach((button) => button.remove());
-            return normalizeSpace(clone.textContent).replace(/All \d+ used|Tüm \d+.*$/i, '').trim();
-        }).filter(Boolean);
+    function pillItemValue(item) {
+        if (!item?.querySelector(PILL_REMOVE_SELECTOR)) return '';
+        const clone = item.cloneNode(true);
+        clone.querySelectorAll('button,[aria-label="Remove"],[aria-label="Kaldır"]').forEach((button) => button.remove());
+        return normalizeSpace(clone.textContent).replace(/All \d+ used|Tüm \d+.*$/i, '').trim();
     }
+
+    function pillFieldState(container) {
+        const items = Array.from(container?.querySelectorAll?.('li') || []);
+        const parsed = items.map(pillItemValue);
+        return { values: parsed.filter(Boolean), complete: parsed.every(Boolean) };
+    }
+
+    function pillValues(container) {
+        return pillFieldState(container).values;
+    }
+
+    const PILL_READ_INTEGRITY = Symbol('meli-pill-read-integrity');
 
     function isInactiveStatus(value) {
         return /^(?:Inactive|Deactivated|Pasif|Devre dışı)$/i.test(normalizeSpace(value));
+    }
+
+    function isActiveStatus(value) {
+        return /^(?:Active|Aktif)$/i.test(normalizeSpace(value));
+    }
+
+    const DEACTIVATE_ACTION_LABEL = /^(?:Deactivate|Devre dışı bırak|Pasifleştir)$/iu;
+    const DEACTIVATE_DIALOG_LABEL = /^(?:Deactivate listing\?|Deactivate listing|Listing(?:'i)? devre dışı bırak\?|İlan(?:ı)? devre dışı bırak\?)$/iu;
+    const CANCEL_ACTION_LABEL = /^(?:Cancel|İptal)$/iu;
+    const DEACTIVATE_DIALOG_READY_TIMEOUT_MS = 10000;
+
+    function controlIsEnabled(element) {
+        return Boolean(element && elementIsUsable(element) && !element.disabled && element.getAttribute?.('aria-disabled') !== 'true');
+    }
+
+    function hasDeletionSemantics(element) {
+        const values = [
+            element?.getAttribute?.('aria-label'), element?.getAttribute?.('data-action'),
+            element?.getAttribute?.('data-test'), element?.id,
+        ].map((value) => normalizeSpace(value)).filter(Boolean);
+        return values.some((value) => /(?:^|[\s_-])(?:delete|remove|sil|kaldır)(?:$|[\s_-])/iu.test(value));
     }
 
     async function waitFor(predicate, timeout = 5000, interval = 100) {
@@ -3929,6 +4125,10 @@
     }
 
     const EditorAdapter = {
+        root() {
+            const title = document.querySelector('#listing-title-input');
+            return title?.closest?.('main,[role="main"]') || document.querySelector('main,[role="main"]') || document;
+        },
         visibleTitle() { return normalizeSpace(document.querySelector('header h3[role="button"].wt-text-title-large')?.textContent); },
         ready() {
             const title = document.querySelector('#listing-title-input');
@@ -3938,123 +4138,289 @@
         read() {
             const tagsField = document.querySelector('#field-tags');
             const materialsField = document.querySelector('#field-materials');
-            return {
+            const tags = pillFieldState(tagsField);
+            const materials = pillFieldState(materialsField);
+            const editor = {
                 title: document.querySelector('#listing-title-input')?.value || this.visibleTitle(),
                 description: document.querySelector('#listing-description-textarea')?.value || '',
-                tags: pillValues(tagsField), materials: pillValues(materialsField),
+                tags: tags.values, materials: materials.values,
                 quantity: document.querySelector('#listing-quantity-input')?.value || '',
                 sku: document.querySelector('#listing-sku-input')?.value || '',
             };
+            Object.defineProperty(editor, PILL_READ_INTEGRITY, { value: Object.freeze({ tags: tags.complete, materials: materials.complete }) });
+            return editor;
         },
-        async captureCurrent() {
+        async captureCurrent(expected = {}) {
             const listingId = currentListingId();
             const shopKey = currentShopKey();
             if (!listingId || !shopKey || !this.ready()) return null;
+            const routeKey = routeLocationKey();
+            const editUrl = String(location.href || '');
+            const editor = this.read();
+            if ((expected.listingId && String(expected.listingId) !== listingId) || (expected.routeKey && String(expected.routeKey) !== routeKey)) return null;
             const record = await Store.getRecord(listingId) || {
-                schema: APP.schema, listingId, meta: { title: this.read().title, editUrl: location.href, shopKey, lastSeenAt: nowIso() },
+                schema: APP.schema, listingId, meta: { title: editor.title, editUrl, shopKey, lastSeenAt: nowIso() },
                 history: [], improvements: [], proposal: null,
             };
-            record.editor = { ...this.read(), capturedAt: nowIso() };
-            record.meta = { ...record.meta, title: record.editor.title || record.meta?.title || '', editUrl: location.href, shopKey, lastSeenAt: nowIso() };
+            if (currentListingId() !== listingId || routeLocationKey() !== routeKey || String(location.href || '') !== editUrl) return null;
+            record.editor = { ...editor, capturedAt: nowIso() };
+            record.meta = { ...record.meta, title: record.editor.title || record.meta?.title || '', editUrl, shopKey, lastSeenAt: nowIso() };
             await Store.putRecord(record);
             return record;
         },
         async syncPills(fieldSelector, inputSelector, buttonSelector, desiredValues) {
-            const field = document.querySelector(fieldSelector);
-            const input = document.querySelector(inputSelector);
-            const addButton = document.querySelector(buttonSelector);
-            if (!field || !input || !addButton) return false;
+            const liveField = () => document.querySelector(fieldSelector);
+            if (!liveField() || !document.querySelector(inputSelector) || !document.querySelector(buttonSelector)) return false;
+            const liveValues = () => {
+                const snapshot = pillFieldState(liveField());
+                return snapshot.complete ? snapshot.values : null;
+            };
             const desired = uniqueStrings(desiredValues);
             const desiredLower = new Set(desired.map((value) => value.toLocaleLowerCase()));
-            const items = Array.from(field.querySelectorAll('li'));
-            for (const item of items) {
-                if (!item.querySelector(PILL_REMOVE_SELECTOR)) continue;
-                const clone = item.cloneNode(true);
-                clone.querySelectorAll('button').forEach((button) => button.remove());
-                const value = normalizeSpace(clone.textContent).replace(/All \d+ used|Tüm \d+.*$/i, '').trim();
-                if (value && !desiredLower.has(value.toLocaleLowerCase())) {
-                    const remove = item.querySelector(PILL_REMOVE_SELECTOR);
-                    if (!remove) return false;
-                    remove.click();
-                    if (!await waitFor(() => !item.isConnected, 3000)) return false;
-                }
+            const initialValues = liveValues();
+            if (!initialValues) return false;
+            const removals = initialValues.filter((value) => !desiredLower.has(value.toLocaleLowerCase()));
+            for (const value of removals) {
+                const item = Array.from(liveField()?.querySelectorAll('li') || []).find((candidate) => (
+                    pillItemValue(candidate).toLocaleLowerCase() === value.toLocaleLowerCase()
+                ));
+                const remove = item?.querySelector(PILL_REMOVE_SELECTOR);
+                if (!remove) return false;
+                remove.click();
+                const removed = await waitFor(() => {
+                    const values = liveValues();
+                    return values && !values.some((itemValue) => itemValue.toLocaleLowerCase() === value.toLocaleLowerCase());
+                }, 3000);
+                if (!removed) return false;
             }
-            let current = new Set(pillValues(field).map((value) => value.toLocaleLowerCase()));
+            const valuesAfterRemoval = liveValues();
+            if (!valuesAfterRemoval) return false;
+            let current = new Set(valuesAfterRemoval.map((value) => value.toLocaleLowerCase()));
             for (const value of desired) {
                 if (current.has(value.toLocaleLowerCase())) continue;
-                const ready = await waitFor(() => !input.disabled && !addButton.disabled && addButton.getAttribute('aria-disabled') !== 'true', 3000);
-                if (!ready) return false;
-                setNativeValue(input, value);
-                addButton.click();
-                const added = await waitFor(() => pillValues(field).some((item) => item.toLocaleLowerCase() === value.toLocaleLowerCase()), 3000);
+                const inputReady = await waitFor(() => {
+                    const input = document.querySelector(inputSelector);
+                    return input && !input.disabled ? input : null;
+                }, 3000);
+                if (!inputReady) return false;
+                setNativeValue(inputReady, value);
+                await sleep(120);
+                const addReady = await waitFor(() => {
+                    const button = document.querySelector(buttonSelector);
+                    return button && !button.disabled && button.getAttribute('aria-disabled') !== 'true' ? button : null;
+                }, 3000);
+                if (!addReady) return false;
+                addReady.click();
+                const added = await waitFor(() => {
+                    const values = liveValues();
+                    return values && values.some((item) => item.toLocaleLowerCase() === value.toLocaleLowerCase());
+                }, 3000);
                 if (!added) return false;
-                current = new Set(pillValues(field).map((item) => item.toLocaleLowerCase()));
+                const addedValues = liveValues();
+                if (!addedValues) return false;
+                current = new Set(addedValues.map((item) => item.toLocaleLowerCase()));
             }
-            const finalValues = pillValues(field).map((value) => value.toLocaleLowerCase());
+            const completedValues = liveValues();
+            if (!completedValues) return false;
+            const finalValues = completedValues.map((value) => value.toLocaleLowerCase());
             const finalSet = new Set(finalValues);
             return finalValues.length === desiredLower.size && finalSet.size === desiredLower.size && desired.every((value) => finalSet.has(value.toLocaleLowerCase()));
         },
+        preflightProposal(proposal) {
+            const prepared = validateEditableProposal(proposal);
+            const selectors = {
+                title: ['#listing-title-input'],
+                description: ['#listing-description-textarea'],
+                tags: ['#field-tags', '#listing-tags-input', '#listing-tags-button'],
+                materials: ['#field-materials', '#listing-materials-input', '#listing-materials-button'],
+            };
+            for (const field of prepared.fields) {
+                const controls = selectors[field].map((selector) => document.querySelector(selector));
+                const controlsThatMustStartEnabled = field === 'tags' || field === 'materials' ? [] : controls;
+                const unreadablePills = (field === 'tags' || field === 'materials') && controls[0] && !pillFieldState(controls[0]).complete;
+                if (controls.some((control) => !control) || controlsThatMustStartEnabled.some((control) => control.disabled) || unreadablePills) {
+                    void trackTelemetryError('selector_listing_editor');
+                    throw new Error(t('formNotReady'));
+                }
+            }
+            return prepared;
+        },
+        changedFields(before, after, fields = EDITABLE_FIELDS) {
+            return fields.filter((field) => {
+                if (field === 'title') return normalizeSpace(before?.title) !== normalizeSpace(after?.title);
+                if (field === 'description') return String(before?.description ?? '') !== String(after?.description ?? '');
+                if (field === 'tags' || field === 'materials') return !sameStringSet(before?.[field], after?.[field]);
+                return false;
+            });
+        },
+        async restore(before, fields = EDITABLE_FIELDS) {
+            try {
+                if (fields.includes('title')) setNativeValue(document.querySelector('#listing-title-input'), String(before?.title || ''));
+                if (fields.includes('description')) setNativeValue(document.querySelector('#listing-description-textarea'), String(before?.description || ''));
+                if (fields.includes('tags') && !await this.syncPills('#field-tags', '#listing-tags-input', '#listing-tags-button', before?.tags || [])) return false;
+                if (fields.includes('materials') && !await this.syncPills('#field-materials', '#listing-materials-input', '#listing-materials-button', before?.materials || [])) return false;
+                return Boolean(await waitFor(() => this.changedFields(before, this.read(), fields).length === 0 && this.formIsClean() === true, 3000));
+            } catch { return false; }
+        },
         async applyProposal(proposal) {
             if (!this.ready()) { void trackTelemetryError('selector_listing_editor'); throw new Error(t('formNotReady')); }
-            if (proposal?.action !== 'UPDATE') throw new Error('Only UPDATE proposals can be applied to the Etsy form.');
-            const fields = proposalFields(proposal, true);
-            if (!fields.length) throw new Error('The proposal does not explicitly select an Etsy field to change.');
+            const prepared = this.preflightProposal(proposal);
+            const fields = prepared.fields;
             const before = this.read();
             const changed = [];
-            if (fields.includes('title')) {
-                const title = normalizeSpace(proposal.title);
-                if (!title || title.length > 140) throw new Error('The selected title must contain 1-140 characters.');
-                if (before.title !== title) { setNativeValue(document.querySelector('#listing-title-input'), title); changed.push('title'); }
+            try {
+                if (fields.includes('title') && normalizeSpace(before.title) !== prepared.title) {
+                    setNativeValue(document.querySelector('#listing-title-input'), prepared.title); changed.push('title');
+                }
+                if (fields.includes('description') && before.description !== prepared.description) {
+                    setNativeValue(document.querySelector('#listing-description-textarea'), prepared.description); changed.push('description');
+                }
+                if (fields.includes('tags')) {
+                    const success = await this.syncPills('#field-tags', '#listing-tags-input', '#listing-tags-button', prepared.tags);
+                    if (!success) { void trackTelemetryError('selector_listing_editor'); throw new Error('Etsy tags control did not reach the requested state.'); }
+                    if (!sameStringSet(before.tags, prepared.tags)) changed.push('tags');
+                }
+                if (fields.includes('materials')) {
+                    const success = await this.syncPills('#field-materials', '#listing-materials-input', '#listing-materials-button', prepared.materials);
+                    if (!success) { void trackTelemetryError('selector_listing_editor'); throw new Error('Etsy materials control did not reach the requested state.'); }
+                    if (!sameStringSet(before.materials, prepared.materials)) changed.push('materials');
+                }
+                if (!changed.length) throw new Error('The selected Etsy fields already match the proposal; nothing was changed.');
+                return changed;
+            } catch (error) {
+                const changedAfterFailure = this.changedFields(before, this.read(), fields);
+                error.changedFields = changedAfterFailure;
+                error.editorRestored = changedAfterFailure.length === 0
+                    ? this.formIsClean() === true
+                    : await this.restore(before, changedAfterFailure);
+                throw error;
             }
-            if (fields.includes('description')) {
-                if (typeof proposal.description !== 'string') throw new Error('The selected description must be a string.');
-                if (before.description !== proposal.description) { setNativeValue(document.querySelector('#listing-description-textarea'), proposal.description); changed.push('description'); }
-            }
-            if (fields.includes('tags')) {
-                if (!Array.isArray(proposal.tags)) throw new Error('The selected tags field must be an array.');
-                const success = await this.syncPills('#field-tags', '#listing-tags-input', '#listing-tags-button', proposal.tags);
-                if (!success) { void trackTelemetryError('selector_listing_editor'); throw new Error('Etsy tags control did not reach the requested state.'); }
-                if (!sameStringSet(before.tags, proposal.tags)) changed.push('tags');
-            }
-            if (fields.includes('materials')) {
-                if (!Array.isArray(proposal.materials)) throw new Error('The selected materials field must be an array.');
-                const success = await this.syncPills('#field-materials', '#listing-materials-input', '#listing-materials-button', proposal.materials);
-                if (!success) { void trackTelemetryError('selector_listing_editor'); throw new Error('Etsy materials control did not reach the requested state.'); }
-                if (!sameStringSet(before.materials, proposal.materials)) changed.push('materials');
-            }
-            if (!changed.length) throw new Error('The selected Etsy fields already match the proposal; nothing was changed.');
-            return changed;
         },
         publishButton() { return document.querySelector('#shop-manager--listing-publish-edit,button[data-test="publish"]'); },
-        statusText() {
-            const status = document.querySelector('[data-unsaved-changes="true"],[data-test="save-status"],#save-state');
-            return normalizeSpace(status?.textContent);
+        statusTexts(allowModalBackground = false) {
+            const candidates = Array.from(document.querySelectorAll('[data-unsaved-changes="true"],[data-test="save-status"],#save-state'));
+            const visible = candidates.filter((element) => elementIsUsable(element)
+                || (allowModalBackground && Boolean(element.offsetParent)));
+            return uniqueStrings(visible.map((element) => normalizeSpace(element.textContent)));
         },
-        formIsClean() {
-            const text = this.statusText();
-            if (/no unsaved changes|kaydedilmemiş değişiklik yok/i.test(text)) return true;
-            if (/unsaved changes|kaydedilmemiş değişiklik/i.test(text)) return false;
+        statusText() {
+            return this.statusTexts().join(' · ');
+        },
+        formIsClean(allowModalBackground = false) {
+            const texts = this.statusTexts(allowModalBackground);
+            let clean = false;
+            let dirty = false;
+            texts.forEach((text) => {
+                if (/no unsaved changes|kaydedilmemiş değişiklik yok/i.test(text)) clean = true;
+                else if (/unsaved changes?|kaydedilmemiş değişiklik/i.test(text)) dirty = true;
+            });
+            if (dirty) return false;
+            if (clean) return true;
             return null;
         },
+        deactivateMoreButton() {
+            const root = this.root();
+            const scope = root?.querySelector?.('#more-option-menu');
+            if (!scope || scope.closest?.('[role="dialog"],[role="alertdialog"],[aria-modal="true"]')) return null;
+            const candidates = Array.from(scope.querySelectorAll('button[aria-label="More options"],button[aria-label="Daha fazla seçenek"]'))
+                .filter((button) => controlIsEnabled(button));
+            return candidates.length === 1 ? candidates[0] : null;
+        },
+        deactivateMenuItem() {
+            const root = this.root();
+            const scope = root?.querySelector?.('#more-option-menu');
+            if (!scope) return null;
+            const candidates = Array.from(scope.querySelectorAll('[role="menu"] [role="menuitem"]')).filter((button) => (
+                button.tagName === 'BUTTON'
+                && controlIsEnabled(button)
+                && !button.closest('[role="dialog"],[role="alertdialog"],[aria-modal="true"]')
+                && DEACTIVATE_ACTION_LABEL.test(normalizeSpace(button.textContent))
+                && !hasDeletionSemantics(button)
+            ));
+            return candidates.length === 1 ? candidates[0] : null;
+        },
+        visibleModalDialogs() {
+            return Array.from(document.querySelectorAll('[role="dialog"][aria-modal="true"],[role="alertdialog"][aria-modal="true"]'))
+                .filter((dialog) => elementIsUsable(dialog) && dialog.getAttribute?.('aria-hidden') !== 'true');
+        },
+        deactivateDialogContract() {
+            const dialogs = this.visibleModalDialogs();
+            if (dialogs.length !== 1) return null;
+            const dialog = dialogs[0];
+            if (typeof dialog.getAttribute !== 'function' || typeof dialog.querySelector !== 'function' || typeof dialog.querySelectorAll !== 'function') return null;
+            const heading = normalizeSpace(dialog.getAttribute('aria-label') || dialog.querySelector('h1,h2,h3,[role="heading"]')?.textContent);
+            if (!DEACTIVATE_DIALOG_LABEL.test(heading)) return null;
+            const buttons = Array.from(dialog.querySelectorAll('button'));
+            const confirmButtons = buttons.filter((button) => (
+                button.id === 'shop-manager--listing-publish'
+                && controlIsEnabled(button)
+                && DEACTIVATE_ACTION_LABEL.test(normalizeSpace(button.textContent))
+                && !hasDeletionSemantics(button)
+            ));
+            const cancelButtons = buttons.filter((button) => controlIsEnabled(button) && CANCEL_ACTION_LABEL.test(normalizeSpace(button.textContent)));
+            if (confirmButtons.length !== 1 || cancelButtons.length !== 1) return null;
+            return { dialog, confirmButton: confirmButtons[0], cancelButton: cancelButtons[0] };
+        },
         async openDeactivate() {
-            const more = document.querySelector('#more-option-menu button[aria-label="More options"],button[aria-label="More options"]');
+            if (this.visibleModalDialogs().length) return false;
+            const more = this.deactivateMoreButton();
             if (!more) return false;
-            more.click();
-            const action = await waitFor(() => {
-                const candidates = Array.from(document.querySelectorAll('#more-option-menu [role="menuitem"],#more-option-menu button[data-action="deactivate"],[role="menu"] [role="menuitem"]'));
-                return candidates.find((button) => button.offsetParent !== null && /^(?:deactivate|devre dışı bırak|pasifleştir)$/i.test(normalizeSpace(button.textContent)) && !button.closest('[role="dialog"],[aria-modal="true"]'));
-            }, 3000);
+            if (!this.deactivateMenuItem()) more.click();
+            const action = await waitFor(() => this.deactivateMenuItem(), 3000);
             if (!action) return false;
-            action.scrollIntoView({ block: 'nearest' });
-            action.focus({ preventScroll: true });
+            await sleep(120);
+            const focused = await waitFor(() => {
+                const current = this.deactivateMenuItem();
+                if (!current) return null;
+                current.scrollIntoView({ block: 'nearest' });
+                current.focus({ preventScroll: true });
+                return document.activeElement === current ? current : null;
+            }, 1000, 50);
+            return Boolean(focused);
+        },
+        async openDeactivateDialog() {
+            if (!await this.openDeactivate()) return false;
+            await sleep(80);
+            const action = this.deactivateMenuItem();
+            if (!action) return false;
+            action.click();
+            return Boolean(await waitFor(() => this.deactivateDialogContract(), DEACTIVATE_DIALOG_READY_TIMEOUT_MS, 80));
+        },
+        clickDeactivateConfirmation() {
+            const contract = this.deactivateDialogContract();
+            if (!contract) return false;
+            contract.confirmButton.click();
+            return true;
+        },
+        cancelDeactivateDialog() {
+            const contract = this.deactivateDialogContract();
+            if (!contract) return false;
+            contract.cancelButton.click();
+            return true;
+        },
+        async cancelDeactivateDialogWhenReady(timeout = 2000) {
+            if (!this.visibleModalDialogs().length) return false;
+            const contract = this.deactivateDialogContract()
+                || await waitFor(() => this.deactivateDialogContract(), timeout, 80);
+            if (!contract) return false;
+            contract.cancelButton.click();
             return true;
         },
         listingStatusLabels() {
-            const selectors = ['.wt-badge--statusValue', '[data-listing-status]'];
-            const candidates = selectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
+            const root = this.root();
+            if (!root?.querySelectorAll) return [];
+            const titleBar = root.querySelector?.('#form-title-bar');
+            const statusRegion = titleBar?.nextElementSibling;
+            const structuredCandidates = statusRegion?.querySelectorAll
+                ? Array.from(statusRegion.querySelectorAll('[data-clg-id="WtBadge"],[data-listing-status]'))
+                : [];
+            const fallbackSelectors = ['.wt-badge--statusValue', '.wt-badge--statusInformational', '[data-listing-status]'];
+            const candidates = structuredCandidates.length
+                ? structuredCandidates
+                : fallbackSelectors.flatMap((selector) => Array.from(root.querySelectorAll(selector)));
             return uniqueStrings(candidates.filter((element) => element.offsetParent !== null).map((element) => (
                 normalizeSpace(element.textContent || element.getAttribute('data-listing-status') || element.getAttribute('data-status'))
-            )));
+            ))).filter((status) => isActiveStatus(status) || isInactiveStatus(status));
         },
         appearsInactive() {
             return this.listingStatusLabels().some(isInactiveStatus);
@@ -4135,10 +4501,19 @@
             if (!state.queue || !Array.isArray(state.queue.items)) return null;
             return state.queue.items[state.queue.cursor] || null;
         },
-        async withFencedActiveItem(fenceToken, expectedStatuses, callback) {
-            const expectedQueueId = String(state.queue?.id || '');
-            const expectedCursor = Number(state.queue?.cursor);
-            const expectedListingId = String(this.activeItem()?.listingId || '');
+        activeIdentity() {
+            const item = this.activeItem();
+            return {
+                queueId: String(state.queue?.id || ''),
+                cursor: Number(state.queue?.cursor),
+                listingId: String(item?.listingId || ''),
+                itemStatus: String(item?.status || ''),
+            };
+        },
+        async withFencedActiveItem(fenceToken, expectedStatuses, callback, expectedIdentity = this.activeIdentity()) {
+            const expectedQueueId = String(expectedIdentity?.queueId || '');
+            const expectedCursor = Number(expectedIdentity?.cursor);
+            const expectedListingId = String(expectedIdentity?.listingId || '');
             if (!expectedQueueId || !Number.isInteger(expectedCursor) || !expectedListingId) {
                 throw actionLeaseLostError('The action queue is no longer active.');
             }
@@ -4157,25 +4532,55 @@
                 return callback(queue, item);
             });
         },
-        async updateItemFenced(patch, fenceToken, expectedStatuses = []) {
+        async updateItemFenced(patch, fenceToken, expectedStatuses = [], expectedIdentity = this.activeIdentity()) {
             return this.withFencedActiveItem(fenceToken, expectedStatuses, async (queue, item) => {
                 Object.assign(item, patch);
                 await Lease.assertOwnerLocked(fenceToken);
                 const saved = await Store.saveQueueLocked(queue);
                 return saved.items[saved.cursor] || null;
-            });
+            }, expectedIdentity);
+        },
+        async advanceFenced(status, fenceToken, expectedStatuses = [], expectedIdentity = this.activeIdentity(), auditEntry = null) {
+            return this.withFencedActiveItem(fenceToken, expectedStatuses, async (queue, item) => {
+                if (auditEntry) await Store.appendAuditLocked(typeof auditEntry === 'function' ? auditEntry(queue, item) : auditEntry);
+                item.status = status;
+                queue.cursor += 1;
+                const completed = queue.cursor >= queue.items.length;
+                if (completed) {
+                    queue.status = 'completed';
+                    queue.completedAt = nowIso();
+                } else queue.status = 'running';
+                await Lease.assertOwnerLocked(fenceToken);
+                const saved = await Store.saveQueueLocked(queue);
+                return { completed, next: completed ? null : saved.items[saved.cursor] || null };
+            }, expectedIdentity);
+        },
+        async stopFenced(reason, fenceToken, expectedStatuses = [], expectedIdentity = this.activeIdentity()) {
+            return this.withFencedActiveItem(fenceToken, expectedStatuses, async (queue, item) => {
+                queue.status = 'stopped';
+                queue.stoppedAt = nowIso();
+                queue.stopReason = reason;
+                await Store.appendAuditLocked({ type: 'queue-stopped', queueId: queue.id, listingId: item.listingId, reason });
+                await Lease.assertOwnerLocked(fenceToken);
+                return Store.saveQueueLocked(queue);
+            }, expectedIdentity);
         },
         recoveryState() {
             const item = this.activeItem();
             if (!item || !['ready', 'running'].includes(String(state.queue?.status || ''))) return null;
-            const uncertain = ['applying', 'awaiting-user-review', 'submitted', 'submitted-unverified', 'awaiting-user-deactivation'];
-            const submitted = ['submitted', 'submitted-unverified'].includes(item.status);
+            const uncertain = ['applying', 'awaiting-user-review', 'submitted', 'submitted-unverified', 'deactivation-submitted', 'deactivation-submitted-unverified'];
+            const submitted = ['submitted', 'submitted-unverified', 'deactivation-submitted', 'deactivation-submitted-unverified'].includes(item.status);
             if (!uncertain.includes(String(item.status || '')) || (!submitted && item.runtimeOwner === pageInstanceId)) return null;
             return { item, submitted };
         },
         async create(records, expectedIdentity) {
             const requestedIds = uniqueStrings(records.map((record) => String(record.listingId)));
             return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const existingQueue = await GMX.get(KEYS.queue, null);
+                if (existingQueue && ['ready', 'running'].includes(String(existingQueue.status || ''))
+                    && Array.isArray(existingQueue.items) && existingQueue.items[Number(existingQueue.cursor)]) {
+                    const error = new Error('An action queue is already active.'); error.code = 'QUEUE_ACTIVE'; throw error;
+                }
                 const fenced = await assertFreshCollectionLocked(expectedIdentity);
                 const latestById = new Map(fenced.records.map((record) => [String(record.listingId), record]));
                 const latestRecords = requestedIds.map((listingId) => latestById.get(listingId));
@@ -4215,33 +4620,6 @@
                 await Store.appendAuditLocked({ type: 'queue-created', queueId: queue.id, count: items.length, collectionId: identity.id });
                 return saved;
             });
-        },
-        async updateItem(patch) {
-            const item = this.activeItem();
-            if (!item) return null;
-            Object.assign(item, patch);
-            await Store.saveQueue(state.queue);
-            return item;
-        },
-        async advance(status = 'completed') {
-            const item = this.activeItem();
-            if (item) item.status = status;
-            state.queue.cursor += 1;
-            if (state.queue.cursor >= state.queue.items.length) {
-                state.queue.status = 'completed'; state.queue.completedAt = nowIso();
-                await Store.saveQueue(state.queue); await Lease.release();
-                UI.setStatus('queueComplete', 'ready'); UI.render(); return null;
-            }
-            state.queue.status = 'running';
-            await Store.saveQueue(state.queue);
-            UI.render();
-            return this.activeItem();
-        },
-        async stop(reason = 'user') {
-            if (!state.queue) return;
-            state.queue.status = 'stopped'; state.queue.stoppedAt = nowIso(); state.queue.stopReason = reason;
-            await Store.saveQueue(state.queue); await Lease.release();
-            UI.setStatus('queueStopped', 'blocked'); UI.render();
         },
         async navigate(item = this.activeItem()) {
             if (!item) return;
@@ -4544,6 +4922,16 @@
         return `${shopKey}|status:${normalizedState}|${url.pathname}${query ? `?${query}` : ''}`;
     }
 
+    function collectionScopeHref(scopeKey) {
+        const match = String(scopeKey || '').match(/^etsy-shop:[a-z0-9]+\|status:[a-z_]+\|(\/your\/shops\/[^/?#]+\/tools\/listings(?:\?[^#]*)?)$/i);
+        if (!match) return '';
+        try {
+            const url = new URL(match[1], 'https://www.etsy.com');
+            if (url.origin !== 'https://www.etsy.com' || !/^\/your\/shops\/[^/?#]+\/tools\/listings\/?$/i.test(url.pathname)) return '';
+            return `${url.pathname}${url.search}`;
+        } catch { return ''; }
+    }
+
     function collectionScopeMatches(collection = state.collection, href = location.href, root = document) {
         const actual = collectionScopeKey(href, currentShopKey(root), pageListingState(root, href));
         return Boolean(actual && collection?.scopeKey && actual === collection.scopeKey);
@@ -4645,10 +5033,14 @@
                 try {
                     const value = await operation(attempt);
                     if (value) {
+                        if (state.collection?.status !== 'running' || state.collectionPauseRequested) return { ok: false, cancelled: true, value: null, attempts: attempt };
+                        await CollectionLease.assertOwns();
                         if (attempt > 1 && state.collection && await CollectionLease.owns()) {
                             await this.persist({ retry: null });
                             await Store.appendAudit({ type: 'collection-page-recovered', collectionId: state.collection.id, phase, page: state.collection.expectedPage, attempts: attempt });
                         }
+                        if (state.collection?.status !== 'running' || state.collectionPauseRequested) return { ok: false, cancelled: true, value: null, attempts: attempt };
+                        await CollectionLease.assertOwns();
                         return { ok: true, value, attempts: attempt };
                     }
                 } catch (error) { lastError = error; }
@@ -4671,7 +5063,16 @@
             await CollectionLease.assertOwns(token);
             return saved;
         },
-        async start() {
+        serializeStart(factory) {
+            if (state.collectionStartTask) return state.collectionStartTask;
+            const tracked = Promise.resolve().then(factory).finally(() => {
+                if (state.collectionStartTask === tracked) state.collectionStartTask = null;
+            });
+            state.collectionStartTask = tracked;
+            return tracked;
+        },
+        start() { return this.serializeStart(() => this.startOnce()); },
+        async startOnce() {
             if (state.collectionLoop) await state.collectionLoop;
             state.collectionPauseRequested = false;
             if (routeKind() !== 'listings') { UI.setStatus('collectionRouteRequired', 'blocked'); UI.render(); return null; }
@@ -4701,10 +5102,11 @@
             UI.setStatus(pageInfo.current === 1 ? 'collectionStarting' : 'collectionFirstPage', 'scanning'); UI.render();
             return this.run();
         },
-        async resume() {
+        resume() { return this.serializeStart(() => this.resumeOnce()); },
+        async resumeOnce() {
             state.collectionPauseRequested = false;
             if (routeKind() !== 'listings') { UI.setStatus('collectionRouteRequired', 'blocked'); UI.render(); return null; }
-            if (!state.collection || !['paused', 'running'].includes(state.collection.status)) return this.start();
+            if (!state.collection || !['paused', 'running'].includes(state.collection.status)) return this.startOnce();
             const observed = await ListingPageAdapter.readStable({ requirePagination: state.collection.totalPages > 1 });
             if (!observed?.pageInfo?.valid || state.collection.schema !== COLLECTION_SCHEMA_VERSION
                 || state.collection.scopeKey !== collectionScopeKey() || state.collection.totalPages !== observed.pageInfo.total) {
@@ -4726,6 +5128,13 @@
             clearCollectionHandoff();
             await CollectionLease.release();
             UI.setStatus('collectionPaused', 'blocked'); UI.render();
+            return state.collection;
+        },
+        async settleCancelledOperation() {
+            if (state.collectionPauseRequested && state.collection?.status === 'running') {
+                state.collectionPauseRequested = false;
+                return this.pause();
+            }
             return state.collection;
         },
         async toggle() {
@@ -4864,14 +5273,14 @@
                         window.__MAKAYTRON_LISTING_TEST__ === true ? 700 : 10000,
                         250,
                     ));
-                    if (!scopeReadiness.ok) return scopeReadiness.cancelled ? state.collection : this.block('collectionPageChanged', {}, scopeReadiness.report);
+                    if (!scopeReadiness.ok) return scopeReadiness.cancelled ? this.settleCancelledOperation() : this.block('collectionPageChanged', {}, scopeReadiness.report);
                     const pageIdentity = await this.retryTransient('page-identity', () => waitFor(() => {
                         const observed = ListingPageAdapter.pageInfo();
                         return pageIdentityMatchesCollection(observed, state.collection) ? observed : null;
                     }, window.__MAKAYTRON_LISTING_TEST__ === true ? 700 : 10000, 250));
                     if (!pageIdentity.ok) {
                         if (!pageIdentity.cancelled) void trackTelemetryError('selector_listing_pagination');
-                        return pageIdentity.cancelled ? state.collection : this.block('collectionPageChanged', {}, pageIdentity.report);
+                        return pageIdentity.cancelled ? this.settleCancelledOperation() : this.block('collectionPageChanged', {}, pageIdentity.report);
                     }
                     let pageInfo = pageIdentity.value;
                     if (pageInfo.total > MAX_COLLECTION_PAGES) return this.block('collectionLimit', { count: MAX_COLLECTION_PAGES });
@@ -4881,7 +5290,7 @@
                         const navigation = await this.navigateWithRetry(state.collection.expectedPage, before);
                         if (!navigation.ok) {
                             if (!navigation.cancelled) void trackTelemetryError('selector_listing_pagination');
-                            return navigation.cancelled ? state.collection : this.block('collectionPageChanged', {}, navigation.report);
+                            return navigation.cancelled ? this.settleCancelledOperation() : this.block('collectionPageChanged', {}, navigation.report);
                         }
                         continue;
                     }
@@ -4893,7 +5302,7 @@
                     }, 'noCards');
                     if (!pageRead.ok) {
                         if (!pageRead.cancelled) void trackTelemetryError('selector_listing_cards');
-                        return pageRead.cancelled ? state.collection : this.block('noCards', {}, pageRead.report);
+                        return pageRead.cancelled ? this.settleCancelledOperation() : this.block('noCards', {}, pageRead.report);
                     }
                     if (!collectionPageMatchesManifest(state.collection, pageRead.value)) {
                         const settledManifest = await this.retryTransient('page-settle', async () => {
@@ -4905,7 +5314,7 @@
                         }, 'collectionPageChanged');
                         if (!settledManifest.ok) {
                             if (!settledManifest.cancelled) void trackTelemetryError('selector_listing_cards');
-                            return settledManifest.cancelled ? state.collection : this.block('collectionPageChanged', {}, settledManifest.report);
+                            return settledManifest.cancelled ? this.settleCancelledOperation() : this.block('collectionPageChanged', {}, settledManifest.report);
                         }
                         pageRead = settledManifest;
                     }
@@ -4924,7 +5333,7 @@
                         if (!settled.ok) {
                             if (!settled.cancelled) void trackTelemetryError('selector_listing_pagination');
                             const key = repeatedPage ? 'collectionRepeatedPage' : 'collectionOverlap';
-                            return settled.cancelled ? state.collection : this.block(key, {}, settled.report);
+                            return settled.cancelled ? this.settleCancelledOperation() : this.block(key, {}, settled.report);
                         }
                         pageRead = settled;
                     }
@@ -4958,7 +5367,7 @@
                         const navigation = await this.navigateWithRetry(1, contentSignature);
                         if (!navigation.ok) {
                             if (!navigation.cancelled) void trackTelemetryError('selector_listing_pagination');
-                            return navigation.cancelled ? state.collection : this.block('collectionPageChanged', {}, navigation.report);
+                            return navigation.cancelled ? this.settleCancelledOperation() : this.block('collectionPageChanged', {}, navigation.report);
                         }
                         continue;
                     }
@@ -4972,7 +5381,7 @@
                     const navigation = await this.navigateWithRetry(expectedPage, contentSignature);
                     if (!navigation.ok) {
                         if (!navigation.cancelled) void trackTelemetryError('selector_listing_pagination');
-                        return navigation.cancelled ? state.collection : this.block('collectionPageChanged', {}, navigation.report);
+                        return navigation.cancelled ? this.settleCancelledOperation() : this.block('collectionPageChanged', {}, navigation.report);
                     }
                 }
                 return state.collection;
@@ -5210,6 +5619,16 @@
     }
 
 
+    async function persistThresholdSettings(values) {
+        const fields = ['minVisitsToImprove', 'minVisitsToProtect', 'minRenewalsToReview', 'declinePercent'];
+        const previous = Object.fromEntries(fields.map((key) => [key, state.settings[key]]));
+        fields.forEach((key) => { state.settings[key] = values[key]; });
+        let saved = false;
+        try { saved = await Store.saveSettings(); } catch { saved = false; }
+        if (!saved) fields.forEach((key) => { state.settings[key] = previous[key]; });
+        return saved;
+    }
+
     const UI = {
         async mount() {
             if (state.host?.isConnected) return;
@@ -5227,7 +5646,7 @@
         setStatus(key, tone = 'ready', params = {}) {
             state.status = { key, tone, params };
             this.renderStatus();
-            const successKeys = new Set(['scanComplete', 'collectionComplete', 'proposalSaved', 'queueCreated', 'formApplied', 'publishVerified', 'queueComplete', 'aiCopied', 'aiImportSuccess', 'exportComplete', 'settingsSaved', 'dataCleared']);
+            const successKeys = new Set(['scanComplete', 'collectionComplete', 'proposalSaved', 'queueCreated', 'formApplied', 'publishVerified', 'deactivateVerified', 'queueComplete', 'aiCopied', 'aiImportSuccess', 'exportComplete', 'settingsSaved', 'dataCleared']);
             if (tone === 'error' || tone === 'blocked') this.toast(t(key, params), tone === 'error' ? 'error' : 'warning');
             else if (successKeys.has(key)) this.toast(t(key, params), 'success');
         },
@@ -5407,8 +5826,7 @@
             const completedPages = Object.keys(state.collection?.pages || {}).length;
             const progress = Math.max(0, Math.min(100, Math.round((completedPages / totalPages) * 100)));
             const progressMarkup = ['running', 'paused'].includes(status) ? `<div class="meli-analysis-gate-progress" aria-label="${escapeHtml(t('collectionProgress', Collection.progressParams()))}"><div class="meli-collection-track"><i style="width:${progress}%"></i></div><span>${escapeHtml(t('collectionProgress', Collection.progressParams()))}</span></div>` : '';
-            const storedScope = String(state.collection?.scopeKey || '');
-            const listingsHref = /^\/your\/shops\/[^/?#]+\/tools\/listings(?:\?|$)/.test(storedScope) ? storedScope : '/your/shops/me/tools/listings?stats=true';
+            const listingsHref = collectionScopeHref(state.collection?.scopeKey) || '/your/shops/me/tools/listings?stats=true';
             const actionMarkup = onListingsPage
                 ? `<button class="meli-btn primary" data-analysis-scan type="button">${escapeHtml(buttonLabel)}</button><span class="meli-analysis-gate-shortcut">${escapeHtml(t('collectionShortcut'))}</span>`
                 : `<a class="meli-btn primary" data-analysis-open-listings href="${escapeHtml(listingsHref)}">${escapeHtml(t('openListingsForAnalysis'))}</a>`;
@@ -5454,7 +5872,9 @@
             const recovery = Queue.recoveryState();
             if (recovery) {
                 const copy = recovery.submitted ? t('queueRecoverySubmitted') : t('queueRecoveryCopy');
-                return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueRecoveryTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + 1, queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body"><div class="meli-queue-recovery" data-queue-recovery role="alert"><strong>${escapeHtml(t('listing'))} ${escapeHtml(item.listingId)}</strong><p>${escapeHtml(copy)}</p><div class="meli-actions"><button class="meli-btn primary" data-recovery-open-listing type="button">${escapeHtml(t('queueRecoveryOpen'))}</button>${recovery.submitted ? '' : `<button class="meli-btn" data-queue-recover type="button">${escapeHtml(t('queueRecoveryRetry'))}</button>`}<button class="meli-btn danger" data-recovery-stop type="button">${escapeHtml(t('queueRecoveryStop'))}</button></div></div></div></div>`;
+                const canVerifyDeactivation = page === 'editor' && item.proposal?.action === 'DEACTIVATE_REVIEW'
+                    && DEACTIVATION_VERIFY_STATUSES.includes(String(item.status || ''));
+                return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueRecoveryTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + 1, queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body"><div class="meli-queue-recovery" data-queue-recovery role="alert"><strong>${escapeHtml(t('listing'))} ${escapeHtml(item.listingId)}</strong><p>${escapeHtml(copy)}</p><div class="meli-actions"><button class="meli-btn primary" data-recovery-open-listing type="button">${escapeHtml(t('queueRecoveryOpen'))}</button>${canVerifyDeactivation ? `<button class="meli-btn" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button>` : ''}${recovery.submitted ? '' : `<button class="meli-btn" data-queue-recover type="button">${escapeHtml(t('queueRecoveryRetry'))}</button>`}<button class="meli-btn danger" data-recovery-stop type="button">${escapeHtml(t('queueRecoveryStop'))}</button></div></div></div></div>`;
             }
             return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + (item ? 1 : 0), queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body">${item ? `<p>${escapeHtml(item.title || item.listingId)} · ${escapeHtml(item.status)}</p>${page === 'editor' ? this.editorQueueActions(item) : `<div class="meli-actions"><button class="meli-btn primary" data-action="go-current" type="button">${escapeHtml(t('goFirst'))}</button></div>`}` : `<p>${escapeHtml(t('noQueue'))}</p>`}</div></div>`;
         },
@@ -5462,7 +5882,13 @@
             const mismatch = currentListingId() && currentListingId() !== String(item.listingId);
             if (mismatch) return `<p>${escapeHtml(t('routeMismatch'))}</p><div class="meli-actions"><button class="meli-btn" data-action="go-current" type="button">${escapeHtml(t('goFirst'))}</button></div>`;
             if (item.proposal?.action === 'DEACTIVATE_REVIEW') {
-                return `<div class="meli-actions"><button class="meli-btn primary" data-action="deactivate" type="button">${escapeHtml(t('openDeactivate'))}</button><button class="meli-btn" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button><button class="meli-btn" data-action="skip" type="button">${escapeHtml(t('skipItem'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
+                if (String(item.status || '') === 'awaiting-user-deactivation') {
+                    return `<div class="meli-actions"><button class="meli-btn primary" data-action="deactivate" type="button">${escapeHtml(t('openDeactivate'))}</button><button class="meli-btn" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
+                }
+                if (DEACTIVATION_VERIFY_STATUSES.includes(String(item.status || ''))) {
+                    return `<div class="meli-actions"><button class="meli-btn primary" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
+                }
+                return `<div class="meli-actions"><button class="meli-btn primary" data-action="deactivate" type="button">${escapeHtml(t('openDeactivate'))}</button><button class="meli-btn" data-action="skip" type="button">${escapeHtml(t('skipItem'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
             }
             return `<div class="meli-actions"><button class="meli-btn primary" data-action="apply" type="button">${escapeHtml(t('applyForm'))}</button><button class="meli-btn" data-action="publish" type="button">${escapeHtml(t('publishAfterReview'))}</button><button class="meli-btn" data-action="skip" type="button">${escapeHtml(t('skipItem'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
         },
@@ -5505,15 +5931,10 @@
             root.querySelector('[data-action="deactivate"]')?.addEventListener('click', () => { void openCurrentDeactivate(); });
             root.querySelector('[data-action="verify-deactivate"]')?.addEventListener('click', () => { void verifyCurrentDeactivate(); });
             root.querySelector('[data-action="skip"]')?.addEventListener('click', () => { void skipCurrentItem(); });
-            root.querySelector('[data-action="stop"]')?.addEventListener('click', () => { void Queue.stop('user'); });
+            root.querySelector('[data-action="stop"]')?.addEventListener('click', () => { void stopCurrentQueue('user'); });
             root.querySelector('[data-recovery-open-listing]')?.addEventListener('click', () => { void Queue.navigate(); });
-            root.querySelector('[data-recovery-stop]')?.addEventListener('click', () => { void Queue.stop('recovery-user'); });
-            root.querySelector('[data-queue-recover]')?.addEventListener('click', async () => {
-                const item = Queue.activeItem();
-                if (!item || item.status === 'submitted-unverified' || !confirm(t('queueRecoveryConfirm'))) return;
-                await Queue.updateItem({ status: 'pending', error: '', changedFields: [] });
-                this.setStatus('editorReady', 'ready'); this.render(true);
-            });
+            root.querySelector('[data-recovery-stop]')?.addEventListener('click', () => { void stopCurrentQueue('recovery-user'); });
+            root.querySelector('[data-queue-recover]')?.addEventListener('click', () => { void recoverCurrentItem(); });
             if (state.activeView === 'analysis') this.bindAnalysis(root);
             if (state.activeView === 'ai') this.bindAi(root);
         },
@@ -6185,8 +6606,10 @@
                 if (invalid) { feedback.textContent = t('storageWriteFailed'); modal.querySelector(`[data-setting="${invalid}"]`).focus(); return; }
                 if (values.minVisitsToProtect <= values.minVisitsToImprove) { feedback.textContent = t('thresholdRelationship'); modal.querySelector('[data-setting="minVisitsToProtect"]').focus(); return; }
                 feedback.textContent = '';
-                fields.forEach((key) => { state.settings[key] = values[key]; });
-                await Store.saveSettings();
+                if (!await persistThresholdSettings(values)) {
+                    feedback.textContent = t('storageWriteFailed');
+                    return;
+                }
                 await refreshRecords({ persist: true });
                 this.closeModal();
                 this.setStatus('settingsSaved', 'ready');
@@ -6464,8 +6887,14 @@
             await sleep(window.__MAKAYTRON_LISTING_TEST__ === true ? 30 : 450);
             const capabilities = await probeResearchCompanion();
             if (!capabilities) { UI.openResearchMissingModal(entry); return; }
-            entry = await updateResearchEntry(entry.requestId, (current) => ({ ...current, status: 'request-sent', requestSentAt: nowIso() }));
+            entry = await updateResearchEntry(entry.requestId, (current) => transitionResearchEntry(
+                current,
+                'request-sent',
+                { requestSentAt: current.requestSentAt || nowIso() },
+                ['waiting-ready', 'request-sent', 'acknowledged'],
+            ));
             if (!entry) throw new Error('research request is no longer available');
+            if (entry.status !== 'request-sent') return;
             postResearchEnvelope(researchRequestEnvelope(entry));
             UI.updateResearchTransfer('researchRequestSent', 'scanning');
             scheduleResearchUiTimeout(entry.requestId);
@@ -6487,7 +6916,18 @@
         UI.setStatus('exportComplete', 'ready');
     }
 
-    async function buildQueueFromSelection() {
+    function runActionTask(factory) {
+        if (state.actionTask) return state.actionTask;
+        const tracked = Promise.resolve().then(factory).finally(() => {
+            if (state.actionTask === tracked) state.actionTask = null;
+        });
+        state.actionTask = tracked;
+        return tracked;
+    }
+
+    function buildQueueFromSelection() { return runActionTask(buildQueueFromSelectionOnce); }
+
+    async function buildQueueFromSelectionOnce() {
         const expectedIdentity = collectionIdentity();
         const selected = selectedCurrentCollectionRecords().filter((record) => record.proposal && record.proposal.action !== 'SKIP');
         if (!selected.length) { UI.setStatus('noProposalSelection', 'blocked'); return; }
@@ -6504,49 +6944,104 @@
         }
     }
 
-    async function applyCurrentProposal() {
-        const item = Queue.activeItem();
+    function applyCurrentProposal() { return runActionTask(applyCurrentProposalOnce); }
+
+    async function applyCurrentProposalOnce() {
+        let item = Queue.activeItem();
+        const actionIdentity = Queue.activeIdentity();
         if (!item || currentListingId() !== String(item.listingId)) { UI.setStatus('routeMismatch', 'blocked'); return; }
         if (!['pending', 'failed'].includes(item.status)) { UI.setStatus('formNotReady', 'blocked'); return; }
         if (EditorAdapter.formIsClean() !== true) { UI.setStatus('formNotReady', 'blocked'); return; }
+        try { EditorAdapter.preflightProposal(item.proposal); }
+        catch { UI.setStatus('formNotReady', 'blocked'); return; }
         if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+        const fenceToken = state.leaseToken;
+        let before = null;
+        let applying = false;
         try {
-            const before = EditorAdapter.read();
+            item = await Queue.withFencedActiveItem(fenceToken, ['pending', 'failed'], async (_queue, storedItem) => ({ ...storedItem }), actionIdentity);
+            before = EditorAdapter.read();
             const beforeFingerprint = await contentFingerprint(before);
             if (item.proposal?.baselineCapturedAt && item.proposal?.baselineFingerprint && beforeFingerprint !== item.proposal.baselineFingerprint) {
-                await Queue.updateItem({ status: 'failed', changedFields: [], error: t('contentChanged'), contentChangedAt: nowIso() });
+                await Queue.updateItemFenced(
+                    { status: 'failed', changedFields: [], error: t('contentChanged'), contentChangedAt: nowIso() },
+                    fenceToken,
+                    ['pending', 'failed'],
+                    actionIdentity,
+                );
+                await Lease.release(fenceToken);
                 UI.setStatus('contentChanged', 'blocked'); return;
             }
             const baselineCapturedAt = nowIso();
-            const baselineRecord = await Store.getRecord(item.listingId);
-            const baselineImprovement = (baselineRecord?.improvements || []).find((entry) => entry.id === item.proposal?.improvementId && entry.status === 'planned');
-            if (baselineRecord && baselineImprovement) {
-                baselineImprovement.before = {
-                    title: String(before.title || ''), description: String(before.description || ''),
-                    tags: Array.isArray(before.tags) ? [...before.tags] : [], materials: Array.isArray(before.materials) ? [...before.materials] : [],
-                };
-                baselineImprovement.baselineFingerprint = beforeFingerprint;
-                baselineImprovement.baselineCapturedAt = baselineCapturedAt;
-                if (baselineRecord.proposal?.improvementId === baselineImprovement.id) {
-                    baselineRecord.proposal = { ...baselineRecord.proposal, baselineFingerprint: beforeFingerprint, baselineCapturedAt };
+            await Queue.updateItemFenced(
+                { status: 'applying', changedFields: [], error: '', runtimeOwner: pageInstanceId, runtimeBaselineFingerprint: beforeFingerprint, runtimeBaselineCapturedAt: baselineCapturedAt },
+                fenceToken,
+                ['pending', 'failed'],
+                actionIdentity,
+            );
+            applying = true;
+            await Lease.withFence(fenceToken, async () => {
+                const baselineRecord = await Store.getRecord(item.listingId);
+                const baselineImprovement = (baselineRecord?.improvements || []).find((entry) => entry.id === item.proposal?.improvementId && entry.status === 'planned');
+                if (baselineRecord && baselineImprovement) {
+                    baselineImprovement.before = {
+                        title: String(before.title || ''), description: String(before.description || ''),
+                        tags: Array.isArray(before.tags) ? [...before.tags] : [], materials: Array.isArray(before.materials) ? [...before.materials] : [],
+                    };
+                    baselineImprovement.baselineFingerprint = beforeFingerprint;
+                    baselineImprovement.baselineCapturedAt = baselineCapturedAt;
+                    if (baselineRecord.proposal?.improvementId === baselineImprovement.id) {
+                        baselineRecord.proposal = { ...baselineRecord.proposal, baselineFingerprint: beforeFingerprint, baselineCapturedAt };
+                    }
+                    await Lease.assertOwnerLocked(fenceToken);
+                    await Store.putRecordLocked(baselineRecord);
                 }
-                await Store.putRecord(baselineRecord);
-            }
-            await Queue.updateItem({ status: 'applying', changedFields: [], error: '', runtimeOwner: pageInstanceId, runtimeBaselineFingerprint: beforeFingerprint, runtimeBaselineCapturedAt: baselineCapturedAt });
+            });
             const changedFields = await EditorAdapter.applyProposal(item.proposal);
             if (!editorMatchesProposal(EditorAdapter.read(), item.proposal)) {
                 void trackTelemetryError('selector_listing_editor');
-                throw new Error('The Etsy form does not exactly match the selected proposal fields.');
+                const mismatch = new Error('The Etsy form does not exactly match the selected proposal fields.');
+                mismatch.changedFields = EditorAdapter.changedFields(before, EditorAdapter.read(), proposalFields(item.proposal, true));
+                mismatch.editorRestored = mismatch.changedFields.length === 0
+                    ? EditorAdapter.formIsClean() === true
+                    : await EditorAdapter.restore(before, mismatch.changedFields);
+                throw mismatch;
             }
-            await Queue.updateItem({ status: 'awaiting-user-review', before, changedFields, attempts: (item.attempts || 0) + 1, appliedAt: nowIso(), error: '', runtimeOwner: pageInstanceId });
+            await Queue.updateItemFenced(
+                { status: 'awaiting-user-review', before, changedFields, attempts: (item.attempts || 0) + 1, appliedAt: nowIso(), error: '', runtimeOwner: pageInstanceId },
+                fenceToken,
+                ['applying'],
+                actionIdentity,
+            );
             UI.setStatus('formApplied', 'ready'); UI.render();
         } catch (error) {
-            await Queue.updateItem({ status: 'failed', changedFields: [], error: String(error?.message || error) });
-            UI.setStatus('formNotReady', 'error');
+            let failureChangedFields = Array.isArray(error?.changedFields) ? error.changedFields : [];
+            let editorRestored = error?.editorRestored;
+            if (before && editorRestored === undefined) {
+                const selectedFields = (() => { try { return proposalFields(item?.proposal, true); } catch { return EDITABLE_FIELDS; } })();
+                failureChangedFields = EditorAdapter.changedFields(before, EditorAdapter.read(), selectedFields);
+                editorRestored = failureChangedFields.length === 0
+                    ? EditorAdapter.formIsClean() === true
+                    : await EditorAdapter.restore(before, failureChangedFields);
+            }
+            const dirty = editorRestored === false;
+            try {
+                await Queue.updateItemFenced(
+                    dirty
+                        ? { status: 'awaiting-user-review', before, changedFields: failureChangedFields, error: String(error?.message || error), runtimeOwner: pageInstanceId }
+                        : { status: 'failed', changedFields: [], error: String(error?.message || error) },
+                    fenceToken,
+                    applying ? ['applying'] : ['pending', 'failed'],
+                    actionIdentity,
+                );
+            } catch { await Store.loadQueue(); }
+            if (!dirty) await Lease.release(fenceToken);
+            UI.setStatus('formNotReady', dirty ? 'blocked' : 'error');
+            UI.render();
         }
     }
 
-    async function commitVerifiedPublish(fenceToken) {
+    async function commitVerifiedPublish(fenceToken, expectedIdentity) {
         return Queue.withFencedActiveItem(fenceToken, ['submitted'], async (queue, item) => {
             const publishedAt = nowIso();
             const record = await Store.getRecord(item.listingId);
@@ -6568,7 +7063,7 @@
                         improvement.baselineFingerprint = item.runtimeBaselineFingerprint || improvement.baselineFingerprint;
                     }
                     improvement.status = 'published'; improvement.publishedAt = publishedAt; improvement.after = record.editor;
-                    improvement.baselineSnapshot = improvement.baselineSnapshot || record.history?.at(-1) || null;
+                    improvement.baselineSnapshot = record.history?.at(-1) || improvement.baselineSnapshot || null;
                     improvement.experiment = { ...(improvement.experiment || {}), state: 'observing', startAt: publishedAt, evaluateAt: addDays(publishedAt, HEALTH_RULES.experimentDays), day: 0, durationDays: HEALTH_RULES.experimentDays, primaryMetric: primaryMetricForFields(improvement.fields || []) };
                 }
                 if (record.proposal?.improvementId === improvement?.id) record.proposal = { ...record.proposal, appliedAt: publishedAt };
@@ -6599,11 +7094,14 @@
                 completed,
                 next: completed ? null : savedQueue.items[savedQueue.cursor] || null,
             };
-        });
+        }, expectedIdentity);
     }
 
-    async function publishCurrentProposal() {
+    function publishCurrentProposal() { return runActionTask(publishCurrentProposalOnce); }
+
+    async function publishCurrentProposalOnce() {
         const item = Queue.activeItem();
+        const actionIdentity = Queue.activeIdentity();
         if (!item || currentListingId() !== String(item.listingId)) { UI.setStatus('routeMismatch', 'blocked'); return; }
         if (!item.changedFields?.length || item.status !== 'awaiting-user-review') { UI.setStatus('formNotReady', 'blocked'); return; }
         if (!editorMatchesProposal(EditorAdapter.read(), item.proposal)) { UI.setStatus('formNotReady', 'blocked'); return; }
@@ -6625,6 +7123,7 @@
                 { status: 'submitted', submittedAt: nowIso(), runtimeOwner: pageInstanceId, error: '' },
                 fenceToken,
                 ['awaiting-user-review'],
+                actionIdentity,
             );
             button.click();
             providerSubmitted = true;
@@ -6644,13 +7143,14 @@
                     { status: 'submitted-unverified', error: t('publishUnverified') },
                     fenceToken,
                     ['submitted'],
+                    actionIdentity,
                 );
                 UI.setStatus('publishUnverified', 'blocked');
                 UI.render();
                 return;
             }
 
-            const outcome = await commitVerifiedPublish(fenceToken);
+            const outcome = await commitVerifiedPublish(fenceToken, actionIdentity);
             if (outcome.completed) {
                 await Lease.release(fenceToken);
                 UI.setStatus('queueComplete', 'ready');
@@ -6669,6 +7169,7 @@
             await Store.loadQueue();
             const recovery = Queue.recoveryState();
             const uncertainSubmission = providerSubmitted || recovery?.submitted === true;
+            if (!uncertainSubmission && state.leaseToken === fenceToken) await Lease.release(fenceToken);
             void trackTelemetryError(error?.code === 'ACTION_LEASE_LOST' || String(error?.code || '').startsWith('STORAGE_')
                 ? 'storage_listing_state'
                 : 'selector_listing_publish_verify');
@@ -6677,51 +7178,286 @@
         }
     }
 
-    async function openCurrentDeactivate() {
-        const item = Queue.activeItem();
-        if (!item || currentListingId() !== String(item.listingId) || item.proposal?.action !== 'DEACTIVATE_REVIEW') { UI.setStatus('routeMismatch', 'blocked'); return; }
-        if (!['pending', 'failed'].includes(item.status)) { UI.setStatus('formNotReady', 'blocked'); return; }
-        const statusBefore = EditorAdapter.listingStatusLabels();
-        if (!statusBefore.length || statusBefore.some(isInactiveStatus)) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
-        if (!confirm(t('deactivateConfirm', { id: item.listingId }))) return;
-        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
-        const opened = await EditorAdapter.openDeactivate();
-        if (!opened) { void trackTelemetryError('selector_listing_editor'); UI.setStatus('formNotReady', 'error'); return; }
-        await Queue.updateItem({ status: 'awaiting-user-deactivation', openedAt: nowIso(), deactivationStatusBefore: statusBefore, runtimeOwner: pageInstanceId });
-        UI.setStatus('deactivateOpened', 'ready'); UI.render();
-    }
+    const DEACTIVATION_START_STATUSES = Object.freeze(['pending', 'failed', 'awaiting-user-deactivation']);
+    const DEACTIVATION_VERIFY_STATUSES = Object.freeze(['awaiting-user-deactivation', 'deactivation-submitted', 'deactivation-submitted-unverified']);
+    const DEACTIVATION_AUTO_RECOVERY_MAX_AGE_MS = 2 * 60 * 1000;
 
-    async function verifyCurrentDeactivate() {
-        const item = Queue.activeItem();
-        if (!item || currentListingId() !== String(item.listingId) || item.proposal?.action !== 'DEACTIVATE_REVIEW') { UI.setStatus('routeMismatch', 'blocked'); return; }
-        if (item.status !== 'awaiting-user-deactivation') { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
-        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+    function automaticDeactivationRecovery(item = Queue.activeItem(), at = Date.now()) {
+        if (!item || item.proposal?.action !== 'DEACTIVATE_REVIEW') return null;
+        if (!['deactivation-submitted', 'deactivation-submitted-unverified'].includes(String(item.status || ''))) return null;
+        const listingId = String(item.listingId || '');
+        const submittedAt = Date.parse(String(item.deactivationSubmittedIntentAt || ''));
+        const age = Number(at) - submittedAt;
         const statusBefore = Array.isArray(item.deactivationStatusBefore) ? item.deactivationStatusBefore : [];
-        const statusAfter = EditorAdapter.listingStatusLabels();
-        const inactiveAfter = statusAfter.some(isInactiveStatus);
-        const statusChanged = statusBefore.length > 0 && statusAfter.length > 0 && !sameStringSet(statusBefore, statusAfter);
-        if (!statusAfter.length || (statusChanged && !inactiveAfter)) void trackTelemetryError('selector_listing_deactivate_verify');
-        if (!statusBefore.length || statusBefore.some(isInactiveStatus) || !inactiveAfter || !statusChanged) {
-            UI.setStatus('deactivateNotVerified', 'blocked'); return;
-        }
-        await Store.appendAudit({ type: 'listing-deactivated', queueId: state.queue.id, listingId: item.listingId, reason: item.proposal?.reason || '' });
-        const record = await Store.getRecord(item.listingId);
-        if (record) {
-            const completedAt = nowIso();
-            record.deactivation = { at: completedAt, reason: item.proposal?.reason || '', baselineSnapshot: record.history?.at(-1) || null, userConfirmed: true };
-            const improvement = (record.improvements || []).find((entry) => entry.id === item.proposal?.improvementId && entry.status === 'planned');
-            if (improvement) { improvement.status = 'deactivated'; improvement.completedAt = completedAt; }
-            await Store.putRecord(record);
-        }
-        const next = await Queue.advance('verified-deactivated');
-        if (next) await Queue.navigate(next);
+        if (!/^\d+$/.test(listingId) || !item.deactivationAttemptId || !Number.isFinite(submittedAt)
+            || !Number.isFinite(age) || age < 0 || age > DEACTIVATION_AUTO_RECOVERY_MAX_AGE_MS
+            || !statusBefore.length || !statusBefore.every(isActiveStatus)) return null;
+        return { item, editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}` };
     }
 
-    async function skipCurrentItem() {
-        const item = Queue.activeItem(); if (!item) return;
-        await Store.appendAudit({ type: 'queue-item-skipped', queueId: state.queue.id, listingId: item.listingId });
-        const next = await Queue.advance('skipped');
-        if (next) await Queue.navigate(next);
+    function deactivationActiveBaseline(item, expected = null) {
+        if (!item || routeKind() !== 'editor' || currentListingId() !== String(item.listingId) || item.proposal?.action !== 'DEACTIVATE_REVIEW') return null;
+        if (EditorAdapter.formIsClean() !== true) return null;
+        const statuses = EditorAdapter.listingStatusLabels();
+        if (!statuses.length || !statuses.every(isActiveStatus)) return null;
+        if (expected && !sameStringSet(statuses, expected)) return null;
+        if (routeKind() !== 'editor' || currentListingId() !== String(item.listingId) || EditorAdapter.formIsClean() !== true) return null;
+        return statuses;
+    }
+
+    function deactivationModalBaseline(item, expected) {
+        if (!item || routeKind() !== 'editor' || currentListingId() !== String(item.listingId) || item.proposal?.action !== 'DEACTIVATE_REVIEW') return null;
+        if (!EditorAdapter.deactivateDialogContract() || EditorAdapter.formIsClean(true) !== true) return null;
+        const statuses = EditorAdapter.listingStatusLabels();
+        if (!statuses.length || !statuses.every(isActiveStatus) || !sameStringSet(statuses, expected)) return null;
+        if (routeKind() !== 'editor' || currentListingId() !== String(item.listingId) || !EditorAdapter.deactivateDialogContract()) return null;
+        return statuses;
+    }
+
+    async function commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter) {
+        return Queue.withFencedActiveItem(fenceToken, DEACTIVATION_VERIFY_STATUSES, async (queue, storedItem) => {
+            const storedBefore = Array.isArray(storedItem.deactivationStatusBefore) ? storedItem.deactivationStatusBefore : [];
+            const activeBefore = storedBefore.length > 0 && storedBefore.every(isActiveStatus) && sameStringSet(storedBefore, statusBefore);
+            const inactiveAfter = statusAfter.length > 0 && statusAfter.every(isInactiveStatus) && !sameStringSet(storedBefore, statusAfter);
+            if (!activeBefore || !inactiveAfter) throw actionLeaseLostError('The deactivation evidence changed before commit.');
+            const completedAt = nowIso();
+            const operationId = String(storedItem.deactivationAttemptId || `deactivate-${queue.id}-${queue.cursor}-${storedItem.listingId}`);
+            const record = await Store.getRecord(storedItem.listingId);
+            if (record && record.deactivation?.operationId !== operationId) {
+                record.deactivation = {
+                    at: completedAt, operationId, reason: storedItem.proposal?.reason || '',
+                    baselineSnapshot: record.history?.at(-1) || null, userConfirmed: true, automated: true,
+                };
+                const improvement = (record.improvements || []).find((entry) => entry.id === storedItem.proposal?.improvementId && entry.status === 'planned');
+                if (improvement) { improvement.status = 'deactivated'; improvement.completedAt = completedAt; }
+                await Lease.assertOwnerLocked(fenceToken);
+                await Store.putRecordLocked(record);
+            }
+            await Lease.assertOwnerLocked(fenceToken);
+            const audit = await GMX.get(KEYS.audit, []);
+            const alreadyAudited = Array.isArray(audit) && audit.some((entry) => entry?.type === 'listing-deactivated' && entry?.operationId === operationId);
+            if (!alreadyAudited) {
+                await Store.appendAuditLocked({
+                    type: 'listing-deactivated', operationId, queueId: queue.id, listingId: storedItem.listingId,
+                    reason: storedItem.proposal?.reason || '', automated: true,
+                });
+            }
+            storedItem.status = 'verified-deactivated';
+            storedItem.verifiedAt = completedAt;
+            storedItem.deactivationStatusAfter = statusAfter;
+            storedItem.error = '';
+            queue.cursor += 1;
+            const completed = queue.cursor >= queue.items.length;
+            if (completed) { queue.status = 'completed'; queue.completedAt = completedAt; }
+            else queue.status = 'running';
+            await Lease.assertOwnerLocked(fenceToken);
+            const saved = await Store.saveQueueLocked(queue);
+            return { completed, next: completed ? null : saved.items[saved.cursor] || null };
+        }, actionIdentity);
+    }
+
+    async function finishVerifiedDeactivation(outcome, fenceToken) {
+        if (outcome.completed) {
+            await Lease.release(fenceToken);
+            UI.setStatus('queueComplete', 'ready'); UI.render(); return;
+        }
+        UI.setStatus('deactivateVerified', 'ready'); UI.render();
+        await Queue.navigate(outcome.next);
+    }
+
+    function openCurrentDeactivate() { return runActionTask(openCurrentDeactivateOnce); }
+
+    async function openCurrentDeactivateOnce() {
+        let item = Queue.activeItem();
+        const actionIdentity = Queue.activeIdentity();
+        if (!item || currentListingId() !== String(item.listingId) || item.proposal?.action !== 'DEACTIVATE_REVIEW') { UI.setStatus('routeMismatch', 'blocked'); return; }
+        if (!DEACTIVATION_START_STATUSES.includes(String(item.status || ''))) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
+        const statusBefore = deactivationActiveBaseline(item);
+        if (!statusBefore) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
+        const legacyAwaiting = item.status === 'awaiting-user-deactivation';
+        if (!confirm(t(legacyAwaiting ? 'deactivateLegacyConfirm' : 'deactivateConfirm', { id: item.listingId }))) return;
+        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+        const fenceToken = state.leaseToken;
+        let submissionArmed = false;
+        let providerClicked = false;
+        try {
+            item = await Queue.withFencedActiveItem(fenceToken, DEACTIVATION_START_STATUSES, async (_queue, storedItem) => ({ ...storedItem }), actionIdentity);
+            if (!deactivationActiveBaseline(item, statusBefore)) throw actionLeaseLostError('The listing changed before the deactivation dialog opened.');
+            if (!await EditorAdapter.openDeactivateDialog()) {
+                await EditorAdapter.cancelDeactivateDialogWhenReady();
+                await Lease.release(fenceToken);
+                void trackTelemetryError('selector_listing_editor'); UI.setStatus('formNotReady', 'error'); return;
+            }
+            await Lease.assertOwner(fenceToken);
+            if (!deactivationModalBaseline(item, statusBefore)) throw actionLeaseLostError('The listing changed before deactivation submission.');
+            const attemptId = randomId('deactivation-attempt');
+            await Queue.updateItemFenced(
+                {
+                    status: 'deactivation-submitted', deactivationAttemptId: attemptId,
+                    deactivationStatusBefore: statusBefore, deactivationAuthorizedAt: nowIso(),
+                    deactivationSubmittedIntentAt: nowIso(), runtimeOwner: pageInstanceId, error: '',
+                },
+                fenceToken,
+                DEACTIVATION_START_STATUSES,
+                actionIdentity,
+            );
+            submissionArmed = true;
+            await Lease.assertOwner(fenceToken);
+            if (!deactivationModalBaseline(item, statusBefore)) {
+                throw actionLeaseLostError('The listing changed after deactivation submission was armed.');
+            }
+            if (!EditorAdapter.clickDeactivateConfirmation()) throw new Error('The Etsy deactivation confirmation was no longer safe to click.');
+            providerClicked = true;
+            const statusAfter = await waitForActionVerification(() => {
+                if (currentListingId() !== String(item.listingId)) return null;
+                const statuses = EditorAdapter.listingStatusLabels();
+                return statuses.length && statuses.every(isInactiveStatus) && !sameStringSet(statusBefore, statuses) ? statuses : null;
+            }, fenceToken, 25000, 300);
+            if (!statusAfter) {
+                void trackTelemetryError('selector_listing_deactivate_verify');
+                await Queue.updateItemFenced(
+                    { status: 'deactivation-submitted-unverified', deactivationClickedAt: nowIso(), error: t('deactivateUnverified') },
+                    fenceToken,
+                    ['deactivation-submitted'],
+                    actionIdentity,
+                );
+                await Lease.release(fenceToken);
+                UI.setStatus('deactivateUnverified', 'blocked'); UI.render(); return;
+            }
+            const outcome = await commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter);
+            await finishVerifiedDeactivation(outcome, fenceToken);
+        } catch (error) {
+            if (!submissionArmed) await EditorAdapter.cancelDeactivateDialogWhenReady();
+            if (submissionArmed && state.leaseToken === fenceToken) {
+                try {
+                    await Queue.updateItemFenced(
+                        {
+                            status: 'deactivation-submitted-unverified',
+                            deactivationClickedAt: providerClicked ? nowIso() : '',
+                            error: normalizeSpace(error?.message || error).slice(0, 240),
+                        },
+                        fenceToken,
+                        ['deactivation-submitted'],
+                        actionIdentity,
+                    );
+                } catch { /* The durable submitted state already prevents an automatic retry. */ }
+            }
+            if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
+            await Store.loadQueue();
+            const uncertain = submissionArmed || ['deactivation-submitted', 'deactivation-submitted-unverified'].includes(String(Queue.activeItem()?.status || ''));
+            UI.setStatus(uncertain ? 'deactivateUnverified' : (error?.code === 'ACTION_LEASE_LOST' ? 'leaseBlocked' : 'formNotReady'), uncertain || error?.code === 'ACTION_LEASE_LOST' ? 'blocked' : 'error');
+            UI.render();
+        }
+    }
+
+    function verifyCurrentDeactivate() { return runActionTask(verifyCurrentDeactivateOnce); }
+
+    async function verifyCurrentDeactivateOnce() {
+        let item = Queue.activeItem();
+        const actionIdentity = Queue.activeIdentity();
+        if (!item || currentListingId() !== String(item.listingId) || item.proposal?.action !== 'DEACTIVATE_REVIEW') { UI.setStatus('routeMismatch', 'blocked'); return; }
+        if (!DEACTIVATION_VERIFY_STATUSES.includes(String(item.status || ''))) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
+        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+        const fenceToken = state.leaseToken;
+        try {
+            item = await Queue.withFencedActiveItem(fenceToken, DEACTIVATION_VERIFY_STATUSES, async (_queue, storedItem) => ({ ...storedItem }), actionIdentity);
+            const statusBefore = Array.isArray(item.deactivationStatusBefore) ? item.deactivationStatusBefore : [];
+            const statusAfter = EditorAdapter.listingStatusLabels();
+            const activeBefore = statusBefore.length > 0 && statusBefore.every(isActiveStatus);
+            const inactiveAfter = statusAfter.length > 0 && statusAfter.every(isInactiveStatus);
+            const statusChanged = statusBefore.length > 0 && statusAfter.length > 0 && !sameStringSet(statusBefore, statusAfter);
+            if (!statusAfter.length || (statusChanged && !inactiveAfter)) void trackTelemetryError('selector_listing_deactivate_verify');
+            if (!activeBefore || !inactiveAfter || !statusChanged) {
+                await Lease.release(fenceToken);
+                UI.setStatus('deactivateNotVerified', 'blocked'); return;
+            }
+            const outcome = await commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter);
+            await finishVerifiedDeactivation(outcome, fenceToken);
+        } catch (error) {
+            if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
+            await Store.loadQueue();
+            UI.setStatus(error?.code === 'ACTION_LEASE_LOST' ? 'leaseBlocked' : 'deactivateNotVerified', 'blocked');
+            UI.render();
+        }
+    }
+
+    function skipCurrentItem() { return runActionTask(skipCurrentItemOnce); }
+
+    async function skipCurrentItemOnce() {
+        const item = Queue.activeItem();
+        const actionIdentity = Queue.activeIdentity();
+        if (!item) return;
+        if (!['pending', 'failed'].includes(String(item.status || ''))) { UI.setStatus('formNotReady', 'blocked'); return; }
+        if (routeKind() === 'editor' && currentListingId() === String(item.listingId) && EditorAdapter.formIsClean() !== true) {
+            UI.setStatus('formNotReady', 'blocked'); return;
+        }
+        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+        const fenceToken = state.leaseToken;
+        try {
+            const outcome = await Queue.advanceFenced(
+                'skipped',
+                fenceToken,
+                ['pending', 'failed'],
+                actionIdentity,
+                (queue, storedItem) => ({ type: 'queue-item-skipped', queueId: queue.id, listingId: storedItem.listingId }),
+            );
+            if (outcome.completed) {
+                await Lease.release(fenceToken);
+                UI.setStatus('queueComplete', 'ready'); UI.render(); return;
+            }
+            UI.render();
+            await Queue.navigate(outcome.next);
+        } catch (error) {
+            if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
+            await Store.loadQueue(); UI.setStatus('leaseBlocked', 'blocked'); UI.render();
+        }
+    }
+
+    function stopCurrentQueue(reason = 'user') { return runActionTask(() => stopCurrentQueueOnce(reason)); }
+
+    async function stopCurrentQueueOnce(reason = 'user') {
+        const item = Queue.activeItem();
+        const actionIdentity = Queue.activeIdentity();
+        if (!item) return;
+        const dirtyAppliedEditor = routeKind() === 'editor'
+            && currentListingId() === String(item.listingId)
+            && ['applying', 'awaiting-user-review'].includes(String(item.status || ''))
+            && EditorAdapter.formIsClean() !== true;
+        if (dirtyAppliedEditor) { UI.setStatus('formNotReady', 'blocked'); return; }
+        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+        const fenceToken = state.leaseToken;
+        try {
+            await Queue.stopFenced(reason, fenceToken, [actionIdentity.itemStatus], actionIdentity);
+            await Lease.release(fenceToken);
+            UI.setStatus('queueStopped', 'blocked'); UI.render();
+        } catch {
+            if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
+            await Store.loadQueue(); UI.setStatus('leaseBlocked', 'blocked'); UI.render();
+        }
+    }
+
+    function recoverCurrentItem() { return runActionTask(recoverCurrentItemOnce); }
+
+    async function recoverCurrentItemOnce() {
+        const recovery = Queue.recoveryState();
+        const item = recovery?.item;
+        const actionIdentity = Queue.activeIdentity();
+        if (!item || recovery.submitted || !confirm(t('queueRecoveryConfirm'))) return;
+        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+        const fenceToken = state.leaseToken;
+        try {
+            await Queue.updateItemFenced(
+                { status: 'pending', error: '', changedFields: [], runtimeOwner: '' },
+                fenceToken,
+                [actionIdentity.itemStatus],
+                actionIdentity,
+            );
+            await Lease.release(fenceToken);
+            UI.setStatus('editorReady', 'ready'); UI.render(true);
+        } catch {
+            if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
+            await Store.loadQueue(); UI.setStatus('leaseBlocked', 'blocked'); UI.render();
+        }
     }
 
     function registerMenus() {
@@ -6738,32 +7474,87 @@
         ].forEach(([key, callback]) => { const id = GMX.register(`Makaytron · ${t(key)}`, callback); if (id != null) state.menuIds.push(id); });
     }
 
-    async function handleRoute() {
-        const key = `${location.pathname}${location.search}`;
-        if (state.routeKey === key && state.panel) return;
-        state.routeKey = key;
-        await Store.loadQueue();
-        const kind = routeKind();
-        if (kind === 'listings') {
-            const stable = await ListingPageAdapter.readStable({ requirePagination: state.collection?.status === 'running' && state.collection.totalPages > 1, timeout: 10000 });
-            state.pageListings = stable?.listings || [];
-            if (state.collection?.status === 'running' && stable && collectionScopeMatches(state.collection)) {
-                UI.setStatus('collectionProgress', 'scanning', Collection.progressParams(stable.pageInfo));
-                void Collection.run();
+    function routeLocationKey() { return `${location.pathname}${location.search || ''}`; }
+
+    function handleRoute(options = {}) {
+        const force = options?.force === true;
+        const key = routeLocationKey();
+        if (!force && state.routeKey === key && state.panel) return Promise.resolve(null);
+        if (state.routeTask?.key === key) {
+            if (force) state.routeRetryKey = key;
+            return state.routeTask.promise;
+        }
+        if (state.routeKey !== key) state.routeKey = '';
+        const generation = ++state.routeGeneration;
+        const isCurrent = () => state.routeGeneration === generation && routeLocationKey() === key;
+        const promise = (async () => {
+            await Store.loadQueue();
+            if (!isCurrent()) return null;
+            const kind = routeKind();
+            if (kind === 'listings') {
+                const automaticRecovery = automaticDeactivationRecovery();
+                if (automaticRecovery) {
+                    state.routeKey = key;
+                    UI.setStatus('deactivateOpened', 'scanning');
+                    UI.render();
+                    location.assign(automaticRecovery.editUrl);
+                    return kind;
+                }
+                const stable = await ListingPageAdapter.readStable({
+                    requirePagination: state.collection?.status === 'running' && state.collection.totalPages > 1,
+                    timeout: window.__MAKAYTRON_LISTING_TEST__ === true ? 120 : 10000,
+                });
+                if (!isCurrent()) return null;
+                state.pageListings = stable?.listings || [];
+                if (state.collection?.status === 'running' && stable && collectionScopeMatches(state.collection)) {
+                    UI.setStatus('collectionProgress', 'scanning', Collection.progressParams(stable.pageInfo));
+                    void Collection.run();
+                } else {
+                    UI.setStatus(state.collection?.status === 'running' ? 'collectionPageChanged' : stable ? 'pageReady' : 'noCards', state.collection?.status === 'running' || !stable ? 'blocked' : 'ready');
+                }
+                if (stable) state.routeKey = key;
+            } else if (kind === 'editor') {
+                const editorReady = await waitFor(() => EditorAdapter.ready(), window.__MAKAYTRON_LISTING_TEST__ === true ? 120 : 12000, 250);
+                if (!isCurrent()) return null;
+                if (!editorReady) { void trackTelemetryError('selector_listing_editor'); UI.setStatus('formNotReady', 'blocked'); UI.render(); return null; }
+                const captured = await EditorAdapter.captureCurrent({ routeKey: key, listingId: currentListingId() });
+                if (!isCurrent()) return null;
+                if (!captured) { UI.setStatus('formNotReady', 'blocked'); UI.render(); return null; }
+                await refreshRecords({ render: false });
+                if (!isCurrent()) return null;
+                const item = Queue.activeItem();
+                const automaticRecovery = automaticDeactivationRecovery(item);
+                if (automaticRecovery && String(item.listingId) === currentListingId()) {
+                    state.routeKey = key;
+                    UI.setStatus('deactivateOpened', 'scanning');
+                    UI.render();
+                    void verifyCurrentDeactivate();
+                    return kind;
+                }
+                if (item && String(item.listingId) !== currentListingId() && ['ready','running'].includes(state.queue?.status)) UI.setStatus('routeMismatch', 'blocked');
+                else UI.setStatus('editorReady', 'ready');
+                state.routeKey = key;
             } else {
-                UI.setStatus(state.collection?.status === 'running' ? 'collectionPageChanged' : stable ? 'pageReady' : 'noCards', state.collection?.status === 'running' || !stable ? 'blocked' : 'ready');
+                UI.setStatus('unsupportedPage', 'blocked');
+                state.routeKey = key;
             }
-        } else if (kind === 'editor') {
-            const editorReady = await waitFor(() => EditorAdapter.ready(), 12000, 250);
-            if (!editorReady) { void trackTelemetryError('selector_listing_editor'); UI.setStatus('formNotReady', 'blocked'); UI.render(); return; }
-            const captured = await EditorAdapter.captureCurrent();
-            if (!captured) { UI.setStatus('formNotReady', 'blocked'); UI.render(); return; }
-            await refreshRecords();
-            const item = Queue.activeItem();
-            if (item && String(item.listingId) !== currentListingId() && ['ready','running'].includes(state.queue?.status)) UI.setStatus('routeMismatch', 'blocked');
-            else UI.setStatus('editorReady', 'ready');
-        } else UI.setStatus('unsupportedPage', 'blocked');
-        UI.render();
+            if (isCurrent()) UI.render();
+            return kind;
+        })();
+        const task = { key, generation, promise };
+        state.routeTask = task;
+        const finalize = () => {
+            if (state.routeTask === task) state.routeTask = null;
+            const currentKey = routeLocationKey();
+            if (state.routeRetryKey && state.routeRetryKey !== currentKey) state.routeRetryKey = '';
+            if (state.routeRetryKey === currentKey && !state.routeTask) {
+                const retry = state.routeKey !== currentKey;
+                state.routeRetryKey = '';
+                if (retry) void handleRoute({ force: true });
+            }
+        };
+        void promise.then(finalize, finalize);
+        return promise;
     }
 
     function collectionFingerprint(collection) {
@@ -6823,10 +7614,16 @@
     function installRouteWatcher() {
         let lastUrl = location.href;
         state.routeTimer = window.setInterval(() => {
-            if (location.href !== lastUrl) { lastUrl = location.href; state.routeKey = ''; void handleRoute(); }
+            if (location.href !== lastUrl) { lastUrl = location.href; void handleRoute({ force: true }); }
         }, 600);
         const observer = new MutationObserver(() => {
-            if (routeKind() === 'listings' && ListingPageAdapter.cardLinks().length && !state.pageListings.length) void handleRoute();
+            const key = routeLocationKey();
+            if (state.routeKey === key) return;
+            const kind = routeKind();
+            const hydrated = kind === 'listings'
+                ? ListingPageAdapter.cardLinks().length > 0
+                : kind === 'editor' && EditorAdapter.ready();
+            if (hydrated) void handleRoute({ force: true });
         });
         observer.observe(document.documentElement, { childList: true, subtree: true });
     }
@@ -6860,10 +7657,13 @@
             parseCountValue,
             parseListingMetrics,
             currencyMarker,
+            finiteOrNull,
             currentShopKey,
             normalizeListingState,
             pageListingState,
             recommendationBasisMatches,
+            validateEditableProposal,
+            validateAiProposal,
             normalizeRecord,
             normalizeSnapshot,
             mergeDailySnapshot,
@@ -6877,10 +7677,12 @@
             sortAnalysisRecords,
             thresholdCalibration,
             thresholdImpactCounts,
+            buildHistoryChartModel,
             normalizeCollection,
             collectionManifestIsComplete,
             collectionIsFresh,
             collectionScopeKey,
+            collectionScopeHref,
             collectionScopeMatches,
             collectionPageConflict,
             collectionPageMatchesManifest,
@@ -6889,6 +7691,8 @@
             elementIsUsable,
             ListingPageAdapter,
             collectionRuntime: Object.freeze({ state, Store, KEYS, CollectionLease, Collection }),
+            aiRuntime: Object.freeze({ aiRequestPackage, importAiResponse }),
+            backupRuntime: Object.freeze({ normalizeBackupDocument, importBackupDocument }),
             currentCollectionIdentity: () => collectionIdentity(),
             syncCollectionState,
             canonicalEditableContent,
@@ -6904,6 +7708,8 @@
             validateResearchResultPayload,
             validateResearchEvidence,
             validateResearchSuggestion,
+            transitionResearchEntry,
+            researchResultStatusAccepts,
             buildResearchSuggestion,
             researchSuggestionForRecord,
             importResearchResultJson,
@@ -6927,6 +7733,24 @@
                 openTampermonkeyUpdate,
                 bindInstallUpdate,
             }),
+            actionRuntime: Object.freeze({
+                state,
+                Store,
+                KEYS,
+                Lease,
+                Queue,
+                EditorAdapter,
+                applyCurrentProposal,
+                publishCurrentProposal,
+                openCurrentDeactivate,
+                verifyCurrentDeactivate,
+                automaticDeactivationRecovery,
+                skipCurrentItem,
+                stopCurrentQueue,
+                recoverCurrentItem,
+            }),
+            settingsRuntime: Object.freeze({ state, Store, persistThresholdSettings }),
+            routeRuntime: Object.freeze({ state, Store, UI, handleRoute, routeLocationKey }),
             updateExperimentEvaluations,
             evaluateRecord(record, peers = [record], settings = DEFAULT_SETTINGS, evaluatedAt = nowIso()) {
                 const records = Array.isArray(peers) && peers.length ? peers : [record];

@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.0.5` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
+Version: `1.1.0` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
@@ -40,7 +40,7 @@ Every image below is an element-level capture of the userscript itself. No Etsy 
 - Imports validated AI-response JSON as title, description, tag, and material proposals, with **Before / AI proposal / Verified result** comparison limited to explicitly changed fields.
 - Starts an optional **Research with Marketplace Insights** flow when exactly one listing is selected. If the separate **Etsy Keyword & Market Analyzer** is available, it exchanges an opaque `L001` reference and content hash, then shows validated 30-day searches, search-results/competition indicator, and Makaytron-derived opportunity score with the title/tag suggestion.
 - Applies an approved proposal to the Etsy editor but never presses `Publish changes` without a separate confirmation for that listing.
-- Opens Etsy’s options and focuses the Deactivate item without clicking it. The user clicks Deactivate and Etsy’s final confirmation; the queue does not advance without visible verification.
+- After an explicit per-listing deactivation confirmation, clicks only Etsy's single visible, enabled, exact **Deactivate** menu item and the correct final **Deactivate** button. **Delete** is never selected; the queue does not advance without a visible `Active → Inactive` transition, and an uncertain submission is never retried automatically.
 - Downloads a local JSON backup; import validates file size and schema, previews listing/custom-preset counts before any write, and merges only after explicit confirmation. Custom filter presets move with the backup, while an old action queue is never activated. Local analysis data can likewise be cleared only after explicit user confirmation.
 - Displays estimated local data usage. A near-limit or quota-rejected write stops fail-closed without marking the bulk workflow complete and offers backup/cleanup recovery guidance.
 - Keeps the same interactive structure and understandable accessible names in Turkish and English and publishes the active language on the application root. Keyboard focus stays visible, modal focus is trapped, `Escape` closes the dialog, and focus returns to its trigger.
@@ -59,20 +59,20 @@ Health Engine uses only the title, SKU, stock, price, status, last-30-day visits
 
 Visits and favorites are rolling 30-day values, while sales, revenue, and renewals are all-time totals. The engine therefore does not treat every difference between two scans as the same kind of change. Short intervals are early signals; longer windows with an adequate sample can support higher-confidence assessments.
 
-The card's **30-day reach/engagement** score measures only last-30-day visits and favorite rate, retaining the same meaning on the first and later scans. All-time sales/revenue can protect a listing from risky changes, while renewals can create a waste priority; those historical counters do not artificially raise the current reach/engagement score. **History confidence** separately reports how ready the comparative time series is. Low history confidence on the first scan does not turn complete zero counters into “insufficient data”; growth/decline still requires 30-day evidence, and deactivation review still requires at least 58 days of complete history plus every other safety gate.
+The card's **30-day reach/engagement** score measures last-30-day visits and a sample-size-smoothed favorite rate; the favorite component gains weight gradually as traffic accumulates and keeps the same meaning on first and later scans. All-time sales/revenue can protect a listing from risky changes, while renewals can create a waste priority; those historical counters do not artificially raise the current reach/engagement score. **History confidence** separately reports how ready the comparative time series is. Low history confidence on the first scan does not turn complete zero counters into “insufficient data”; growth/decline still requires consecutive 30-day evidence, and deactivation review still requires at least 58 days of complete history plus every other safety gate.
 
 Health Engine does not rely on one colored recommendation; its evaluation considers the following explainable contexts together:
 
 - **Lifecycle:** stages such as building a baseline, learning, a stable/growing/declining period, an experiment, inactivity, or deactivation review. The available stage depends on the depth of local history.
 - **Performance hypothesis:** a possible weakness in discovery, post-visit interest, or purchase behavior. It is a review hypothesis derived from visible metrics, not a claim of causation.
-- **Confidence:** data quality, history depth, traffic sample, comparison group, freshness, and consistency are considered. Missing data or short history is not enough for a definitive decision.
+- **Confidence:** data quality, history depth, traffic sample, comparison group, freshness, and consistency are considered. Eight listings make a cohort usable; cohort strength reaches its full value only at 30 comparable listings. Missing data or short history is not enough for a definitive decision.
 - **Evidence and next review:** current values, suitable local comparisons, and the time needed for another assessment should accompany the decision; insufficient evidence leaves the result inconclusive.
 
 A comparison group can be formed only from meaningfully comparable local records accumulated for the same shop in this browser. Recently changed, experimental, inactive, out-of-stock, or incomplete listings weaken the comparison. When too few peers exist, a cohort result is not presented as a reliable signal. This is not an Etsy-wide market benchmark.
 
-A recorded improvement can be compared in an experiment context using its baseline snapshot and changed fields. Title/tag experiments measure visit change, material experiments measure favorite-to-visit rate, and description experiments measure sale-to-visit rate. The engine uses the first snapshot after day 30 only within a seven-day tolerance; later evidence remains `Inconclusive` instead of producing a false verdict. Because last-30-day metrics are rolling windows, earlier checks are provisional signals only. Overlapping changes weaken interpretation, so the workflow encourages one controlled hypothesis at a time.
+A recorded improvement can be compared using a baseline no more than one day before publication and its changed fields. Title/tag experiments measure visit change, material experiments measure favorite-to-visit rate, and description experiments measure sale-to-visit rate after normalizing cumulative sales exposure to 30 days. An experiment becomes `Winner` or `Underperformed` only when its 90% Poisson rate-ratio interval excludes 1; the sales interval uses actual event counts and observation duration instead of normalized fractional events. The displayed percentage is a **30-day relative change**, not a causal adjustment. The engine uses the first snapshot after day 30 only within a seven-day tolerance; a stale baseline or later evidence remains `Inconclusive`. Because last-30-day metrics are rolling windows, earlier checks are provisional signals only. Overlapping changes weaken interpretation, so the workflow encourages one controlled hypothesis at a time.
 
-`Review deactivation` is not an automatic deactivation command. Missing data, low confidence, a recent change, or an active experiment acts as a safety gate. Even when a listing becomes a review candidate, the script only opens Etsy's options and focuses Deactivate; the user clicks Deactivate and Etsy's final confirmation.
+`Review deactivation` alone is not an automatic deactivation command. Missing data, low confidence, a recent change, or an active experiment acts as a safety gate. Even when a listing becomes a review candidate, the user separately confirms deactivation for that listing. The script then revalidates the exact DOM contract, clicks only **Deactivate** and the final **Deactivate** control, and verifies a visible `Active → Inactive` transition.
 
 ## Workflow
 
@@ -84,7 +84,7 @@ A recorded improvement can be compared in an experiment context using its baseli
 6. Prepare a proposal in either of two ways. For the manual path, open **Improvement plan** on the listing card and choose an action; for **Update selected fields**, mark the fields to change, enter their replacement values, and press **Save proposal**. For the AI path, select cards, copy the request package from **AI proposals**, and import the validated response JSON; valid AI proposals are saved locally. Review and edit the proposal before queueing if needed.
 7. A card selection is not a saved proposal; it only scopes research, AI export, and queue creation. Select the listing cards that have saved proposals and choose **Build queue from selection**. Cards without proposals and proposals saved as **Do nothing** (`SKIP`) are excluded; the fresh full-collection identity, proposal basis, and changed-field list are revalidated when the queue is built.
 8. The queue opens listings one at a time. **Apply proposal to form** fills only the selected fields and does not publish. Review Etsy’s fields, then give **Reviewed; publish on Etsy** approval separately for each listing.
-9. If publication cannot be verified, the queue stops and never retries the write blindly. For deactivation, the script only opens Etsy’s menu; the user clicks **Deactivate** and Etsy’s final confirmation.
+9. If publication or deactivation cannot be verified, the queue stops and never retries the write blindly. For deactivation, after the user confirms that listing, the script clicks only the exact **Deactivate** item and Etsy's final **Deactivate** button, never touches **Delete**, and advances only after `Active → Inactive` verification.
 
 > **What does “Select at least one listing with a saved proposal” mean?** You selected a card, but did not save an actionable proposal for that listing, or saved it as **Do nothing**. Complete **Improvement plan → Save proposal** or import valid AI proposal JSON first; then select the card with that saved proposal and build the queue again.
 
@@ -121,7 +121,7 @@ Supported actions are `UPDATE`, `DEACTIVATE_REVIEW`, and `SKIP`. Unknown or dupl
 - No reading of Etsy cookies, browser session storage, or private API endpoints.
 - No Etsy write action on page load.
 - No automatic price, quantity, or variation update.
-- No listing deletion automation.
+- Listing deletion is unsupported; the only lifecycle-removal proposal is the user-approved `DEACTIVATE_REVIEW` flow.
 - Cross-tab queue lease and fail-closed handling for unverified publishing.
 - A separate collection lease, page signatures, repeated-page guard, and 250-page safety ceiling protect all-page collection. Collection reads visible listing data only and performs no listing write.
 - Only temporary read/navigation failures are retried. Storage, schema, ownership, repeated-page, and Etsy-write failures remain fail-closed. Error reports exclude cookies, sessions, DOM HTML, and listing titles.

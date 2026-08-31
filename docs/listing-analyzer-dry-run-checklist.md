@@ -21,7 +21,7 @@ Bu kontrol listesi kullanıcı tarafından kendi Etsy mağazasında uygulanır. 
 - AI teklifindeki “önce”, “öneri” ve ancak yayınlandıktan sonra oluşan “doğrulanan sonuç” alanlarını karşılaştırın; uygulanmamış önerinin sonuç gibi gösterilmediğini doğrulayın.
 - İyileştirme deney zaman çizelgesinde planlama, yayın, gözlem ve değerlendirme olaylarının doğru sırada olduğunu kontrol edin.
 - Deaktif etme yerine ilk denemede geri alınabilir bir metin iyileştirmesini tercih edin.
-- Her listing için açık kullanıcı onayı verilmeden Etsy Publish kontrolünün tıklanmadığını doğrulayın. Deaktif etmede scriptin yalnız seçenek menüsünü açıp ilgili öğeye odaklandığını; Deactivate ve Etsy final onayını kullanıcının tıkladığını ve Delete işleminin otomatikleştirilmediğini kontrol edin.
+- Her listing için açık kullanıcı onayı verilmeden Etsy Publish veya deaktivasyon kontrolünün tıklanmadığını doğrulayın. Deaktif etmede scriptin yalnız tek, görünür ve etkin tam eşleşen **Deactivate** menü öğesine ve doğru final **Deactivate** düğmesine tıkladığını; **Delete** kontrolüne hiç tıklamadığını, yalnız `Active → Inactive` doğrulamasıyla ilerlediğini ve belirsiz sonucu otomatik tekrarlamadığını kontrol edin.
 
 ## İşlem sonrası
 

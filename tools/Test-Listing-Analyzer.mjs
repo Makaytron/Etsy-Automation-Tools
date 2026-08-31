@@ -8,10 +8,12 @@ import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const scriptPath = path.join(repoRoot, 'scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js');
+const sanitizedListingsFixturePath = path.join(repoRoot, 'scripts/etsy-listing-analyzer/fixtures/sanitized-listings-page.json');
 
 class FakeElement {
     addEventListener() {}
     appendChild() {}
+    dispatchEvent() { return true; }
     remove() {}
     setAttribute() {}
     getAttribute() { return null; }
@@ -68,8 +70,10 @@ function loadAnalyzer() {
         crypto: webcrypto,
         location: {
             pathname: '/unsupported',
+            search: '',
             href: 'https://www.etsy.com/unsupported',
             hostname: 'www.etsy.com',
+            assign(url) { this.href = String(url); },
         },
         navigator: { locks: { request: async (_name, _options, callback) => callback() } },
         sessionStorage: { getItem: () => null, setItem: noop, removeItem: noop },
@@ -82,6 +86,9 @@ function loadAnalyzer() {
         HTMLSelectElement: FakeElement,
         Node: FakeElement,
         Event: class {
+            constructor(type, init = {}) { this.type = type; Object.assign(this, init); }
+        },
+        InputEvent: class {
             constructor(type, init = {}) { this.type = type; Object.assign(this, init); }
         },
         MutationObserver: class { observe() {} disconnect() {} },
@@ -116,6 +123,255 @@ function loadAnalyzer() {
 
 function plain(value) {
     return JSON.parse(JSON.stringify(value));
+}
+
+function splitSelectorList(selector) {
+    const parts = [];
+    let current = '';
+    let bracketDepth = 0;
+    let quote = '';
+    for (const character of String(selector || '')) {
+        if (quote) {
+            current += character;
+            if (character === quote) quote = '';
+            continue;
+        }
+        if (character === '"' || character === "'") { quote = character; current += character; continue; }
+        if (character === '[') bracketDepth += 1;
+        if (character === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+        if (character === ',' && bracketDepth === 0) {
+            if (current.trim()) parts.push(current.trim());
+            current = '';
+            continue;
+        }
+        current += character;
+    }
+    if (current.trim()) parts.push(current.trim());
+    return parts;
+}
+
+function splitSelectorChain(selector) {
+    const parts = [];
+    let current = '';
+    let bracketDepth = 0;
+    let quote = '';
+    for (const character of String(selector || '').trim()) {
+        if (quote) {
+            current += character;
+            if (character === quote) quote = '';
+            continue;
+        }
+        if (character === '"' || character === "'") { quote = character; current += character; continue; }
+        if (character === '[') bracketDepth += 1;
+        if (character === ']') bracketDepth = Math.max(0, bracketDepth - 1);
+        if (/\s/.test(character) && bracketDepth === 0) {
+            if (current.trim()) parts.push(current.trim());
+            current = '';
+            continue;
+        }
+        current += character;
+    }
+    if (current.trim()) parts.push(current.trim());
+    return parts;
+}
+
+function fixtureNodeMatchesSimple(node, selector) {
+    let rest = String(selector || '').trim();
+    const tag = rest.match(/^[a-z][\w-]*/i)?.[0] || '';
+    if (tag) {
+        if (node.tagName !== tag.toUpperCase()) return false;
+        rest = rest.slice(tag.length);
+    }
+    while (rest) {
+        const id = rest.match(/^#([\w-]+)/);
+        if (id) {
+            if (node.getAttribute('id') !== id[1]) return false;
+            rest = rest.slice(id[0].length);
+            continue;
+        }
+        const className = rest.match(/^\.([\w-]+)/);
+        if (className) {
+            const classes = String(node.getAttribute('class') || '').split(/\s+/).filter(Boolean);
+            if (!classes.includes(className[1])) return false;
+            rest = rest.slice(className[0].length);
+            continue;
+        }
+        const attribute = rest.match(/^\[\s*([\w:-]+)\s*(?:(\*=|\^=|\$=|=)\s*(?:"([^"]*)"|'([^']*)'|([^\]\s]+))\s*(i)?\s*)?\]/i);
+        if (attribute) {
+            const [, name, operator, doubleQuoted, singleQuoted, bare, insensitiveFlag] = attribute;
+            const actual = node.getAttribute(name);
+            if (actual === null) return false;
+            if (operator) {
+                let left = String(actual);
+                let right = String(doubleQuoted ?? singleQuoted ?? bare ?? '');
+                if (insensitiveFlag) { left = left.toLocaleLowerCase(); right = right.toLocaleLowerCase(); }
+                if (operator === '=' && left !== right) return false;
+                if (operator === '*=' && !left.includes(right)) return false;
+                if (operator === '^=' && !left.startsWith(right)) return false;
+                if (operator === '$=' && !left.endsWith(right)) return false;
+            }
+            rest = rest.slice(attribute[0].length);
+            continue;
+        }
+        return false;
+    }
+    return Boolean(tag || selector);
+}
+
+function fixtureNodeMatches(node, selector) {
+    return splitSelectorList(selector).some((candidate) => {
+        const chain = splitSelectorChain(candidate);
+        if (!chain.length || !fixtureNodeMatchesSimple(node, chain.at(-1))) return false;
+        let ancestor = node.parentElement;
+        for (let index = chain.length - 2; index >= 0; index -= 1) {
+            while (ancestor && !fixtureNodeMatchesSimple(ancestor, chain[index])) ancestor = ancestor.parentElement;
+            if (!ancestor) return false;
+            ancestor = ancestor.parentElement;
+        }
+        return true;
+    });
+}
+
+class ListingFixtureNode {
+    constructor(tagName, attributes = {}, text = '') {
+        this.tagName = String(tagName).toUpperCase();
+        this.attributes = new Map(Object.entries(attributes).map(([key, value]) => [key, String(value)]));
+        this.children = [];
+        this.parentElement = null;
+        this._text = String(text || '');
+        this.checked = false;
+        this.disabled = false;
+        this.shadowRoot = null;
+    }
+    append(...children) {
+        children.flat().filter(Boolean).forEach((child) => {
+            child.parentElement = this;
+            this.children.push(child);
+        });
+        return this;
+    }
+    appendChild(child) { this.append(child); return child; }
+    get textContent() { return [this._text, ...this.children.map((child) => child.textContent)].filter(Boolean).join(' '); }
+    set textContent(value) { this._text = String(value || ''); this.children = []; }
+    get href() { return this.getAttribute('href') || ''; }
+    get src() { return this.getAttribute('src') || ''; }
+    get currentSrc() { return this.src; }
+    get value() { return this._value ?? this.getAttribute('value') ?? ''; }
+    set value(value) { this._value = String(value); }
+    get options() { return this.querySelectorAll('option'); }
+    get offsetParent() { return this.parentElement; }
+    get isConnected() { return Boolean(this.closest('html')); }
+    getAttribute(name) { return this.attributes.has(name) ? this.attributes.get(name) : null; }
+    setAttribute(name, value) { this.attributes.set(name, String(value)); }
+    hasAttribute(name) { return this.attributes.has(name); }
+    matches(selector) { return fixtureNodeMatches(this, selector); }
+    closest(selector) {
+        let current = this;
+        while (current) {
+            if (fixtureNodeMatches(current, selector)) return current;
+            current = current.parentElement;
+        }
+        return null;
+    }
+    querySelectorAll(selector) {
+        const matches = [];
+        const visit = (node) => node.children.forEach((child) => {
+            if (fixtureNodeMatches(child, selector)) matches.push(child);
+            visit(child);
+        });
+        visit(this);
+        return matches;
+    }
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+    contains(candidate) {
+        let current = candidate;
+        while (current) {
+            if (current === this) return true;
+            current = current.parentElement;
+        }
+        return false;
+    }
+    checkVisibility() { return !this.closest('[hidden],[aria-hidden="true"],[inert]'); }
+}
+
+class ListingFixtureDocument {
+    constructor(documentElement) {
+        this.documentElement = documentElement;
+        this.body = documentElement.querySelector('body');
+        this.head = documentElement.querySelector('head');
+    }
+    querySelectorAll(selector) { return this.documentElement.querySelectorAll(selector); }
+    querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
+}
+
+function listingFixtureElement(tagName, attributes = {}, text = '', children = []) {
+    return new ListingFixtureNode(tagName, attributes, text).append(children);
+}
+
+function buildSanitizedListingsDocument(fixture) {
+    const { page, defaults, cards } = fixture;
+    const html = listingFixtureElement('html');
+    const head = listingFixtureElement('head');
+    const body = listingFixtureElement('body');
+    html.append(head, body);
+
+    body.append(listingFixtureElement('nav', { 'data-seller-nav': 'true' }, '', [
+        listingFixtureElement('a', { href: page.shopHref }, 'Synthetic fixture shop'),
+    ]));
+
+    const stateFilters = listingFixtureElement('section', { 'data-fixture': 'listing-state' });
+    for (const stateValue of ['active', 'inactive']) {
+        const input = listingFixtureElement('input', { name: 'item_status', value: stateValue });
+        input.checked = stateValue === page.selectedState;
+        stateFilters.append(listingFixtureElement('label', {}, stateValue, [input]));
+    }
+    body.append(stateFilters);
+
+    const grid = listingFixtureElement('ul', { class: 'wt-block-grid' });
+    cards.forEach((entry, index) => {
+        const number = String(index + 1).padStart(2, '0');
+        const editUrl = `https://www.etsy.com/your/shops/me/listing-editor/edit/${entry.listingId}`;
+        const publicUrl = `https://www.etsy.com/listing/${entry.listingId}/synthetic-fixture-${number}`;
+        const statsUrl = `https://www.etsy.com/your/shops/me/stats/listings/${entry.listingId}`;
+        const metricContainer = listingFixtureElement('div', { class: 'card-meta' }, '', [
+            listingFixtureElement('h6', {}, defaults.metricHeading),
+        ]);
+        for (let metricIndex = 0; metricIndex < defaults.metricRows.length; metricIndex += 2) {
+            const row = listingFixtureElement('div', { class: 'card-meta-row' });
+            defaults.metricRows.slice(metricIndex, metricIndex + 2).forEach((metricText) => {
+                row.append(listingFixtureElement('div', { class: 'card-meta-row-item text-gray-lighter selected-color' }, metricText));
+            });
+            metricContainer.append(row);
+        }
+        const editLink = listingFixtureElement('a', { class: 'card-body', href: editUrl }, '', [
+            listingFixtureElement('div', { class: 'card-title', title: entry.title }, entry.title),
+            listingFixtureElement('div', { class: 'card-meta-row-sku' }, '', [
+                listingFixtureElement('span', { 'data-value': 'true' }, `${defaults.skuPrefix}${number}`),
+            ]),
+            listingFixtureElement('div', { class: 'card-meta-row-quantity' }, defaults.stockText),
+            listingFixtureElement('div', { class: 'card-meta-row-price' }, '', [
+                listingFixtureElement('span', {}, defaults.priceText),
+            ]),
+            listingFixtureElement('div', { class: 'card-meta-row-status' }, defaults.renewalLabel),
+            listingFixtureElement('div', { class: 'card-img-wrap' }, '', [
+                listingFixtureElement('img', { src: 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==' }),
+            ]),
+            metricContainer,
+        ]);
+        grid.append(listingFixtureElement('li', { class: 'wt-block-grid__item' }, '', [
+            editLink,
+            listingFixtureElement('a', { href: publicUrl }, 'Public listing'),
+            listingFixtureElement('a', { href: statsUrl }, 'Listing statistics'),
+        ]));
+    });
+    body.append(grid);
+
+    const select = listingFixtureElement('select', {}, '', [listingFixtureElement('option', { value: '1' }, '1')]);
+    select.value = '1';
+    const next = listingFixtureElement('button', { 'aria-label': 'Next' }, 'Next');
+    next.disabled = true;
+    body.append(listingFixtureElement('nav', { 'aria-label': page.paginationLabel }, page.paginationText, [select, next]));
+    return new ListingFixtureDocument(html);
 }
 
 function snapshot(at, overrides = {}) {
@@ -220,6 +476,58 @@ test('card adapter scopes metric rows, rejects menu-only edit links, and rejects
     assert.equal(adapter.pageInfo().valid, false);
     Object.assign(adapter, originals);
     assert.equal(adapter.contentSignature([listing(2), listing(1)]), adapter.contentSignature([listing(1), listing(2)]));
+});
+
+test('sanitized current Etsy fixture parses 40 canonical inactive listings and preserves every explicit zero metric', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const fixture = JSON.parse(fs.readFileSync(sanitizedListingsFixturePath, 'utf8'));
+    assert.equal(fixture.schema, 'makaytron-etsy-listing-dom-fixture/v1');
+    assert.equal(fixture.cards.length, 40);
+    assert.ok(fixture.cards.every((card) => /^Synthetic Fixture Listing \d{2}$/.test(card.title)));
+    assert.deepEqual(fixture.defaults.metricRows, ['0 visits', '0 favorite', '0 sales', '$0 revenue', '0 renewal']);
+
+    const originalDocument = sandbox.document;
+    const fixtureDocument = buildSanitizedListingsDocument(fixture);
+    sandbox.document = fixtureDocument;
+    const fixtureUrl = new URL(fixture.page.href);
+    sandbox.location.pathname = fixtureUrl.pathname;
+    sandbox.location.search = fixtureUrl.search;
+    sandbox.location.href = fixtureUrl.href;
+    try {
+        assert.equal(api.currentShopKey(), 'etsy-shop:syntheticfixture0001');
+        assert.equal(api.pageListingState(), 'inactive');
+        assert.equal(api.ListingPageAdapter.cardRoots().length, 40);
+        assert.equal(api.ListingPageAdapter.cardLinks().length, 40);
+
+        const listings = api.ListingPageAdapter.scan();
+        assert.equal(listings.length, 40);
+        assert.equal(new Set(listings.map((listing) => listing.listingId)).size, 40);
+        listings.forEach((listing, index) => {
+            const fixtureCard = fixture.cards[index];
+            const number = String(index + 1).padStart(2, '0');
+            assert.equal(listing.listingId, fixtureCard.listingId);
+            assert.equal(listing.title, fixtureCard.title);
+            assert.equal(listing.editUrl, `https://www.etsy.com/your/shops/me/listing-editor/edit/${fixtureCard.listingId}`);
+            assert.equal(listing.publicUrl, `https://www.etsy.com/listing/${fixtureCard.listingId}/synthetic-fixture-${number}`);
+            assert.equal(listing.sku, `FIXTURE-SKU-${number}`);
+            assert.equal(listing.listingState, 'inactive');
+            assert.equal(listing.statusLabel, 'Inactive');
+            assert.equal(listing.stock, 10);
+            assert.deepEqual(plain(listing.price), { min: 20, max: 20, label: '$20.00' });
+            assert.equal(listing.currency, '$');
+            for (const metric of ['visits', 'favorites', 'sales', 'revenue', 'renewals']) {
+                assert.equal(listing[metric], 0, `${fixtureCard.title} should preserve ${metric}=0`);
+            }
+        });
+
+        const snapshot = api.ListingPageAdapter.snapshotState({ requirePagination: true, expectedCount: 40 });
+        assert.equal(snapshot.valid, true);
+        assert.deepEqual(plain(snapshot.pageInfo), { current: 1, total: 1, valid: true, hasPagination: true, ambiguous: false });
+        assert.equal(snapshot.links.length, 40);
+        assert.equal(snapshot.listings.length, 40);
+    } finally {
+        sandbox.document = originalDocument;
+    }
 });
 
 test('stable read waits through a delayed pagination render instead of accepting transient 1/1 state', async () => {
@@ -778,6 +1086,42 @@ test('the current reach score keeps one meaning with or without longitudinal his
     assert.ok(historyResult.currentAssessment);
 });
 
+test('favorite evidence enters the reach score continuously at the visit threshold', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const score = (visits, favorites) => api.evaluateRecord(
+        record(`smooth-${visits}-${favorites}`, [snapshot(evaluatedAt, { visits, favorites })]),
+        undefined,
+        undefined,
+        evaluatedAt,
+    ).result.score;
+    const zeroAt19 = score(19, 0);
+    const zeroAt20 = score(20, 0);
+    const oneAt19 = score(19, 1);
+    const oneAt20 = score(20, 1);
+    assert.ok(zeroAt20 >= zeroAt19);
+    assert.ok(oneAt20 >= oneAt19);
+    assert.ok(Math.abs(zeroAt20 - zeroAt19) <= 2);
+    assert.ok(Math.abs(oneAt20 - oneAt19) <= 2);
+    assert.ok(oneAt20 - zeroAt20 < 25);
+});
+
+test('rolling trend windows are consecutive and do not reuse a nearby 60-day anchor', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-03-10T00:00:00.000Z';
+    const history = [
+        snapshot('2026-01-19T00:00:00.000Z', { visits: 70 }),
+        snapshot('2026-02-01T00:00:00.000Z', { visits: 80 }),
+        snapshot('2026-02-15T00:00:00.000Z', { visits: 90 }),
+        snapshot(evaluatedAt, { visits: 100 }),
+    ];
+    const derived = plain(api.deriveRecordMetrics(record('consecutive-windows', history), evaluatedAt));
+    assert.equal(derived.anchors.d30.actualDays, 37);
+    assert.equal(derived.anchors.d60.actualDays, 50);
+    assert.equal(derived.anchors.prior30.complete, false);
+    assert.equal(derived.priorTrafficChangePercent, null);
+});
+
 test('priority and explicit score sorting use bootstrap evidence instead of the shared confidence cap', () => {
     const { api } = loadAnalyzer();
     const rows = [
@@ -869,6 +1213,33 @@ test('cohort benchmark excludes stale peers and reports price-band fallback hone
     ]);
     const withoutStale = api.evaluateRecord(target, [target, stalePeer], undefined, evaluatedAt).result.benchmark;
     assert.equal(withoutStale.size, 1);
+});
+
+test('an eight-listing cohort is usable without claiming full statistical strength', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const peers = Array.from({ length: 8 }, (_, index) => record(`cohort-strength-${index}`, [
+        snapshot(evaluatedAt, { visits: 30 + index, favorites: 1 }),
+    ]));
+    const result = api.evaluateRecord(peers[0], peers, undefined, evaluatedAt).result;
+    assert.equal(result.benchmark.reliable, true);
+    assert.equal(result.confidenceComponents.cohortStrength, 27);
+    assert.ok(result.confidenceComponents.cohortStrength < 100);
+});
+
+test('cohort favorite percentiles smooth low-traffic outliers', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const lowTraffic = record('cohort-low-traffic', [snapshot(evaluatedAt, { visits: 1, favorites: 1 })]);
+    const stableTraffic = record('cohort-stable-traffic', [snapshot(evaluatedAt, { visits: 100, favorites: 10 })]);
+    const fillers = Array.from({ length: 6 }, (_, index) => record(`cohort-filler-${index}`, [
+        snapshot(evaluatedAt, { visits: 100, favorites: 4 + (index % 2) }),
+    ]));
+    const peers = [lowTraffic, stableTraffic, ...fillers];
+    const lowResult = api.evaluateRecord(lowTraffic, peers, undefined, evaluatedAt).result;
+    const stableResult = api.evaluateRecord(stableTraffic, peers, undefined, evaluatedAt).result;
+    assert.equal(lowResult.benchmark.metrics.favoriteRate.reliable, true);
+    assert.ok(stableResult.benchmark.metrics.favoriteRate.percentile > lowResult.benchmark.metrics.favoriteRate.percentile);
 });
 
 test('non-active Etsy states are never treated as active health or cohort candidates', () => {
@@ -997,6 +1368,38 @@ test('threshold calibration and impact exclude stale rows and use rolling sales'
     assert.deepEqual(impact, { improve: 4, protect: 0 });
 });
 
+test('threshold calibration requires twenty clean rows and excludes recent experiments', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const clean = Array.from({ length: 20 }, (_, index) => record(`calibration-clean-${index}`, [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 10 + index, sales: 0 }),
+        snapshot(evaluatedAt, { visits: 20 + index * 3, sales: index >= 10 ? 1 : 0 }),
+    ]));
+    const experiment = record('calibration-experiment', [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 30 }),
+        snapshot(evaluatedAt, { visits: 300 }),
+    ]);
+    experiment.improvements.push({
+        id: 'experiment', action: 'UPDATE', status: 'published', publishedAt: '2026-07-20T12:00:00.000Z', fields: ['title'],
+        experiment: { state: 'observing', evaluateAt: '2026-08-19T12:00:00.000Z' },
+    });
+    const recent = record('calibration-recent', [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 30 }),
+        snapshot(evaluatedAt, { visits: 400 }),
+    ]);
+    recent.improvements.push({
+        id: 'recent', action: 'UPDATE', status: 'published', publishedAt: '2026-07-20T12:00:00.000Z', fields: ['title'],
+        experiment: { state: 'winner', evaluatedAt: '2026-07-31T12:00:00.000Z' },
+    });
+    const nineteen = plain(api.thresholdCalibration(clean.slice(0, 19), evaluatedAt));
+    assert.deepEqual(nineteen, { available: false, sampleSize: 19, values: null });
+    const calibrated = plain(api.thresholdCalibration([...clean, experiment, recent], evaluatedAt));
+    assert.equal(calibrated.available, true);
+    assert.equal(calibrated.sampleSize, 20);
+    assert.ok(calibrated.values.minVisitsToImprove >= 10);
+    assert.ok(calibrated.values.minVisitsToProtect > calibrated.values.minVisitsToImprove);
+});
+
 test('collection scope ignores pagination and tracking drift but preserves analysis filters', () => {
     const { api } = loadAnalyzer();
     const shopRoot = { querySelectorAll: () => [{ href: 'https://www.etsy.com/shop/FixtureShop' }] };
@@ -1090,4 +1493,1688 @@ test('percentile ranks stay within the documented 0-100 range', () => {
     const { api } = loadAnalyzer();
     assert.equal(api.percentileRank([1, 2], 100), 100);
     assert.equal(api.percentileRank([1, 2], -100), 0);
+});
+
+test('snapshot normalization preserves explicit zeroes without coercing blank or structured values to zero', () => {
+    const { api } = loadAnalyzer();
+    const normalized = plain(api.normalizeSnapshot({
+        at: '2026-08-20T12:00:00.000Z',
+        visits: '   ',
+        favorites: false,
+        sales: [],
+        revenue: '0',
+        renewals: 0,
+    }));
+    assert.equal(normalized.visits, null);
+    assert.equal(normalized.favorites, null);
+    assert.equal(normalized.sales, null);
+    assert.equal(normalized.revenue, 0);
+    assert.equal(normalized.renewals, 0);
+    assert.equal(api.finiteOrNull(' 0 '), 0);
+});
+
+test('history charts plot explicit zero points and leave unread values as gaps', () => {
+    const { api } = loadAnalyzer();
+    const model = plain(api.buildHistoryChartModel([
+        { at: '2026-08-01T12:00:00.000Z', visits: 0 },
+        { at: '2026-08-02T12:00:00.000Z', visits: '   ' },
+        { at: '2026-08-03T12:00:00.000Z', visits: 0 },
+    ], 'visits'));
+    assert.deepEqual(model.points.map((point) => point.value), [0, 0]);
+    assert.equal(model.segments.length, 2);
+    assert.equal(model.min, 0);
+    assert.equal(model.max, 0);
+});
+
+test('live listing-state radio selection overrides a stale checked HTML attribute', () => {
+    const { api } = loadAnalyzer();
+    const input = (value, checked, staleAttribute = false) => ({
+        value,
+        checked,
+        getAttribute: (name) => name === 'checked' && staleAttribute ? '' : null,
+        closest: () => null,
+        matches: () => checked,
+    });
+    const root = { querySelectorAll: () => [input('active', false, true), input('inactive', true)] };
+    assert.equal(api.pageListingState(root, 'https://www.etsy.com/your/shops/me/tools/listings'), 'inactive');
+});
+
+test('saved collection scope produces a validated listings return link', () => {
+    const { api } = loadAnalyzer();
+    const scope = 'etsy-shop:fixture|status:inactive|/your/shops/me/tools/listings?item_status=inactive&stats=true';
+    assert.equal(api.collectionScopeHref(scope), '/your/shops/me/tools/listings?item_status=inactive&stats=true');
+    assert.equal(api.collectionScopeHref('etsy-shop:fixture|status:active|https://evil.example/listings'), '');
+    assert.equal(api.collectionScopeHref('/your/shops/me/tools/listings?stats=true'), '');
+});
+
+test('failed threshold persistence restores the complete runtime settings bundle', async () => {
+    const { api } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    const originalSaveSettings = runtime.Store.saveSettings;
+    const before = plain(runtime.state.settings);
+    runtime.Store.saveSettings = async () => false;
+    try {
+        assert.equal(await runtime.persistThresholdSettings({
+            minVisitsToImprove: 99,
+            minVisitsToProtect: 199,
+            minRenewalsToReview: 9,
+            declinePercent: 55,
+        }), false);
+        assert.deepEqual(plain(runtime.state.settings), before);
+    } finally {
+        runtime.Store.saveSettings = originalSaveSettings;
+    }
+});
+
+test('editor proposal preflight rejects invalid tags before any form mutation', () => {
+    const { api } = loadAnalyzer();
+    assert.throws(() => api.validateEditableProposal({
+        action: 'UPDATE',
+        fields: ['title', 'tags'],
+        title: 'Safe title',
+        tags: ['valid', 'x'.repeat(21)],
+    }), /at most 13 values and 20 characters/);
+    assert.throws(() => api.validateEditableProposal({
+        action: 'UPDATE',
+        fields: ['tags'],
+        tags: ['same', 'SAME'],
+    }), /empty or duplicate/);
+    assert.throws(() => api.validateEditableProposal({
+        action: 'UPDATE',
+        fields: ['materials'],
+        materials: ['cotton-blend'],
+    }), /letters, numbers, and spaces only/);
+});
+
+test('AI proposals reject listing deletion and accept deactivation review instead', () => {
+    const { api } = loadAnalyzer();
+    const aliases = { L001: '9900000000000001' };
+    const knownIds = new Set(['9900000000000001']);
+    assert.throws(() => api.validateAiProposal({
+        reference: 'L001',
+        action: 'DELETE',
+        fields: [],
+        reason: 'unsupported destructive action',
+    }, aliases, knownIds), /unsupported action DELETE/);
+    const proposal = api.validateAiProposal({
+        reference: 'L001',
+        action: 'DEACTIVATE_REVIEW',
+        fields: [],
+        reason: 'user review required',
+    }, aliases, knownIds);
+    assert.equal(proposal.action, 'DEACTIVATE_REVIEW');
+    assert.deepEqual(plain(proposal.fields), []);
+});
+
+test('AI request packages import one synthetic response exactly once and clean up its opaque request', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const listingId = '9900000000000191';
+    const candidate = record(listingId, [snapshot(now)], {
+        title: 'Synthetic AI Round Trip',
+        shopKey: 'etsy-shop:syntheticfixture',
+    });
+    candidate.editor = {
+        title: 'Synthetic AI Round Trip',
+        description: 'Synthetic description before import',
+        tags: ['synthetic', 'fixture'],
+        materials: ['cotton'],
+        capturedAt: now,
+    };
+    const storedCandidate = await runtime.Store.putRecord(candidate);
+    const collection = api.normalizeCollection({
+        schema: api.versions.collectionSchema,
+        id: 'collection-synthetic-ai-roundtrip',
+        status: 'completed',
+        scopeKey: 'etsy-shop:syntheticfixture|active',
+        startedAt: now,
+        updatedAt: now,
+        completedAt: now,
+        expectedPage: 1,
+        totalPages: 1,
+        pages: {
+            1: {
+                signature: `1|1|${listingId}`,
+                contentSignature: listingId,
+                ids: [listingId],
+                count: 1,
+                capturedAt: now,
+            },
+        },
+        uniqueIds: [listingId],
+        duplicateCount: 0,
+        failureReports: [],
+    });
+    assert.equal(api.collectionManifestIsComplete(collection), true);
+    runtime.state.collection = collection;
+    runtime.state.records = [storedCandidate];
+    storage.set(runtime.KEYS.collection, plain(collection));
+
+    const request = await api.aiRuntime.aiRequestPackage([storedCandidate], api.currentCollectionIdentity());
+    assert.equal(request.schema, 'makaytron-listing-ai-request/v1');
+    assert.equal(request.listings.length, 1);
+    assert.equal(request.listings[0].reference, 'L001');
+    assert.equal(request.listings[0].title, 'Synthetic AI Round Trip');
+    assert.equal(Object.hasOwn(request.listings[0], 'listingId'), false);
+    assert.equal(storage.get(runtime.KEYS.aiRequests)[request.requestId].aliases.L001, listingId);
+
+    const response = JSON.stringify({
+        schema: 'makaytron-listing-ai-proposals/v1',
+        requestId: request.requestId,
+        proposals: [{
+            reference: 'L001',
+            action: 'UPDATE',
+            fields: ['description'],
+            description: 'Synthetic description after import',
+            reason: 'Synthetic round-trip verification',
+        }],
+    });
+    const imported = await api.aiRuntime.importAiResponse(response, null);
+    assert.deepEqual(plain(imported), { ok: true, count: 1 });
+    assert.equal(storage.get(runtime.KEYS.aiRequests)[request.requestId], undefined);
+    assert.equal(storage.has(runtime.KEYS.queue), false);
+
+    const afterImport = await runtime.Store.getRecord(listingId);
+    assert.equal(afterImport.proposal.action, 'UPDATE');
+    assert.deepEqual(plain(afterImport.proposal.fields), ['description']);
+    assert.equal(afterImport.proposal.description, 'Synthetic description after import');
+    assert.equal(afterImport.proposal.source, 'ai-import');
+    assert.equal(afterImport.proposal.requestId, request.requestId);
+    assert.equal(afterImport.improvements.length, 1);
+    assert.equal(afterImport.improvements[0].status, 'planned');
+
+    const replay = await api.aiRuntime.importAiResponse(response, null);
+    assert.equal(replay.ok, false);
+    assert.equal(replay.error.code, 'AI_REQUEST');
+    assert.equal(replay.error.path, '$.requestId');
+    const afterReplay = await runtime.Store.getRecord(listingId);
+    assert.equal(afterReplay.improvements.length, 1);
+    assert.equal(afterReplay.proposal.requestId, request.requestId);
+});
+
+test('backup import sanitizes non-Etsy URLs, skips its queue, and preserves local display settings', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const listingId = '9900000000000192';
+    runtime.state.settings = {
+        ...runtime.state.settings,
+        language: 'en',
+        collapsed: true,
+        minVisitsToImprove: 20,
+    };
+    runtime.state.analysisFilters = api.normalizeAnalysisFilters({});
+    runtime.state.filterPresets = [];
+    const existingQueue = { schema: 1, id: 'queue-existing-local', status: 'stopped', cursor: 0, items: [] };
+    storage.set(runtime.KEYS.queue, plain(existingQueue));
+
+    const candidate = record(listingId, [snapshot(now)], {
+        title: 'Synthetic Backup Round Trip',
+        shopKey: 'etsy-shop:syntheticfixture',
+        editUrl: `https://malicious.invalid/edit/${listingId}`,
+        publicUrl: `https://malicious.invalid/listing/${listingId}`,
+        imageUrl: 'javascript:alert(1)',
+    });
+    candidate.editor = {
+        title: 'Synthetic Backup Round Trip',
+        description: 'Synthetic backup description',
+        tags: ['backup', 'fixture'],
+        materials: ['linen'],
+        capturedAt: now,
+    };
+    const rawBackup = {
+        schema: 'makaytron-listing-analyzer-backup/v1',
+        producerVersion: api.versions.app,
+        exportedAt: now,
+        settings: {
+            language: 'tr',
+            collapsed: false,
+            minVisitsToImprove: 41,
+            minVisitsToProtect: 91,
+            minRenewalsToReview: 5,
+            declinePercent: 22,
+            retentionDays: 180,
+            maxSnapshots: 90,
+        },
+        analysisFilters: { scope: 'page', performance: 'no-activity', sort: 'visits' },
+        filterPresets: [{
+            id: 'preset-synthetic-roundtrip',
+            name: 'Synthetic review',
+            filters: { recommendation: 'improve', sort: 'score' },
+            query: 'synthetic fixture',
+            createdAt: now,
+            updatedAt: now,
+        }],
+        records: [candidate],
+        queue: { schema: 1, id: 'queue-from-untrusted-backup', status: 'ready', cursor: 0, items: [{ listingId }] },
+    };
+
+    const normalized = api.backupRuntime.normalizeBackupDocument(rawBackup);
+    assert.equal(normalized.queueSkipped, true);
+    assert.equal(normalized.records[0].meta.editUrl, '');
+    assert.equal(normalized.records[0].meta.publicUrl, '');
+    assert.equal(normalized.records[0].meta.imageUrl, '');
+    assert.equal(normalized.settings.minVisitsToImprove, 41);
+
+    const imported = await api.backupRuntime.importBackupDocument(rawBackup);
+    assert.deepEqual(plain(imported), { records: 1, presets: 1, queueSkipped: true });
+    const importedRecord = await runtime.Store.getRecord(listingId);
+    assert.equal(importedRecord.meta.title, 'Synthetic Backup Round Trip');
+    assert.equal(importedRecord.meta.editUrl, '');
+    assert.equal(importedRecord.meta.publicUrl, '');
+    assert.equal(importedRecord.meta.imageUrl, '');
+    assert.equal(runtime.state.settings.language, 'en');
+    assert.equal(runtime.state.settings.collapsed, true);
+    assert.equal(runtime.state.settings.minVisitsToImprove, 41);
+    assert.equal(storage.get(runtime.KEYS.settings).language, 'en');
+    assert.equal(storage.get(runtime.KEYS.settings).collapsed, true);
+    assert.equal(storage.get(runtime.KEYS.analysisFilters).performance, 'no-activity');
+    assert.equal(storage.get(runtime.KEYS.filterPresets).items[0].name, 'Synthetic review');
+    assert.deepEqual(plain(storage.get(runtime.KEYS.queue)), existingQueue);
+    assert.equal(storage.get(runtime.KEYS.audit).at(-1).type, 'backup-imported');
+    assert.equal(storage.get(runtime.KEYS.audit).at(-1).queueSkipped, true);
+});
+
+test('editor preflight accepts a full pill field whose input is disabled until a tag is removed', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const input = new sandbox.HTMLInputElement();
+    input.disabled = true;
+    const field = {};
+    const addButton = { disabled: true };
+    const originalQuerySelector = sandbox.document.querySelector;
+    sandbox.document.querySelector = (selector) => ({
+        '#field-tags': field,
+        '#listing-tags-input': input,
+        '#listing-tags-button': addButton,
+    })[selector] || null;
+    try {
+        assert.doesNotThrow(() => api.actionRuntime.EditorAdapter.preflightProposal({
+            action: 'UPDATE',
+            fields: ['tags'],
+            tags: Array.from({ length: 13 }, (_, index) => `tag ${index + 1}`),
+        }));
+    } finally {
+        sandbox.document.querySelector = originalQuerySelector;
+    }
+});
+
+test('pill synchronization types first and then waits for Etsy to enable Add', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const pills = [];
+    const events = [];
+    const input = new sandbox.HTMLInputElement();
+    input.disabled = false;
+    input.value = '';
+    const addButton = {
+        disabled: true,
+        getAttribute: () => null,
+        click() {
+            events.push('click');
+            pills.push(input.value);
+            input.value = '';
+            this.disabled = true;
+        },
+    };
+    input.dispatchEvent = (event) => {
+        events.push(event.type);
+        if (event.type === 'input') addButton.disabled = !input.value;
+        return true;
+    };
+    const pillItem = (value) => ({
+        isConnected: true,
+        querySelector: () => ({}),
+        cloneNode: () => ({ textContent: value, querySelectorAll: () => [] }),
+    });
+    const field = { querySelectorAll: () => pills.map(pillItem) };
+    const originalQuerySelector = sandbox.document.querySelector;
+    sandbox.document.querySelector = (selector) => ({
+        '#field-tags': field,
+        '#listing-tags-input': input,
+        '#listing-tags-button': addButton,
+    })[selector] || null;
+    try {
+        assert.equal(await api.actionRuntime.EditorAdapter.syncPills('#field-tags', '#listing-tags-input', '#listing-tags-button', ['new tag']), true);
+        assert.deepEqual(pills, ['new tag']);
+        assert.ok(events.indexOf('input') < events.indexOf('click'));
+    } finally {
+        sandbox.document.querySelector = originalQuerySelector;
+    }
+});
+
+test('pill synchronization follows React-reused items and replaced field controls', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const pills = ['old tag', 'keep tag'];
+    let input;
+    let addButton;
+    let field;
+    const rebuild = (full = false) => {
+        input = new sandbox.HTMLInputElement();
+        input.value = '';
+        input.disabled = full;
+        addButton = {
+            disabled: true,
+            getAttribute: () => null,
+            click() {
+                pills.push(input.value);
+                rebuild(true);
+            },
+        };
+        input.dispatchEvent = (event) => {
+            if (event.type === 'input') addButton.disabled = !input.value;
+            return true;
+        };
+        field = {
+            querySelectorAll: () => pills.map((value) => {
+                const remove = {
+                    click() {
+                        pills.splice(pills.indexOf(value), 1);
+                        rebuild(false);
+                    },
+                };
+                return {
+                    isConnected: true,
+                    querySelector: () => remove,
+                    cloneNode: () => ({ textContent: value, querySelectorAll: () => [] }),
+                };
+            }),
+        };
+    };
+    rebuild(true);
+    const originalQuerySelector = sandbox.document.querySelector;
+    sandbox.document.querySelector = (selector) => ({
+        '#field-tags': field,
+        '#listing-tags-input': input,
+        '#listing-tags-button': addButton,
+    })[selector] || null;
+    try {
+        assert.equal(await api.actionRuntime.EditorAdapter.syncPills(
+            '#field-tags', '#listing-tags-input', '#listing-tags-button', ['keep tag', 'new tag'],
+        ), true);
+        assert.deepEqual(pills, ['keep tag', 'new tag']);
+    } finally {
+        sandbox.document.querySelector = originalQuerySelector;
+    }
+});
+
+test('pill synchronization lets an always-enabled Add control receive React input state before clicking', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const pills = [];
+    let reactValue = '';
+    const input = new sandbox.HTMLInputElement();
+    input.disabled = false;
+    input.value = '';
+    input.dispatchEvent = (event) => {
+        if (event.type === 'input') setTimeout(() => { reactValue = input.value; }, 20);
+        return true;
+    };
+    const addButton = {
+        disabled: false,
+        getAttribute: () => null,
+        click() {
+            if (reactValue) pills.push(reactValue);
+        },
+    };
+    const field = {
+        querySelectorAll: () => pills.map((value) => ({
+            querySelector: () => ({}),
+            cloneNode: () => ({ textContent: value, querySelectorAll: () => [] }),
+        })),
+    };
+    const originalQuerySelector = sandbox.document.querySelector;
+    sandbox.document.querySelector = (selector) => ({
+        '#field-materials': field,
+        '#listing-materials-input': input,
+        '#listing-materials-button': addButton,
+    })[selector] || null;
+    try {
+        assert.equal(await api.actionRuntime.EditorAdapter.syncPills(
+            '#field-materials', '#listing-materials-input', '#listing-materials-button', ['Cotton Blend'],
+        ), true);
+        assert.deepEqual(pills, ['Cotton Blend']);
+    } finally {
+        sandbox.document.querySelector = originalQuerySelector;
+    }
+});
+
+test('editor apply accepts a pill Add button that starts disabled until input', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const pills = [];
+    const title = new sandbox.HTMLInputElement(); title.value = 'Original title'; title.disabled = false;
+    const description = new sandbox.HTMLTextAreaElement(); description.value = 'Description'; description.disabled = false;
+    const input = new sandbox.HTMLInputElement(); input.value = ''; input.disabled = false;
+    const addButton = {
+        disabled: true,
+        getAttribute: () => null,
+        click() { pills.push(input.value); input.value = ''; this.disabled = true; },
+    };
+    input.dispatchEvent = (event) => {
+        if (event.type === 'input') addButton.disabled = !input.value;
+        return true;
+    };
+    const pillItem = (value) => ({
+        isConnected: true,
+        querySelector: () => ({}),
+        cloneNode: () => ({ textContent: value, querySelectorAll: () => [] }),
+    });
+    const field = { querySelectorAll: () => pills.map(pillItem) };
+    const originalQuerySelector = sandbox.document.querySelector;
+    sandbox.document.querySelector = (selector) => ({
+        '#listing-title-input': title,
+        '#listing-description-textarea': description,
+        '#field-tags': field,
+        '#listing-tags-input': input,
+        '#listing-tags-button': addButton,
+    })[selector] || null;
+    try {
+        const changed = await api.actionRuntime.EditorAdapter.applyProposal({ action: 'UPDATE', fields: ['tags'], tags: ['new tag'] });
+        assert.deepEqual(Array.from(changed), ['tags']);
+        assert.deepEqual(pills, ['new tag']);
+    } finally {
+        sandbox.document.querySelector = originalQuerySelector;
+    }
+});
+
+test('editor apply restores earlier field changes when a later pill control fails', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const adapter = api.actionRuntime.EditorAdapter;
+    const title = new sandbox.HTMLInputElement(); title.value = 'Original title'; title.disabled = false;
+    const description = new sandbox.HTMLTextAreaElement(); description.value = 'Original description'; description.disabled = false;
+    const tagField = { querySelectorAll: () => [] };
+    const tagInput = new sandbox.HTMLInputElement(); tagInput.disabled = false;
+    const tagButton = { disabled: false, getAttribute: () => null };
+    const originalQuerySelector = sandbox.document.querySelector;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    const originalSyncPills = adapter.syncPills;
+    sandbox.document.querySelector = (selector) => ({
+        '#listing-title-input': title,
+        '#listing-description-textarea': description,
+        '#field-tags': tagField,
+        '#listing-tags-input': tagInput,
+        '#listing-tags-button': tagButton,
+    })[selector] || null;
+    sandbox.document.querySelectorAll = (selector) => selector.includes('data-unsaved-changes') ? [{
+        textContent: 'You have no unsaved changes.',
+        closest: () => null,
+        checkVisibility: () => true,
+    }] : [];
+    adapter.syncPills = async () => false;
+    let failure;
+    try {
+        await adapter.applyProposal({ action: 'UPDATE', fields: ['title', 'tags'], title: 'Changed title', tags: ['new tag'] });
+    } catch (error) {
+        failure = error;
+    } finally {
+        adapter.syncPills = originalSyncPills;
+        sandbox.document.querySelector = originalQuerySelector;
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+    assert.ok(failure);
+    assert.equal(failure.editorRestored, true);
+    assert.deepEqual(Array.from(failure.changedFields), ['title']);
+    assert.equal(title.value, 'Original title');
+});
+
+test('editor clean-state ignores hidden status copies and recognizes one unsaved change', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const hiddenClean = {
+        textContent: 'You have no unsaved changes.',
+        closest: () => null,
+        checkVisibility: () => false,
+    };
+    const visibleStatus = {
+        textContent: 'There is 1 unsaved change.',
+        closest: () => null,
+        checkVisibility: () => true,
+    };
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    sandbox.document.querySelectorAll = () => [hiddenClean, visibleStatus];
+    try {
+        assert.equal(api.actionRuntime.EditorAdapter.statusText(), 'There is 1 unsaved change.');
+        assert.equal(api.actionRuntime.EditorAdapter.formIsClean(), false);
+        visibleStatus.textContent = 'You have no unsaved changes.';
+        assert.equal(api.actionRuntime.EditorAdapter.formIsClean(), true);
+        visibleStatus.checkVisibility = () => false;
+        assert.equal(api.actionRuntime.EditorAdapter.statusText(), '');
+        assert.equal(api.actionRuntime.EditorAdapter.formIsClean(), null);
+        visibleStatus.offsetParent = {};
+        assert.equal(api.actionRuntime.EditorAdapter.formIsClean(true), true);
+        visibleStatus.textContent = 'There is 1 unsaved change.';
+        assert.equal(api.actionRuntime.EditorAdapter.formIsClean(true), false);
+    } finally {
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('an unrecognized Etsy pill fails closed instead of looking like an empty tag field', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const adapter = api.actionRuntime.EditorAdapter;
+    const unknownPill = {
+        querySelector: () => null,
+        cloneNode: () => ({ textContent: 'Existing tag', querySelectorAll: () => [] }),
+    };
+    const field = { querySelectorAll: () => [unknownPill] };
+    const input = new sandbox.HTMLInputElement(); input.disabled = false;
+    const addButton = { disabled: false, getAttribute: () => null };
+    const originalQuerySelector = sandbox.document.querySelector;
+    sandbox.document.querySelector = (selector) => ({
+        '#field-tags': field,
+        '#listing-tags-input': input,
+        '#listing-tags-button': addButton,
+    })[selector] || null;
+    try {
+        assert.throws(() => adapter.preflightProposal({ action: 'UPDATE', fields: ['tags'], tags: [] }));
+        assert.equal(await adapter.syncPills('#field-tags', '#listing-tags-input', '#listing-tags-button', []), false);
+    } finally {
+        sandbox.document.querySelector = originalQuerySelector;
+    }
+});
+
+test('deactivation menu re-resolves a React-replaced item and verifies focus without clicking it', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const adapter = api.actionRuntime.EditorAdapter;
+    let moreClicks = 0;
+    let deactivateClicks = 0;
+    let stableFocuses = 0;
+    const more = { disabled: false, getAttribute: () => null, click: () => { moreClicks += 1; } };
+    const action = (stable) => ({
+        tagName: 'BUTTON', disabled: false,
+        offsetParent: {},
+        textContent: 'Deactivate',
+        getAttribute: () => null,
+        closest: () => null,
+        scrollIntoView() {},
+        click: () => { deactivateClicks += 1; },
+        focus() {
+            if (stable) stableFocuses += 1;
+            sandbox.document.activeElement = this;
+        },
+    });
+    const transient = action(false);
+    const stable = action(true);
+    let reads = 0;
+    const originalRoot = adapter.root;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    const scope = {
+        closest: () => null,
+        querySelectorAll: (selector) => {
+            if (selector.startsWith('button[aria-label=')) return [more];
+            if (selector === '[role="menu"] [role="menuitem"]') return reads++ === 0 ? [] : [reads === 2 ? transient : stable];
+            return [];
+        },
+    };
+    adapter.root = () => ({ querySelector: (selector) => selector === '#more-option-menu' ? scope : null });
+    sandbox.document.querySelectorAll = () => [];
+    try {
+        assert.equal(await adapter.openDeactivate(), true);
+        assert.equal(moreClicks, 1);
+        assert.equal(deactivateClicks, 0);
+        assert.ok(stableFocuses >= 1);
+        assert.equal(sandbox.document.activeElement, stable);
+    } finally {
+        adapter.root = originalRoot;
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('automatic deactivation selects Deactivate beside Delete and clicks only the exact final confirmation', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const adapter = api.actionRuntime.EditorAdapter;
+    let deactivateClicks = 0;
+    let deleteClicks = 0;
+    let confirmClicks = 0;
+    let modalOpen = false;
+    const control = (textContent, attributes = {}, click = () => {}) => ({
+        tagName: 'BUTTON', textContent, disabled: false, id: attributes.id || '',
+        getAttribute: (name) => attributes[name] ?? null,
+        closest: () => null,
+        click,
+    });
+    const deactivate = control('Deactivate', { 'data-clg-id': 'WtMenuItem' }, () => { deactivateClicks += 1; modalOpen = true; });
+    const remove = control('Delete', { 'data-action': 'delete-listing' }, () => { deleteClicks += 1; });
+    const cancel = control('Cancel', { 'data-clg-id': 'WtButton' });
+    const finalDeactivate = control('Deactivate', { id: 'shop-manager--listing-publish', 'data-clg-id': 'WtButton' }, () => { confirmClicks += 1; });
+    const dialog = {
+        getAttribute: (name) => ({ 'aria-hidden': 'false', 'aria-label': 'Deactivate listing?' })[name] ?? null,
+        querySelector: () => null,
+        querySelectorAll: (selector) => selector === 'button' ? [cancel, finalDeactivate] : [],
+        closest: () => null,
+    };
+    const scope = {
+        querySelectorAll: (selector) => selector === '[role="menu"] [role="menuitem"]' ? [remove, deactivate] : [],
+    };
+    const originalRoot = adapter.root;
+    const originalOpen = adapter.openDeactivate;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    adapter.root = () => ({ querySelector: (selector) => selector === '#more-option-menu' ? scope : null });
+    adapter.openDeactivate = async () => true;
+    sandbox.document.querySelectorAll = () => modalOpen ? [dialog] : [];
+    try {
+        assert.equal(await adapter.openDeactivateDialog(), true);
+        assert.equal(deactivateClicks, 1);
+        assert.equal(deleteClicks, 0);
+        assert.equal(confirmClicks, 0);
+        assert.equal(adapter.clickDeactivateConfirmation(), true);
+        assert.equal(confirmClicks, 1);
+        assert.equal(deleteClicks, 0);
+    } finally {
+        adapter.root = originalRoot;
+        adapter.openDeactivate = originalOpen;
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('deactivation waits past the former three-second limit for Etsy modal hydration', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const adapter = api.actionRuntime.EditorAdapter;
+    let menuClicks = 0;
+    let requestedAt = 0;
+    const control = (textContent, attributes = {}, click = () => {}) => ({
+        tagName: 'BUTTON', textContent, disabled: false, id: attributes.id || '',
+        getAttribute: (name) => attributes[name] ?? null,
+        closest: () => null,
+        click,
+    });
+    const deactivate = control('Deactivate', { 'data-clg-id': 'WtMenuItem' }, () => {
+        menuClicks += 1;
+        requestedAt = Date.now();
+    });
+    const cancel = control('Cancel', { 'data-clg-id': 'WtButton' });
+    const finalDeactivate = control('Deactivate', { id: 'shop-manager--listing-publish', 'data-clg-id': 'WtButton' });
+    const dialog = {
+        getAttribute: (name) => ({ 'aria-hidden': 'false', 'aria-label': 'Deactivate listing?' })[name] ?? null,
+        querySelector: () => null,
+        querySelectorAll: (selector) => selector === 'button' ? [cancel, finalDeactivate] : [],
+        closest: () => null,
+    };
+    const scope = { querySelectorAll: (selector) => selector === '[role="menu"] [role="menuitem"]' ? [deactivate] : [] };
+    const originalRoot = adapter.root;
+    const originalOpen = adapter.openDeactivate;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    adapter.root = () => ({ querySelector: (selector) => selector === '#more-option-menu' ? scope : null });
+    adapter.openDeactivate = async () => true;
+    sandbox.document.querySelectorAll = () => requestedAt && Date.now() - requestedAt >= 3200 ? [dialog] : [];
+    const started = Date.now();
+    try {
+        assert.equal(await adapter.openDeactivateDialog(), true);
+        assert.equal(menuClicks, 1);
+        assert.ok(Date.now() - started >= 3000);
+    } finally {
+        adapter.root = originalRoot;
+        adapter.openDeactivate = originalOpen;
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('deactivation confirmation rejects wrong, ambiguous, disabled, and deletion dialogs without clicking', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const adapter = api.actionRuntime.EditorAdapter;
+    let clicks = 0;
+    const button = (textContent, id = 'shop-manager--listing-publish', disabled = false, action = '') => ({
+        tagName: 'BUTTON', textContent, id, disabled,
+        getAttribute: (name) => name === 'data-action' ? action || null : null,
+        closest: () => null,
+        click: () => { clicks += 1; },
+    });
+    const dialog = (label, buttons) => ({
+        getAttribute: (name) => name === 'aria-hidden' ? 'false' : name === 'aria-label' ? label : null,
+        querySelector: () => null,
+        querySelectorAll: (selector) => selector === 'button' ? buttons : [],
+        closest: () => null,
+    });
+    const cancel = button('Cancel', 'cancel');
+    const exact = button('Deactivate');
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    try {
+        for (const dialogs of [
+            [dialog('Delete listing?', [cancel, exact])],
+            [dialog('Deactivate listing?', [cancel, button('Delete', 'shop-manager--listing-publish', false, 'delete-listing')])],
+            [dialog('Deactivate listing?', [cancel, button('Deactivate', 'shop-manager--listing-publish', true)])],
+            [dialog('Deactivate listing?', [cancel, exact]), dialog('Deactivate listing?', [cancel, exact])],
+        ]) {
+            sandbox.document.querySelectorAll = () => dialogs;
+            assert.equal(adapter.clickDeactivateConfirmation(), false);
+        }
+        assert.equal(clicks, 0);
+    } finally {
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('editor status verification ignores unrelated badges outside the current editor root', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const adapter = api.actionRuntime.EditorAdapter;
+    const target = { offsetParent: {}, textContent: 'Active', getAttribute: () => null };
+    const unrelated = { offsetParent: {}, textContent: 'Inactive', getAttribute: () => null };
+    const editorRoot = {
+        querySelector: () => null,
+        querySelectorAll: (selector) => selector === '.wt-badge--statusValue' ? [target] : [],
+    };
+    const title = { closest: () => editorRoot };
+    const originalQuerySelector = sandbox.document.querySelector;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    sandbox.document.querySelector = (selector) => selector === '#listing-title-input' ? title : null;
+    sandbox.document.querySelectorAll = () => [unrelated];
+    try {
+        assert.deepEqual(Array.from(adapter.listingStatusLabels()), ['Active']);
+    } finally {
+        sandbox.document.querySelector = originalQuerySelector;
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('editor status verification reads Etsy inactive informational badge from the header status row', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const adapter = api.actionRuntime.EditorAdapter;
+    const inactive = { offsetParent: {}, textContent: 'Inactive', getAttribute: (name) => name === 'data-clg-id' ? 'WtBadge' : null };
+    const featured = { offsetParent: {}, textContent: 'Featured', getAttribute: (name) => name === 'data-clg-id' ? 'WtBadge' : null };
+    const statusRegion = { querySelectorAll: () => [inactive, featured] };
+    const titleBar = { nextElementSibling: statusRegion };
+    const editorRoot = {
+        querySelector: (selector) => selector === '#form-title-bar' ? titleBar : null,
+        querySelectorAll: () => [],
+    };
+    const title = { closest: () => editorRoot };
+    const originalQuerySelector = sandbox.document.querySelector;
+    sandbox.document.querySelector = (selector) => selector === '#listing-title-input' ? title : null;
+    try {
+        assert.deepEqual(Array.from(adapter.listingStatusLabels()), ['Inactive']);
+    } finally {
+        sandbox.document.querySelector = originalQuerySelector;
+    }
+});
+
+test('editor capture never writes a new route into the previous listing record', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const adapter = runtime.EditorAdapter;
+    const title = new sandbox.HTMLInputElement(); title.value = 'Listing A';
+    const description = new sandbox.HTMLTextAreaElement(); description.value = 'Description A';
+    const originalQuerySelector = sandbox.document.querySelector;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
+    const originalGetRecord = runtime.Store.getRecord;
+    const originalPutRecord = runtime.Store.putRecord;
+    let finishRead;
+    let writes = 0;
+    runtime.Store.getRecord = () => new Promise((resolve) => { finishRead = resolve; });
+    runtime.Store.putRecord = async () => { writes += 1; };
+    sandbox.document.querySelector = (selector) => ({
+        '#listing-title-input': title,
+        '#listing-description-textarea': description,
+    })[selector] || null;
+    sandbox.document.querySelectorAll = (selector) => selector.includes('[data-seller-nav="true"]')
+        ? [{ href: 'https://www.etsy.com/shop/FixtureShop' }]
+        : [];
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/101';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/101';
+    try {
+        const capture = adapter.captureCurrent({ routeKey: sandbox.location.pathname, listingId: '101' });
+        await Promise.resolve();
+        sandbox.location.pathname = '/your/shops/me/listing-editor/edit/202';
+        sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/202';
+        title.value = 'Listing B';
+        description.value = 'Description B';
+        finishRead(null);
+        assert.equal(await capture, null);
+        assert.equal(writes, 0);
+    } finally {
+        runtime.Store.getRecord = originalGetRecord;
+        runtime.Store.putRecord = originalPutRecord;
+        sandbox.document.querySelector = originalQuerySelector;
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
+    }
+});
+
+test('replacing an UPDATE proposal supersedes its old planned improvement', async () => {
+    const { api } = loadAnalyzer();
+    const store = api.collectionRuntime.Store;
+    const candidate = record('proposal-replace', [snapshot('2026-08-20T12:00:00.000Z')]);
+    candidate.editor = { title: 'Original', description: 'Description', tags: [], materials: [], capturedAt: '2026-08-20T12:00:00.000Z' };
+    await store.putRecord(candidate);
+    const update = await store.saveProposal(candidate.listingId, { action: 'UPDATE', fields: ['title'], title: 'Changed', reason: 'test' });
+    assert.equal(update.improvements.at(-1).status, 'planned');
+    const skipped = await store.saveProposal(candidate.listingId, { action: 'SKIP', fields: [], reason: 'cancelled' });
+    assert.equal(skipped.proposal.action, 'SKIP');
+    assert.equal(skipped.proposal.improvementId, null);
+    assert.equal(skipped.improvements.at(-1).status, 'superseded');
+    assert.ok(skipped.improvements.at(-1).supersededAt);
+});
+
+test('terminal research entries cannot regress on delayed ACK or ERROR messages', () => {
+    const { api } = loadAnalyzer();
+    const completed = { requestId: 'r1', status: 'completed', resultHash: 'hash' };
+    const failed = { requestId: 'r2', status: 'failed', lastError: 'terminal' };
+    assert.equal(api.transitionResearchEntry(completed, 'acknowledged', { acknowledgedAt: 'later' }, ['request-sent']), completed);
+    assert.equal(api.transitionResearchEntry(completed, 'failed', { lastError: 'late error' }, ['acknowledged']), completed);
+    assert.equal(api.transitionResearchEntry(completed, 'request-sent', { requestSentAt: 'late probe' }, ['waiting-ready']), completed);
+    assert.equal(api.transitionResearchEntry(failed, 'acknowledged', {}, ['request-sent']), failed);
+    const acknowledged = plain(api.transitionResearchEntry({ requestId: 'r3', status: 'request-sent' }, 'acknowledged', { acknowledgedAt: 'now' }, ['request-sent']));
+    assert.deepEqual(acknowledged, { requestId: 'r3', status: 'acknowledged', acknowledgedAt: 'now' });
+    assert.equal(api.researchResultStatusAccepts('waiting-ready'), true);
+    assert.equal(api.researchResultStatusAccepts('failed'), false);
+});
+
+test('Marketplace Insights content hashing and seed selection are deterministic and bounded', async () => {
+    const { api } = loadAnalyzer();
+    const first = {
+        title: '  Patriotic Chicken Shirt  ',
+        description: 'Line one\r\nLine two\r\n',
+        tags: ['Farmhouse Gift', 'chicken shirt', 'farmhouse gift'],
+        materials: ['Cotton', 'Polyester'],
+    };
+    const reordered = {
+        title: 'Patriotic Chicken Shirt',
+        description: 'Line one\nLine two',
+        tags: ['CHICKEN SHIRT', 'FARMHOUSE GIFT'],
+        materials: ['polyester', 'cotton'],
+    };
+    assert.deepEqual(plain(api.canonicalEditableContent(first)), {
+        description: 'Line one\nLine two',
+        materials: ['cotton', 'polyester'],
+        tags: ['chicken shirt', 'farmhouse gift'],
+        title: 'Patriotic Chicken Shirt',
+    });
+    assert.equal(await api.contentFingerprint(first), await api.contentFingerprint(reordered));
+
+    const sourceRecord = record('901', [snapshot('2026-08-31T12:00:00.000Z')]);
+    sourceRecord.editor = {
+        capturedAt: '2026-08-31T12:00:00.000Z',
+        title: 'Chicken Shirt | Farmhouse Tee',
+        tags: ['Chicken Shirt'],
+        description: '',
+        materials: [],
+    };
+    assert.deepEqual(plain(api.researchSeedKeywords(sourceRecord)), ['Chicken Shirt', 'Farmhouse Tee', 'Chicken Shirt | Farmhouse Tee']);
+    assert.match(await api.researchContentHash(sourceRecord), /^[a-f0-9]{64}$/);
+});
+
+test('Marketplace Insights protocol accepts exact trusted payloads and rejects drift', () => {
+    const { api } = loadAnalyzer();
+    const now = Date.now();
+    const outgoing = plain(api.researchEnvelope(
+        'PROBE',
+        'probe:test-001',
+        'abcdefghijklmnop',
+        { wants: ['research'] },
+        now + 60_000,
+    ));
+    assert.equal(outgoing.sender, 'listing-analyzer');
+    assert.throws(() => api.researchEnvelope('PROBE', 'probe:test-001', 'abcdefghijklmnop', { filler: 'x'.repeat(70_000) }, now + 60_000), /64 KiB/);
+
+    const capabilities = {
+        version: '1.0.3', standalone: true, maxSeedKeywords: 3,
+        maxRelatedKeywords: 25, cacheTtlDays: 7, networkAccess: false,
+    };
+    const inbound = {
+        ...outgoing,
+        type: 'CAPABILITIES',
+        sender: 'keyword-market-analyzer',
+        payload: capabilities,
+    };
+    assert.equal(api.validateResearchEnvelope(inbound, ['CAPABILITIES']).type, 'CAPABILITIES');
+    assert.deepEqual(plain(api.validateResearchCapabilities(capabilities)), capabilities);
+    assert.deepEqual(plain(api.validateResearchReadyPayload({ state: 'ready' })), { state: 'ready' });
+    assert.deepEqual(plain(api.validateResearchReadyPayload({ state: 'busy', activeRequestId: 'research:test-001' })), { state: 'busy', activeRequestId: 'research:test-001' });
+    assert.deepEqual(plain(api.validateResearchAckPayload({ accepted: true, queuePosition: 0 })), { accepted: true, queuePosition: 0 });
+    assert.deepEqual(plain(api.validateResearchErrorPayload({ code: 'QUERY_FAILED', message: '  Etsy query failed  ', retryable: true })), { code: 'QUERY_FAILED', message: 'Etsy query failed', retryable: true });
+
+    assert.throws(() => api.validateResearchEnvelope({ ...inbound, extra: true }, ['CAPABILITIES']), /keys mismatch/);
+    assert.throws(() => api.validateResearchEnvelope({ ...inbound, sender: 'unknown' }, ['CAPABILITIES']), /sender/);
+    assert.throws(() => api.validateResearchEnvelope({ ...inbound, sentAt: now - 120_000, expiresAt: now - 60_000 }, ['CAPABILITIES']), /expired/);
+    assert.throws(() => api.validateResearchCapabilities({ ...capabilities, networkAccess: true }), /capabilities/);
+    assert.throws(() => api.validateResearchReadyPayload({ state: 'busy', activeRequestId: 'short' }), /active research request/);
+    assert.throws(() => api.validateResearchAckPayload({ accepted: true, queuePosition: -1 }), /acknowledgement/);
+    assert.throws(() => api.validateResearchErrorPayload({ code: 'bad', message: 'x', retryable: true }), /error code/);
+});
+
+test('Marketplace Insights result produces a validated title/tag plan and rematerializes after editor capture', () => {
+    const { api } = loadAnalyzer();
+    const contentHash = 'a'.repeat(64);
+    const entry = {
+        requestId: 'research:test-001', opaqueReference: 'L001', contentHash, editableDataCaptured: true,
+    };
+    const rawResult = {
+        schema: 'makaytron-listing-research-result/v1',
+        opaqueReference: 'L001',
+        contentHash,
+        capturedAt: new Date().toISOString(),
+        source: 'etsy-marketplace-insights-dom',
+        keywords: [
+            { keyword: 'patriotic chicken', searches30d: 320, searchResults: 9400, trend7dPercent: 12.5, opportunity: { score: 93, label: 'HIGH', metric: 'makaytron-derived' } },
+            { keyword: 'farmhouse chicken', searches30d: 140, searchResults: 5100, trend7dPercent: null, opportunity: { score: 78, label: 'MEDIUM', metric: 'makaytron-derived' } },
+        ],
+    };
+    const result = api.validateResearchResultPayload(rawResult, entry);
+    assert.equal(result.keywords.length, 2);
+    assert.throws(() => api.validateResearchResultPayload({ ...rawResult, keywords: [...rawResult.keywords, { ...rawResult.keywords[0], keyword: 'PATRIOTIC CHICKEN' }] }, entry), /duplicate/);
+    assert.throws(
+        () => api.validateResearchResultPayload({ ...rawResult, contentHash: 'b'.repeat(64) }, entry),
+        (error) => error?.code === 'RESEARCH_STALE',
+    );
+
+    const listing = record('902', [snapshot('2026-08-31T12:00:00.000Z')]);
+    listing.editor = {
+        capturedAt: '2026-08-31T12:00:00.000Z',
+        title: 'Fourth of July Shirt',
+        description: 'Description',
+        tags: ['summer tee', 'july fourth', 'usa shirt', 'gift for her', 'gift for him', 'country tee', 'farm life', 'hen shirt', 'red white blue', 'holiday top', 'graphic tee', 'unisex shirt'],
+        materials: ['cotton'],
+    };
+    const suggestion = api.buildResearchSuggestion(listing, result, entry);
+    const validated = api.validateResearchSuggestion(suggestion);
+    assert.equal(validated.action, 'UPDATE');
+    assert.deepEqual(plain(validated.fields).sort(), ['tags', 'title']);
+    assert.match(validated.title, /^patriotic chicken \| /i);
+    assert.ok(validated.tags.includes('patriotic chicken'));
+    assert.equal(validated.tags.length, 13);
+    assert.equal(validated.researchEvidence.requestId, entry.requestId);
+
+    const uncapturedEntry = { ...entry, editableDataCaptured: false };
+    const uncaptured = record('903', [snapshot('2026-08-31T12:00:00.000Z')], { title: 'Fourth of July Shirt' });
+    uncaptured.researchSuggestion = api.buildResearchSuggestion(uncaptured, result, uncapturedEntry);
+    assert.equal(uncaptured.researchSuggestion.requiresEditorCapture, true);
+    assert.deepEqual(plain(uncaptured.researchSuggestion.fields), ['title']);
+    uncaptured.editor = { ...listing.editor, tags: listing.editor.tags.slice(0, 11) };
+    const rematerialized = api.researchSuggestionForRecord(uncaptured);
+    assert.equal(rematerialized.requiresEditorCapture, false);
+    assert.ok(rematerialized.fields.includes('tags'));
+});
+
+test('improvement experiments reach winner, underperformed, contaminated, and inconclusive states deterministically', () => {
+    const { api } = loadAnalyzer();
+    const evaluateAt = '2026-02-01T00:00:00.000Z';
+    const make = (id, beforeVisits, afterVisits, improvements) => ({
+        ...record(id, [
+            snapshot('2026-01-01T00:00:00.000Z', { visits: beforeVisits }),
+            snapshot('2026-01-31T00:00:00.000Z', { visits: afterVisits }),
+        ]),
+        improvements,
+    });
+    const improvement = (id, publishedAt = '2026-01-01T00:00:00.000Z') => ({
+        id, action: 'UPDATE', status: 'published', publishedAt, fields: ['title'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 40 }),
+    });
+
+    const winner = make('904', 40, 60, [improvement('win')]);
+    api.updateExperimentEvaluations(winner, evaluateAt);
+    assert.equal(winner.improvements[0].experiment.state, 'winner');
+    assert.equal(winner.improvements[0].experiment.effectPercent, 50);
+
+    const underperformed = make('905', 40, 20, [improvement('loss')]);
+    api.updateExperimentEvaluations(underperformed, evaluateAt);
+    assert.equal(underperformed.improvements[0].experiment.state, 'underperformed');
+    assert.equal(underperformed.improvements[0].experiment.effectPercent, -50);
+
+    const severeDecline = make('905-severe', 100, 10, [{
+        ...improvement('severe-loss'),
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100 }),
+    }]);
+    api.updateExperimentEvaluations(severeDecline, evaluateAt);
+    assert.equal(severeDecline.improvements[0].experiment.state, 'underperformed');
+    assert.equal(severeDecline.improvements[0].experiment.effectPercent, -90);
+
+    const contaminated = make('906', 40, 60, [improvement('first'), improvement('second', '2026-01-05T00:00:00.000Z')]);
+    api.updateExperimentEvaluations(contaminated, evaluateAt);
+    assert.equal(contaminated.improvements[0].experiment.state, 'contaminated');
+    assert.equal(contaminated.improvements[0].experiment.contaminatedAt, '2026-01-05T00:00:00.000Z');
+
+    const inconclusive = make('907', 40, 10, [improvement('missing')]);
+    inconclusive.history = [snapshot('2026-01-01T00:00:00.000Z', { visits: 40 })];
+    api.updateExperimentEvaluations(inconclusive, evaluateAt);
+    assert.equal(inconclusive.improvements[0].experiment.state, 'inconclusive');
+});
+
+test('rate experiments require a separated Poisson rate-ratio interval instead of tiny-count wins', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-02-01T00:00:00.000Z';
+    const candidate = record('rate-small-sample', [
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 20, favorites: 1 }),
+        snapshot('2026-01-31T00:00:00.000Z', { visits: 20, favorites: 2 }),
+    ]);
+    candidate.improvements.push({
+        id: 'favorite-rate', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['materials'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 20, favorites: 1 }),
+    });
+    api.updateExperimentEvaluations(candidate, evaluatedAt);
+    assert.equal(candidate.improvements[0].experiment.effectPercent, 100);
+    assert.equal(candidate.improvements[0].experiment.state, 'inconclusive');
+    const interval = candidate.improvements[0].experiment.current.rateRatioInterval;
+    assert.ok(interval.low <= 1 && interval.high >= 1);
+
+    const visitsCandidate = record('visits-small-sample', [
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 20 }),
+        snapshot('2026-01-31T00:00:00.000Z', { visits: 24 }),
+    ]);
+    visitsCandidate.improvements.push({
+        id: 'visit-rate', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['title'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 20 }),
+    });
+    api.updateExperimentEvaluations(visitsCandidate, evaluatedAt);
+    assert.equal(visitsCandidate.improvements[0].experiment.effectPercent, 20);
+    assert.equal(visitsCandidate.improvements[0].experiment.state, 'inconclusive');
+    const visitsInterval = visitsCandidate.improvements[0].experiment.current.rateRatioInterval;
+    assert.ok(visitsInterval.low <= 1 && visitsInterval.high >= 1);
+});
+
+test('sales experiments normalize exposure days and reject a stale publication baseline', () => {
+    const { api } = loadAnalyzer();
+    const delayed = record('sales-window-normalized', [
+        snapshot('2025-12-02T00:00:00.000Z', { visits: 100, sales: 0 }),
+        snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 3 }),
+        snapshot('2026-02-07T00:00:00.000Z', { visits: 100, sales: 5 }),
+    ]);
+    delayed.improvements.push({
+        id: 'sales-window', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
+        baselineSnapshot: snapshot('2026-01-01T00:00:00.000Z', { visits: 100, sales: 3 }),
+    });
+    api.updateExperimentEvaluations(delayed, '2026-02-07T00:00:00.000Z');
+    const normalized = delayed.improvements[0].experiment;
+    assert.equal(normalized.current.rawSales, 2);
+    assert.equal(normalized.current.exposureDays, 37);
+    assert.equal(normalized.current.sales, 1.622);
+    assert.equal(normalized.evaluationDelayDays, 7);
+    assert.equal(normalized.current.rateRatioInterval.afterEvents, 2);
+    assert.equal(normalized.current.rateRatioInterval.afterExposure, normalized.current.effectiveVisitExposure);
+    assert.equal(Math.round(normalized.current.effectiveVisitExposure * 1000) / 1000, 123.333);
+
+    const stale = record('sales-stale-baseline', [
+        snapshot('2025-12-02T00:00:00.000Z', { visits: 100, sales: 0 }),
+        snapshot('2025-12-29T00:00:00.000Z', { visits: 100, sales: 2 }),
+        snapshot('2026-01-31T00:00:00.000Z', { visits: 100, sales: 4 }),
+    ]);
+    stale.improvements.push({
+        id: 'stale-baseline', action: 'UPDATE', status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', fields: ['description'],
+        baselineSnapshot: snapshot('2025-12-29T00:00:00.000Z', { visits: 100, sales: 2 }),
+    });
+    api.updateExperimentEvaluations(stale, '2026-02-01T00:00:00.000Z');
+    assert.equal(stale.improvements[0].experiment.state, 'inconclusive');
+    assert.equal(stale.improvements[0].experiment.current, undefined);
+});
+
+test('stale skip cannot resurrect or overwrite a newer stored queue', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const stale = {
+        schema: 1, id: 'queue-old', status: 'ready', cursor: 0,
+        items: [
+            { listingId: 'old-1', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/old-1' },
+            { listingId: 'old-2', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/old-2' },
+        ],
+    };
+    const newer = {
+        schema: 1, id: 'queue-new', status: 'completed', cursor: 1,
+        items: [{ listingId: 'new-1', status: 'verified', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/new-1' }],
+    };
+    runtime.state.queue = plain(stale);
+    storage.set(runtime.KEYS.queue, plain(newer));
+    await runtime.skipCurrentItem();
+    assert.deepEqual(plain(storage.get(runtime.KEYS.queue)), newer);
+    assert.deepEqual(plain(runtime.state.queue), newer);
+    assert.equal(storage.has(runtime.KEYS.audit), false);
+    assert.equal(storage.has(runtime.KEYS.lease), false);
+});
+
+test('concurrent skip clicks commit one fenced transition and one audit entry', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        schema: 1, id: 'queue-double', status: 'ready', cursor: 0,
+        items: [
+            { listingId: 'double-1', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/double-1' },
+            { listingId: 'double-2', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/double-2' },
+        ],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    await Promise.all([runtime.skipCurrentItem(), runtime.skipCurrentItem()]);
+    const saved = plain(storage.get(runtime.KEYS.queue));
+    assert.equal(saved.cursor, 1);
+    assert.equal(saved.status, 'running');
+    assert.equal(saved.items[0].status, 'skipped');
+    assert.equal(saved.items[1].status, 'pending');
+    assert.equal(plain(storage.get(runtime.KEYS.audit)).length, 1);
+    assert.equal(storage.has(runtime.KEYS.lease), false);
+});
+
+test('legacy deactivation verification remains available and submitted deactivation enters no-retry recovery', () => {
+    const { api } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    runtime.state.queue = {
+        id: 'deactivate-reload', status: 'running', cursor: 0,
+        items: [{ listingId: '55', status: 'awaiting-user-deactivation', runtimeOwner: 'old-page', proposal: { action: 'DEACTIVATE_REVIEW' } }],
+    };
+    assert.equal(runtime.Queue.recoveryState(), null);
+    runtime.state.queue.items[0].status = 'deactivation-submitted-unverified';
+    const recovery = runtime.Queue.recoveryState();
+    assert.equal(recovery.submitted, true);
+    assert.equal(recovery.item.listingId, '55');
+});
+
+test('fresh durable deactivation submission permits only canonical automatic verification recovery', () => {
+    const { api } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const now = Date.parse('2026-08-31T16:00:00.000Z');
+    const item = {
+        listingId: '4309502756', status: 'deactivation-submitted',
+        proposal: { action: 'DEACTIVATE_REVIEW' },
+        deactivationAttemptId: 'attempt-1', deactivationStatusBefore: ['Active'],
+        deactivationSubmittedIntentAt: '2026-08-31T15:59:30.000Z',
+        editUrl: 'https://example.com/unsafe',
+    };
+    const recovery = runtime.automaticDeactivationRecovery(item, now);
+    assert.equal(recovery.editUrl, 'https://www.etsy.com/your/shops/me/listing-editor/edit/4309502756');
+    assert.equal(runtime.automaticDeactivationRecovery({ ...item, status: 'awaiting-user-deactivation' }, now), null);
+    assert.equal(runtime.automaticDeactivationRecovery({ ...item, deactivationAttemptId: '' }, now), null);
+    assert.equal(runtime.automaticDeactivationRecovery({ ...item, deactivationStatusBefore: [] }, now), null);
+    assert.equal(runtime.automaticDeactivationRecovery({ ...item, deactivationSubmittedIntentAt: '2026-08-31T15:55:00.000Z' }, now), null);
+});
+
+test('a missing deactivation menu releases the action lease without changing the queue', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        id: 'deactivate-menu', status: 'ready', cursor: 0,
+        items: [{
+            listingId: '77', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/77',
+            proposal: { action: 'DEACTIVATE_REVIEW' },
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/77';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/77';
+    const originalLabels = runtime.EditorAdapter.listingStatusLabels;
+    const originalClean = runtime.EditorAdapter.formIsClean;
+    const originalOpen = runtime.EditorAdapter.openDeactivateDialog;
+    const originalCancel = runtime.EditorAdapter.cancelDeactivateDialogWhenReady;
+    let cancelAttempts = 0;
+    runtime.EditorAdapter.listingStatusLabels = () => ['Active'];
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.openDeactivateDialog = async () => false;
+    runtime.EditorAdapter.cancelDeactivateDialogWhenReady = async () => { cancelAttempts += 1; return false; };
+    try {
+        await runtime.openCurrentDeactivate();
+        assert.equal(cancelAttempts, 1);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+        assert.deepEqual(plain(storage.get(runtime.KEYS.queue)), queue);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originalLabels;
+        runtime.EditorAdapter.formIsClean = originalClean;
+        runtime.EditorAdapter.openDeactivateDialog = originalOpen;
+        runtime.EditorAdapter.cancelDeactivateDialogWhenReady = originalCancel;
+    }
+});
+
+test('automatic deactivation submits once, verifies Active to Inactive, and advances once under double click', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        id: 'deactivate-automatic', status: 'ready', cursor: 0,
+        items: [
+            {
+                listingId: '78', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/78',
+                proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
+            },
+            {
+                listingId: '79', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/79',
+                proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
+            },
+        ],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/78';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/78';
+    let status = 'Active';
+    let finalClicks = 0;
+    const originals = {
+        labels: runtime.EditorAdapter.listingStatusLabels,
+        clean: runtime.EditorAdapter.formIsClean,
+        open: runtime.EditorAdapter.openDeactivateDialog,
+        modal: runtime.EditorAdapter.deactivateDialogContract,
+        confirm: runtime.EditorAdapter.clickDeactivateConfirmation,
+    };
+    runtime.EditorAdapter.listingStatusLabels = () => [status];
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.openDeactivateDialog = async () => true;
+    runtime.EditorAdapter.deactivateDialogContract = () => ({});
+    runtime.EditorAdapter.clickDeactivateConfirmation = () => { finalClicks += 1; status = 'Inactive'; return true; };
+    try {
+        await Promise.all([runtime.openCurrentDeactivate(), runtime.openCurrentDeactivate()]);
+        const saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(finalClicks, 1);
+        assert.equal(saved.cursor, 1);
+        assert.equal(saved.status, 'running');
+        assert.equal(saved.items[0].status, 'verified-deactivated');
+        assert.deepEqual(saved.items[0].deactivationStatusBefore, ['Active']);
+        assert.deepEqual(saved.items[0].deactivationStatusAfter, ['Inactive']);
+        assert.equal(saved.items[1].status, 'pending');
+        assert.equal(plain(storage.get(runtime.KEYS.audit)).filter((entry) => entry.type === 'listing-deactivated').length, 1);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originals.labels;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.openDeactivateDialog = originals.open;
+        runtime.EditorAdapter.deactivateDialogContract = originals.modal;
+        runtime.EditorAdapter.clickDeactivateConfirmation = originals.confirm;
+    }
+});
+
+test('a legacy manual deactivation wait can enter the automatic flow only while still visibly Active', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        id: 'deactivate-legacy-upgrade', status: 'running', cursor: 0,
+        items: [{
+            listingId: '82', status: 'awaiting-user-deactivation', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/82',
+            deactivationStatusBefore: ['Active'], proposal: { action: 'DEACTIVATE_REVIEW', reason: 'legacy test' },
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/82';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/82';
+    let status = 'Active';
+    let finalClicks = 0;
+    const originals = {
+        labels: runtime.EditorAdapter.listingStatusLabels,
+        clean: runtime.EditorAdapter.formIsClean,
+        open: runtime.EditorAdapter.openDeactivateDialog,
+        modal: runtime.EditorAdapter.deactivateDialogContract,
+        confirm: runtime.EditorAdapter.clickDeactivateConfirmation,
+    };
+    runtime.EditorAdapter.listingStatusLabels = () => [status];
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.openDeactivateDialog = async () => true;
+    runtime.EditorAdapter.deactivateDialogContract = () => ({});
+    runtime.EditorAdapter.clickDeactivateConfirmation = () => { finalClicks += 1; status = 'Inactive'; return true; };
+    try {
+        await runtime.openCurrentDeactivate();
+        const saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(finalClicks, 1);
+        assert.equal(saved.cursor, 1);
+        assert.equal(saved.status, 'completed');
+        assert.equal(saved.items[0].status, 'verified-deactivated');
+        assert.deepEqual(saved.items[0].deactivationStatusBefore, ['Active']);
+        assert.deepEqual(saved.items[0].deactivationStatusAfter, ['Inactive']);
+        assert.equal(plain(storage.get(runtime.KEYS.audit)).filter((entry) => entry.type === 'listing-deactivated').length, 1);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originals.labels;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.openDeactivateDialog = originals.open;
+        runtime.EditorAdapter.deactivateDialogContract = originals.modal;
+        runtime.EditorAdapter.clickDeactivateConfirmation = originals.confirm;
+    }
+});
+
+test('an armed deactivation that loses its final control becomes unverified and is never retried automatically', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        id: 'deactivate-no-retry', status: 'ready', cursor: 0,
+        items: [{
+            listingId: '80', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/80',
+            proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/80';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/80';
+    let finalAttempts = 0;
+    const originals = {
+        labels: runtime.EditorAdapter.listingStatusLabels,
+        clean: runtime.EditorAdapter.formIsClean,
+        open: runtime.EditorAdapter.openDeactivateDialog,
+        modal: runtime.EditorAdapter.deactivateDialogContract,
+        confirm: runtime.EditorAdapter.clickDeactivateConfirmation,
+    };
+    runtime.EditorAdapter.listingStatusLabels = () => ['Active'];
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.openDeactivateDialog = async () => true;
+    runtime.EditorAdapter.deactivateDialogContract = () => ({});
+    runtime.EditorAdapter.clickDeactivateConfirmation = () => { finalAttempts += 1; return false; };
+    try {
+        await runtime.openCurrentDeactivate();
+        let saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(finalAttempts, 1);
+        assert.equal(saved.cursor, 0);
+        assert.equal(saved.items[0].status, 'deactivation-submitted-unverified');
+        assert.match(saved.items[0].deactivationAttemptId, /^deactivation-attempt-/);
+        assert.deepEqual(saved.items[0].deactivationStatusBefore, ['Active']);
+        assert.equal(storage.has(runtime.KEYS.audit), false);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+        await runtime.openCurrentDeactivate();
+        saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(finalAttempts, 1);
+        assert.equal(saved.items[0].status, 'deactivation-submitted-unverified');
+        assert.equal(saved.cursor, 0);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originals.labels;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.openDeactivateDialog = originals.open;
+        runtime.EditorAdapter.deactivateDialogContract = originals.modal;
+        runtime.EditorAdapter.clickDeactivateConfirmation = originals.confirm;
+    }
+});
+
+test('route drift after a durable deactivation arm prevents the final click and leaves recovery-only state', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        id: 'deactivate-route-drift', status: 'ready', cursor: 0,
+        items: [{
+            listingId: '81', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/81',
+            proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/81';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/81';
+    let finalClicks = 0;
+    const originals = {
+        labels: runtime.EditorAdapter.listingStatusLabels,
+        clean: runtime.EditorAdapter.formIsClean,
+        open: runtime.EditorAdapter.openDeactivateDialog,
+        modal: runtime.EditorAdapter.deactivateDialogContract,
+        confirm: runtime.EditorAdapter.clickDeactivateConfirmation,
+    };
+    runtime.EditorAdapter.listingStatusLabels = () => ['Active'];
+    runtime.EditorAdapter.formIsClean = () => {
+        if (storage.get(runtime.KEYS.queue)?.items?.[0]?.status === 'deactivation-submitted') {
+            sandbox.location.pathname = '/your/shops/me/listing-editor/edit/999';
+        }
+        return true;
+    };
+    runtime.EditorAdapter.openDeactivateDialog = async () => true;
+    runtime.EditorAdapter.deactivateDialogContract = () => ({});
+    runtime.EditorAdapter.clickDeactivateConfirmation = () => { finalClicks += 1; return true; };
+    try {
+        await runtime.openCurrentDeactivate();
+        const saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(finalClicks, 0);
+        assert.equal(saved.cursor, 0);
+        assert.equal(saved.items[0].status, 'deactivation-submitted-unverified');
+        assert.match(saved.items[0].deactivationAttemptId, /^deactivation-attempt-/);
+        assert.equal(storage.has(runtime.KEYS.audit), false);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originals.labels;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.openDeactivateDialog = originals.open;
+        runtime.EditorAdapter.deactivateDialogContract = originals.modal;
+        runtime.EditorAdapter.clickDeactivateConfirmation = originals.confirm;
+    }
+});
+
+test('concurrent deactivation verification advances exactly one queue item', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const queue = {
+        id: 'deactivate-double', status: 'running', cursor: 0,
+        items: [
+            {
+                listingId: '88', status: 'awaiting-user-deactivation', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/88',
+                deactivationStatusBefore: ['Active'], proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
+            },
+            {
+                listingId: '89', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/89',
+                proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
+            },
+        ],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/88';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/88';
+    const originalLabels = runtime.EditorAdapter.listingStatusLabels;
+    runtime.EditorAdapter.listingStatusLabels = () => ['Inactive'];
+    try {
+        await Promise.all([runtime.verifyCurrentDeactivate(), runtime.verifyCurrentDeactivate()]);
+        const saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(saved.cursor, 1);
+        assert.equal(saved.items[0].status, 'verified-deactivated');
+        assert.equal(saved.items[1].status, 'pending');
+        assert.equal(plain(storage.get(runtime.KEYS.audit)).filter((entry) => entry.type === 'listing-deactivated').length, 1);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originalLabels;
+    }
+});
+
+test('full-collection preflight is single-flight under a double click', async () => {
+    const { api } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const originalStartOnce = runtime.Collection.startOnce;
+    let calls = 0;
+    let release;
+    runtime.Collection.startOnce = () => {
+        calls += 1;
+        return new Promise((resolve) => { release = resolve; });
+    };
+    try {
+        const first = runtime.Collection.start();
+        const second = runtime.Collection.start();
+        assert.equal(first, second);
+        await Promise.resolve();
+        assert.equal(calls, 1);
+        release('done');
+        assert.equal(await first, 'done');
+    } finally {
+        runtime.Collection.startOnce = originalStartOnce;
+    }
+});
+
+test('a navigation cancellation requested by Pause persists a paused collection and releases its lease', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const raw = {
+        schema: api.versions.collectionSchema,
+        id: 'pause-during-navigation',
+        status: 'running',
+        scopeKey: '',
+        startedAt: now,
+        updatedAt: now,
+        expectedPage: 2,
+        totalPages: 2,
+        pages: { 1: { signature: '1|1|1', contentSignature: '1', ids: ['1'], count: 1, capturedAt: now } },
+        uniqueIds: ['1'],
+        duplicateCount: 0,
+        returningToFirst: false,
+        leaseToken: '',
+        handoffToken: '',
+        handoffPage: 0,
+        handoffExpiresAt: '',
+        failureReports: [],
+    };
+    runtime.state.collection = api.normalizeCollection(raw);
+    storage.set(runtime.KEYS.collection, plain(raw));
+    assert.equal(await runtime.CollectionLease.acquire(), true);
+    const owned = { ...plain(runtime.state.collection), leaseToken: runtime.state.collectionLeaseToken };
+    runtime.state.collection = api.normalizeCollection(owned);
+    storage.set(runtime.KEYS.collection, plain(owned));
+    runtime.state.collectionPauseRequested = true;
+
+    const result = await runtime.Collection.settleCancelledOperation();
+
+    assert.equal(result.status, 'paused');
+    assert.equal(runtime.state.collectionPauseRequested, false);
+    assert.equal(runtime.state.collectionLeaseToken, '');
+    assert.equal(storage.has(runtime.KEYS.collectionLease), false);
+    assert.equal(plain(storage.get(runtime.KEYS.collection)).status, 'paused');
+});
+
+test('a Pause requested while a transient read resolves cannot report that read as successful', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const now = new Date().toISOString();
+    const raw = {
+        schema: api.versions.collectionSchema,
+        id: 'pause-as-read-resolves',
+        status: 'running',
+        scopeKey: '',
+        startedAt: now,
+        updatedAt: now,
+        expectedPage: 1,
+        totalPages: 1,
+        pages: {},
+        uniqueIds: [],
+        duplicateCount: 0,
+        returningToFirst: false,
+        leaseToken: '',
+        handoffToken: '',
+        handoffPage: 0,
+        handoffExpiresAt: '',
+        failureReports: [],
+    };
+    runtime.state.collection = api.normalizeCollection(raw);
+    storage.set(runtime.KEYS.collection, plain(raw));
+    assert.equal(await runtime.CollectionLease.acquire(), true);
+
+    try {
+        const result = await runtime.Collection.retryTransient('page-read', async () => {
+            runtime.state.collectionPauseRequested = true;
+            return { listings: [{ listingId: '1' }] };
+        });
+
+        assert.equal(result.ok, false);
+        assert.equal(result.cancelled, true);
+        assert.equal(result.attempts, 1);
+        assert.equal(result.value, null);
+    } finally {
+        runtime.state.collectionPauseRequested = false;
+        await runtime.CollectionLease.release();
+    }
+});
+
+test('same-route hydration retries after an initial empty listing read', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const runtime = api.routeRuntime;
+    const adapter = api.ListingPageAdapter;
+    const originalReadStable = adapter.readStable;
+    const originalSetStatus = runtime.UI.setStatus;
+    const originalRender = runtime.UI.render;
+    const statuses = [];
+    runtime.UI.setStatus = (key, tone = 'ready') => { runtime.state.status = { key, tone, params: {} }; statuses.push(key); };
+    runtime.UI.render = () => {};
+    runtime.state.panel = {};
+    runtime.state.routeKey = '';
+    runtime.state.routeTask = null;
+    sandbox.location.pathname = '/your/shops/me/tools/listings';
+    sandbox.location.search = '?stats=true';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}${sandbox.location.search}`;
+    let reads = 0;
+    adapter.readStable = async () => (++reads === 1 ? null : { listings: [{ listingId: 'late' }], pageInfo: { current: 1, total: 1, valid: true } });
+    try {
+        await runtime.handleRoute();
+        assert.equal(runtime.state.routeKey, '');
+        assert.equal(statuses.at(-1), 'noCards');
+        await runtime.handleRoute();
+        assert.equal(runtime.state.routeKey, `${sandbox.location.pathname}${sandbox.location.search}`);
+        assert.deepEqual(plain(runtime.state.pageListings), [{ listingId: 'late' }]);
+        assert.equal(statuses.at(-1), 'pageReady');
+    } finally {
+        adapter.readStable = originalReadStable;
+        runtime.UI.setStatus = originalSetStatus;
+        runtime.UI.render = originalRender;
+        runtime.state.panel = null;
+    }
+});
+
+test('fresh submitted deactivation redirects from listings only to its canonical editor for verification', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.routeRuntime;
+    const adapter = api.ListingPageAdapter;
+    const now = new Date().toISOString();
+    const queue = {
+        id: 'deactivation-redirect', status: 'running', cursor: 0,
+        items: [{
+            listingId: '4309502756', status: 'deactivation-submitted',
+            proposal: { action: 'DEACTIVATE_REVIEW' },
+            deactivationAttemptId: 'attempt-redirect', deactivationStatusBefore: ['Active'],
+            deactivationSubmittedIntentAt: now, editUrl: 'https://example.com/unsafe',
+        }],
+    };
+    storage.set(api.actionRuntime.KEYS.queue, plain(queue));
+    runtime.state.queue = plain(queue);
+    runtime.state.panel = {};
+    runtime.state.routeKey = '';
+    runtime.state.routeTask = null;
+    sandbox.location.pathname = '/your/shops/me/tools/listings';
+    sandbox.location.search = '?stats=true';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}${sandbox.location.search}`;
+    const originalReadStable = adapter.readStable;
+    const originalAssign = sandbox.location.assign;
+    const originalSetStatus = runtime.UI.setStatus;
+    const originalRender = runtime.UI.render;
+    let reads = 0;
+    let assigned = '';
+    adapter.readStable = async () => { reads += 1; return null; };
+    sandbox.location.assign = (url) => { assigned = String(url); };
+    runtime.UI.setStatus = () => {};
+    runtime.UI.render = () => {};
+    try {
+        assert.equal(await runtime.handleRoute({ force: true }), 'listings');
+        assert.equal(assigned, 'https://www.etsy.com/your/shops/me/listing-editor/edit/4309502756');
+        assert.equal(reads, 0);
+        assert.equal(storage.get(api.actionRuntime.KEYS.queue).items[0].status, 'deactivation-submitted');
+    } finally {
+        adapter.readStable = originalReadStable;
+        sandbox.location.assign = originalAssign;
+        runtime.UI.setStatus = originalSetStatus;
+        runtime.UI.render = originalRender;
+        runtime.state.panel = null;
+    }
+});
+
+test('a delayed old route cannot overwrite the current route state', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const runtime = api.routeRuntime;
+    const adapter = api.ListingPageAdapter;
+    const originalReadStable = adapter.readStable;
+    const originalSetStatus = runtime.UI.setStatus;
+    const originalRender = runtime.UI.render;
+    let beginRead;
+    const readStarted = new Promise((resolve) => { beginRead = resolve; });
+    let finishRead;
+    adapter.readStable = () => {
+        beginRead();
+        return new Promise((resolve) => { finishRead = resolve; });
+    };
+    runtime.UI.setStatus = (key, tone = 'ready') => { runtime.state.status = { key, tone, params: {} }; };
+    runtime.UI.render = () => {};
+    runtime.state.panel = {};
+    runtime.state.pageListings = [{ listingId: 'sentinel' }];
+    sandbox.location.pathname = '/your/shops/me/tools/listings';
+    sandbox.location.search = '?stats=true';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}${sandbox.location.search}`;
+    try {
+        const oldRoute = runtime.handleRoute({ force: true });
+        await readStarted;
+        sandbox.location.pathname = '/unsupported';
+        sandbox.location.search = '';
+        sandbox.location.href = 'https://www.etsy.com/unsupported';
+        const currentRoute = runtime.handleRoute({ force: true });
+        await currentRoute;
+        finishRead({ listings: [{ listingId: 'stale' }], pageInfo: { current: 1, total: 1, valid: true } });
+        await oldRoute;
+        assert.equal(runtime.state.routeKey, '/unsupported');
+        assert.equal(runtime.state.status.key, 'unsupportedPage');
+        assert.deepEqual(plain(runtime.state.pageListings), [{ listingId: 'sentinel' }]);
+    } finally {
+        adapter.readStable = originalReadStable;
+        runtime.UI.setStatus = originalSetStatus;
+        runtime.UI.render = originalRender;
+        runtime.state.panel = null;
+    }
 });

@@ -38,12 +38,14 @@ Missing metrics, repeated/overlapping pages, mixed transient DOM, shop-identity 
 |---|---|
 | Visits and favorites | Etsy's visible rolling last-30-day values. |
 | Sales, revenue, and renewals | All-time counters shown on Etsy cards. |
-| **30-day reach/engagement** | Comparable performance score from current visits and favorite rate only. |
+| **30-day reach/engagement** | Comparable performance score from current visits and a sample-size-smoothed favorite rate whose weight increases gradually. |
 | **History confidence** | Readiness of local time-series evidence for trend/deactivation decisions; not a listing-quality score. |
 
 History confidence may be `39` or low after the first full scan. That does not mean the listing's performance is 39%. Current reach/engagement and first-scan evidence are assessed separately. Growth/decline needs comparable 30-day history; deactivation review needs at least 58 days of complete history plus every other safety guard.
 
 Complete and fresh zero counters are **no current activity**, not missing data. Unreadable, stale, or inconsistent observations stay fail-closed as **missing / inconsistent data**.
+
+Trend periods use consecutive 30-day windows. An experiment baseline must be no more than one day before publication; visit, favorite, and sales comparisons cannot become `Winner` / `Underperformed` unless their 90% Poisson rate-ratio interval excludes 1. The displayed sales rate is normalized to 30 days while confidence uses actual events and exposure duration; the displayed percentage is a **30-day relative change**, not a causal claim.
 
 Use search, built-in/custom presets, lifecycle, issue/opportunity, recommendation, performance, stock, and data-confidence filters. Remember that sales/revenue/renewals are all-time while visits/favorites cover the last 30 days.
 
@@ -87,7 +89,9 @@ This means you selected a card but did not save an actionable proposal for it, o
 
 ## Deactivation review
 
-**Review deactivation** is not an automatic deactivation command. The script only opens Etsy's options and focuses **Deactivate**. The user clicks **Deactivate** and Etsy's final confirmation. After checking the Etsy result, select **Verify deactivation and continue** in the panel; only then does the script verify the visible result and advance the queue. Listing deletion is not automated.
+**Review deactivation** alone is not an automatic deactivation command. After the user confirms that listing, the script clicks only Etsy's single visible, enabled, exact **Deactivate** menu item and the final **Deactivate** button in the correctly titled dialog. **Delete** or any deletion semantics are never accepted. The queue advances only after a visible `Active → Inactive` transition; an uncertain result is never retried automatically and can only use the read-only **Verify deactivation and continue** recovery action.
+
+A queue item left at v1.0.7's old manual step can be submitted only when the listing is still visibly `Active`, the form is clean, and the user separately confirms the current automatic flow. A deactivation already submitted by the script, or one with an uncertain outcome, cannot enter this compatibility path.
 
 ## Marketplace Insights research
 

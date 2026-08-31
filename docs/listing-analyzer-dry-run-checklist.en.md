@@ -21,7 +21,7 @@ The user performs this checklist in their own Etsy shop. Do not share credential
 - Compare the AI “before”, “proposal”, and post-publish “verified result” fields; an unapplied proposal must never be presented as a result.
 - Confirm that the improvement experiment timeline orders planning, publishing, observation, and evaluation events correctly.
 - Prefer a reversible text improvement rather than deactivation for the first trial.
-- Confirm that every listing waits for explicit user approval before Etsy Publish. For deactivation, the script must only open Etsy's options and focus the relevant item; the user must click Deactivate and Etsy's final confirmation. Delete must never be automated.
+- Confirm that every listing waits for explicit user approval before Etsy Publish or deactivation. For deactivation, the script must click only one visible, enabled, exact **Deactivate** menu item and the correct final **Deactivate** button; it must never click **Delete**, must advance only after `Active → Inactive` verification, and must not retry an uncertain submission automatically.
 
 ## After the action
 

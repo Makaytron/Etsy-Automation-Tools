@@ -38,12 +38,14 @@ Eksik metrik, tekrarlanan/örtüşen sayfa, geçici DOM karışımı, mağaza ki
 |---|---|
 | Ziyaret ve favori | Etsy'nin kayan son 30 günlük görünür değerleri. |
 | Satış, gelir ve yenileme | Etsy kartındaki tüm-zaman sayaçları. |
-| **30 günlük erişim/ilgi** | Yalnız güncel ziyaret ve favori oranından oluşan karşılaştırılabilir performans puanı. |
+| **30 günlük erişim/ilgi** | Güncel ziyaret ve örneklem boyutuna göre yumuşatılmış favori oranından oluşan karşılaştırılabilir performans puanı; favori ağırlığı kademeli artar. |
 | **Geçmiş güveni** | Yerel zaman serisinin trend/deaktivasyon kararı için ne kadar hazır olduğu; listing kalite puanı değildir. |
 
 İlk tam taramada geçmiş güveni `39` veya düşük görünebilir. Bu, listing performansının `%39` olduğu anlamına gelmez. Güncel erişim/ilgi puanı ve ilk-tarama sinyalleri ayrı değerlendirilir; büyüme/düşüş için karşılaştırılabilir 30 günlük geçmiş, deaktivasyon incelemesi için en az 58 günlük tam geçmiş ve diğer güvenlik kapıları gerekir.
 
 Tam ve taze sayaçlar sıfırsa bu **veri eksik** değildir; **Güncel hareket yok** kanıtıdır. Okunamayan, eski veya tutarsız veri ise fail-closed **Eksik / tutarsız veri** olarak kalır.
+
+Trend için kullanılan dönemler ardışık 30 günlük pencerelerden seçilir. Deney sonucu için baseline yayın anına en fazla bir gün uzak olmalı; ziyaret, favori ve satış karşılaştırmalarında `Kazandı` / `Beklentinin altında` kararı %90 Poisson oran-oranı güven aralığı 1 değerini dışlamadan verilmez. Satış deneyi gösterilen oranı 30 güne normalize ederken güven hesabında gerçek olay sayısı ve gözlem süresini kullanır; gösterilen yüzde **30 günlük göreli değişim**dir, nedensellik iddiası değildir.
 
 Arama, hazır/özel presetler, yaşam döngüsü, sorun/fırsat, öneri, performans, stok ve veri güveni filtreleriyle kapsamı daraltın. Satış/gelir/yenileme değerlerinin tüm-zaman; ziyaret/favorinin 30 günlük olduğunu sıralama ve karşılaştırmada unutmayın.
 
@@ -87,7 +89,9 @@ Bu uyarı, kartı seçtiğiniz hâlde o listing için uygulanabilir bir öneri k
 
 ## Deaktivasyon incelemesi
 
-**Kapatmayı incele** otomatik deaktivasyon emri değildir. Script yalnız Etsy seçenek menüsünü açar ve **Deactivate** öğesine odaklanır. **Deactivate** ile Etsy'nin final onayını kullanıcı tıklar. Etsy'deki sonucu kontrol ettikten sonra panelde **Deaktivasyonu doğrula ve devam et** düğmesine basın; script ancak bu adımda görünür sonucu doğrular ve kuyruğu ilerletir. Listing silme otomasyonu yoktur.
+**Kapatmayı incele** tek başına otomatik deaktivasyon emri değildir. Kullanıcı listing bazında onay verdikten sonra script yalnız Etsy'nin tek, görünür ve etkin tam eşleşen **Deactivate** menü öğesini ve doğru başlıklı penceredeki final **Deactivate** düğmesini tıklar. **Delete** veya silme semantiği hiçbir zaman kabul edilmez. Script görünür `Active → Inactive` geçişini doğrularsa kuyruğu ilerletir; sonuç belirsizse otomatik tekrar yapmaz ve **Deaktivasyonu doğrula ve devam et** ile güvenli, salt-doğrulama kurtarması sunar.
+
+v1.0.7'nin eski manuel adımında kalan bir kuyruk öğesi yalnız listing hâlâ görünür biçimde `Active`, form temiz ve kullanıcı güncel otomatik akışı ayrıca onaylarsa gönderilebilir. Script tarafından gönderilmiş veya sonucu belirsiz bir deaktivasyon bu uyumluluk yoluna girmez.
 
 ## Marketplace Insights araştırması
 

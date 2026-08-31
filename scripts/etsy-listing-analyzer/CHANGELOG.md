@@ -1,5 +1,74 @@
 # Changelog
 
+## 1.1.0 - 2026-08-31
+
+- Replaced the hard favorite-score cutoff with a sample-size-smoothed favorite rate and gradually increasing engagement weight, eliminating the 19-to-20-visit score discontinuity.
+- Built prior traffic change from a consecutive 30-day anchor instead of independently reusing a nearby 60-day point; equal-distance anchors now prefer the longer non-overlapping interval.
+- Reduced small-cohort overconfidence: eight comparable listings remain the reliability floor, while cohort-strength confidence now reaches 100 only at 30 comparable listings.
+- Made experiment baselines publication-bound and fail-closed when more than one day old, normalized cumulative sales exposure to 30 days, and retained only evaluation snapshots within the existing seven-day grace window.
+- Added a 90% Poisson rate-ratio interval for visit, favorite, and sale-rate winner decisions; sales confidence uses actual events and exposure duration, severe visit declines remain detectable even when resulting traffic falls below 20, and the raw percentage is labeled **30-day relative change** rather than an adjusted causal effect.
+- Smoothed cohort favorite-rate percentiles so one low-traffic favorite cannot outrank stable engagement purely through a volatile raw percentage.
+- Raised threshold calibration to 20 clean listings, excluded recent/active experiments, and used more conservative upper-quartile no-sale traffic and decline distributions.
+- Expanded the Listing Analyzer regression suite from 84 to 90 passing tests across smoothing, consecutive windows, cohort strength, calibration, and experiment edge cases.
+
+## 1.0.13 - 2026-08-31
+
+- Bound cached GitHub update results to the exact installed script version so upgrading the userscript cannot leave an older remote release displayed as a new update.
+- Added a live-found regression case covering the observed `v1.0.12` installed / `v1.0.5` cached banner mismatch; stale legacy update state now clears and is checked again.
+- Preserve the last word of a Marketplace Insights title seed when the complete listing title already fits within the 50-character seed limit.
+- Expanded the Listing Analyzer suite with protocol, hashing, seed selection, research suggestion/rematerialization, and 30-day experiment-state coverage.
+
+## 1.0.12 - 2026-08-31
+
+- Read Etsy's current inactive listing badge from the dedicated header status row, including its distinct `wt-badge--statusInformational` class, while excluding unrelated informational badges elsewhere in the editor.
+- Added a bounded two-minute, verification-only redirect recovery: a fresh durably submitted deactivation may return from Etsy's listings page to the canonical matching editor and verify status, but it can never resubmit Deactivate.
+- Expanded the offline regression suite from 77 to 80 passing tests for the inactive badge, strict durable-recovery eligibility, canonical redirect, and zero provider retries.
+
+## 1.0.11 - 2026-08-31
+
+- Extended the exact Etsy Deactivate dialog readiness window from three to ten seconds so slow live modal hydration does not fail before the final control becomes safely verifiable.
+- Added fail-closed cleanup that clicks only the exact modal's Cancel control when a pre-submission deactivation path aborts; the final Deactivate and every Delete control remain untouched in that path.
+- Expanded the offline regression suite from 76 to 77 passing tests with a modal that becomes valid only after the former three-second deadline.
+
+## 1.0.10 - 2026-08-31
+
+- Accounted for Etsy marking the editor background `aria-hidden` while the exact Deactivate modal is open, without weakening ordinary hidden/stale save-state rejection.
+- Cancelled the exact Etsy modal automatically when a pre-submission safety check fails, while retaining verification-only recovery after any durable submission intent.
+- Retained all 76 passing offline regression tests, including modal-background clean-state handling and the full automatic deactivation state machine.
+
+## 1.0.9 - 2026-08-31
+
+- Added a user-confirmed compatibility path for queue items left at v1.0.7's manual `awaiting-user-deactivation` step: only a still-visible `Active` listing with a clean form can enter the exact automatic Deactivate flow.
+- Kept script-submitted and uncertain deactivations outside that path so they remain verification-only and can never be retried automatically.
+- Expanded the offline regression suite from 75 to 76 passing tests with the legacy-queue upgrade round trip.
+
+## 1.0.8 - 2026-08-31
+
+- Automated the user-confirmed `DEACTIVATE_REVIEW` action against Etsy's current editor DOM: the script re-resolves and clicks only one visible, enabled, exact **Deactivate** menu item and the dedicated final **Deactivate** button in the correctly titled dialog.
+- Kept listing deletion unsupported and fail-closed: deletion semantics, wrong or duplicate dialogs, disabled/replaced controls, route drift, dirty forms, and identity/lease loss result in no unsafe click.
+- Persisted a unique deactivation attempt and the exact `Active` baseline before the final click; uncertain submissions cannot be retried automatically, and the queue advances only after a visible `Active → Inactive` transition.
+- Added recovery-only verification for submitted deactivations and expanded the offline regression suite from 70 to 75 passing tests, including Deactivate-vs-Delete selection, unsafe-dialog rejection, double-click single submission, route-drift blocking, and durable no-retry behavior.
+
+## 1.0.7 - 2026-08-30
+
+- Validated the analyzer against Etsy's current listings and editor DOM, including multi-page collection, explicit zero metrics, shadow-DOM pagination, full tag fields, materials, save-state detection, queue form application, and deactivation-menu focus.
+- Fixed pause/resume so a cancelled navigation settles the collection as paused and releases its lease instead of leaving a false running state behind.
+- Closed the remaining pause race after a successful transient DOM read, preventing a late pause request from being reported as a successful page step.
+- Accepted Etsy's disabled tag input when all 13 tag slots are already occupied, handled React-reused/replaced tag and material controls, and added the input-settle delay required before an Add action.
+- Failed closed when Etsy pill rows cannot be recognized, recognized Etsy's singular unsaved-change message, ignored hidden stale save-state copies, and required an actually clean form before rollback can be reported as restored.
+- Re-resolved Etsy's transient Deactivate menu item and verified keyboard focus without clicking Deactivate; listing deletion remains unsupported and the interface now states this explicitly.
+- Expanded offline regression coverage from 58 to 70 tests, including a sanitized 40-card Etsy DOM fixture, single-use AI request/import and safe backup-import round trips, plus a guard that rejects `DELETE` while accepting `DEACTIVATE_REVIEW`; no Publish, Deactivate, or listing deletion action was performed by the live checks.
+
+## 1.0.6 - 2026-08-30
+
+- Fixed late Etsy DOM hydration and overlapping SPA route reads so cards and editors can recover after delayed rendering without an older page overwriting the current route.
+- Corrected live listing-status filter detection and restored the saved collection scope when returning to the listings page.
+- Fixed tag/material entry order, added action-time proposal preflight, and restored already changed editor fields when a later control fails.
+- Fenced skip, stop, recovery, apply, publish, and deactivation transitions to the exact queue/listing cursor under the action lease; duplicate clicks and stale tabs can no longer advance or resurrect a newer queue.
+- Kept deactivation verification available after an Etsy reload, scoped status/menu selectors to the current editor, required an unambiguous active-to-inactive transition, and released failed action leases.
+- Prevented terminal Marketplace Insights requests from regressing on delayed ACK/ERROR messages and superseded obsolete planned improvements when a proposal changes to skip or deactivation review.
+- Preserved explicit numeric zeroes while rejecting blank/structured metric values, failed settings writes visibly, and expanded offline regression coverage from 37 to 58 tests.
+
 ## 1.0.5 - 2026-08-09
 
 - Reworked first-scan analysis so the current 30-day reach/engagement score is distinct from history confidence; complete zero counters, renewal waste, weak discovery, weak engagement, purchase friction, and historical demand now remain explainable instead of collapsing to the same `39` display.

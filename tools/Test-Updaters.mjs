@@ -375,6 +375,30 @@ test('Listing Analyzer treats the current version as current without an update b
     assert.deepEqual(environment.openedUrls, []);
 });
 
+test('Listing Analyzer invalidates an older cached update after the installed script advances', async () => {
+    const environment = loadListing({ version: '1.0.5' });
+    const legacyCached = toRealm(environment, {
+        status: 'available',
+        latestVersion: '1.0.5',
+        checkedAt: Date.now(),
+        error: '',
+        commitSha,
+        installUrl: environment.pinnedUrl,
+        source: 'github',
+    });
+    environment.api.state.updateState = environment.api.normalizeUpdateState(legacyCached);
+    assert.equal(environment.api.state.updateState.status, 'idle');
+    assert.equal(environment.api.UI.updateBanner(), '');
+
+    const state = await environment.api.checkForUpdates({ manual: true, force: false });
+    assert.equal(state.status, 'current');
+    assert.equal(state.latestVersion, '1.0.5');
+    assert.equal(state.checkedVersion, environment.metadataVersion);
+    assert.equal(environment.api.UI.updateBanner(), '');
+    assert.ok(environment.statuses.includes('updateCurrent'));
+    assert.ok(!environment.statuses.includes('updateAvailable'));
+});
+
 test('Both analyzers reject GitHub API redirect, HTTP, JSON, and commit identity drift', async () => {
     for (const load of [loadKeyword, loadListing]) {
         for (const options of [
