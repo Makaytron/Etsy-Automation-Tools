@@ -2,15 +2,17 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.2.4`
+Version: `1.2.5`
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
-A Tampermonkey side panel for reading Etsy messages with Turkish previews, preparing controlled replies, managing templates, and using AI providers configured by the user.
+A Tampermonkey side panel for reading Etsy messages with Turkish previews, preparing controlled replies, managing templates, and running explicitly authorized, verified Otopilot campaigns with user-configured AI providers.
 
 It includes an English-language, pressure-free, incentive-free honest-review request preset for delivered orders whose buyers the seller has confirmed have not yet reviewed, written in a new/small-business voice.
 
-Review outreach uses a persistent per-order eligibility decision and purpose-based deduplication. The script prepares the composer; **Send and Go to Next** sends only after the user's click, verifies the outgoing bubble, and advances only after verification.
+Review outreach uses a persistent per-order eligibility decision and purpose-based deduplication. Every new campaign requires a visible **Otopilotu Başlat (Start Otopilot)** opt-in. Otopilot processes exactly one recipient at a time and cannot advance until the current send state is durable and Etsy's new outgoing bubble is verified.
+
+When Etsy adds a numeric conversation permalink to a delivered-order drawer after sending, the generic composer scope remains fail-closed. Verification can complete only from the pre-send captured order scope when one informational history link, one canonical numeric permalink, and a new matching outgoing bubble are all present. A manually confirmed sent result also records the conversation ledger and one idempotent verification-history event.
 
 The script is standalone and does not require another Etsy Automation Tools package.
 
@@ -23,12 +25,19 @@ The script is standalone and does not require another Etsy Automation Tools pack
 
 ## Safety and privacy
 
-- Automatic sending is off by default. Review requests ignore the global auto-send option and always require a per-recipient **Send and Go to Next** click.
+- The simplified premium panel separates primary work from utilities, presents one primary campaign action, shows durable progress, and replaces the dense delivered-orders table with responsive recipient cards.
+- Selecting recipients or preparing a queue does not authorize a live send. Every new campaign requires a separate, explicit **Start Otopilot** action while its recipients and template are visible.
+- Otopilot processes recipients strictly one at a time. It writes durable campaign/send state and verifies the matching outgoing Etsy bubble before opening or sending to the next recipient.
+- A `pending`, suspicious, identity/text/scope mismatch, or inconclusive result stops Otopilot. It never automatically resends an uncertain item.
+- **Duraklat (Pause)** prevents the next recipient from starting after any in-flight verification is safely resolved. **Otomasyonu Bitir / Durdur (Stop)** ends the remaining unsent queue; a pending result must be reconciled first.
+- The legacy/global automatic-send setting is not authorization for a new Otopilot campaign and never grants review-request authority. Review outreach still requires a fresh per-order eligibility decision plus the campaign-level Otopilot opt-in.
 - The panel is closed by default on message pages. It opens only from the **Open** control unless the user explicitly enables **Open Automatically on Message Page**.
 - Conversation lists, individual conversations, Completed Orders, and Recent activity/Reviews are validated as separate contexts; drafting, queue, and insert controls stay hidden on the wrong page.
 - On conversation-list pages, the panel shows Etsy's visible conversations with a Turkish-default quick display-language selector, translated previews with preserved source text, and safe conversation navigation.
-- This is an unofficial userscript, not an Etsy-approved integration. Etsy's [API Terms](https://www.etsy.com/legal/api/) state that automated systems or browser extensions accessing, analysing, or scraping Etsy data require Etsy's express written authorization; keeping the final click manual does not by itself grant that authorization.
-- Etsy's completed-order card does not provide the script with a reliable order-to-review match. Confirm that the buyer has not already reviewed before selecting a review-request recipient; that local confirmation expires after two hours.
+- This is an unofficial userscript, not an Etsy-approved integration. Etsy's [API Terms](https://www.etsy.com/legal/api/) state that automated systems or browser extensions accessing, analysing, or scraping Etsy data require Etsy's express written authorization; an explicit Otopilot opt-in does not itself grant that authorization.
+- A strict same-origin `/shop/<shop>/reviews/<numeric>` permalink inside the Completed Orders row is accepted as definitive positive evidence only when its visible label is exactly **Review** or **Yorum**. The order is durably blocked as `review_exists`; the script does not cross-match buyer names, item titles, dashboard review cards, or public-shop HTML.
+- The absence of that permalink is not evidence of no review and never makes an order automatically eligible. Remaining orders require a manual **No review** confirmation, which expires after two hours.
+- Automation refreshes Completed Orders before **Start Otopilot**, so a known positive cannot enter the queue. If positive evidence appears after an order was queued or prepared, the send-time eligibility guard blocks it before any Etsy dispatch.
 - When an older generic `sent` record cannot prove whether the prior message was a review request, the order remains blocked as ambiguous. Check the Etsy conversation before selecting **Önceki mesaj yorum talebi değildi — onayla (The previous message was not a review request — confirm)**; leave it blocked if you cannot verify that statement.
 - Google Translate is the default provider and automatic translation preview is enabled by default. Opening the panel on a conversation list may send its visible message previews to the selected translation provider; opening it in one conversation may send the latest customer message. Changing the quick display language retranslates the visible list previews. Keep the panel closed or disable automatic preview from Makaytron settings before opening it if you do not want that transfer.
 - Other translation and AI actions send relevant message context to DeepL, OpenAI, Anthropic, Gemini, DeepSeek, or OpenRouter when the user invokes those configured features.

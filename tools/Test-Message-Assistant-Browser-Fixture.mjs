@@ -483,8 +483,8 @@ function assertResponsiveMessageListLayout(layout, { viewportWidth, desktopPanel
         'the long translated preview exercises clipped intrinsic content');
 
     if (desktopPanel) {
-        assert.ok(Math.abs(layout.app.width - 620) <= tolerance,
-            `the default desktop message panel remains 620px wide (actual ${layout.app.width}).`);
+        assert.ok(Math.abs(layout.app.width - 680) <= tolerance,
+            `the default premium desktop message panel remains 680px wide (actual ${layout.app.width}).`);
     } else {
         assert.ok(layout.app.left >= 3 && layout.app.right <= viewportWidth - 3,
             'the mobile panel respects its viewport inset');
@@ -502,7 +502,7 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
         server = await startFixtureServer();
         chrome = await startChrome(proxy.port);
 
-        await t.test('route-before-DOM hydration and double click send exactly once in Turkish', { timeout: TIMEOUT_MS }, async () => {
+        await t.test('route-before-DOM hydration and double Otopilot start send exactly once in Turkish', { timeout: TIMEOUT_MS }, async () => {
             const { result } = await runBrowserScenario(chrome, server.url, '/?transition=1&label=tr&double=1', 'runScenario');
             assert.equal(result.after.sendCount, 1);
             assert.equal(result.after.doubleClick, true);
@@ -510,21 +510,21 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.equal(result.after.campaignStatus, 'completed');
         });
 
-        await t.test('English Send label resolves and verifies', { timeout: TIMEOUT_MS }, async () => {
+        await t.test('English Send label resolves and explicit Otopilot verifies', { timeout: TIMEOUT_MS }, async () => {
             const { result } = await runBrowserScenario(chrome, server.url, '/?label=en', 'runScenario');
             assert.equal(result.after.sendCount, 1);
             assert.equal(result.after.sendLanguage, 'en');
             assert.equal(result.after.orderStatus, 'sent');
         });
 
-        await t.test('disabled Send fails closed without a native click', { timeout: TIMEOUT_MS }, async () => {
+        await t.test('disabled Send stops Otopilot closed without a native click', { timeout: TIMEOUT_MS }, async () => {
             const { result } = await runBrowserScenario(chrome, server.url, '/?disabled=1&label=tr', 'runDisabledSendScenario');
             assert.equal(result.after.sendCount, 0);
             assert.equal(result.after.itemStatus, 'inserted');
             assert.notEqual(result.after.orderStatus, 'sent');
         });
 
-        await t.test('href-less native order drawer replaces only Etsy prefill and never auto-sends', { timeout: TIMEOUT_MS }, async () => {
+        await t.test('href-less native order drawer replaces only Etsy prefill and Otopilot sends once', { timeout: TIMEOUT_MS }, async () => {
             const { result, consoleErrors } = await runBrowserScenario(
                 chrome,
                 server.url,
@@ -536,16 +536,22 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.equal(result.after.routeIdentity, 'compose:order:receipt:10000001');
             assert.equal(result.after.initialComposerText, 'https://www.etsy.com/your/purchases/10000001');
             assert.equal(result.before.messageHistoryInsideComposer, true);
-            assert.notEqual(result.after.composerText, result.after.initialComposerText);
+            assert.notEqual(result.after.expectedText, result.after.initialComposerText);
             assert.equal(result.after.autoSendCampaign, true);
             assert.equal(result.after.purpose, 'delivery_followup');
-            assert.equal(result.after.itemStatus, 'inserted');
-            assert.equal(result.after.orderStatus, 'inserted');
-            assert.equal(result.after.guidedButtonEnabled, true);
-            assert.equal(result.after.sendCount, 0);
-            assert.equal(result.after.nativeTargetClickCount, 0);
-            assert.equal(result.after.formSubmitCount, 0);
-            assert.equal(result.after.outgoingCount, 0);
+            assert.equal(result.after.runMode, 'autopilot');
+            assert.equal(result.after.campaignStatus, 'completed');
+            assert.equal(result.after.itemStatus, 'sent');
+            assert.equal(result.after.orderStatus, 'sent');
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.nativeTargetClickCount, 1);
+            assert.equal(result.after.formSubmitCount, 1);
+            assert.equal(result.after.outgoingCount, 1);
+            assert.equal(result.after.postSendPermalinkCount, 1);
+            assert.equal(result.after.postSendComposerScopeResolved, false);
+            assert.equal(result.after.lastSentText, result.after.expectedText);
+            assert.equal(result.after.composerText, '');
+            assert.equal(result.after.conversationStatus, 'sent');
             assert.deepEqual(consoleErrors, []);
         });
 
@@ -559,31 +565,30 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.ok(result.after.hydrationDelayMs >= 1500);
             assert.equal(result.after.preHydrationComposerText, 'https://www.etsy.com/your/purchases/10000001');
             assert.equal(result.after.draftInsertionCount, 1);
-            assert.equal(result.after.itemStatus, 'inserted');
-            assert.equal(result.after.sendCount, 0);
-            assert.equal(result.after.nativeTargetClickCount, 0);
-            assert.equal(result.after.formSubmitCount, 0);
-            assert.equal(result.after.outgoingCount, 0);
+            assert.equal(result.after.itemStatus, 'sent');
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.nativeTargetClickCount, 1);
+            assert.equal(result.after.formSubmitCount, 1);
+            assert.equal(result.after.outgoingCount, 1);
             assert.deepEqual(consoleErrors, []);
         });
 
-        await t.test('order drawer sends exactly once only after the explicit guided action', { timeout: TIMEOUT_MS }, async () => {
+        await t.test('order drawer Otopilot sends exactly once after one explicit start', { timeout: TIMEOUT_MS }, async () => {
             const { result, consoleErrors } = await runBrowserScenario(
                 chrome,
                 server.url,
                 '/?order_surface=1&label=en',
                 'runOrderSurfaceManualSendScenario',
             );
-            assert.equal(result.after.noAuto.autoSendCampaign, true);
-            assert.equal(result.after.noAuto.purpose, 'delivery_followup');
-            assert.equal(result.after.noAuto.sendCount, 0);
-            assert.equal(result.after.noAuto.nativeTargetClickCount, 0);
-            assert.equal(result.after.noAuto.formSubmitCount, 0);
-            assert.equal(result.after.noAuto.outgoingCount, 0);
+            assert.equal(result.after.autoSendCampaign, true);
+            assert.equal(result.after.purpose, 'delivery_followup');
+            assert.equal(result.after.runMode, 'autopilot');
             assert.equal(result.after.sendCount, 1);
             assert.equal(result.after.nativeTargetClickCount, 1);
             assert.equal(result.after.formSubmitCount, 1);
             assert.equal(result.after.outgoingCount, 1);
+            assert.equal(result.after.postSendPermalinkCount, 1);
+            assert.equal(result.after.postSendComposerScopeResolved, false);
             assert.equal(result.after.lastSentText, result.after.expectedText);
             assert.equal(result.after.composerText, '');
             assert.equal(result.after.campaignStatus, 'completed');
@@ -594,7 +599,7 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.deepEqual(consoleErrors, []);
         });
 
-        await t.test('narrow delivered-order layout keeps overflow inside the table scroller', { timeout: TIMEOUT_MS }, async () => {
+        await t.test('narrow delivered-order layout keeps premium cards inside the assistant view', { timeout: TIMEOUT_MS }, async () => {
             const { result, consoleErrors } = await runBrowserScenario(
                 chrome,
                 server.url,
@@ -606,18 +611,27 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             const layout = result.after;
             assert.equal(layout.viewportWidth, 900);
             assert.equal(layout.containerType, 'inline-size');
-            assert.ok(layout.row.width > 0 && layout.row.height > 0, 'the delivered-order row remains visible');
-            assert.ok(Math.abs(layout.tableWrap.width - layout.layout.width) <= 1, 'the table scroller fills the one-column layout');
-            assert.ok(layout.sideCard.top >= layout.list.bottom - 1, 'the flow card moves below the delivered-order list');
+            assert.ok(layout.hero.width > 0 && layout.hero.height > 0, 'the premium automation hero remains visible');
+            assert.ok(layout.card.width > 0 && layout.card.height > 0, 'the delivered-order card remains visible');
+            assert.ok(layout.toolbar.top >= layout.hero.bottom - 1, 'the selection toolbar follows the automation hero');
+            assert.ok(layout.grid.top >= layout.toolbar.bottom - 1, 'the premium order grid follows the selection toolbar');
             assert.ok(layout.main.scrollWidth <= layout.main.clientWidth + 1, 'the assistant main area has no horizontal overflow');
-            assert.ok(layout.layout.scrollWidth <= layout.layout.clientWidth + 1, 'the order layout has no horizontal overflow');
-            assert.ok(layout.tableWrap.scrollWidth > layout.tableWrap.clientWidth, 'the wide table scrolls only inside its wrapper');
-            assert.ok(layout.tableWrap.left >= layout.view.left - 1 && layout.tableWrap.right <= layout.view.right + 1,
-                'the delivered-order list stays within the visible assistant view');
+            assert.ok(layout.grid.scrollWidth <= layout.grid.clientWidth + 1, 'the premium order grid has no horizontal overflow');
+            assert.ok(layout.card.scrollWidth <= layout.card.clientWidth + 1, 'the order card has no horizontal overflow');
+            assert.ok(layout.hero.left >= layout.view.left - 1 && layout.hero.right <= layout.view.right + 1,
+                'the automation hero stays inside the visible assistant view');
+            assert.ok(layout.grid.left >= layout.view.left - 1 && layout.grid.right <= layout.view.right + 1,
+                'the order grid stays inside the visible assistant view');
+            assert.ok(layout.card.left >= layout.grid.left - 1 && layout.card.right <= layout.grid.right + 1,
+                'the order card stays inside its grid column');
+            assert.ok(layout.cardTop.left >= layout.card.left - 1 && layout.cardTop.right <= layout.card.right + 1,
+                'the card header stays inside the premium order card');
+            assert.ok(layout.cardBody.left >= layout.card.left - 1 && layout.cardBody.right <= layout.card.right + 1,
+                'the card actions stay inside the premium order card');
             assert.deepEqual(consoleErrors, []);
         });
 
-        await t.test('default 620px message panel contains long language options and conversation text', { timeout: TIMEOUT_MS }, async () => {
+        await t.test('default 680px premium message panel contains long language options and conversation text', { timeout: TIMEOUT_MS }, async () => {
             const { result, consoleErrors } = await runBrowserScenario(
                 chrome,
                 server.url,
