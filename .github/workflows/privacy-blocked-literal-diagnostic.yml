@@ -34,6 +34,8 @@ jobs:
         run: |
           $scriptPath = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
           $changelogPath = 'scripts/etsy-message-assistant/CHANGELOG.md'
+          $readmeTrPath = 'scripts/etsy-message-assistant/README.md'
+          $readmeEnPath = 'scripts/etsy-message-assistant/README.en.md'
           $script = Get-Content -Raw -LiteralPath $scriptPath
 
           # Reconstruct the legacy account-specific placeholder only in runner memory so
@@ -73,6 +75,20 @@ jobs:
           if ($updated -eq $changelog) { throw 'Unable to insert 1.2.8 changelog entry.' }
           Set-Content -LiteralPath $changelogPath -Value $updated -NoNewline -Encoding utf8
 
+          $readmeTr = Get-Content -Raw -LiteralPath $readmeTrPath
+          $trOld = '**Sürüm:** 1.2.7'
+          $trNew = '**Sürüm:** 1.2.8'
+          if (([regex]::Matches($readmeTr, [regex]::Escape($trOld))).Count -ne 1) { throw 'Turkish README version anchor mismatch.' }
+          $readmeTr = $readmeTr.Replace($trOld, $trNew)
+          Set-Content -LiteralPath $readmeTrPath -Value $readmeTr -NoNewline -Encoding utf8
+
+          $readmeEn = Get-Content -Raw -LiteralPath $readmeEnPath
+          $enOld = 'Version: `1.2.7`'
+          $enNew = 'Version: `1.2.8`'
+          if (([regex]::Matches($readmeEn, [regex]::Escape($enOld))).Count -ne 1) { throw 'English README version anchor mismatch.' }
+          $readmeEn = $readmeEn.Replace($enOld, $enNew)
+          Set-Content -LiteralPath $readmeEnPath -Value $readmeEn -NoNewline -Encoding utf8
+
       - name: Check JavaScript syntax
         run: node --check scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
 
@@ -99,7 +115,9 @@ jobs:
           $changed = @(git diff --name-only)
           $expected = @(
             'scripts/etsy-message-assistant/CHANGELOG.md',
-            'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+            'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js',
+            'scripts/etsy-message-assistant/README.en.md',
+            'scripts/etsy-message-assistant/README.md'
           )
           $actual = @($changed | Sort-Object)
           $want = @($expected | Sort-Object)
@@ -112,6 +130,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/etsy-message-assistant/CHANGELOG.md scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
+          git add scripts/etsy-message-assistant/CHANGELOG.md scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js scripts/etsy-message-assistant/README.md scripts/etsy-message-assistant/README.en.md
           git commit -m "security: neutralize Message Assistant store placeholder"
           git push origin HEAD:fix/privacy-blocked-literal
