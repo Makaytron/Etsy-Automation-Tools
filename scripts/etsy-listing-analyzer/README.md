@@ -2,7 +2,7 @@
 
 <p><strong>Türkçe</strong> · <a href="./README.en.md">English</a></p>
 
-**Sürüm:** 1.2.1 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.2.2 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
@@ -41,8 +41,8 @@ Aşağıdaki her görsel yalnız userscript öğesinden alınmıştır. Etsy say
 - Tam olarak bir listing seçildiğinde isteğe bağlı **Marketplace Insights ile araştır** akışını başlatır. Ayrı **Etsy Keyword & Market Analyzer** yüklüyse opaque `L001` referansı ve içerik özetiyle araştırmayı teslim eder; doğrulanan 30 günlük arama, arama sonucu/rekabet göstergesi ve Makaytron türetilmiş fırsat puanını başlık/etiket önerisinin yanında gösterir.
 - Listing düzenleme sayfasında öneriyi Etsy formuna uygular; kullanıcı inceleyip her listing için ayrıca onay vermeden `Publish changes` düğmesine basmaz.
 - Listing bazındaki açık deaktivasyon onayından sonra Etsy'yi açmadan önce ve final tıklamanın hemen öncesinde listingi güncel kayıtlar ve ayarlarla yeniden hesaplar. Yalnız Etsy'nin tek, görünür ve etkin tam eşleşen **Deactivate** menü öğesine ve doğru final **Deactivate** düğmesine tıklar. **Delete** hiçbir zaman seçilmez; stale veya eski uyumluluk kuyruğu otomatik tıklama yoluna giremez, script görünür `Active → Inactive` geçişini doğrulamadan kuyruğu ilerletmez veya belirsiz işlemi tekrar göndermez.
-- Yerel JSON yedeği indirir; içe aktarmada dosya boyutunu ve şemayı doğrular, listing/özel preset özetini yazmadan önce gösterir ve ancak açık kullanıcı onayından sonra mevcut verilerle birleştirir. Özel filtre presetleri yedekle taşınır; eski işlem kuyruğu güvenlik nedeniyle etkinleştirilmez. Yerel analiz verileri de yalnız açık kullanıcı onayından sonra temizlenebilir.
-- Tahmini yerel veri kullanımını gösterir. Depolama sınırına yaklaşma veya kota kaynaklı yazma reddinde toplu akışı tamamlanmış saymadan durdurur; yedek alma ve eski verileri azaltma yönlendirmesi sunar.
+- Yerel JSON yedeği indirir; içe aktarmada dosya boyutunu ve şemayı doğrular, listing/özel preset özetini yazmadan önce gösterir ve ancak açık kullanıcı onayından sonra mevcut verilerle birleştirir. Aktif tarama veya işlem kuyruğu varken içe aktarma durur ve içe aktarılan kayıtlar eski tamamlanmış tarama kanıtını geçersiz kılar. Özel filtre presetleri yedekle taşınır; eski işlem kuyruğu güvenlik nedeniyle etkinleştirilmez. Yerel analiz verileri de yalnız açık kullanıcı onayından sonra temizlenebilir.
+- Tahmini yerel veri kullanımını gösterir. Güvenlik açısından kritik bir okuma hatası, depolama sınırına yaklaşma veya kota kaynaklı yazma reddinde toplu akışı tamamlanmış saymadan durdurur; yedek alma ve eski verileri azaltma yönlendirmesi sunar.
 - TR/EN görünümlerinde aynı etkileşim yapısını ve anlaşılır erişilebilir adları korur; dil bilgisini uygulama köküne işler. Klavye odağını görünür tutar, modal odağını içeride sınırlar, `Escape` ile kapatır ve odağı açan kontrole geri verir.
 - Tam mağaza taramasındaki okunabilir dağılımlardan mağazaya özel analiz eşikleri önerir; yeterli örneklem yoksa öneri üretmez, sonuç etkisini önizler ve hiçbir öneriyi kendiliğinden uygulamaz.
 - Devam eden bir iyileştirme deneyiyle yeni değişiklik çakıştığında uyarı ve açık tercih ister; iptal edilen çakışma eski deneyi korur ve yayınlama yapmaz.
@@ -51,7 +51,7 @@ Aşağıdaki her görsel yalnız userscript öğesinden alınmıştır. Etsy say
 - Kullanıcı geri bildirimini önce yerel ve gizlilik güvenli biçimde kaydeder. Listing başlığı/ID’si eklemeden hazırlanmış metni kopyalar; canonical GitHub formunu yalnız kullanıcı düğmeye bastığında açar.
 - GitHub kaynaklı kurulumlarda en fazla 24 saatte bir public GitHub `main` commit kimliğini ve yalnız o değişmez committeki userscript metadata’sını anonim isteklerle denetler. Ayarlardaki **Güncellemeyi denetle** ve **Tampermonkey’de güncelle** düğmeleri aynı sürümü yeniden çekmeyi de sağlar; tam doğrulanan commit URL’sinin kurulumu daima Tampermonkey onay ekranında tamamlanır. Greasy Fork veya başka bir dağıtım kaynağı algılanırsa o kaynağın güncelleme mekanizması korunur ve özel GitHub akışı zorlanmaz.
 
-Eksik, bayat veya gelecekte tarihli bir karar metriği karar verisi değildir. Yaklaşık sayaç kendi metriğine ait kararı, deaktivasyonu, kalibrasyonu veya kesin kohort tanısını yetkilendiremez; ancak başka bir metriğin bağımsız exact kanıtını da artık kapatmaz. Kullanılamayan hiçbir değer exact `0` kabul edilmez.
+Eksik, bayat veya gelecekte tarihli bir karar metriği karar verisi değildir. Exact bir sayaç ayrıca negatif olmayan güvenli bir tamsayı olmalıdır. Yaklaşık sayaç kendi metriğine ait kararı, deaktivasyonu, kalibrasyonu veya kesin kohort tanısını yetkilendiremez; ancak başka bir metriğin bağımsız exact kanıtını da artık kapatmaz. İlgi verisinin kesinliği yoksa görünürlük tek başına tam erişim/ilgi puanıymış gibi normalize edilmez; birleşik puan belirsiz kalır. Kullanılamayan hiçbir değer exact `0` kabul edilmez.
 
 ## Health Engine
 

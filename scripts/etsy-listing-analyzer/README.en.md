@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.2.1` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
+Version: `1.2.2` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
@@ -41,8 +41,8 @@ Every image below is an element-level capture of the userscript itself. No Etsy 
 - Starts an optional **Research with Marketplace Insights** flow when exactly one listing is selected. If the separate **Etsy Keyword & Market Analyzer** is available, it exchanges an opaque `L001` reference and content hash, then shows validated 30-day searches, search-results/competition indicator, and Makaytron-derived opportunity score with the title/tag suggestion.
 - Applies an approved proposal to the Etsy editor but never presses `Publish changes` without a separate confirmation for that listing.
 - After an explicit per-listing deactivation confirmation, recomputes the listing from current records and settings before opening Etsy and again immediately before the final click. It clicks only Etsy's single visible, enabled, exact **Deactivate** menu item and the correct final **Deactivate** button. **Delete** is never selected; stale or legacy review items cannot enter the automatic click path, the queue does not advance without a visible `Active → Inactive` transition, and an uncertain submission is never retried automatically.
-- Downloads a local JSON backup; import validates file size and schema, previews listing/custom-preset counts before any write, and merges only after explicit confirmation. Custom filter presets move with the backup, while an old action queue is never activated. Local analysis data can likewise be cleared only after explicit user confirmation.
-- Displays estimated local data usage. A near-limit or quota-rejected write stops fail-closed without marking the bulk workflow complete and offers backup/cleanup recovery guidance.
+- Downloads a local JSON backup; import validates file size and schema, previews listing/custom-preset counts before any write, and merges only after explicit confirmation. Import is blocked while a collection or action queue is active and invalidates older completed collection evidence. Custom filter presets move with the backup, while an old action queue is never activated. Local analysis data can likewise be cleared only after explicit user confirmation.
+- Displays estimated local data usage. A failed safety-critical read, near-limit condition, or quota-rejected write stops fail-closed without marking the bulk workflow complete and offers backup/cleanup recovery guidance.
 - Keeps the same interactive structure and understandable accessible names in Turkish and English and publishes the active language on the application root. Keyboard focus stays visible, modal focus is trapped, `Escape` closes the dialog, and focus returns to its trigger.
 - Suggests shop-calibrated analysis thresholds from readable distributions in a complete shop collection; insufficient samples produce no suggestion, impact is previewed, and suggestions are never applied automatically.
 - Warns when a new change overlaps an active improvement experiment and requires an explicit choice; cancellation preserves the running experiment and performs no publish.
@@ -51,7 +51,7 @@ Every image below is an element-level capture of the userscript itself. No Etsy 
 - Feedback is stored locally first in a privacy-safe form. The prepared text excludes listing titles and IDs, and the canonical GitHub form opens only after the user presses the action.
 - For GitHub-origin installations, checks the public GitHub `main` commit identity and userscript metadata only at that immutable commit at most once every 24 hours with anonymous requests. Settings provide **Check for updates** and **Update in Tampermonkey**, including a user-confirmed same-version refresh; the exact verified commit URL always finishes in Tampermonkey’s own confirmation screen. A detected Greasy Fork or other distribution source keeps its own update mechanism instead of being forced through the GitHub flow.
 
-Missing, stale, or future-dated decision metrics remain non-decision-grade. Approximate counters cannot authorize conclusions for their own metric, deactivation, calibration, or a hard cohort diagnosis, but they no longer suppress independent exact evidence from another metric. No unavailable value is coerced to exact zero.
+Missing, stale, or future-dated decision metrics remain non-decision-grade. An exact count must also be a non-negative safe integer. Approximate counters cannot authorize conclusions for their own metric, deactivation, calibration, or a hard cohort diagnosis, but they no longer suppress independent exact evidence from another metric. If engagement precision is unavailable, the combined reach/engagement score remains unavailable instead of normalizing visibility alone to a complete score. No unavailable value is coerced to exact zero.
 
 ## Health Engine
 

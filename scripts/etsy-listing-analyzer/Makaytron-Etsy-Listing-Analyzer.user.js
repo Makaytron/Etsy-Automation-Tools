@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.2.1
+// @version      1.2.2
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -36,7 +36,7 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.2.1';
+    const APP_VERSION = '1.2.2';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -70,6 +70,8 @@
     let telemetryLatestRemoteSentDays = null;
     let telemetryBlockedInSession = false;
     let telemetryMenuRegistered = false;
+    let telemetryMenuCommandId = null;
+    let telemetryMenuLanguage = '';
 
     async function telemetryReadValue(key, fallback) {
         try {
@@ -622,8 +624,9 @@
         const notice = document.createElement('aside');
         notice.id = noticeId;
         notice.setAttribute('role', 'status');
+        notice.setAttribute('lang', state.settings.language);
         notice.style.cssText = 'all:initial;position:fixed;left:16px;bottom:16px;z-index:2147483647;box-sizing:border-box;width:min(380px,calc(100vw - 32px));padding:14px;border:1px solid #d6d6d6;border-radius:10px;background:#fff;color:#202020;box-shadow:0 16px 42px rgba(0,0,0,.2);font:13px/1.45 Inter,system-ui,sans-serif';
-        notice.innerHTML = `<strong style="display:block;margin-bottom:5px;font-size:14px">Privacy-preserving usage metrics</strong><span data-message style="display:block;color:#525252">Usage metrics are enabled by default. Only the script ID, version, a random installation ID, allowlisted open/success signals, and fixed error codes are sent. No raw error text or Etsy content is collected.</span><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:11px"><a href="${TELEMETRY_PRIVACY_URL}" target="_blank" rel="noopener noreferrer" style="align-self:center;color:#303030;font-weight:650">Privacy</a><button type="button" data-disable style="margin-left:auto;padding:7px 9px;border:1px solid #d8a8a8;border-radius:7px;background:#fff;color:#991b1b;font:650 11px/1.2 system-ui;cursor:pointer">Disable &amp; delete</button><button type="button" data-close style="padding:7px 10px;border:1px solid #202020;border-radius:7px;background:#202020;color:#fff;font:650 11px/1.2 system-ui;cursor:pointer">Got it</button></div>`;
+        notice.innerHTML = `<strong style="display:block;margin-bottom:5px;font-size:14px">${escapeHtml(t('telemetryTitle'))}</strong><span data-message style="display:block;color:#525252">${escapeHtml(t('telemetryNoticeBody'))}</span><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:11px"><a href="${TELEMETRY_PRIVACY_URL}" target="_blank" rel="noopener noreferrer" style="align-self:center;color:#303030;font-weight:650">${escapeHtml(t('telemetryPrivacy'))}</a><button type="button" data-disable style="margin-left:auto;padding:7px 9px;border:1px solid #d8a8a8;border-radius:7px;background:#fff;color:#991b1b;font:650 11px/1.2 system-ui;cursor:pointer">${escapeHtml(t('telemetryDisableDeleteShort'))}</button><button type="button" data-close style="padding:7px 10px;border:1px solid #202020;border-radius:7px;background:#202020;color:#fff;font:650 11px/1.2 system-ui;cursor:pointer">${escapeHtml(t('telemetryGotIt'))}</button></div>`;
         document.documentElement.appendChild(notice);
         const noticeSaved = await telemetrySetValue(TELEMETRY_KEYS.noticeSeen, true);
         const noticeVerified = noticeSaved
@@ -637,12 +640,46 @@
             const result = await disableTelemetryAndDelete();
             const message = notice.querySelector('[data-message]');
             if (message) message.textContent = !result.disabled
-                ? 'Usage metrics could not be disabled because the setting was not saved. Metrics remain blocked in this tab; retry from the userscript menu.'
+                ? t('telemetryDisableFailedMenu')
                 : result.deleted
-                    ? 'Usage metrics are disabled and server data was deleted.'
-                    : 'Usage metrics are disabled, but cleanup could not be completed; retry from the userscript menu.';
+                    ? t('telemetryDisabledDeleted')
+                    : t('telemetryDisabledCleanupMenu');
             button.disabled = false;
         });
+    }
+
+    function installStandaloneDialogBehavior(overlay, initialFocusSelector = '[data-close]') {
+        const shadowActive = state.shadow?.activeElement;
+        const activeBeforeOpen = shadowActive instanceof HTMLElement ? shadowActive : document.activeElement;
+        const focusableSelector = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+        let closed = false;
+        const close = () => {
+            if (closed) return;
+            closed = true;
+            overlay.remove();
+            if (activeBeforeOpen instanceof HTMLElement && activeBeforeOpen.isConnected) activeBeforeOpen.focus();
+        };
+        overlay.addEventListener('click', (event) => { if (event.target === overlay) close(); });
+        overlay.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                close();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const focusable = Array.from(overlay.querySelectorAll(focusableSelector)).filter((element) => !element.hidden && element.getAttribute('aria-hidden') !== 'true');
+            if (!focusable.length) { event.preventDefault(); return; }
+            const first = focusable[0];
+            const last = focusable.at(-1);
+            if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+            else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        });
+        requestAnimationFrame(() => {
+            const target = overlay.querySelector(initialFocusSelector) || overlay.querySelector(focusableSelector);
+            if (!closed && target instanceof HTMLElement) target.focus();
+        });
+        return close;
     }
 
     async function openTelemetrySettings() {
@@ -650,9 +687,11 @@
         if (!document.documentElement || document.getElementById(modalId)) return;
         const modal = document.createElement('div');
         modal.id = modalId;
+        modal.setAttribute('lang', state.settings.language);
         modal.style.cssText = 'all:initial;position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:16px;background:rgba(0,0,0,.42);font:13px/1.45 Inter,system-ui,sans-serif';
-        modal.innerHTML = `<section role="dialog" aria-modal="true" aria-label="Usage metrics settings" style="box-sizing:border-box;width:min(440px,100%);padding:18px;border:1px solid #d6d6d6;border-radius:12px;background:#fff;color:#202020;box-shadow:0 20px 60px rgba(0,0,0,.28)"><h2 style="margin:0 0 7px;font-size:17px">Privacy-preserving usage metrics</h2><p data-state style="margin:0;color:#525252"></p><p data-result style="min-height:20px;margin:9px 0 0;color:#525252"></p><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"><a href="${TELEMETRY_PRIVACY_URL}" target="_blank" rel="noopener noreferrer" style="align-self:center;color:#303030;font-weight:650">Privacy policy</a><button type="button" data-enable style="margin-left:auto;padding:8px 10px;border:1px solid #b8b8b8;border-radius:7px;background:#fff;color:#202020;font:650 12px/1.2 system-ui;cursor:pointer">Enable</button><button type="button" data-disable style="padding:8px 10px;border:1px solid #d8a8a8;border-radius:7px;background:#fff;color:#991b1b;font:650 12px/1.2 system-ui;cursor:pointer">Disable &amp; delete server data</button><button type="button" data-close style="padding:8px 10px;border:1px solid #202020;border-radius:7px;background:#202020;color:#fff;font:650 12px/1.2 system-ui;cursor:pointer">Close</button></div></section>`;
+        modal.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="${modalId}-title" style="box-sizing:border-box;width:min(440px,100%);padding:18px;border:1px solid #d6d6d6;border-radius:12px;background:#fff;color:#202020;box-shadow:0 20px 60px rgba(0,0,0,.28)"><h2 id="${modalId}-title" style="margin:0 0 7px;font-size:17px">${escapeHtml(t('telemetryTitle'))}</h2><p data-state style="margin:0;color:#525252"></p><p data-result role="status" aria-live="polite" style="min-height:20px;margin:9px 0 0;color:#525252"></p><div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px"><a href="${TELEMETRY_PRIVACY_URL}" target="_blank" rel="noopener noreferrer" style="align-self:center;color:#303030;font-weight:650">${escapeHtml(t('telemetryPrivacyPolicy'))}</a><button type="button" data-enable style="margin-left:auto;padding:8px 10px;border:1px solid #b8b8b8;border-radius:7px;background:#fff;color:#202020;font:650 12px/1.2 system-ui;cursor:pointer">${escapeHtml(t('telemetryEnable'))}</button><button type="button" data-disable style="padding:8px 10px;border:1px solid #d8a8a8;border-radius:7px;background:#fff;color:#991b1b;font:650 12px/1.2 system-ui;cursor:pointer">${escapeHtml(t('telemetryDisableDelete'))}</button><button type="button" data-close style="padding:8px 10px;border:1px solid #202020;border-radius:7px;background:#202020;color:#fff;font:650 12px/1.2 system-ui;cursor:pointer">${escapeHtml(t('close'))}</button></div></section>`;
         document.documentElement.appendChild(modal);
+        const closeModal = installStandaloneDialogBehavior(modal, '[data-close]');
         const renderState = async result => {
             const enabledRead = await telemetryReadValue(TELEMETRY_KEYS.enabled, true);
             const pendingRead = await telemetryReadValue(TELEMETRY_KEYS.enablePending, TELEMETRY_MISSING_VALUE);
@@ -667,25 +706,24 @@
             const output = modal.querySelector('[data-result]');
             const enableButton = modal.querySelector('[data-enable]');
             if (state) state.textContent = enabledState === 'enabled'
-                ? 'Status: enabled. Allowlisted open/success signals and fixed error codes only; no raw error text or Etsy content is collected.'
+                ? t('telemetryStatusEnabled')
                 : enabledState === 'disabled'
-                    ? 'Status: disabled.'
-                    : 'Status: unavailable. Usage metrics remain blocked in this tab until the setting can be read and verified.';
+                    ? t('telemetryStatusDisabled')
+                    : t('telemetryStatusUnavailable');
             if (output) output.textContent = result || '';
             if (enableButton) enableButton.hidden = enabledState === 'enabled';
         };
-        modal.querySelector('[data-close]')?.addEventListener('click', () => modal.remove());
-        modal.addEventListener('click', event => { if (event.target === modal) modal.remove(); });
+        modal.querySelector('[data-close]')?.addEventListener('click', closeModal);
         modal.querySelector('[data-enable]')?.addEventListener('click', async () => {
-            await renderState(await enableTelemetry() ? 'Usage metrics enabled.' : 'The setting could not be saved.');
+            await renderState(await enableTelemetry() ? t('telemetryEnabled') : t('telemetrySaveFailed'));
         });
         modal.querySelector('[data-disable]')?.addEventListener('click', async () => {
             const result = await disableTelemetryAndDelete();
             await renderState(!result.disabled
-                ? 'Usage metrics could not be disabled because the setting was not saved. Metrics remain blocked in this tab; retry here.'
+                ? t('telemetryDisableFailedHere')
                 : result.deleted
-                    ? 'Usage metrics disabled; server data deleted.'
-                    : 'Usage metrics are disabled, but cleanup could not be completed. You can retry here.');
+                    ? t('telemetryDisabledDeleted')
+                    : t('telemetryDisabledCleanupHere'));
         });
         await renderState('');
     }
@@ -697,19 +735,28 @@
             .catch(() => {});
     }
 
-    function registerTelemetryMenuCommand() {
-        if (telemetryMenuRegistered) return;
+    function registerTelemetryMenuCommand(force = false) {
+        const language = state.settings.language;
+        if (telemetryMenuRegistered && !force && telemetryMenuLanguage === language) return;
         try {
-            if (typeof GM !== 'undefined' && typeof GM.registerMenuCommand === 'function') GM.registerMenuCommand('Makaytron · Usage metrics settings', openTelemetrySettings);
-            else if (typeof GM_registerMenuCommand === 'function') GM_registerMenuCommand('Makaytron · Usage metrics settings', openTelemetrySettings);
+            if (telemetryMenuRegistered && telemetryMenuCommandId != null) {
+                if (typeof GM_unregisterMenuCommand === 'function') GM_unregisterMenuCommand(telemetryMenuCommandId);
+                else if (typeof GM !== 'undefined' && typeof GM.unregisterMenuCommand === 'function') GM.unregisterMenuCommand(telemetryMenuCommandId);
+                telemetryMenuRegistered = false;
+                telemetryMenuCommandId = null;
+            } else if (telemetryMenuRegistered) return;
+            if (typeof GM_registerMenuCommand === 'function') telemetryMenuCommandId = GM_registerMenuCommand(`Makaytron · ${t('telemetryMenu')}`, openTelemetrySettings);
+            else if (typeof GM !== 'undefined' && typeof GM.registerMenuCommand === 'function') telemetryMenuCommandId = GM.registerMenuCommand(`Makaytron · ${t('telemetryMenu')}`, openTelemetrySettings);
             else return;
             telemetryMenuRegistered = true;
+            telemetryMenuLanguage = language;
         } catch {}
     }
 
     const RECORD_SCHEMA_VERSION = 2;
     const HEALTH_RESULT_SCHEMA_VERSION = 2;
-    const HEALTH_ENGINE_VERSION = 6;
+    const QUEUE_SCHEMA_VERSION = 2;
+    const HEALTH_ENGINE_VERSION = 7;
     const HEALTH_POLICY_VERSION = 3;
     const COLLECTION_SCHEMA_VERSION = 4;
     const LISTING_METRIC_CONTRACT = Object.freeze({
@@ -733,6 +780,7 @@
     const SNAPSHOT_FUTURE_TOLERANCE_MS = 5 * 60 * 1000;
     const DISPLAY_TIME_ZONE = 'UTC';
     const ANALYSIS_BATCH_SIZE = 40;
+    const ANALYSIS_SEARCH_DEBOUNCE_MS = 180;
     const ANALYSIS_FRESHNESS_MS = 24 * 60 * 60 * 1000;
     const MAX_FILTER_PRESETS = 8;
     const MAX_BACKUP_RECORDS = 5000;
@@ -800,6 +848,7 @@
 
     const KEYS = Object.freeze({
         settings: `${APP.storagePrefix}:settings`,
+        uiPreferences: `${APP.storagePrefix}:ui-preferences`,
         index: `${APP.storagePrefix}:listing-index`,
         queue: `${APP.storagePrefix}:queue`,
         audit: `${APP.storagePrefix}:audit`,
@@ -825,6 +874,11 @@
         retentionDays: APP.retentionDays,
         maxSnapshots: APP.maxSnapshots,
     });
+    const UI_SETTING_FIELDS = Object.freeze(['language', 'collapsed']);
+    const HEALTH_SETTING_FIELDS = Object.freeze([
+        'minVisitsToImprove', 'minVisitsToProtect', 'minRenewalsToReview', 'declinePercent',
+        'retentionDays', 'maxSnapshots',
+    ]);
     const HEALTH_THRESHOLD_CONTRACTS = Object.freeze({
         minVisitsToImprove: Object.freeze({ min: 1, max: 999999, step: 1, help: 'thresholdHelpImprove' }),
         minVisitsToProtect: Object.freeze({ min: 2, max: 1000000, step: 1, help: 'thresholdHelpProtect' }),
@@ -1116,6 +1170,7 @@
 
     const EXTRA_I18N = Object.freeze({
         tr: Object.freeze({
+            verifyPublish: 'Etsy yayınını doğrula ve devam et',
             listingContext: 'Listing bağlamı', seasonality: 'Mevsimsellik', listingType: 'Ürün türü',
             contextUnknown: 'Bilinmiyor', contextSeasonal: 'Mevsimsel', contextNonSeasonal: 'Mevsimsel değil', contextDigital: 'Dijital', contextPhysical: 'Fiziksel',
             saveContext: 'Bağlamı kaydet', contextSaved: 'Listing bağlamı kaydedildi; analiz yeniden hesaplandı.',
@@ -1132,12 +1187,13 @@
             snapshotRenewalWaste: 'Yenileme verimsizliği', snapshotWeakDiscovery: 'Görünürlük zayıf', snapshotWeakEngagement: 'İlgi zayıf', snapshotPurchaseFriction: 'Satış dönüşümü zayıf', snapshotProvenDemand: 'Satış kanıtı var', snapshotStrongCurrent: 'Güncel erişim/ilgi güçlü', snapshotMixed: 'Güncel sinyaller karışık', snapshotNoActivity: 'Güncel hareket yok', snapshotInsufficient: 'Güncel metrik okunamadı',
             reasonSnapshotRenewalWaste: '{renewals} yenilemeye rağmen satış, gelir ve favori yok. İyileştirmeyi önceliklendirin; kapatma için tarihsel kanıt gerekir.', reasonSnapshotDiscovery: 'Güncel ziyaret düzeyi mağaza içindeki görünürlüğün zayıf olduğunu gösteriyor.', reasonSnapshotEngagement: 'Yeterli ziyaret görülmesine rağmen favori ilgisi zayıf; görsel, başlık ve teklif uyumunu inceleyin.', reasonSnapshotPurchase: 'Ziyaret veya favori var fakat tüm-zaman satış ve gelir yok; fiyat, görseller ve teklif sürtünmesini inceleyin.', reasonSnapshotDemand: 'Tüm-zaman satış veya gelir kanıtı bu listingi korur; güncel erişim/ilgi ayrıca değerlendirilir ve zayıf olabilir. Tarihsel kanıt puanı yapay olarak yükseltmez.', reasonSnapshotStrong: 'Son 30 günlük ziyaret ve favori oranı güçlü bir konuma işaret ediyor; trend doğrulaması için yeni taramalar toplayın.', reasonSnapshotMixed: 'Güncel sayaçlarda tek başına güçlü bir sorun veya fırsat sinyali yok; karşılaştırmalı geçmiş toplamaya devam edin.', reasonSnapshotNoActivity: 'Sayaçlar eksiksiz okundu: son 30 günde ziyaret veya favori, tüm-zaman geçmişinde de satış veya gelir yok. Veri eksik değil; şimdilik izleyin.',
             filterPresets: 'Hazır filtreler', presetGrowing: 'Yükselişte', presetImprove: 'İyileştirilecek', presetDeclining: 'Düşüşte', presetDeactivate: 'Kapatmayı incele', presetExperiments: 'Aktif deneyler', presetMissing: 'Eksik / tutarsız veri', presetName: 'Preset adı', savePreset: 'Mevcut filtreyi kaydet', deletePreset: 'Preseti sil', presetSaved: 'Filtre preseti kaydedildi.', presetDeleted: 'Filtre preseti silindi.', presetLimit: 'En fazla {count} özel filtre preseti kaydedilebilir.', presetInvalid: 'Preset adı 2–32 karakter olmalı.',
-            historyCharts: 'Tarihsel değişim grafikleri', noChartData: 'Grafik için en az iki geçerli kayıt gerekir.', chartApproximate: 'yaklaşık değer', chartLegacy: 'doğrulanmamış eski kayıt', chartStaleExcluded: '{count} eski gözlem grafikten çıkarıldı.', chartMixedCurrencies: 'karışık para birimleri', experimentTimeline: 'İyileştirme deney zaman çizelgesi', timelinePlanned: 'Öneri planlandı', timelinePublished: 'Etsy’de yayınlandı', timelineObserving: 'Gözlem başladı', timelineEvaluationDue: 'Değerlendirme tarihi', timelineEvaluated: 'Deney sonucu', timelineNotApplied: 'Henüz uygulanmadı',
+            historyCharts: 'Tarihsel değişim grafikleri', noChartData: 'Grafik için en az iki geçerli kayıt gerekir.', chartApproximate: 'yaklaşık değer', chartLegacy: 'doğrulanmamış eski kayıt', chartStaleExcluded: '{count} eski gözlem grafikten çıkarıldı.', chartMissingExcluded: '{count} eksik veya okunamayan gözlem grafikten çıkarıldı.', chartCurrencyExcluded: '{count} önceki gözlem, para birimi güncel kayıttan farklı olduğu için grafikten çıkarıldı.', chartMixedCurrencies: 'karışık para birimleri', experimentTimeline: 'İyileştirme deney zaman çizelgesi', timelinePlanned: 'Öneri planlandı', timelinePublished: 'Etsy’de yayınlandı', timelineObserving: 'Gözlem başladı', timelineEvaluationDue: 'Değerlendirme tarihi', timelineEvaluated: 'Deney sonucu', timelineNotApplied: 'Henüz uygulanmadı',
             aiComparison: 'AI önerisi önce / sonra', aiComparisonEmpty: 'İçe aktarılmış bir AI önerisi henüz yok.', beforeValue: 'Önce', proposedValue: 'AI önerisi', appliedValue: 'Doğrulanan sonuç', changedFields: 'Değişen alanlar', valueNotCaptured: 'Önceki değer yakalanmadı.',
             collectionRetrying: 'Geçici sayfa hatası · {attempt}/{max} yeniden deneniyor…', errorReport: 'Ayrıntılı hata raporu', errorReportTitle: 'Sayfa tarama hata raporu', copyErrorReport: 'Raporu kopyala', reportCopied: 'Hata raporu panoya kopyalandı.', reportPhase: 'Aşama', reportExpectedPage: 'Beklenen sayfa', reportObservedPage: 'Görülen sayfa', reportAttempts: 'Deneme', reportTime: 'Hata zamanı', reportNoSensitiveData: 'Rapor yalnız teknik tarama durumunu içerir; çerez, oturum ve sayfa HTML’i içermez.',
             checkUpdate: 'Güncellemeyi denetle', updateChecking: 'Güncelleme denetleniyor…', updateAvailable: 'Yeni sürüm hazır: v{version}', updateCurrent: 'Listing Analyzer güncel.', updateFailed: 'Güncelleme denetlenemedi: {message}', installUpdate: 'Tampermonkey’de güncelle', updateInstallHelp: 'Kurulum Tampermonkey onay ekranında tamamlanır; script kendisini sessizce değiştirmez.', updateBlocked: 'Aktif tarama veya işlem kuyruğu varken güncelleme açılamaz.',
             importBackup: 'Yedek içe aktar', backupImportTitle: 'Analiz yedeğini içe aktar', backupImportIntro: 'JSON yedeği önce tamamen doğrulanır, sonra mevcut yerel verilerle güvenli biçimde birleştirilir. Eski işlem kuyruğu etkinleştirilmez.', chooseBackup: 'JSON yedeği seç', backupPreview: '{records} listing kaydı · {presets} özel preset', backupImportAction: 'Doğrula ve birleştir', backupInvalid: 'Yedek doğrulanamadı: {message}', backupImported: '{records} listing ve {presets} preset içe aktarıldı.', backupTooLarge: 'Yedek dosyası en fazla 25 MB olabilir.', backupQueueSkipped: 'Yedekteki işlem kuyruğu güvenlik nedeniyle otomatik etkinleştirilmedi.',
-            storageUsage: 'Tahmini yerel veri', storageUsageValue: '{size} MB', storageQuotaWarning: 'Yerel depolama sınırına yaklaşıldı veya yazma reddedildi. Yedek alın, eski verileri azaltın ve işlemi yeniden deneyin.', storageWriteFailed: 'Yerel veri yazılamadı. Hiçbir toplu işlem eksik kayıtla devam etmedi.',
+            storageUsage: 'Tahmini yerel veri', storageUsageValue: '{size} MB', storageQuotaWarning: 'Yerel depolama sınırına yaklaşıldı veya yazma reddedildi. Yedek alın, eski analiz verilerini azaltın ve işlemi yeniden deneyin.', storageWriteFailed: 'Yerel veri yazılamadı. Hiçbir toplu işlem eksik kayıtla devam etmedi.', thresholdInvalidValue: '{field} alanı {min}–{max} aralığında bir tam sayı olmalıdır.', thresholdQueueLocked: 'Analiz eşikleri aktif işlem kuyruğu sırasında değiştirilemez. Önce kuyruğu tamamlayın veya durdurun.', proposalQueueLocked: 'Bu listing aktif işlem kuyruğunda olduğu için önerisi değiştirilemez. Önce kuyruğu tamamlayın veya durdurun.',
+            telemetryMenu: 'Kullanım ölçümleri ayarları', telemetryTitle: 'Gizlilik korumalı kullanım ölçümleri', telemetryNoticeBody: 'Kullanım ölçümleri varsayılan olarak açıktır. Yalnızca script kimliği ve sürümü, rastgele kurulum kimliği, izin verilen açılma/başarı sinyalleri ve sabit hata kodları gönderilir. Ham hata metni veya Etsy içeriği toplanmaz.', telemetryPrivacy: 'Gizlilik', telemetryPrivacyPolicy: 'Gizlilik politikası', telemetryEnable: 'Etkinleştir', telemetryDisableDeleteShort: 'Devre dışı bırak ve sil', telemetryDisableDelete: 'Devre dışı bırak ve sunucu verisini sil', telemetryGotIt: 'Anladım', telemetryStatusEnabled: 'Durum: etkin. Yalnızca izin verilen açılma/başarı sinyalleri ve sabit hata kodları gönderilir; ham hata metni veya Etsy içeriği toplanmaz.', telemetryStatusDisabled: 'Durum: devre dışı.', telemetryStatusUnavailable: 'Durum: kullanılamıyor. Ayar okunup doğrulanana kadar ölçümler bu sekmede engelli kalır.', telemetryEnabled: 'Kullanım ölçümleri etkinleştirildi.', telemetrySaveFailed: 'Ayar kaydedilemedi.', telemetryDisableFailedMenu: 'Ayar kaydedilemediği için kullanım ölçümleri devre dışı bırakılamadı. Ölçümler bu sekmede engelli kalır; userscript menüsünden yeniden deneyin.', telemetryDisableFailedHere: 'Ayar kaydedilemediği için kullanım ölçümleri devre dışı bırakılamadı. Ölçümler bu sekmede engelli kalır; buradan yeniden deneyin.', telemetryDisabledDeleted: 'Kullanım ölçümleri devre dışı; sunucu verisi silindi.', telemetryDisabledCleanupMenu: 'Kullanım ölçümleri devre dışı ancak sunucu temizliği tamamlanamadı; userscript menüsünden yeniden deneyin.', telemetryDisabledCleanupHere: 'Kullanım ölçümleri devre dışı ancak sunucu temizliği tamamlanamadı; buradan yeniden deneyebilirsiniz.',
             errorReportHistory: 'Hata geçmişi', errorReportGuidance: 'Önce sayfanın tamamen yüklendiğini kontrol edin. Ardından taramayı kaldığı yerden güvenle yeniden deneyebilirsiniz.', retryCollection: 'Taramayı yeniden dene', downloadErrorReports: 'Tüm raporları indir', reportDownloaded: 'Hata raporları indirildi.',
             lastAnalysis: 'Son başarılı analiz: {time}', analysisValidity: 'Analizler tamamlandıktan sonra 24 saat geçerlidir.',
             thresholdCalibration: 'Mağaza verisine göre önerilen eşikler', thresholdCalibrationCopy: 'Öneriler tam mağaza taramasındaki taze, deney dışı dağılımlardan hesaplanır; otomatik uygulanmaz.', calibrationAvailable: '{count} listing ile kalibre edildi.', calibrationInsufficient: 'Kalibrasyon için en az 20 okunabilir listing gerekir.', useRecommended: 'Önerilenleri forma uygula', recommendedValue: 'Öneri: {value}', thresholdImpact: 'Bu değerlerle yaklaşık {improve} listing iyileştirme, {protect} listing güçlü performans adayı olur.', thresholdRelationship: 'Güçlü listingleri koruma eşiği, iyileştirme eşiğinden büyük olmalıdır.', thresholdHelpImprove: 'Satış yokken iyileştirme incelemesini başlatacak en düşük ziyaret sayısı.', thresholdHelpProtect: 'Güçlü listing koruması için gereken ziyaret sayısı; iyileştirme eşiğinden yüksek olmalıdır.', thresholdHelpRenewals: 'Deaktivasyon incelemesinden önce gereken en düşük yenileme sayısı.', thresholdHelpDecline: 'Düşüş uyarısını başlatan yüzde değişim.', resetDefaults: 'Güvenli varsayılanlara dön',
@@ -1148,6 +1204,7 @@
             researchStart: 'Marketplace Insights ile araştır', researchOneListing: 'Araştırma için tam olarak bir listing seçin.', researchProbing: 'Etsy Keyword & Market Analyzer aranıyor…', researchCompanionMissingTitle: 'Etsy Keyword & Market Analyzer gerekli', researchCompanionMissing: 'Bağlantılı Marketplace Insights araştırması için ayrı Etsy Keyword & Market Analyzer scripti gerekir. Listing Analyzer diğer tüm özellikleriyle bağımsız çalışmaya devam eder.', researchInstallHelp: 'Script sessizce kurulamaz. Kurulum sayfası yeni sekmede açılır ve son onayı userscript yöneticisinde siz verirsiniz.', researchOpenInstall: 'Yükleme sayfasını aç', researchTransferTitle: 'Marketplace Insights araştırması', researchWaitingReady: 'Insights sekmesinin hazır olması bekleniyor…', researchRequestSent: 'Araştırma isteği gönderildi; Analyzer açık kalmalıdır.', researchAcknowledged: 'İstek alındı; Etsy Marketplace Insights sonuçları bekleniyor…', researchTimedOut: 'Otomatik yanıt süresi doldu. Analyzer açık kalır ve geçerli sonuç süresi dolana kadar kabul edilir; gerekirse JSON kurtarma araçlarını kullanın.', researchComplete: '{count} anahtar kelime kanıtı doğrulandı; öneri otomatik yayımlanmadı.', researchSavedForReview: 'Başlık ve etiket önerisi inceleme için kaydedildi; hiçbir Etsy alanı değiştirilmedi.', researchNeedsEditor: 'Kanıt ve öneri kaydedildi. Etiketleri güvenle karşılaştırmak için listing düzenleyicisini bir kez açın; işlem kuyruğu oluşturulmadı.', researchFailed: 'Araştırma sonucu doğrulanamadı: {message}', researchCopyRequest: 'İstek JSON’unu kopyala', researchRequestCopied: 'Araştırma istek JSON’u panoya kopyalandı.', researchImportResult: 'Sonuç JSON’unu içe aktar', researchResultLabel: 'Tam RESEARCH_RESULT envelope JSON’u', researchReopenInsights: 'Insights sayfasını yeniden aç', researchEvidenceTitle: 'Marketplace Insights kanıtı', researchSearches30d: '30 günlük arama', researchSearchResults: 'Arama sonucu / rekabet göstergesi', researchOpportunity: 'Makaytron fırsat puanı', researchSourceNote: 'Kaynak: Etsy Marketplace Insights görünür sayfa verisi. Fırsat puanı Makaytron tarafından türetilmiştir.', researchStale: 'Listing başlığı veya etiketleri araştırma başladıktan sonra değişti; sonuç güvenli biçimde reddedildi.', researchNoSeeds: 'Araştırma için kullanılabilecek başlık veya etiket bulunamadı.', researchOpenProposal: 'Öneriyi incele', researchPendingExists: 'Bu listing için bekleyen araştırma yeniden açıldı.', researchErrorRemote: 'Keyword Analyzer araştırmayı tamamlayamadı: {message}', researchProposalReason: 'Marketplace Insights kanıtı: “{keyword}” — {searches} arama / 30 gün, {results} arama sonucu. Makaytron fırsat puanı türetilmiş metriktir.', researchTagReplacement: '13 etiket dolu olduğu için düşük kanıtlı “{old}” yerine “{keyword}” önerildi; değişiklik yalnız inceleme taslağıdır.', updateManagedExternally: 'Güncellemeler kurulum kaynağınız tarafından yönetiliyor; GitHub güncelleme akışı zorlanmadı.',
         }),
         en: Object.freeze({
+            verifyPublish: 'Verify Etsy publish and continue',
             listingContext: 'Listing context', seasonality: 'Seasonality', listingType: 'Product type',
             contextUnknown: 'Unknown', contextSeasonal: 'Seasonal', contextNonSeasonal: 'Non-seasonal', contextDigital: 'Digital', contextPhysical: 'Physical',
             saveContext: 'Save context', contextSaved: 'Listing context saved and analysis recalculated.',
@@ -1164,12 +1221,13 @@
             snapshotRenewalWaste: 'Renewal waste', snapshotWeakDiscovery: 'Weak discovery', snapshotWeakEngagement: 'Weak engagement', snapshotPurchaseFriction: 'Weak sales conversion', snapshotProvenDemand: 'Proven demand', snapshotStrongCurrent: 'Strong current reach/engagement', snapshotMixed: 'Mixed current signals', snapshotNoActivity: 'No current activity', snapshotInsufficient: 'Current metric unreadable',
             reasonSnapshotRenewalWaste: '{renewals} renewals produced no sales, revenue, or favorites. Prioritize improvement; deactivation still requires historical evidence.', reasonSnapshotDiscovery: 'The current visit level indicates weak discovery within the shop.', reasonSnapshotEngagement: 'There is enough traffic, but favorite interest is weak; review imagery, title, and offer alignment.', reasonSnapshotPurchase: 'Visits or favorites exist, but all-time sales and revenue are zero; review pricing, imagery, and offer friction.', reasonSnapshotDemand: 'All-time sales or revenue protect this listing; current reach/engagement is assessed separately and may still be weak. Historical proof does not inflate the score.', reasonSnapshotStrong: 'Last-30-day visits and favorite rate indicate a strong position; collect new scans to confirm the trend.', reasonSnapshotMixed: 'Current counters do not show one strong issue or opportunity; continue collecting comparative history.', reasonSnapshotNoActivity: 'Every counter was read successfully: there are no last-30-day visits or favorites and no all-time sales or revenue. The data is complete; monitor for now.',
             filterPresets: 'Filter presets', presetGrowing: 'Growing', presetImprove: 'Needs improvement', presetDeclining: 'Declining', presetDeactivate: 'Review deactivation', presetExperiments: 'Active experiments', presetMissing: 'Missing / inconsistent data', presetName: 'Preset name', savePreset: 'Save current filters', deletePreset: 'Delete preset', presetSaved: 'Filter preset saved.', presetDeleted: 'Filter preset deleted.', presetLimit: 'You can save up to {count} custom filter presets.', presetInvalid: 'Preset names must contain 2–32 characters.',
-            historyCharts: 'Historical change charts', noChartData: 'At least two valid records are required for a chart.', chartApproximate: 'approximate value', chartLegacy: 'unverified legacy record', chartStaleExcluded: '{count} stale observation(s) excluded from the chart.', chartMixedCurrencies: 'mixed currencies', experimentTimeline: 'Improvement experiment timeline', timelinePlanned: 'Proposal planned', timelinePublished: 'Published on Etsy', timelineObserving: 'Observation started', timelineEvaluationDue: 'Evaluation due', timelineEvaluated: 'Experiment result', timelineNotApplied: 'Not applied yet',
+            historyCharts: 'Historical change charts', noChartData: 'At least two valid records are required for a chart.', chartApproximate: 'approximate value', chartLegacy: 'unverified legacy record', chartStaleExcluded: '{count} stale observation(s) excluded from the chart.', chartMissingExcluded: '{count} missing or unreadable observation(s) excluded from the chart.', chartCurrencyExcluded: '{count} prior observation(s) excluded because their currency differs from the current record.', chartMixedCurrencies: 'mixed currencies', experimentTimeline: 'Improvement experiment timeline', timelinePlanned: 'Proposal planned', timelinePublished: 'Published on Etsy', timelineObserving: 'Observation started', timelineEvaluationDue: 'Evaluation due', timelineEvaluated: 'Experiment result', timelineNotApplied: 'Not applied yet',
             aiComparison: 'AI proposal before / after', aiComparisonEmpty: 'No imported AI proposal is available yet.', beforeValue: 'Before', proposedValue: 'AI proposal', appliedValue: 'Verified result', changedFields: 'Changed fields', valueNotCaptured: 'The previous value was not captured.',
             collectionRetrying: 'Temporary page error · retry {attempt}/{max}…', errorReport: 'Detailed error report', errorReportTitle: 'Page collection error report', copyErrorReport: 'Copy report', reportCopied: 'Error report copied to the clipboard.', reportPhase: 'Phase', reportExpectedPage: 'Expected page', reportObservedPage: 'Observed page', reportAttempts: 'Attempts', reportTime: 'Failure time', reportNoSensitiveData: 'The report contains technical collection state only; it excludes cookies, sessions, and page HTML.',
             checkUpdate: 'Check for updates', updateChecking: 'Checking for updates…', updateAvailable: 'New version available: v{version}', updateCurrent: 'Listing Analyzer is up to date.', updateFailed: 'Update check failed: {message}', installUpdate: 'Update in Tampermonkey', updateInstallHelp: 'Installation finishes in Tampermonkey’s confirmation screen; the script never replaces itself silently.', updateBlocked: 'An update cannot be opened while collection or the action queue is active.',
             importBackup: 'Import backup', backupImportTitle: 'Import analysis backup', backupImportIntro: 'The JSON backup is fully validated first, then safely merged with current local data. An old action queue is never activated.', chooseBackup: 'Choose JSON backup', backupPreview: '{records} listing records · {presets} custom presets', backupImportAction: 'Validate and merge', backupInvalid: 'Backup validation failed: {message}', backupImported: 'Imported {records} listings and {presets} presets.', backupTooLarge: 'The backup file must be 25 MB or smaller.', backupQueueSkipped: 'The action queue in the backup was not activated for safety.',
-            storageUsage: 'Estimated local data', storageUsageValue: '{size} MB', storageQuotaWarning: 'Local storage is near its limit or rejected a write. Export a backup, reduce old data, and retry.', storageWriteFailed: 'Local data could not be written. No bulk workflow continued with an incomplete record.',
+            storageUsage: 'Estimated local data', storageUsageValue: '{size} MB', storageQuotaWarning: 'Local storage is near its limit or rejected a write. Export a backup, reduce old data, and retry.', storageWriteFailed: 'Local data could not be written. No bulk workflow continued with an incomplete record.', thresholdInvalidValue: '{field} must be a whole number from {min} to {max}.', thresholdQueueLocked: 'Analysis thresholds cannot change while an action queue is active. Complete or stop the queue first.', proposalQueueLocked: 'This listing is part of an active action queue, so its proposal cannot change. Complete or stop the queue first.',
+            telemetryMenu: 'Usage metrics settings', telemetryTitle: 'Privacy-preserving usage metrics', telemetryNoticeBody: 'Usage metrics are enabled by default. Only the script ID and version, a random installation ID, allowlisted open/success signals, and fixed error codes are sent. No raw error text or Etsy content is collected.', telemetryPrivacy: 'Privacy', telemetryPrivacyPolicy: 'Privacy policy', telemetryEnable: 'Enable', telemetryDisableDeleteShort: 'Disable & delete', telemetryDisableDelete: 'Disable & delete server data', telemetryGotIt: 'Got it', telemetryStatusEnabled: 'Status: enabled. Allowlisted open/success signals and fixed error codes only; no raw error text or Etsy content is collected.', telemetryStatusDisabled: 'Status: disabled.', telemetryStatusUnavailable: 'Status: unavailable. Usage metrics remain blocked in this tab until the setting can be read and verified.', telemetryEnabled: 'Usage metrics enabled.', telemetrySaveFailed: 'The setting could not be saved.', telemetryDisableFailedMenu: 'Usage metrics could not be disabled because the setting was not saved. Metrics remain blocked in this tab; retry from the userscript menu.', telemetryDisableFailedHere: 'Usage metrics could not be disabled because the setting was not saved. Metrics remain blocked in this tab; retry here.', telemetryDisabledDeleted: 'Usage metrics are disabled and server data was deleted.', telemetryDisabledCleanupMenu: 'Usage metrics are disabled, but cleanup could not be completed; retry from the userscript menu.', telemetryDisabledCleanupHere: 'Usage metrics are disabled, but cleanup could not be completed. You can retry here.',
             errorReportHistory: 'Failure history', errorReportGuidance: 'First verify that the page has fully loaded. You can then retry the collection safely from its saved position.', retryCollection: 'Retry collection', downloadErrorReports: 'Download all reports', reportDownloaded: 'Failure reports downloaded.',
             lastAnalysis: 'Last successful analysis: {time}', analysisValidity: 'Completed analyses remain valid for 24 hours.',
             thresholdCalibration: 'Thresholds suggested from shop data', thresholdCalibrationCopy: 'Suggestions use fresh, non-experimental distributions from a complete shop collection and are never applied automatically.', calibrationAvailable: 'Calibrated from {count} listings.', calibrationInsufficient: 'At least 20 readable listings are required for calibration.', useRecommended: 'Fill suggested values', recommendedValue: 'Suggested: {value}', thresholdImpact: 'With these values, about {improve} listings qualify for improvement review and {protect} as strong performers.', thresholdRelationship: 'The strong-listing protection threshold must be greater than the improvement threshold.', thresholdHelpImprove: 'Minimum visits that trigger improvement review when there are no sales.', thresholdHelpProtect: 'Visits required to protect a strong listing; this must exceed the improvement threshold.', thresholdHelpRenewals: 'Minimum renewals required before deactivation review.', thresholdHelpDecline: 'Percentage change that triggers a decline warning.', resetDefaults: 'Restore safe defaults',
@@ -1201,6 +1259,9 @@
         routeTask: null,
         routeRetryKey: '',
         routeTimer: 0,
+        editorInteractionEpoch: 0,
+        editorInteractionConflict: false,
+        editorInteractionWatcherInstalled: false,
         leaseTimer: 0,
         leaseToken: '',
         actionTask: null,
@@ -1220,7 +1281,15 @@
         analysisFilterDrawerOpen: false,
         analysisLimit: ANALYSIS_BATCH_SIZE,
         updateState: { status: 'idle', latestVersion: '', checkedVersion: '', checkedAt: 0, error: '', commitSha: '', installUrl: '' },
-        storageHealth: { estimateBytes: 0, warning: '', failedKey: '', failedAt: '' },
+        storageHealth: { estimateBytes: 0, warning: '', failedKey: '', failedAt: '', dirty: true },
+        settingsSaveError: '',
+        preferenceRevisions: {
+            'uiPreferences:collapsed': 0,
+            'uiPreferences:language': 0,
+            healthSettings: 0,
+            analysisFilters: 0,
+            filterPresets: 0,
+        },
         feedback: [],
         modalReturnFocus: null,
         researchChannel: null,
@@ -1714,7 +1783,10 @@
 
     function snapshotCountsAreExact(snapshot, fields) {
         const contract = normalizeMetricContract(snapshot?.metricContract);
-        return Boolean(contract && (fields || []).every((field) => contract.countPrecision?.[field] === 'exact'));
+        return Boolean(contract && (fields || []).every((field) => {
+            const value = finiteOrNull(snapshot?.[field]);
+            return contract.countPrecision?.[field] === 'exact' && Number.isSafeInteger(value) && value >= 0;
+        }));
     }
 
     function revenueCurrenciesComparable(left, right) {
@@ -1782,21 +1854,33 @@
         catch { return Number.POSITIVE_INFINITY; }
     }
 
-    function storageErrorCode(error) {
+    function storageErrorCode(error, operation = 'write') {
         const text = `${error?.name || ''} ${error?.message || error || ''}`;
-        return /quota|storage[^a-z]*(?:full|limit)|exceed/i.test(text) ? 'STORAGE_QUOTA_EXCEEDED' : 'STORAGE_WRITE_FAILED';
+        if (/quota|storage[^a-z]*(?:full|limit)|exceed/i.test(text)) return 'STORAGE_QUOTA_EXCEEDED';
+        return operation === 'read' ? 'STORAGE_READ_FAILED' : 'STORAGE_WRITE_FAILED';
     }
 
-    function rememberStorageFailure(key, error) {
+    function rememberStorageFailure(key, error, operation = 'write') {
         state.storageHealth = {
             ...state.storageHealth,
-            warning: storageErrorCode(error),
+            warning: storageErrorCode(error, operation),
             failedKey: String(key || ''),
             failedAt: nowIso(),
         };
     }
 
-    function refreshStorageEstimate() {
+    function storageKeyAffectsEstimate(key) {
+        const value = String(key || '');
+        return [KEYS.index, KEYS.queue, KEYS.collection, KEYS.analysisFilters, KEYS.filterPresets, KEYS.feedback].includes(value)
+            || value.startsWith(`${APP.storagePrefix}:listing:`);
+    }
+
+    function markStorageEstimateDirty(key = '') {
+        if (!key || storageKeyAffectsEstimate(key)) state.storageHealth.dirty = true;
+    }
+
+    function refreshStorageEstimate(force = false) {
+        if (!force && !state.storageHealth.dirty) return state.storageHealth;
         const estimate = serializedBytes({
             records: state.records,
             queue: state.queue,
@@ -1806,18 +1890,32 @@
             feedback: state.feedback,
         });
         state.storageHealth.estimateBytes = Number.isFinite(estimate) ? estimate : 0;
+        state.storageHealth.dirty = false;
         if (estimate >= STORAGE_WARNING_BYTES && !state.storageHealth.warning) state.storageHealth.warning = 'STORAGE_NEAR_LIMIT';
         if (estimate < STORAGE_WARNING_BYTES && state.storageHealth.warning === 'STORAGE_NEAR_LIMIT') state.storageHealth.warning = '';
         return state.storageHealth;
     }
 
     const GMX = {
-        async get(key, fallback) {
+        async getOptional(key, fallback) {
             try { return await GM.getValue(key, fallback); } catch { void trackTelemetryError('storage_listing_state'); return fallback; }
         },
+        async getStrict(key, fallback) {
+            try { return await GM.getValue(key, fallback); }
+            catch (cause) {
+                rememberStorageFailure(key, cause, 'read');
+                void trackTelemetryError('storage_listing_state');
+                const error = new Error(`Unable to read ${key}.`);
+                error.code = 'STORAGE_READ_FAILED';
+                error.cause = cause;
+                throw error;
+            }
+        },
+        async get(key, fallback) { return this.getStrict(key, fallback); },
         async set(key, value) {
             try {
                 await GM.setValue(key, value);
+                markStorageEstimateDirty(key);
                 if (state.storageHealth.failedKey === String(key)) state.storageHealth = { ...state.storageHealth, warning: '', failedKey: '', failedAt: '' };
                 return true;
             } catch (error) {
@@ -1827,7 +1925,7 @@
             }
         },
         async remove(key) {
-            try { await GM.deleteValue(key); return true; } catch { void trackTelemetryError('storage_listing_state'); return false; }
+            try { await GM.deleteValue(key); markStorageEstimateDirty(key); return true; } catch { void trackTelemetryError('storage_listing_state'); return false; }
         },
         register(label, callback) {
             try { return GM_registerMenuCommand(label, callback); } catch { return null; }
@@ -1855,29 +1953,289 @@
         throw error;
     }
 
+    const orderedPreferenceWrites = new Map();
+    const committedPreferenceValues = new Map();
+
+    function preferenceSnapshot(value) {
+        if (value === undefined) return undefined;
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function settingsFieldsSnapshot(settings, fields) {
+        return Object.fromEntries(fields.map((field) => [field, settings?.[field]]));
+    }
+
+    function uiSettingsSnapshot(settings = state.settings) {
+        const source = settings && typeof settings === 'object' ? settings : {};
+        return {
+            language: ['tr', 'en'].includes(source.language) ? source.language : DEFAULT_SETTINGS.language,
+            collapsed: source.collapsed === true,
+        };
+    }
+
+    function healthSettingsSnapshot(settings = state.settings) {
+        const source = settings && typeof settings === 'object' ? settings : {};
+        const normalized = { ...DEFAULT_SETTINGS, ...source, ...normalizeHealthThresholds(source) };
+        normalized.retentionDays = clamp(normalized.retentionDays, 30, APP.retentionDays);
+        normalized.maxSnapshots = clamp(normalized.maxSnapshots, 10, APP.maxSnapshots);
+        return settingsFieldsSnapshot(normalized, HEALTH_SETTING_FIELDS);
+    }
+
+    function applySettingsFields(target, values, fields) {
+        fields.forEach((field) => { if (Object.hasOwn(values || {}, field)) target[field] = values[field]; });
+        return target;
+    }
+
+    function setCommittedPreference(key, value) {
+        committedPreferenceValues.set(key, preferenceSnapshot(value));
+    }
+
+    function committedPreference(key, fallback) {
+        return preferenceSnapshot(committedPreferenceValues.has(key) ? committedPreferenceValues.get(key) : fallback);
+    }
+
+    function queuePreferenceOperation(key, operation) {
+        const previous = orderedPreferenceWrites.get(key) || Promise.resolve(true);
+        const write = previous.catch(() => false).then(operation);
+        const tracked = write.catch(() => false).finally(() => {
+            if (orderedPreferenceWrites.get(key) === tracked) orderedPreferenceWrites.delete(key);
+        });
+        orderedPreferenceWrites.set(key, tracked);
+        return write;
+    }
+
+    function queuePreferenceWrite(key, value, committedValue = value) {
+        const snapshot = preferenceSnapshot(value);
+        const committedSnapshot = preferenceSnapshot(committedValue);
+        return queuePreferenceOperation(key, async () => {
+            const saved = await GMX.set(key, snapshot);
+            if (saved) setCommittedPreference(key, committedSnapshot);
+            return saved;
+        });
+    }
+
+    function beginPreferenceMutation(key) {
+        state.preferenceRevisions[key] = (state.preferenceRevisions[key] || 0) + 1;
+        return state.preferenceRevisions[key];
+    }
+
+    function preferenceMutationIsCurrent(key, revision) {
+        return state.preferenceRevisions[key] === revision;
+    }
+
+    const QUEUE_TERMINAL_ITEM_STATUSES = Object.freeze(['verified', 'verified-deactivated', 'skipped']);
+    const QUEUE_UPDATE_ITEM_STATUSES = Object.freeze(['applying', 'awaiting-user-review', 'submitted', 'submitted-unverified']);
+    const QUEUE_DEACTIVATION_ITEM_STATUSES = Object.freeze([
+        'awaiting-user-deactivation', 'deactivation-submitted', 'deactivation-submitted-unverified',
+    ]);
+    const QUEUE_OPEN_ITEM_STATUSES = Object.freeze([
+        'pending', 'failed', ...QUEUE_UPDATE_ITEM_STATUSES, ...QUEUE_DEACTIVATION_ITEM_STATUSES,
+    ]);
+
+    function canonicalQueueEditUrl(listingId) {
+        const normalizedId = String(listingId || '');
+        return /^\d+$/.test(normalizedId)
+            ? `https://www.etsy.com/your/shops/me/listing-editor/edit/${normalizedId}`
+            : '';
+    }
+
+    function queueOptionalTimestampIsValid(value, notBefore = null) {
+        if (value === undefined || value === null || value === '') return true;
+        const timestamp = validTime(value);
+        const lowerBound = validTime(notBefore);
+        return timestamp !== null
+            && timestamp <= Date.now() + SNAPSHOT_FUTURE_TOLERANCE_MS
+            && (lowerBound === null || timestamp >= lowerBound);
+    }
+
+    function queueItemContractIsValid(item, queueCreatedAt = null) {
+        if (!item || typeof item !== 'object') return false;
+        const listingId = String(item.listingId || '');
+        const status = String(item.status || '');
+        const action = String(item.proposal?.action || '');
+        if (!/^\d+$/.test(listingId)
+            || ![...QUEUE_TERMINAL_ITEM_STATUSES, ...QUEUE_OPEN_ITEM_STATUSES].includes(status)
+            || !['UPDATE', 'DEACTIVATE_REVIEW'].includes(action)) return false;
+        if ((QUEUE_UPDATE_ITEM_STATUSES.includes(status) || status === 'verified') && action !== 'UPDATE') return false;
+        if ((QUEUE_DEACTIVATION_ITEM_STATUSES.includes(status) || status === 'verified-deactivated') && action !== 'DEACTIVATE_REVIEW') return false;
+        if (['submitted', 'submitted-unverified'].includes(status)
+            && (!queueOptionalTimestampIsValid(item.submittedAt, queueCreatedAt)
+                || !queueOptionalTimestampIsValid(item.publishSubmittedIntentAt, queueCreatedAt))) return false;
+        if (['deactivation-submitted', 'deactivation-submitted-unverified'].includes(status)
+            && (!queueOptionalTimestampIsValid(item.deactivationAuthorizedAt, queueCreatedAt)
+                || !queueOptionalTimestampIsValid(item.deactivationSubmittedIntentAt, queueCreatedAt))) return false;
+        return item.editUrl === canonicalQueueEditUrl(listingId);
+    }
+
+    function queueLifecycleIsValid(status, cursor, items) {
+        const terminal = (item) => QUEUE_TERMINAL_ITEM_STATUSES.includes(String(item?.status || ''));
+        const pending = (item) => String(item?.status || '') === 'pending';
+        if (status === 'completed') return cursor === items.length && items.every(terminal);
+        if (status === 'stopped' && items.length === 0) return cursor === 0;
+        if (!['ready', 'running', 'stopped'].includes(status) || cursor >= items.length) return false;
+        if (status === 'ready' && cursor !== 0) return false;
+        return items.slice(0, cursor).every(terminal)
+            && QUEUE_OPEN_ITEM_STATUSES.includes(String(items[cursor]?.status || ''))
+            && items.slice(cursor + 1).every(pending);
+    }
+
+    function normalizeQueue(raw) {
+        if (!raw || typeof raw !== 'object') return null;
+        const requestedSchema = raw.schema === undefined ? QUEUE_SCHEMA_VERSION : Number(raw.schema);
+        if (!Number.isInteger(requestedSchema) || requestedSchema < 1) {
+            return { ...raw, schema: requestedSchema, status: 'blocked', invalidSchema: true };
+        }
+        if (requestedSchema > QUEUE_SCHEMA_VERSION) {
+            return { ...raw, schema: requestedSchema, status: 'blocked', unsupportedSchema: true };
+        }
+        const allowedStatuses = ['ready', 'running', 'stopped', 'completed'];
+        const items = Array.isArray(raw.items) ? raw.items.map((item) => {
+            if (!item || typeof item !== 'object') return null;
+            const listingId = String(item.listingId || '');
+            return { ...item, listingId, editUrl: canonicalQueueEditUrl(listingId) };
+        }) : null;
+        const cursor = Number(raw.cursor);
+        const status = String(raw.status || '');
+        const listingIds = items?.map((item) => item?.listingId) || [];
+        const valid = items && queueOptionalTimestampIsValid(raw.createdAt)
+            && items.every((item) => queueItemContractIsValid(item, raw.createdAt))
+            && new Set(listingIds).size === listingIds.length
+            && Number.isInteger(cursor) && cursor >= 0 && cursor <= items.length
+            && allowedStatuses.includes(status) && queueLifecycleIsValid(status, cursor, items);
+        if (!valid) return { ...raw, schema: QUEUE_SCHEMA_VERSION, status: 'blocked', invalidSchema: true };
+        return {
+            ...raw,
+            schema: QUEUE_SCHEMA_VERSION,
+            id: String(raw.id || 'legacy-queue'),
+            status,
+            cursor,
+            items,
+        };
+    }
+
+    function queueSchemaError(queue) {
+        const error = new Error('The stored action queue uses a newer or invalid schema.');
+        error.code = queue?.unsupportedSchema ? 'QUEUE_NEWER_SCHEMA' : 'QUEUE_INVALID_SCHEMA';
+        return error;
+    }
+
+    async function assertProposalWritesAllowedLocked(listingIds) {
+        const queue = normalizeQueue(await GMX.get(KEYS.queue, null));
+        if (queue?.unsupportedSchema || queue?.invalidSchema) throw queueSchemaError(queue);
+        if (!storedQueueHasActiveItem(queue)) return;
+        const requested = new Set((Array.isArray(listingIds) ? listingIds : [listingIds]).map(String));
+        if (!(queue.items || []).some((item) => requested.has(String(item?.listingId || '')))) return;
+        const error = new Error('A queued listing proposal is frozen until the action queue completes or stops.');
+        error.code = 'PROPOSAL_QUEUE_LOCKED';
+        throw error;
+    }
+
+    async function assertHealthSettingsWritableLocked() {
+        const queue = normalizeQueue(await GMX.get(KEYS.queue, null));
+        if (queue?.unsupportedSchema || queue?.invalidSchema) throw queueSchemaError(queue);
+        if (!storedQueueHasActiveItem(queue)) return;
+        const error = new Error('Analysis thresholds are frozen while an action queue is active.');
+        error.code = 'HEALTH_SETTINGS_QUEUE_LOCKED';
+        throw error;
+    }
+
+    async function storedHealthSettingsLocked() {
+        const stored = await GMX.get(KEYS.settings, {});
+        return { ...DEFAULT_SETTINGS, ...healthSettingsSnapshot(stored) };
+    }
+
+    async function storedHealthPolicyLocked() {
+        return healthPolicy(await storedHealthSettingsLocked());
+    }
+
     const Store = {
         async loadSettings() {
             const stored = await GMX.get(KEYS.settings, {});
-            state.settings = { ...DEFAULT_SETTINGS, ...(stored && typeof stored === 'object' ? stored : {}) };
-            state.settings.language = ['tr', 'en'].includes(state.settings.language) ? state.settings.language : 'tr';
-            state.settings.retentionDays = clamp(state.settings.retentionDays, 30, APP.retentionDays);
-            state.settings.maxSnapshots = clamp(state.settings.maxSnapshots, 10, APP.maxSnapshots);
-            Object.assign(state.settings, normalizeHealthThresholds(state.settings));
+            const storedSource = stored && typeof stored === 'object' ? stored : {};
+            const uiStored = await GMX.getOptional(KEYS.uiPreferences, null);
+            const uiSource = uiStored && typeof uiStored === 'object' ? { ...storedSource, ...uiStored } : storedSource;
+            const health = healthSettingsSnapshot(storedSource);
+            const ui = uiSettingsSnapshot(uiSource);
+            state.settings = { ...DEFAULT_SETTINGS, ...health, ...ui };
+            setCommittedPreference(KEYS.settings, health);
+            setCommittedPreference(KEYS.uiPreferences, ui);
             return state.settings;
         },
-        async saveSettings() { return GMX.set(KEYS.settings, state.settings); },
+        async saveUiPreferences(fields = UI_SETTING_FIELDS) {
+            const requestedFields = UI_SETTING_FIELDS.filter((field) => fields.includes(field));
+            const local = uiSettingsSnapshot(state.settings);
+            const patch = settingsFieldsSnapshot(local, requestedFields);
+            return queuePreferenceOperation(KEYS.uiPreferences, () => withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const stored = await GMX.get(KEYS.uiPreferences, null);
+                const durableFallback = committedPreference(KEYS.uiPreferences, uiSettingsSnapshot(DEFAULT_SETTINGS));
+                const current = uiSettingsSnapshot(stored && typeof stored === 'object' ? stored : durableFallback);
+                const candidate = uiSettingsSnapshot({ ...current, ...patch });
+                const saved = await GMX.set(KEYS.uiPreferences, candidate);
+                if (saved) setCommittedPreference(KEYS.uiPreferences, candidate);
+                return saved;
+            }));
+        },
+        async saveHealthSettings() {
+            const snapshot = healthSettingsSnapshot(state.settings);
+            state.settingsSaveError = '';
+            return queuePreferenceOperation(KEYS.settings, () => withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                try { await assertHealthSettingsWritableLocked(); }
+                catch (error) { state.settingsSaveError = String(error?.code || ''); throw error; }
+                const stored = await GMX.get(KEYS.settings, {});
+                const candidate = { ...(stored && typeof stored === 'object' ? stored : {}), ...snapshot };
+                const saved = await GMX.set(KEYS.settings, candidate);
+                if (saved) setCommittedPreference(KEYS.settings, snapshot);
+                return saved;
+            }));
+        },
         async loadAnalysisFilters() {
             state.analysisFilters = normalizeAnalysisFilters(await GMX.get(KEYS.analysisFilters, DEFAULT_ANALYSIS_FILTERS));
+            setCommittedPreference(KEYS.analysisFilters, { filters: state.analysisFilters, query: state.analysisQuery, limit: state.analysisLimit });
             return state.analysisFilters;
         },
-        async saveAnalysisFilters() { return GMX.set(KEYS.analysisFilters, normalizeAnalysisFilters(state.analysisFilters)); },
+        async saveAnalysisFilters() {
+            const normalized = normalizeAnalysisFilters(state.analysisFilters);
+            return queuePreferenceWrite(KEYS.analysisFilters, normalized, { filters: normalized, query: state.analysisQuery, limit: state.analysisLimit });
+        },
         async loadFilterPresets() {
             state.filterPresets = normalizeFilterPresets(await GMX.get(KEYS.filterPresets, { schema: 1, items: [] }));
+            setCommittedPreference(KEYS.filterPresets, state.filterPresets);
             return state.filterPresets;
         },
-        async saveFilterPresets() {
-            state.filterPresets = normalizeFilterPresets(state.filterPresets);
-            return GMX.set(KEYS.filterPresets, { schema: 1, items: state.filterPresets });
+        async upsertFilterPreset(candidate) {
+            const normalizedCandidate = normalizeFilterPresets([candidate])[0];
+            if (!normalizedCandidate) return false;
+            return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const durable = normalizeFilterPresets(await GMX.get(KEYS.filterPresets, { schema: 1, items: [] }));
+                const idIndex = durable.findIndex((item) => item.id === normalizedCandidate.id);
+                const nameIndex = durable.findIndex((item) => presetNameFold(item.name) === presetNameFold(normalizedCandidate.name));
+                if (idIndex >= 0 && nameIndex >= 0 && idIndex !== nameIndex) return false;
+                const index = idIndex >= 0 ? idIndex : nameIndex;
+                if (index < 0 && durable.length >= MAX_FILTER_PRESETS) return false;
+                const next = [...durable];
+                if (index >= 0) {
+                    const previous = next[index];
+                    next.splice(index, 1, { ...normalizedCandidate, id: previous.id, createdAt: previous.createdAt });
+                } else next.push(normalizedCandidate);
+                const normalized = normalizeFilterPresets(next);
+                await requireStored(KEYS.filterPresets, { schema: 1, items: normalized });
+                state.filterPresets = normalized;
+                setCommittedPreference(KEYS.filterPresets, normalized);
+                return true;
+            });
+        },
+        async deleteFilterPreset(presetId) {
+            const id = String(presetId || '');
+            if (!id) return false;
+            return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const durable = normalizeFilterPresets(await GMX.get(KEYS.filterPresets, { schema: 1, items: [] }));
+                if (!durable.some((item) => item.id === id)) return false;
+                const normalized = normalizeFilterPresets(durable.filter((item) => item.id !== id));
+                await requireStored(KEYS.filterPresets, { schema: 1, items: normalized });
+                state.filterPresets = normalized;
+                setCommittedPreference(KEYS.filterPresets, normalized);
+                return true;
+            });
         },
         async loadFeedback() {
             const stored = await GMX.get(KEYS.feedback, []);
@@ -1895,12 +2253,18 @@
             }).filter(Boolean).slice(-MAX_FEEDBACK_ENTRIES);
             return state.feedback;
         },
-        async saveFeedback() {
-            state.feedback = state.feedback.slice(-MAX_FEEDBACK_ENTRIES);
-            return requireStored(KEYS.feedback, state.feedback);
+        async appendFeedback(entry) {
+            return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const durable = await GMX.get(KEYS.feedback, []);
+                const current = (Array.isArray(durable) ? durable : []).filter((item) => item && typeof item === 'object');
+                const next = [...current.filter((item) => String(item.id || '') !== String(entry.id)), entry].slice(-MAX_FEEDBACK_ENTRIES);
+                await requireStored(KEYS.feedback, next);
+                state.feedback = next;
+                return true;
+            });
         },
         async loadUpdateState() {
-            state.updateState = normalizeUpdateState(await GMX.get(KEYS.updateCheck, {}));
+            state.updateState = normalizeUpdateState(await GMX.getOptional(KEYS.updateCheck, {}));
             return state.updateState;
         },
         async saveUpdateState() {
@@ -1913,18 +2277,43 @@
             return Array.isArray(index) ? uniqueStrings(index.map(String)) : [];
         },
         async getRecord(listingId) {
-            const record = await GMX.get(KEYS.record(listingId), null);
-            return record && typeof record === 'object' ? normalizeRecord(record, listingId) : null;
+            const expectedListingId = String(listingId || '');
+            const record = await GMX.get(KEYS.record(expectedListingId), null);
+            if (!record || typeof record !== 'object') return null;
+            const storedListingId = Object.hasOwn(record, 'listingId')
+                ? String(record.listingId ?? '')
+                : expectedListingId;
+            if (!expectedListingId || storedListingId !== expectedListingId) {
+                const error = new Error(`Listing record identity mismatch for ${expectedListingId || '(empty)'}.`);
+                error.code = 'RECORD_ID_MISMATCH';
+                throw error;
+            }
+            const normalized = normalizeRecord(record, expectedListingId);
+            if (!normalized || String(normalized.listingId || '') !== expectedListingId) {
+                const error = new Error(`Listing record identity mismatch for ${expectedListingId}.`);
+                error.code = 'RECORD_ID_MISMATCH';
+                throw error;
+            }
+            return normalized;
         },
-        async putRecordLocked(record, batchIndex = null) {
+        async putRecordLocked(record, batchIndex = null, options = {}) {
             if (!record || typeof record !== 'object') throw new Error('Invalid listing record.');
             if (Number(record.schema || RECORD_SCHEMA_VERSION) > RECORD_SCHEMA_VERSION || record.unsupportedSchema) {
                 throw new Error('This listing record was created by a newer data schema and was not overwritten.');
             }
-            const listingId = String(record.listingId);
+            const listingId = String(record.listingId || '');
+            if (!listingId) {
+                const error = new Error('A listing record requires an identity.'); error.code = 'RECORD_ID_MISMATCH'; throw error;
+            }
             const currentRaw = await GMX.get(KEYS.record(listingId), null);
+            const currentStoredListingId = currentRaw && typeof currentRaw === 'object'
+                ? (Object.hasOwn(currentRaw, 'listingId') ? String(currentRaw.listingId ?? '') : listingId)
+                : listingId;
+            if (currentRaw && typeof currentRaw === 'object' && currentStoredListingId !== listingId) {
+                const error = new Error(`Listing record identity mismatch for ${listingId}.`); error.code = 'RECORD_ID_MISMATCH'; throw error;
+            }
             const current = currentRaw && typeof currentRaw === 'object' ? normalizeRecord(currentRaw, listingId) : null;
-            const merged = mergeRecordCopies(current, normalizeRecord(record, listingId));
+            const merged = mergeRecordCopies(current, normalizeRecord(record, listingId), options.settings || state.settings);
             merged.lastWriteId = randomId('record-write');
             const index = batchIndex?.items || await this.getIndex();
             await requireStored(KEYS.record(listingId), merged);
@@ -1948,10 +2337,16 @@
             return records.filter(Boolean);
         },
         prepareSnapshot(listing, existingRecord = null) {
+            const listingId = String(listing?.listingId || '');
+            if (!listingId || (existingRecord && String(existingRecord.listingId || '') !== listingId)) {
+                const error = new Error(`Listing record identity mismatch for ${listingId || '(empty)'}.`);
+                error.code = 'RECORD_ID_MISMATCH';
+                throw error;
+            }
             const capturedAt = listing.capturedAt || nowIso();
             const existing = existingRecord || {
                 schema: APP.schema,
-                listingId: String(listing.listingId),
+                listingId,
                 meta: {}, history: [], improvements: [], proposal: null,
             };
             if (existing.unsupportedSchema || Number(existing.schema || RECORD_SCHEMA_VERSION) > RECORD_SCHEMA_VERSION) {
@@ -2003,6 +2398,7 @@
             return saved;
         },
         async saveProposalLocked(listingId, proposal) {
+            await assertProposalWritesAllowedLocked(listingId);
             const record = await this.getRecord(listingId);
             if (!record) throw new Error(`Unknown listing ${listingId}`);
             const before = captureEditableFieldsFromRecord(record);
@@ -2059,11 +2455,19 @@
         },
         async loadQueue() {
             const queue = await GMX.get(KEYS.queue, null);
-            state.queue = queue && typeof queue === 'object' ? queue : null;
+            state.queue = normalizeQueue(queue);
             return state.queue;
         },
         async saveQueueLocked(queue) {
-            const candidate = { ...queue, lastWriteId: randomId('queue-write') };
+            const normalized = normalizeQueue(queue);
+            const stored = normalizeQueue(await GMX.get(KEYS.queue, null));
+            if (!normalized || normalized.unsupportedSchema || normalized.invalidSchema
+                || stored?.unsupportedSchema || stored?.invalidSchema) {
+                const error = new Error('A newer or invalid action queue cannot be overwritten by this version.');
+                error.code = stored?.unsupportedSchema || normalized?.unsupportedSchema ? 'QUEUE_NEWER_SCHEMA' : 'QUEUE_INVALID_SCHEMA';
+                throw error;
+            }
+            const candidate = { ...normalized, lastWriteId: randomId('queue-write') };
             await requireStored(KEYS.queue, candidate);
             const verified = await GMX.get(KEYS.queue, null);
             if (verified?.lastWriteId !== candidate.lastWriteId) {
@@ -2393,16 +2797,108 @@
         return values;
     }
 
-    function editorMatchesProposal(editor, proposal) {
-        const fields = proposalFields(proposal, true);
-        return fields.every((field) => {
-            if ((field === 'tags' || field === 'materials') && editor?.[PILL_READ_INTEGRITY]?.[field] === false) return false;
-            if (field === 'title') return normalizeSpace(editor?.title) === normalizeSpace(proposal.title);
-            if (field === 'description') return String(editor?.description ?? '') === String(proposal.description ?? '');
-            if (field === 'tags') return sameStringSet(editor?.tags, proposal.tags);
-            if (field === 'materials') return sameStringSet(editor?.materials, proposal.materials);
-            return false;
-        });
+    function expectedEditorAfterProposal(before, proposal) {
+        if (!before || typeof before !== 'object' || !Array.isArray(before.tags) || !Array.isArray(before.materials)) return null;
+        const prepared = validateEditableProposal(proposal);
+        const expected = {
+            title: String(before.title ?? ''),
+            description: String(before.description ?? ''),
+            tags: [...before.tags],
+            materials: [...before.materials],
+            quantity: String(before.quantity ?? ''),
+            sku: String(before.sku ?? ''),
+        };
+        prepared.fields.forEach((field) => { expected[field] = Array.isArray(prepared[field]) ? [...prepared[field]] : prepared[field]; });
+        return expected;
+    }
+
+    function editorFieldMatches(field, actual, expected) {
+        if (field === 'title') return normalizeSpace(actual?.title) === normalizeSpace(expected?.title);
+        if (field === 'description') return String(actual?.description ?? '') === String(expected?.description ?? '');
+        if (field === 'tags' || field === 'materials') return sameStringSet(actual?.[field], expected?.[field]);
+        if (field === 'quantity' || field === 'sku') return String(actual?.[field] ?? '') === String(expected?.[field] ?? '');
+        return false;
+    }
+
+    function editorMatchesSnapshot(editor, expected) {
+        const integrity = editor?.[PILL_READ_INTEGRITY];
+        return Boolean(expected
+            && integrity?.tags === true
+            && integrity?.materials === true
+            && ['title', 'description', 'tags', 'materials', 'quantity', 'sku']
+                .every((field) => editorFieldMatches(field, editor, expected)));
+    }
+
+    function editorMatchesExpectedProposal(editor, before, proposal) {
+        let expected;
+        try { expected = expectedEditorAfterProposal(before, proposal); } catch { return false; }
+        return editorMatchesSnapshot(editor, expected);
+    }
+
+    function editorPublishIsDormant() {
+        const button = EditorAdapter.publishButton();
+        return !button || button.disabled === true || button.getAttribute?.('aria-disabled') === 'true';
+    }
+
+    function isEditorSurfaceTarget(target) {
+        if (!(target instanceof Element) || state.host?.contains?.(target)) return false;
+        const root = EditorAdapter.root();
+        return root === document || Boolean(root?.contains?.(target));
+    }
+
+    const TRUSTED_EDITOR_MUTATION_EVENTS = Object.freeze(['beforeinput', 'input', 'change', 'click', 'drop']);
+
+    function trustedEditorEventMayMutate(event) {
+        if (event?.type !== 'click') return true;
+        const target = event?.target;
+        return target instanceof Element && Boolean(target.closest?.(
+            'button,[role="button"],[role="menuitem"],[role="option"],input[type="checkbox"],input[type="radio"]',
+        ));
+    }
+
+    function monitorTrustedEditorInput() {
+        let conflict = false;
+        const listener = (event) => {
+            if (event.isTrusted === true && trustedEditorEventMayMutate(event) && isEditorSurfaceTarget(event.target)) conflict = true;
+        };
+        TRUSTED_EDITOR_MUTATION_EVENTS.forEach((type) => document.addEventListener(type, listener, true));
+        return {
+            conflicted: () => conflict,
+            dispose: () => TRUSTED_EDITOR_MUTATION_EVENTS.forEach((type) => document.removeEventListener(type, listener, true)),
+        };
+    }
+
+    function installTrustedEditorInteractionWatcher() {
+        if (state.editorInteractionWatcherInstalled) return;
+        state.editorInteractionWatcherInstalled = true;
+        const listener = (event) => {
+            if (event.isTrusted !== true || !trustedEditorEventMayMutate(event)
+                || routeKind() !== 'editor' || !isEditorSurfaceTarget(event.target)) return;
+            state.editorInteractionEpoch += 1;
+            const identity = Queue.activeIdentity();
+            if (!identity) return;
+            const watchedStatuses = [
+                'applying', 'awaiting-user-review', 'submitted', 'submitted-unverified',
+                'awaiting-user-deactivation', 'deactivation-submitted', 'deactivation-submitted-unverified',
+            ];
+            if (!watchedStatuses.includes(String(identity.itemStatus || ''))) return;
+            // This synchronous flag is deliberately fail-closed. The durable marker protects
+            // reloads and other tabs, while this flag still blocks the current page if storage
+            // is temporarily unavailable when the trusted interaction occurs.
+            state.editorInteractionConflict = true;
+            const at = nowIso();
+            void withNamedLock(STORAGE_MUTATION_LOCK, async () => {
+                const queue = normalizeQueue(await GMX.get(KEYS.queue, null));
+                const item = queue?.items?.[identity.cursor];
+                if (!queue || queue.invalidSchema || queue.unsupportedSchema
+                    || String(queue.id) !== String(identity.queueId) || Number(queue.cursor) !== Number(identity.cursor)
+                    || String(item?.listingId) !== String(identity.listingId)
+                    || !watchedStatuses.includes(String(item?.status || ''))) return;
+                item.editorInteractionConflictAt = at;
+                await Store.saveQueueLocked(queue);
+            }).catch(() => { /* Publishing also checks the synchronous interaction monitor. */ });
+        };
+        TRUSTED_EDITOR_MUTATION_EVENTS.forEach((type) => document.addEventListener(type, listener, true));
     }
 
     function currentShopKey(root = document) {
@@ -2649,11 +3145,22 @@
         return merged;
     }
 
-    function mergeRecordCopies(currentRaw, incomingRaw) {
+    function applyRecordHistoryPolicy(record, retentionSettings = state.settings) {
+        if (!record || typeof record !== 'object') return record;
+        const cutoff = Date.now() - clamp(retentionSettings.retentionDays, 30, APP.retentionDays) * DAY_MS;
+        return {
+            ...record,
+            history: (Array.isArray(record.history) ? record.history : [])
+                .filter((snapshot) => (validTime(snapshot.at) || 0) >= cutoff)
+                .slice(-clamp(retentionSettings.maxSnapshots, 10, APP.maxSnapshots)),
+        };
+    }
+
+    function mergeRecordCopies(currentRaw, incomingRaw, retentionSettings = state.settings) {
         const incoming = normalizeRecord(incomingRaw, incomingRaw?.listingId);
         const current = normalizeRecord(currentRaw, incoming?.listingId);
-        if (!current) return incoming;
-        if (!incoming) return current;
+        if (!current) return applyRecordHistoryPolicy(incoming, retentionSettings);
+        if (!incoming) return applyRecordHistoryPolicy(current, retentionSettings);
         if (current.unsupportedSchema || incoming.unsupportedSchema) throw new Error('A newer listing record schema cannot be merged.');
         const merged = { ...current, ...incoming, schema: RECORD_SCHEMA_VERSION, listingId: incoming.listingId || current.listingId };
 
@@ -2671,9 +3178,7 @@
                 if (JSON.stringify(merged.history[sameDay]) !== JSON.stringify(snapshot)) merged.history[sameDay] = mergeDailySnapshot(merged.history[sameDay], snapshot);
             } else merged.history.push(snapshot);
         });
-        const cutoff = Date.now() - clamp(state.settings.retentionDays, 30, APP.retentionDays) * DAY_MS;
-        merged.history = merged.history.filter((snapshot) => (validTime(snapshot.at) || 0) >= cutoff)
-            .slice(-clamp(state.settings.maxSnapshots, 10, APP.maxSnapshots));
+        merged.history = applyRecordHistoryPolicy(merged, retentionSettings).history;
 
         const improvements = new Map();
         [...(current.improvements || []), ...(incoming.improvements || [])].forEach((entry, index) => {
@@ -2966,6 +3471,39 @@
         return lower === upper ? sorted[lower] : sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
     }
 
+    function quantileSorted(sorted, percentile) {
+        if (!sorted.length) return null;
+        const index = (sorted.length - 1) * percentile;
+        const lower = Math.floor(index); const upper = Math.ceil(index);
+        return lower === upper ? sorted[lower] : sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+    }
+
+    function medianSorted(sorted) {
+        if (!sorted.length) return null;
+        const middle = Math.floor(sorted.length / 2);
+        return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+
+    function percentileRankSorted(sorted, value) {
+        const target = finiteOrNull(value);
+        if (target === null || !sorted.length) return null;
+        let lower = 0; let upper = sorted.length;
+        while (lower < upper) {
+            const middle = (lower + upper) >>> 1;
+            if (sorted[middle] < target) lower = middle + 1;
+            else upper = middle;
+        }
+        const below = lower;
+        upper = sorted.length;
+        while (lower < upper) {
+            const middle = (lower + upper) >>> 1;
+            if (sorted[middle] <= target) lower = middle + 1;
+            else upper = middle;
+        }
+        const equal = lower - below;
+        return clamp(Math.round(((below + (equal * 0.5)) / sorted.length) * 100), 0, 100);
+    }
+
     function activeExperiment(record, evaluatedAt) {
         const entries = Array.isArray(record.improvements) ? record.improvements : [];
         return [...entries].reverse().find((entry) => {
@@ -2975,62 +3513,179 @@
         }) || null;
     }
 
-    function buildCohortBenchmark(record, derivations, records, evaluatedAt, policy) {
+    function cohortSegmentKey(shopKey, listingType = '*', seasonality = '*') {
+        return `${shopKey}\u0000${listingType}\u0000${seasonality}`;
+    }
+
+    function fullCohortMembershipKey(segmentKey) {
+        return `full\u0000${segmentKey}`;
+    }
+
+    function priceBandCohortMembershipKey(segmentKey, targetCurrency, targetPrice) {
+        return `band\u0000${segmentKey}\u0000${currencyIdentity(targetCurrency)}\u0000${String(targetPrice)}`;
+    }
+
+    function createCohortContext(records, derivations, evaluatedAt) {
+        const groups = new Map();
+        const diagnostics = {
+            eligibilityScans: 0,
+            eligibleCandidates: 0,
+            groupAssignments: 0,
+            groupBuilds: 0,
+            membershipBuilds: 0,
+            benchmarkBuilds: 0,
+            cohortMemberScans: 0,
+            distributionSorts: 0,
+        };
+        records.forEach((candidate) => {
+            diagnostics.eligibilityScans += 1;
+            const derived = derivations.get(candidate.listingId);
+            const shopKey = candidate.meta?.shopKey || shopKeyFromUrl(candidate.meta?.editUrl);
+            if (!/^etsy-shop:[a-z0-9]+$/.test(shopKey)) return;
+            if (!derived?.complete || recordListingState(candidate, derived) !== 'active') return;
+            if (Number(derived.stateEpochSpanDays) < 29) return;
+            if (!Number.isFinite(derived.freshnessDays) || derived.freshnessDays > 1 || derived.anomalies?.length) return;
+            if (!Number.isFinite(derived.current?.stock) || derived.current.stock <= 0) return;
+            if (activeExperiment(candidate, evaluatedAt)) return;
+            const recentChange = [...(candidate.improvements || [])].reverse().find((entry) => entry?.publishedAt
+                && daysBetween(evaluatedAt, entry.publishedAt) <= HEALTH_RULES.improvementCooldownDays);
+            if (recentChange) return;
+            const listingType = normalizeListingType(candidate.meta?.listingType);
+            const seasonality = normalizeSeasonality(candidate.meta?.seasonality, candidate.meta?.seasonal);
+            const descriptor = {
+                record: candidate,
+                derived,
+                listingId: String(candidate.listingId),
+                price: finiteOrNull(derived.current?.priceMin),
+                currency: normalizeSpace(derived.current?.currency),
+            };
+            diagnostics.eligibleCandidates += 1;
+            const typeSegments = listingType === 'unknown' ? ['*'] : ['*', listingType];
+            const seasonSegments = seasonality === 'unknown' ? ['*'] : ['*', seasonality];
+            for (const typeSegment of typeSegments) {
+                for (const seasonSegment of seasonSegments) {
+                    const key = cohortSegmentKey(shopKey, typeSegment, seasonSegment);
+                    if (!groups.has(key)) { groups.set(key, []); diagnostics.groupBuilds += 1; }
+                    groups.get(key).push(descriptor);
+                    diagnostics.groupAssignments += 1;
+                }
+            }
+        });
+        const membershipRequestCounts = new Map();
+        records.forEach((candidate) => {
+            const target = derivations.get(candidate.listingId);
+            const shopKey = candidate.meta?.shopKey || shopKeyFromUrl(candidate.meta?.editUrl);
+            if (!/^etsy-shop:[a-z0-9]+$/.test(shopKey) || Number(target?.stateEpochSpanDays) < 29) return;
+            const listingType = normalizeListingType(candidate.meta?.listingType);
+            const seasonality = normalizeSeasonality(candidate.meta?.seasonality, candidate.meta?.seasonal);
+            const segmentKey = cohortSegmentKey(
+                shopKey,
+                listingType === 'unknown' ? '*' : listingType,
+                seasonality === 'unknown' ? '*' : seasonality,
+            );
+            const keys = [fullCohortMembershipKey(segmentKey)];
+            const targetPrice = finiteOrNull(target?.current?.priceMin);
+            const targetCurrency = normalizeSpace(target?.current?.currency);
+            if (targetPrice !== null && targetCurrency) keys.push(priceBandCohortMembershipKey(segmentKey, targetCurrency, targetPrice));
+            keys.forEach((key) => membershipRequestCounts.set(key, (membershipRequestCounts.get(key) || 0) + 1));
+        });
+        return { groups, memberships: new Map(), distributions: new Map(), membershipRequestCounts, diagnostics };
+    }
+
+    function cachedCohortMembership(context, key, source, predicate = null) {
+        if (context.memberships.has(key)) return context.memberships.get(key);
+        const members = predicate
+            ? source.filter((candidate) => predicate(candidate))
+            : source;
+        if (predicate) context.diagnostics.cohortMemberScans += source.length;
+        const listingCounts = new Map();
+        members.forEach((candidate) => {
+            listingCounts.set(candidate.listingId, (listingCounts.get(candidate.listingId) || 0) + 1);
+        });
+        const cacheable = (context.membershipRequestCounts.get(key) || 0) > 1;
+        const membership = { key, members, listingCounts, cacheable };
+        if (cacheable) context.memberships.set(key, membership);
+        context.diagnostics.membershipBuilds += 1;
+        return membership;
+    }
+
+    function cohortMetricValue(name, derived, targetCurrency) {
+        if (name === 'revenuePerVisitProxy' && (!targetCurrency || !currenciesComparable(derived?.current?.currency, targetCurrency))) return null;
+        return name === 'favoriteRate' ? derived?.favoriteRateSmoothed : derived?.[name];
+    }
+
+    function cachedCohortDistributions(context, membership, targetCurrency) {
+        const cacheKey = `${membership.key}\u0000currency:${normalizeSpace(targetCurrency)}`;
+        if (context.distributions.has(cacheKey)) return context.distributions.get(cacheKey);
+        const metricNames = ['visits30', 'favoriteRate', 'salesRateProxy', 'revenuePerVisitProxy', 'sales30'];
+        const distributions = {};
+        metricNames.forEach((name) => {
+            distributions[name] = membership.members
+                .map((candidate) => ({
+                    listingId: candidate.listingId,
+                    value: cohortMetricValue(name, candidate.derived, targetCurrency),
+                }))
+                .filter((entry) => Number.isFinite(entry.value))
+                .sort((left, right) => left.value - right.value);
+            context.diagnostics.distributionSorts += 1;
+        });
+        if (membership.cacheable) context.distributions.set(cacheKey, distributions);
+        return distributions;
+    }
+
+    function buildCohortBenchmark(record, derivations, context, evaluatedAt, policy) {
+        context.diagnostics.benchmarkBuilds += 1;
         const target = derivations.get(record.listingId);
+        const targetListingId = String(record.listingId);
         const targetShop = record.meta?.shopKey || shopKeyFromUrl(record.meta?.editUrl);
         const targetType = normalizeListingType(record.meta?.listingType);
         const targetSeasonality = normalizeSeasonality(record.meta?.seasonality, record.meta?.seasonal);
-        let cohort = records.filter((candidate) => {
-            const derived = derivations.get(candidate.listingId);
-            if (!/^etsy-shop:[a-z0-9]+$/.test(targetShop)) return false;
-            if (String(candidate.listingId) === String(record.listingId) || Number(target?.stateEpochSpanDays) < 29) return false;
-            if (!derived?.complete || recordListingState(candidate, derived) !== 'active') return false;
-            if (Number(derived.stateEpochSpanDays) < 29) return false;
-            if (!Number.isFinite(derived.freshnessDays) || derived.freshnessDays > 1 || derived.anomalies?.length) return false;
-            if (!Number.isFinite(derived.current?.stock) || derived.current.stock <= 0) return false;
-            if ((candidate.meta?.shopKey || shopKeyFromUrl(candidate.meta?.editUrl)) !== targetShop) return false;
-            if (targetType !== 'unknown' && normalizeListingType(candidate.meta?.listingType) !== targetType) return false;
-            if (targetSeasonality !== 'unknown' && normalizeSeasonality(candidate.meta?.seasonality, candidate.meta?.seasonal) !== targetSeasonality) return false;
-            if (activeExperiment(candidate, evaluatedAt)) return false;
-            const recentChange = [...(candidate.improvements || [])].reverse().find((entry) => entry?.publishedAt && daysBetween(evaluatedAt, entry.publishedAt) <= HEALTH_RULES.improvementCooldownDays);
-            return !recentChange;
-        });
+        const segmentKey = cohortSegmentKey(
+            targetShop,
+            targetType === 'unknown' ? '*' : targetType,
+            targetSeasonality === 'unknown' ? '*' : targetSeasonality,
+        );
+        const reusableGroup = /^etsy-shop:[a-z0-9]+$/.test(targetShop) && Number(target?.stateEpochSpanDays) >= 29
+            ? context.groups.get(segmentKey) || [] : [];
+        const fullMembership = cachedCohortMembership(context, fullCohortMembershipKey(segmentKey), reusableGroup);
+        let membership = fullMembership;
         const targetPrice = finiteOrNull(target?.current?.priceMin);
         const targetCurrency = normalizeSpace(target?.current?.currency);
         let priceBandApplied = false;
         if (targetPrice !== null && targetCurrency) {
-            const priceBand = cohort.filter((candidate) => {
-                const candidateCurrent = derivations.get(candidate.listingId)?.current;
-                const price = finiteOrNull(candidateCurrent?.priceMin);
-                return currenciesComparable(candidateCurrent?.currency, targetCurrency)
-                    && price !== null && price > 0 && targetPrice > 0 && Math.abs(Math.log(price / targetPrice)) <= Math.log(1.3);
+            const bandKey = priceBandCohortMembershipKey(segmentKey, targetCurrency, targetPrice);
+            const priceBand = cachedCohortMembership(context, bandKey, reusableGroup, (candidate) => {
+                return currenciesComparable(candidate.currency, targetCurrency)
+                    && candidate.price !== null && candidate.price > 0 && targetPrice > 0 && Math.abs(Math.log(candidate.price / targetPrice)) <= Math.log(1.3);
             });
-            if (priceBand.length >= policy.thresholds.minimumCohortSize) {
-                cohort = priceBand;
+            const priceBandPeerCount = priceBand.members.length - (priceBand.listingCounts.get(targetListingId) || 0);
+            if (priceBandPeerCount >= policy.thresholds.minimumCohortSize) {
+                membership = priceBand;
                 priceBandApplied = true;
             }
         }
+        const cohortSize = membership.members.length - (membership.listingCounts.get(targetListingId) || 0);
         const metricNames = ['visits30', 'favoriteRate', 'salesRateProxy', 'revenuePerVisitProxy', 'sales30'];
+        const distributions = cachedCohortDistributions(context, membership, targetCurrency);
         const metrics = {};
         metricNames.forEach((name) => {
-            const metricValue = (derived) => {
-                if (name === 'revenuePerVisitProxy' && (!targetCurrency || !currenciesComparable(derived?.current?.currency, targetCurrency))) return null;
-                return name === 'favoriteRate' ? derived?.favoriteRateSmoothed : derived?.[name];
-            };
-            const values = cohort.map((candidate) => metricValue(derivations.get(candidate.listingId))).filter(Number.isFinite);
-            const reliable = values.length >= policy.thresholds.minimumCohortSize;
+            const sorted = [];
+            distributions[name].forEach((entry) => {
+                if (entry.listingId !== targetListingId) sorted.push(entry.value);
+            });
+            const reliable = sorted.length >= policy.thresholds.minimumCohortSize;
             metrics[name] = {
-                median: median(values), p25: quantile(values, 0.25), p75: quantile(values, 0.75),
-                percentile: percentileRank(values, metricValue(target)), samples: values.length,
+                median: medianSorted(sorted), p25: quantileSorted(sorted, 0.25), p75: quantileSorted(sorted, 0.75),
+                percentile: percentileRankSorted(sorted, cohortMetricValue(name, target, targetCurrency)), samples: sorted.length,
                 reliable,
-                strength: reliable ? clamp((values.length - HEALTH_RULES.minimumCohortSize + 1) / (HEALTH_RULES.fullStrengthCohortSize - HEALTH_RULES.minimumCohortSize + 1), 0, 1) : 0,
+                strength: reliable ? clamp((sorted.length - HEALTH_RULES.minimumCohortSize + 1) / (HEALTH_RULES.fullStrengthCohortSize - HEALTH_RULES.minimumCohortSize + 1), 0, 1) : 0,
             };
         });
-        const reliable = cohort.length >= policy.thresholds.minimumCohortSize;
-        const strength = reliable ? clamp((cohort.length - HEALTH_RULES.minimumCohortSize + 1) / (HEALTH_RULES.fullStrengthCohortSize - HEALTH_RULES.minimumCohortSize + 1), 0, 1) : 0;
+        const reliable = cohortSize >= policy.thresholds.minimumCohortSize;
+        const strength = reliable ? clamp((cohortSize - HEALTH_RULES.minimumCohortSize + 1) / (HEALTH_RULES.fullStrengthCohortSize - HEALTH_RULES.minimumCohortSize + 1), 0, 1) : 0;
         const segments = [targetType !== 'unknown' ? targetType : '', targetSeasonality !== 'unknown' ? targetSeasonality : ''].filter(Boolean);
         const limitations = [targetType === 'unknown' ? 'listing-type-unknown' : '', targetSeasonality === 'unknown' ? 'seasonality-unknown' : ''].filter(Boolean);
-        return { size: cohort.length, reliable, strength, scope: `${priceBandApplied ? 'active-shop-price-band' : 'active-shop'}${segments.length ? `-${segments.join('-')}` : ''}`, limitations, metrics };
+        return { size: cohortSize, reliable, strength, scope: `${priceBandApplied ? 'active-shop-price-band' : 'active-shop'}${segments.length ? `-${segments.join('-')}` : ''}`, limitations, metrics };
     }
 
     function bootstrapMetricScore(metric, absoluteScore, percentileWeight = 0.65) {
@@ -3075,7 +3730,10 @@
         const weighted = visibility === null ? [] : [{ value: visibility, weight: 65 }];
         if (engagement !== null && engagementWeight > 0) weighted.push({ value: engagement, weight: engagementWeight });
         const weight = weighted.reduce((sum, item) => sum + item.weight, 0);
-        const score = weight ? clamp(Math.round(weighted.reduce((sum, item) => sum + item.value * item.weight, 0) / weight), 0, 100) : null;
+        const rawScore = weight ? clamp(Math.round(weighted.reduce((sum, item) => sum + item.value * item.weight, 0) / weight), 0, 100) : null;
+        const exactZeroReach = visits === 0 && exactNoFavorites;
+        const combinedScoreReady = engagement !== null || exactZeroReach;
+        const score = combinedScoreReady ? rawScore : null;
         const lowDiscovery = visits !== null && (visits < minVisits || visibility <= 25);
         const decisionFavoriteRate = finiteOrNull(derived.favoriteRateSmoothed);
         const weakEngagement = engagementEligible && (Number(decisionFavoriteRate) < 3 || engagement <= 25);
@@ -3084,7 +3742,7 @@
         if (visits === 0 && exactNoFavorites) { funnelSignal = 'NO_ACTIVITY'; diagnosis = 'DISCOVERY_WEAK'; }
         else if (lowDiscovery) { funnelSignal = 'WEAK_DISCOVERY'; diagnosis = 'DISCOVERY_WEAK'; }
         else if (weakEngagement) { funnelSignal = 'WEAK_ENGAGEMENT'; diagnosis = 'ENGAGEMENT_WEAK'; }
-        else if (Number(score) >= 70) funnelSignal = 'STRONG_CURRENT';
+        else if (engagement !== null && Number(score) >= 70) funnelSignal = 'STRONG_CURRENT';
         const cumulativeSignal = provenDemand ? 'PROVEN_DEMAND' : noDemand && renewalMature && exactNoFavorites ? 'RENEWAL_WASTE' : noDemand ? 'NO_DEMAND' : null;
         let signal = funnelSignal; let code = 'monitor'; let reasonKey = funnelSignal === 'NO_ACTIVITY' ? 'reasonSnapshotNoActivity'
             : funnelSignal === 'WEAK_DISCOVERY' ? 'reasonSnapshotDiscovery'
@@ -3104,7 +3762,8 @@
         }
         const severity = signal === 'RENEWAL_WASTE' ? renewals
             : signal === 'PURCHASE_FRICTION' ? score
-                : code === 'improve' && Number.isFinite(score) ? 100 - score : 0;
+                : code === 'improve' && Number.isFinite(score) ? 100 - score
+                    : code === 'improve' && Number.isFinite(visibility) ? 100 - visibility : 0;
         return {
             available: true, signal, funnelSignal, cumulativeSignal, diagnosis, code, reasonKey, score, priority, severity,
             source: benchmark.metrics?.visits30?.reliable ? 'shop-cohort' : 'absolute-thresholds',
@@ -3190,6 +3849,14 @@
         return { checks, passed: checks.every((item) => item.passed), zeroObservationCount: zeroObservations.length };
     }
 
+    function trafficEvidenceSelection(derived) {
+        const useExactTrend = derived?.anchors?.trend30?.complete === true;
+        return {
+            anchor: useExactTrend ? derived.anchors.trend30 : derived?.anchors?.d30,
+            percent: useExactTrend ? derived.trendTrafficChangePercent : derived?.trafficChangePercent,
+        };
+    }
+
     function evidenceFor(derived, benchmark, bootstrap = null) {
         const evidence = [{ key: 'evidenceHistory', params: { days: Math.round(derived.historySpanDays || 0), count: derived.snapshotCount || 0 } }];
         if (derived.current) {
@@ -3198,16 +3865,19 @@
                 revenue: derived.current.revenue ?? '—', renewals: derived.current.renewals ?? '—',
             } });
         }
-        if (bootstrap?.available) evidence.push({
+        if (bootstrap?.available && Number.isFinite(bootstrap.score)) evidence.push({
             key: bootstrap.source === 'shop-cohort' ? 'evidenceSnapshotScoreCohort' : 'evidenceSnapshotScoreAbsolute',
-            params: { score: bootstrap.score ?? '—' },
+            params: { score: bootstrap.score },
         });
-        if (derived.anchors?.d30?.complete) {
+        const { anchor: trafficEvidenceAnchor, percent: trafficEvidencePercent } = trafficEvidenceSelection(derived);
+        if (trafficEvidenceAnchor?.complete) {
             evidence.push(
-                { key: 'evidenceTraffic', params: { current: derived.current?.visits ?? '—', previous: derived.anchors?.d30?.snapshot?.visits ?? '—', percent: derived.trafficChangePercent ?? '—' } },
-                { key: 'evidenceRecentSales', params: { sales: derived.sales30 ?? '—', revenue: derived.revenue30 ?? '—' } },
+                { key: 'evidenceTraffic', params: { current: derived.current?.visits ?? '—', previous: trafficEvidenceAnchor.snapshot?.visits ?? '—', percent: trafficEvidencePercent ?? '—' } },
             );
         }
+        if (derived.anchors?.d30?.complete) evidence.push(
+            { key: 'evidenceRecentSales', params: { sales: derived.sales30 ?? '—', revenue: derived.revenue30 ?? '—' } },
+        );
         if (benchmark.size) evidence.push({ key: 'evidenceCohort', params: { size: benchmark.size, percentile: benchmark.metrics.visits30.percentile ?? '—' } });
         if (derived.anomalies?.length) evidence.push({ key: 'evidenceAnomaly', params: { count: derived.anomalies.length } });
         return evidence;
@@ -3306,10 +3976,11 @@
             && deactivation.checks.find((item) => item.key === 'guardExactCounters')?.passed
             && deactivation.checks.find((item) => item.key === 'guardHistory')?.passed);
         const trendInferenceReady = Boolean(longitudinalReady && recentTrafficDirection.comparison && priorTrafficDirection.comparison);
+        const selectedTrafficEvidence = trafficEvidenceSelection(derived);
         return {
             algorithmVersion: HEALTH_ENGINE_VERSION, lifecycle, diagnosis, code, tone, reasonKey,
             reasonParams: { renewals: bootstrapLifecycle ? bootstrap.evidence.renewals : policy.thresholds.minRenewalsToReview, percent: policy.thresholds.declinePercent },
-            score, assessmentMode, scoreBasis: currentAssessment ? 'current-30d-reach-engagement' : 'insufficient',
+            score, assessmentMode, scoreBasis: Number.isFinite(score) ? 'current-30d-reach-engagement' : 'insufficient',
             currentAssessment, bootstrap: assessmentMode === 'snapshot' ? bootstrap : null,
             readiness: { snapshot: bootstrap.available, trend: trendInferenceReady, deactivationHistory: deactivationHistoryReady },
             confidence: confidence.score, confidenceBand: confidence.band, confidenceComponents: confidence.components, confidenceCaps: confidence.caps,
@@ -3329,19 +4000,20 @@
                 anchors: Object.fromEntries(Object.entries(derived.anchors || {}).map(([key, anchor]) => [key, anchor?.snapshot ? { at: anchor.snapshot.at, actualDays: Math.round(anchor.actualDays * 10) / 10 } : null])),
             },
             benchmark, evidence: evidenceFor(derived, benchmark, bootstrap), safeguards: deactivation.checks, anomalies: derived.anomalies || [], historicalAnomalies: derived.historicalAnomalies || [], experiment: experiment?.experiment || null,
-            deltas: derived.deltas || {}, declinePercent: Number(derived.trafficChangePercent) < 0 ? Math.abs(Math.round(derived.trafficChangePercent)) : 0,
+            deltas: derived.deltas || {}, declinePercent: Number(selectedTrafficEvidence.percent) < 0 ? Math.abs(Math.round(selectedTrafficEvidence.percent)) : 0,
             nextReviewAt, calculatedAt: evaluatedAt,
         };
     }
 
-    function evaluateHealthRecords(records, settings = DEFAULT_SETTINGS, evaluatedAt = nowIso()) {
+    function evaluateHealthRecords(records, settings = DEFAULT_SETTINGS, evaluatedAt = nowIso(), diagnostics = null) {
         const policy = healthPolicy(settings);
         const normalized = records.map((record) => normalizeRecord(record, record?.listingId)).filter(Boolean);
         const derivations = new Map(normalized.map((record) => [record.listingId, deriveRecordMetrics(record, evaluatedAt)]));
+        const cohortContext = createCohortContext(normalized, derivations, evaluatedAt);
         const output = new Map();
         normalized.forEach((record) => {
             const derived = derivations.get(record.listingId);
-            const benchmark = buildCohortBenchmark(record, derivations, normalized, evaluatedAt, policy);
+            const benchmark = buildCohortBenchmark(record, derivations, cohortContext, evaluatedAt, policy);
             const result = classifyHealth(record, derived, benchmark, policy, evaluatedAt);
             output.set(record.listingId, {
                 schemaVersion: HEALTH_RESULT_SCHEMA_VERSION, engineVersion: HEALTH_ENGINE_VERSION,
@@ -3349,6 +4021,7 @@
                 result, calculatedAt: evaluatedAt,
             });
         });
+        if (diagnostics && typeof diagnostics === 'object') Object.assign(diagnostics, cohortContext.diagnostics);
         return output;
     }
 
@@ -3411,12 +4084,29 @@
     function normalizeFilterPresets(raw) {
         const source = Array.isArray(raw) ? raw : Array.isArray(raw?.items) ? raw.items : [];
         const names = new Set();
-        return source.map((item) => {
+        const ids = new Set();
+        return source.map((item, sourceIndex) => {
             if (!item || typeof item !== 'object') return null;
             const name = normalizeSpace(item.name).slice(0, 32);
-            const folded = name.toLocaleLowerCase();
+            const folded = presetNameFold(name);
+            const validId = /^preset-[a-z0-9-]{6,80}$/i.test(String(item.id || ''));
+            const legacyIdentity = fnv1a(JSON.stringify({
+                sourceIndex,
+                name,
+                filters: item.filters || item.filter || item.criteria || {},
+                query: item.query || item.search || '',
+                createdAt: validTime(item.createdAt) || 0,
+                updatedAt: validTime(item.updatedAt) || 0,
+            }));
+            let id = validId ? String(item.id) : `preset-legacy-${legacyIdentity}`;
+            while (ids.has(id)) {
+                if (validId) return null;
+                id = `preset-legacy-${legacyIdentity}-${sourceIndex}`;
+                if (ids.has(id)) return null;
+            }
             if (name.length < 2 || names.has(folded)) return null;
             names.add(folded);
+            ids.add(id);
             const legacy = item.filters && typeof item.filters === 'object' ? item.filters
                 : item.filter && typeof item.filter === 'object' ? item.filter
                     : item.criteria && typeof item.criteria === 'object' ? item.criteria : {};
@@ -3438,12 +4128,12 @@
                 sort: legacy.sort ?? legacy.order,
             };
             return {
-                id: /^preset-[a-z0-9-]{6,80}$/i.test(String(item.id || '')) ? String(item.id) : randomId('preset'),
+                id,
                 name,
                 filters: normalizeAnalysisFilters(migratedFilters),
                 query: normalizeSpace(item.query).slice(0, 120) || normalizeSpace(item.search).slice(0, 120),
-                createdAt: validTime(item.createdAt) ? String(item.createdAt) : nowIso(),
-                updatedAt: validTime(item.updatedAt) ? String(item.updatedAt) : nowIso(),
+                createdAt: validTime(item.createdAt) ? new Date(validTime(item.createdAt)).toISOString() : '1970-01-01T00:00:00.000Z',
+                updatedAt: validTime(item.updatedAt) ? new Date(validTime(item.updatedAt)).toISOString() : '1970-01-01T00:00:00.000Z',
             };
         }).filter(Boolean).slice(-MAX_FILTER_PRESETS);
     }
@@ -3490,55 +4180,89 @@
         };
     }
 
-    function recordMatchesAnalysisFilters(record, filters, query, pageIds) {
-        const normalized = normalizeAnalysisFilters(filters);
-        const latest = record.history?.at(-1) || {};
-        const analysis = record.analysis || record.health?.result || {};
-        const haystack = `${record.listingId} ${record.meta?.title || ''} ${record.meta?.sku || ''}`.toLocaleLowerCase();
-        if (query && !haystack.includes(query)) return false;
-        if (normalized.scope === 'page' && !pageIds.has(String(record.listingId))) return false;
-        if (normalized.lifecycle && analysis.lifecycle !== normalized.lifecycle) return false;
-        if (normalized.diagnosis && analysis.diagnosis !== normalized.diagnosis) return false;
-        if (normalized.recommendation && analysis.code !== normalized.recommendation) return false;
-        if (normalized.performance) {
-            const recent = recentPerformanceMetrics(record);
-            const activityFields = ['visits', 'favorites', 'sales', 'revenue'];
-            const recentMissing = activityFields.some((field) => recent[field] === null);
-            const unreadCurrentMetric = HEALTH_METRIC_FIELDS.some((field) => finiteOrNull(latest[field]) === null);
-            const matches = {
-                sales: recent.sales !== null && recent.sales > 0,
-                'traffic-no-sales': recent.visits > 0 && recent.sales === 0,
-                'no-activity': !recentMissing && activityFields.every((field) => recent[field] === 0),
-                missing: recentMissing || unreadCurrentMetric || analysis.lifecycle === 'DATA_GAP',
-            };
-            if (!matches[normalized.performance]) return false;
-        }
-        if (normalized.trend && recordTrendDirection(record) !== normalized.trend) return false;
-        if (normalized.stock) {
-            const stock = finiteOrNull(latest.stock);
-            const stockState = stock === null ? 'unknown' : stock > 0 ? 'in' : 'out';
-            if (stockState !== normalized.stock) return false;
-        }
-        if (normalized.confidence) {
-            const band = analysis.confidenceBand || 'low';
-            const group = ['high', 'veryHigh'].includes(band) ? 'high' : band === 'medium' ? 'medium' : 'low';
-            if (group !== normalized.confidence) return false;
-        }
-        return true;
+    const ANALYSIS_FACET_NAMES = Object.freeze(Object.keys(FILTER_FACET_VALUES));
+
+    function analysisCaseFold(value, language = state.settings.language) {
+        const locale = language === 'tr' ? 'tr-TR' : 'en-US';
+        return String(value ?? '').normalize('NFKC').toLocaleLowerCase(locale);
     }
 
-    function analysisFacetCounts(records, filters, query, pageIds) {
+    function presetNameFold(value) {
+        // Preset identity is durable data, so it must not change with the UI locale.
+        return normalizeSpace(value).normalize('NFKC').toLowerCase();
+    }
+
+    function scheduleAnalysisSearch(previousTimer, callback) {
+        if (previousTimer !== null) clearTimeout(previousTimer);
+        return setTimeout(callback, ANALYSIS_SEARCH_DEBOUNCE_MS);
+    }
+
+    function analysisRecordFacts(record, foldedQuery, pageIds) {
+        const latest = record.history?.at(-1) || {};
+        const analysis = record.analysis || record.health?.result || {};
+        const recent = recentPerformanceMetrics(record);
+        const activityFields = ['visits', 'favorites', 'sales', 'revenue'];
+        const recentMissing = activityFields.some((field) => recent[field] === null);
+        const unreadCurrentMetric = HEALTH_METRIC_FIELDS.some((field) => finiteOrNull(latest[field]) === null);
+        const performance = [''];
+        if (recent.sales !== null && recent.sales > 0) performance.push('sales');
+        if (recent.visits > 0 && recent.sales === 0) performance.push('traffic-no-sales');
+        if (!recentMissing && activityFields.every((field) => recent[field] === 0)) performance.push('no-activity');
+        if (recentMissing || unreadCurrentMetric || analysis.lifecycle === 'DATA_GAP') performance.push('missing');
+        const stock = finiteOrNull(latest.stock);
+        const band = analysis.confidenceBand || 'low';
+        const confidence = ['high', 'veryHigh'].includes(band) ? 'high' : band === 'medium' ? 'medium' : 'low';
+        const values = {
+            scope: ['all', ...(pageIds?.has(String(record.listingId)) ? ['page'] : [])],
+            lifecycle: ['', String(analysis.lifecycle || '')],
+            diagnosis: ['', String(analysis.diagnosis || '')],
+            recommendation: ['', String(analysis.code || '')],
+            performance,
+            trend: ['', recordTrendDirection(record)],
+            stock: ['', stock === null ? 'unknown' : stock > 0 ? 'in' : 'out'],
+            confidence: ['', confidence],
+        };
+        return {
+            queryMatches: !foldedQuery || analysisCaseFold(`${record.listingId} ${record.meta?.title || ''} ${record.meta?.sku || ''}`).includes(foldedQuery),
+            values: Object.fromEntries(Object.entries(values).map(([facet, matches]) => [facet, new Set(matches)])),
+        };
+    }
+
+    function analysisFactsForRecords(records, query, pageIds) {
+        const foldedQuery = analysisCaseFold(normalizeSpace(query));
+        return records.map((record) => ({ record, facts: analysisRecordFacts(record, foldedQuery, pageIds) }));
+    }
+
+    function recordMatchesAnalysisFilters(record, filters, query, pageIds, facts = null) {
         const normalized = normalizeAnalysisFilters(filters);
-        return Object.fromEntries(Object.entries(FILTER_FACET_VALUES).map(([facet, values]) => [facet, Object.fromEntries(values.map((value) => {
-            const candidate = normalizeAnalysisFilters({ ...normalized, [facet]: value });
-            const count = records.filter((record) => recordMatchesAnalysisFilters(record, candidate, query, pageIds)).length;
-            return [value, count];
-        }))]));
+        const resolved = facts || analysisRecordFacts(record, analysisCaseFold(normalizeSpace(query)), pageIds);
+        return resolved.queryMatches && ANALYSIS_FACET_NAMES.every((facet) => resolved.values[facet].has(normalized[facet]));
+    }
+
+    function analysisFacetCountsFromFacts(factRows, filters, diagnostics = null) {
+        const normalized = normalizeAnalysisFilters(filters);
+        const counts = Object.fromEntries(Object.entries(FILTER_FACET_VALUES).map(([facet, values]) => [facet, Object.fromEntries(values.map((value) => [value, 0]))]));
+        factRows.forEach(({ facts }) => {
+            if (diagnostics && typeof diagnostics === 'object') diagnostics.recordsScanned = Number(diagnostics.recordsScanned || 0) + 1;
+            if (!facts.queryMatches) return;
+            const failedFacets = ANALYSIS_FACET_NAMES.filter((facet) => !facts.values[facet].has(normalized[facet]));
+            ANALYSIS_FACET_NAMES.forEach((facet) => {
+                if (failedFacets.length > 1 || (failedFacets.length === 1 && failedFacets[0] !== facet)) return;
+                facts.values[facet].forEach((value) => {
+                    if (Object.prototype.hasOwnProperty.call(counts[facet], value)) counts[facet][value] += 1;
+                });
+            });
+        });
+        return counts;
+    }
+
+    function analysisFacetCounts(records, filters, query, pageIds, diagnostics = null) {
+        return analysisFacetCountsFromFacts(analysisFactsForRecords(records, query, pageIds), filters, diagnostics);
     }
 
     function presetResultCount(preset, records = collectedAnalysisRecords()) {
         const filters = normalizeAnalysisFilters({ ...DEFAULT_ANALYSIS_FILTERS, ...(preset?.filters || {}) });
-        const query = normalizeSpace(preset?.query).toLocaleLowerCase();
+        const query = normalizeSpace(preset?.query);
         const pageIds = new Set(state.pageListings.map((item) => String(item.listingId)));
         return records.filter((record) => recordMatchesAnalysisFilters(record, filters, query, pageIds)).length;
     }
@@ -3670,10 +4394,16 @@
         [...state.selectedIds].forEach((listingId) => { if (!allowed.has(String(listingId))) state.selectedIds.delete(listingId); });
     }
 
-    function filteredAnalysisRecords(records = collectedAnalysisRecords()) {
-        const query = normalizeSpace(state.analysisQuery).toLocaleLowerCase();
-        const pageIds = new Set(state.pageListings.map((item) => String(item.listingId)));
-        return sortAnalysisRecords(records.filter((record) => recordMatchesAnalysisFilters(record, state.analysisFilters, query, pageIds)), state.analysisFilters.sort);
+    function filteredAnalysisRecords(records = collectedAnalysisRecords(), factRows = null) {
+        const rows = factRows || analysisFactsForRecords(
+            records,
+            normalizeSpace(state.analysisQuery),
+            new Set(state.pageListings.map((item) => String(item.listingId))),
+        );
+        return sortAnalysisRecords(
+            rows.filter(({ record, facts }) => recordMatchesAnalysisFilters(record, state.analysisFilters, '', null, facts)).map(({ record }) => record),
+            state.analysisFilters.sort,
+        );
     }
 
     function experimentStateLabel(experiment) {
@@ -4627,12 +5357,12 @@
 
     function routeKind(pathname = location.pathname) {
         if (/\/your\/shops\/[^/]+\/tools\/listings\/?$/i.test(pathname)) return 'listings';
-        if (/\/your\/shops\/[^/]+\/listing-editor\/edit\/\d+/i.test(pathname)) return 'editor';
+        if (/\/your\/shops\/[^/]+\/listing-editor\/edit\/\d+\/?$/i.test(pathname)) return 'editor';
         return 'unsupported';
     }
 
     function currentListingId(pathname = location.pathname) {
-        return pathname.match(/\/listing-editor\/edit\/(\d+)/i)?.[1] || '';
+        return pathname.match(/\/listing-editor\/edit\/(\d+)\/?$/i)?.[1] || '';
     }
 
     function statsViewEnabled(href = location.href) {
@@ -4729,7 +5459,8 @@
         readSignature(listings) {
             return JSON.stringify([...listings].sort((left, right) => String(left.listingId).localeCompare(String(right.listingId))).map((item) => [
                 String(item.listingId), item.title, item.sku, item.listingState, item.statusLabel, item.renewalLabel, item.stock,
-                item.price?.min, item.price?.max, item.visits, item.favorites, item.sales, item.revenue, item.renewals,
+                item.price?.min, item.price?.max, item.price?.label || '', item.currency || '',
+                item.visits, item.favorites, item.sales, item.revenue, item.renewals,
                 item.metricContract?.id || '', item.metricContract?.headings || null, item.metricContract?.countPrecision || null,
             ]));
         },
@@ -4973,9 +5704,18 @@
             await Store.putRecord(record);
             return record;
         },
-        async syncPills(fieldSelector, inputSelector, buttonSelector, desiredValues) {
+        async syncPills(fieldSelector, inputSelector, buttonSelector, desiredValues, options = {}) {
+            const guard = typeof options.guard === 'function' ? options.guard : () => true;
+            const beforeMutation = typeof options.beforeMutation === 'function' ? options.beforeMutation : null;
+            const guarded = () => {
+                try { return guard() === true; } catch { return false; }
+            };
+            const mutationAllowed = async () => {
+                try { if (beforeMutation) await beforeMutation(); } catch { return false; }
+                return guarded();
+            };
             const liveField = () => document.querySelector(fieldSelector);
-            if (!liveField() || !document.querySelector(inputSelector) || !document.querySelector(buttonSelector)) return false;
+            if (!guarded() || !liveField() || !document.querySelector(inputSelector) || !document.querySelector(buttonSelector)) return false;
             const liveValues = () => {
                 const snapshot = pillFieldState(liveField());
                 return snapshot.complete ? snapshot.values : null;
@@ -4991,12 +5731,14 @@
                 ));
                 const remove = item?.querySelector(PILL_REMOVE_SELECTOR);
                 if (!remove) return false;
+                if (!await mutationAllowed()) return false;
                 remove.click();
                 const removed = await waitFor(() => {
+                    if (!guarded()) return null;
                     const values = liveValues();
                     return values && !values.some((itemValue) => itemValue.toLocaleLowerCase() === value.toLocaleLowerCase());
                 }, 3000);
-                if (!removed) return false;
+                if (!removed || !guarded()) return false;
             }
             const valuesAfterRemoval = liveValues();
             if (!valuesAfterRemoval) return false;
@@ -5004,23 +5746,26 @@
             for (const value of desired) {
                 if (current.has(value.toLocaleLowerCase())) continue;
                 const inputReady = await waitFor(() => {
+                    if (!guarded()) return null;
                     const input = document.querySelector(inputSelector);
                     return input && !input.disabled ? input : null;
                 }, 3000);
-                if (!inputReady) return false;
+                if (!inputReady || !await mutationAllowed()) return false;
                 setNativeValue(inputReady, value);
                 await sleep(120);
                 const addReady = await waitFor(() => {
+                    if (!guarded()) return null;
                     const button = document.querySelector(buttonSelector);
                     return button && !button.disabled && button.getAttribute('aria-disabled') !== 'true' ? button : null;
                 }, 3000);
-                if (!addReady) return false;
+                if (!addReady || !await mutationAllowed()) return false;
                 addReady.click();
                 const added = await waitFor(() => {
+                    if (!guarded()) return null;
                     const values = liveValues();
                     return values && values.some((item) => item.toLocaleLowerCase() === value.toLocaleLowerCase());
                 }, 3000);
-                if (!added) return false;
+                if (!added || !guarded()) return false;
                 const addedValues = liveValues();
                 if (!addedValues) return false;
                 current = new Set(addedValues.map((item) => item.toLocaleLowerCase()));
@@ -5067,38 +5812,83 @@
                 return Boolean(await waitFor(() => this.changedFields(before, this.read(), fields).length === 0 && this.formIsClean() === true, 3000));
             } catch { return false; }
         },
-        async applyProposal(proposal) {
+        async applyProposal(proposal, expectedBefore = null, options = {}) {
             if (!this.ready()) { void trackTelemetryError('selector_listing_editor'); throw new Error(t('formNotReady')); }
             const prepared = this.preflightProposal(proposal);
             const fields = prepared.fields;
             const before = this.read();
+            if (expectedBefore && !editorMatchesSnapshot(before, expectedBefore)) {
+                throw new Error('The Etsy editor changed immediately before proposal application.');
+            }
+            const expected = {
+                title: String(before.title ?? ''), description: String(before.description ?? ''),
+                tags: [...before.tags], materials: [...before.materials],
+                quantity: String(before.quantity ?? ''), sku: String(before.sku ?? ''),
+            };
+            const expectedListingId = String(options.listingId || '');
+            const assertLease = typeof options.assertLease === 'function' ? options.assertLease : async () => true;
+            let trustedInputConflict = false;
+            const watchTrustedInput = (event) => {
+                if (event.isTrusted === true && trustedEditorEventMayMutate(event) && isEditorSurfaceTarget(event.target)) trustedInputConflict = true;
+            };
+            const guard = (excludedField = '') => {
+                if (trustedInputConflict || (expectedListingId && (routeKind() !== 'editor' || currentListingId() !== expectedListingId))) return false;
+                const live = this.read();
+                const integrity = live?.[PILL_READ_INTEGRITY];
+                return integrity?.tags === true && integrity?.materials === true
+                    && ['title', 'description', 'tags', 'materials', 'quantity', 'sku']
+                        .filter((field) => field !== excludedField)
+                        .every((field) => editorFieldMatches(field, live, expected));
+            };
             const changed = [];
+            TRUSTED_EDITOR_MUTATION_EVENTS.forEach((type) => document.addEventListener(type, watchTrustedInput, true));
             try {
+                await assertLease();
+                if (!guard() || this.formIsClean() !== true || !editorPublishIsDormant()) {
+                    throw new Error('The Etsy editor changed immediately before proposal application.');
+                }
                 if (fields.includes('title') && normalizeSpace(before.title) !== prepared.title) {
+                    await assertLease();
+                    if (!guard()) throw new Error('The Etsy editor changed during proposal application.');
                     setNativeValue(document.querySelector('#listing-title-input'), prepared.title); changed.push('title');
+                    expected.title = prepared.title;
+                    if (!guard()) throw new Error('The Etsy title did not reach the requested state.');
                 }
                 if (fields.includes('description') && before.description !== prepared.description) {
+                    await assertLease();
+                    if (!guard()) throw new Error('The Etsy editor changed during proposal application.');
                     setNativeValue(document.querySelector('#listing-description-textarea'), prepared.description); changed.push('description');
+                    expected.description = prepared.description;
+                    if (!guard()) throw new Error('The Etsy description did not reach the requested state.');
                 }
                 if (fields.includes('tags')) {
-                    const success = await this.syncPills('#field-tags', '#listing-tags-input', '#listing-tags-button', prepared.tags);
-                    if (!success) { void trackTelemetryError('selector_listing_editor'); throw new Error('Etsy tags control did not reach the requested state.'); }
+                    await assertLease();
+                    if (!guard()) throw new Error('The Etsy editor changed during proposal application.');
+                    const success = await this.syncPills('#field-tags', '#listing-tags-input', '#listing-tags-button', prepared.tags, {
+                        guard: () => guard('tags'), beforeMutation: assertLease,
+                    });
+                    if (success) expected.tags = [...prepared.tags];
+                    if (!success || !guard()) { void trackTelemetryError('selector_listing_editor'); throw new Error('Etsy tags control did not reach the requested state.'); }
                     if (!sameStringSet(before.tags, prepared.tags)) changed.push('tags');
                 }
                 if (fields.includes('materials')) {
-                    const success = await this.syncPills('#field-materials', '#listing-materials-input', '#listing-materials-button', prepared.materials);
-                    if (!success) { void trackTelemetryError('selector_listing_editor'); throw new Error('Etsy materials control did not reach the requested state.'); }
+                    await assertLease();
+                    if (!guard()) throw new Error('The Etsy editor changed during proposal application.');
+                    const success = await this.syncPills('#field-materials', '#listing-materials-input', '#listing-materials-button', prepared.materials, {
+                        guard: () => guard('materials'), beforeMutation: assertLease,
+                    });
+                    if (success) expected.materials = [...prepared.materials];
+                    if (!success || !guard()) { void trackTelemetryError('selector_listing_editor'); throw new Error('Etsy materials control did not reach the requested state.'); }
                     if (!sameStringSet(before.materials, prepared.materials)) changed.push('materials');
                 }
                 if (!changed.length) throw new Error('The selected Etsy fields already match the proposal; nothing was changed.');
                 return changed;
             } catch (error) {
-                const changedAfterFailure = this.changedFields(before, this.read(), fields);
-                error.changedFields = changedAfterFailure;
-                error.editorRestored = changedAfterFailure.length === 0
-                    ? this.formIsClean() === true
-                    : await this.restore(before, changedAfterFailure);
+                error.changedFields = this.changedFields(before, this.read(), fields);
+                error.trustedInputConflict = trustedInputConflict;
                 throw error;
+            } finally {
+                TRUSTED_EDITOR_MUTATION_EVENTS.forEach((type) => document.removeEventListener(type, watchTrustedInput, true));
             }
         },
         publishButton() { return document.querySelector('#shop-manager--listing-publish-edit,button[data-test="publish"]'); },
@@ -5243,8 +6033,10 @@
     }
 
     function storedQueueHasActiveItem(queue) {
-        return Boolean(queue && ['ready', 'running'].includes(String(queue.status || ''))
-            && Array.isArray(queue.items) && queue.items[Number(queue.cursor)]);
+        const normalized = normalizeQueue(queue);
+        if (normalized?.unsupportedSchema || normalized?.invalidSchema) return true;
+        return Boolean(normalized && ['ready', 'running'].includes(String(normalized.status || ''))
+            && Array.isArray(normalized.items) && normalized.items[Number(normalized.cursor)]);
     }
 
     const UNCERTAIN_PROVIDER_SUBMISSION_STATUSES = Object.freeze([
@@ -5314,6 +6106,13 @@
             });
         },
         async acquire(options = {}) {
+            try { return await this.acquireStrict(options); }
+            catch (error) {
+                if (error?.code === 'STORAGE_READ_FAILED') return false;
+                throw error;
+            }
+        },
+        async acquireStrict(options = {}) {
             clearInterval(state.leaseTimer);
             const acquired = await withNamedLock(STORAGE_MUTATION_LOCK, async () => {
                 const collectionLease = await GMX.get(KEYS.collectionLease, null);
@@ -5362,7 +6161,7 @@
 
     const Queue = {
         activeItem() {
-            if (!state.queue || !Array.isArray(state.queue.items)) return null;
+            if (!state.queue || state.queue.unsupportedSchema || state.queue.invalidSchema || !Array.isArray(state.queue.items)) return null;
             return state.queue.items[state.queue.cursor] || null;
         },
         activeIdentity() {
@@ -5383,9 +6182,10 @@
             }
             const allowedStatuses = Array.isArray(expectedStatuses) ? expectedStatuses.map(String) : [];
             return Lease.withFence(fenceToken, async () => {
-                const queue = await GMX.get(KEYS.queue, null);
+                const queue = normalizeQueue(await GMX.get(KEYS.queue, null));
                 const item = queue && Array.isArray(queue.items) ? queue.items[expectedCursor] : null;
                 const queueMatches = queue
+                    && !queue.unsupportedSchema && !queue.invalidSchema
                     && String(queue.id || '') === expectedQueueId
                     && Number(queue.cursor) === expectedCursor
                     && ['ready', 'running'].includes(String(queue.status || ''))
@@ -5441,7 +6241,12 @@
         async create(records, expectedIdentity) {
             const requestedIds = uniqueStrings(records.map((record) => String(record.listingId)));
             return withNamedLock(STORAGE_MUTATION_LOCK, async () => {
-                const existingQueue = await GMX.get(KEYS.queue, null);
+                const existingQueue = normalizeQueue(await GMX.get(KEYS.queue, null));
+                if (existingQueue?.unsupportedSchema || existingQueue?.invalidSchema) {
+                    const error = new Error('The stored action queue uses a newer or invalid schema.');
+                    error.code = existingQueue.unsupportedSchema ? 'QUEUE_NEWER_SCHEMA' : 'QUEUE_INVALID_SCHEMA';
+                    throw error;
+                }
                 if (storedQueueHasActiveItem(existingQueue)) {
                     const error = new Error('An action queue is already active.'); error.code = 'QUEUE_ACTIVE'; throw error;
                 }
@@ -5452,6 +6257,7 @@
                     const error = new Error('All-page collection is active.'); error.code = 'COLLECTION_ACTIVE'; throw error;
                 }
                 const fenced = await assertFreshCollectionLocked(expectedIdentity);
+                const storedPolicy = await storedHealthPolicyLocked();
                 const latestById = new Map(fenced.records.map((record) => [String(record.listingId), record]));
                 const latestRecords = requestedIds.map((listingId) => latestById.get(listingId));
                 if (latestRecords.some((record) => !record)) {
@@ -5473,6 +6279,9 @@
                     if (!recommendationBasisMatches(record)) {
                         const error = new Error('The proposal basis changed.'); error.code = 'PROPOSAL_STALE'; throw error;
                     }
+                    if (record.proposal?.basis?.policyFingerprint !== storedPolicy.fingerprint) {
+                        const error = new Error('The stored analysis thresholds changed.'); error.code = 'PROPOSAL_STALE'; throw error;
+                    }
                     if (record.proposal.experimentOverlap && !record.proposal.experimentOverlapAcceptedAt) {
                         const error = new Error('The proposal overlaps an active experiment.'); error.code = 'PROPOSAL_EXPERIMENT_OVERLAP'; throw error;
                     }
@@ -5483,7 +6292,7 @@
                 }));
                 const identity = collectionIdentity(fenced.collection);
                 const queue = {
-                    schema: 1, id: `queue-${Date.now()}`, createdAt: nowIso(), status: 'ready', cursor: 0, items,
+                    schema: QUEUE_SCHEMA_VERSION, id: `queue-${Date.now()}`, createdAt: nowIso(), status: 'ready', cursor: 0, items,
                     collectionId: identity.id, scopeKey: identity.scopeKey, completedAt: identity.completedAt,
                 };
                 const saved = await Store.saveQueueLocked(queue);
@@ -5507,7 +6316,8 @@
             try { result = predicate(); } catch { /* retry while the lease is still held */ }
             if (result) {
                 await Lease.assertOwner(fenceToken);
-                return result;
+                try { result = predicate(); } catch { result = null; }
+                if (result) return result;
             }
             await sleep(interval);
         }
@@ -5731,8 +6541,7 @@
         }
         const records = [];
         for (const listingId of stored.uniqueIds || []) {
-            const raw = await GMX.get(KEYS.record(listingId), null);
-            const record = raw && typeof raw === 'object' ? normalizeRecord(raw, listingId) : null;
+            const record = await Store.getRecord(listingId);
             if (!record || record.unsupportedSchema) {
                 const error = new Error(`Listing record ${listingId} is unavailable.`); error.code = 'COLLECTION_INCOMPLETE'; throw error;
             }
@@ -5840,6 +6649,13 @@
             const error = new Error('Collection lease was lost.'); error.code = 'COLLECTION_LEASE_LOST'; throw error;
         },
         async acquire(options = {}) {
+            try { return await this.acquireStrict(options); }
+            catch (error) {
+                if (error?.code === 'STORAGE_READ_FAILED') return false;
+                throw error;
+            }
+        },
+        async acquireStrict(options = {}) {
             const expectedCollectionId = Object.hasOwn(options, 'expectedCollectionId') ? String(options.expectedCollectionId || '') : '';
             const allowedCollectionStatuses = expectedCollectionId
                 ? uniqueStrings(Array.isArray(options.allowedCollectionStatuses) && options.allowedCollectionStatuses.length
@@ -6465,8 +7281,9 @@
                         UI.setStatus('collectionStorageFailed', 'error'); UI.render(); return null;
                     });
                 }
-                if (!['STORAGE_WRITE_FAILED', 'STORAGE_QUOTA_EXCEEDED'].includes(error?.code)) void trackTelemetryError('runtime_listing_scan');
-                return this.block(['STORAGE_WRITE_FAILED', 'STORAGE_QUOTA_EXCEEDED'].includes(error?.code) ? 'collectionStorageFailed' : 'collectionPageChanged');
+                const storageFailure = ['STORAGE_READ_FAILED', 'STORAGE_WRITE_FAILED', 'STORAGE_QUOTA_EXCEEDED'].includes(error?.code);
+                if (!storageFailure) void trackTelemetryError('runtime_listing_scan');
+                return this.block(storageFailure ? 'collectionStorageFailed' : 'collectionPageChanged');
             }).finally(() => { state.collectionLoop = null; UI.render(); });
             return state.collectionLoop;
         },
@@ -6478,7 +7295,7 @@
         :host{all:initial;--meli-bg:#fff;--meli-fg:#171717;--meli-muted:#f7f7f7;--meli-muted-2:#f2f2f2;--meli-muted-fg:#737373;--meli-border:#e7e7e7;--meli-input:#dedede;--meli-primary:#1f1f1f;--meli-primary-fg:#fafafa;--meli-danger:#b91c1c;--meli-danger-soft:#fff1f1;--meli-warning:#8a5a00;--meli-warning-soft:#fff8ed;--meli-success:#276749;--success:var(--meli-success);--meli-success-soft:#eef8f1;--meli-shadow:0 1px 3px rgba(15,23,42,.08),0 18px 44px rgba(15,23,42,.13);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--meli-fg);font-variant-numeric:tabular-nums}
         *,*:before,*:after{box-sizing:border-box}button,input,textarea,select{font:inherit}.meli-svg{width:17px;height:17px;display:block;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
         .meli-launcher{position:fixed;right:0;top:148px;z-index:2147483645;width:62px;height:52px;padding:0;border:1px solid #d7d7d7;border-right:0;border-radius:10px 0 0 10px;background:#fff;color:#171717;box-shadow:0 10px 26px rgba(0,0,0,.17);cursor:pointer;display:flex;align-items:center;justify-content:center}.meli-launcher[hidden]{display:none}.meli-launcher-logo{display:block;width:43px;height:auto;object-fit:contain}.meli-badge{position:absolute;right:4px;top:4px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--meli-danger);color:#fff;font:750 9px/17px Inter,system-ui,sans-serif;text-align:center}
-        .meli-panel{position:fixed;z-index:2147483645;top:12px;right:12px;bottom:12px;width:620px;display:grid;grid-template-columns:60px minmax(0,1fr);grid-template-rows:60px minmax(0,1fr);overflow:hidden;border:1px solid var(--meli-border);border-radius:12px;background:var(--meli-bg);box-shadow:var(--meli-shadow);font-size:12.5px;line-height:1.45;transition:width .2s ease,grid-template-columns .2s ease}.meli-panel[hidden]{display:none}.meli-panel.is-wide{width:min(1200px,calc(100vw - 24px));grid-template-columns:184px minmax(0,1fr)}
+        .meli-panel{position:fixed;z-index:2147483645;top:12px;right:12px;bottom:12px;width:min(620px,calc(100vw - 24px));display:grid;grid-template-columns:60px minmax(0,1fr);grid-template-rows:60px minmax(0,1fr);overflow:hidden;border:1px solid var(--meli-border);border-radius:12px;background:var(--meli-bg);box-shadow:var(--meli-shadow);font-size:12.5px;line-height:1.45;transition:width .2s ease,grid-template-columns .2s ease}.meli-panel[hidden]{display:none}.meli-panel.is-wide{width:min(1120px,calc(100vw - 24px));grid-template-columns:184px minmax(0,1fr)}
         .meli-head{grid-column:1/-1;min-width:0;padding:9px 11px 9px 14px;display:flex;align-items:center;gap:11px;border-bottom:1px solid var(--meli-border);background:#fff}.meli-logo{width:48px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}.meli-logo-link{border-radius:7px;text-decoration:none}.meli-logo-link:focus-visible{outline:2px solid #171717;outline-offset:3px}.meli-brand-logo{display:block;width:43px;height:auto;object-fit:contain}.meli-brand{min-width:0;flex:1}.meli-title{margin:0;font-size:14px;font-weight:730;letter-spacing:-.015em;line-height:1.2}.meli-subtitle{margin-top:3px;color:var(--meli-muted-fg);font-size:11px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meli-version{height:22px;padding:0 8px;display:inline-flex;align-items:center;border:1px solid var(--meli-border);border-radius:999px;background:var(--meli-muted);color:#525252;font-size:10px;font-weight:700}.meli-head-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}.meli-icon,.meli-lang{width:32px;min-width:32px;height:32px;padding:0;border:1px solid var(--meli-border);border-radius:7px;background:#fff;color:#525252;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}.meli-lang{width:auto;min-width:34px;padding:0 7px;font-size:10.5px;font-weight:750;letter-spacing:.04em}.meli-icon:hover,.meli-lang:hover{background:var(--meli-muted);color:#171717}
         .meli-nav{grid-column:1;grid-row:2;padding:10px 7px;display:flex;flex-direction:column;gap:5px;border-right:1px solid var(--meli-border);background:#fafafa;overflow:auto}.meli-nav-btn{width:100%;min-height:40px;padding:0;display:flex;align-items:center;justify-content:center;gap:9px;border:1px solid transparent;border-radius:7px;background:transparent;color:#737373;font-size:12px;font-weight:650;cursor:pointer}.meli-nav-btn:hover{background:#fff;color:#171717}.meli-nav-btn.is-active{border-color:#dedede;background:#fff;color:#171717;box-shadow:0 1px 2px rgba(0,0,0,.04)}.meli-nav-label{display:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.meli-panel.is-wide .meli-nav{padding:10px}.meli-panel.is-wide .meli-nav-btn{padding:0 11px;justify-content:flex-start}.meli-panel.is-wide .meli-nav-label{display:block}
         .meli-main{grid-column:2;grid-row:2;min-width:0;overflow:auto;overscroll-behavior:contain;padding:18px;background:var(--meli-muted)}.meli-view{min-width:0;max-width:100%;animation:meli-view-in .16s ease}.meli-view-head{margin-bottom:14px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.meli-view-title{margin:0;font-size:18px;font-weight:740;letter-spacing:-.025em;line-height:1.2}.meli-view-copy{margin:4px 0 0;color:#737373;font-size:11.5px;line-height:1.45}.meli-card{overflow:hidden;border:1px solid var(--meli-border);border-radius:9px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}.meli-card+.meli-card{margin-top:12px}.meli-card-head{min-height:43px;padding:9px 11px;display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--meli-border);background:#fafafa}.meli-card-head strong{font-size:12.5px}.meli-card-body{padding:12px}
@@ -6495,7 +7312,7 @@
         .meli-toast-root{position:fixed;top:16px;left:50%;z-index:2147483647;transform:translateX(-50%);width:min(360px,calc(100vw - 32px));display:grid;gap:8px;pointer-events:none;font:600 14px/1.4 Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.meli-toast{--meli-toast:#343a4a;min-height:44px;padding:10px 10px 10px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;color:#fff;background:var(--meli-toast);box-shadow:0 8px 24px rgba(24,28,45,.18);opacity:0;transform:translateY(8px);transition:opacity .18s ease,transform .18s ease;pointer-events:auto}.meli-toast.is-visible{opacity:1;transform:none}.meli-toast[data-tone="success"]{--meli-toast:#178847}.meli-toast[data-tone="error"]{--meli-toast:#c23b3b}.meli-toast[data-tone="warning"]{--meli-toast:#a85710}.meli-toast-mark{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;font-size:11px;line-height:1}.meli-toast-copy{min-width:0;flex:1;overflow-wrap:anywhere}.meli-toast-close{width:28px;height:28px;padding:0;border:0;border-radius:7px;display:grid;place-items:center;color:inherit;background:transparent;cursor:pointer;opacity:.72}.meli-toast-close:hover{opacity:1;background:rgba(255,255,255,.14)}
         @keyframes meli-view-in{from{opacity:.5;transform:translateY(3px)}to{opacity:1;transform:none}}
         @media(max-width:760px){.meli-panel,.meli-panel.is-wide{top:8px;right:8px;bottom:8px;left:8px;width:auto;grid-template-columns:52px minmax(0,1fr)}.meli-head{padding-left:9px}.meli-main{padding:12px}.meli-launcher{top:auto;bottom:86px}.meli-grid,.meli-panel.is-wide .meli-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.meli-panel.is-wide .meli-nav{padding:10px 7px}.meli-panel.is-wide .meli-nav-btn{padding:0;justify-content:center}.meli-panel.is-wide .meli-nav-label{display:none}.meli-overlay{padding:10px}.meli-modal,.meli-modal.small{width:100%;max-height:calc(100dvh - 20px)}.meli-modal-body{padding:12px}.meli-form-grid,.meli-settings-grid{grid-template-columns:1fr}.meli-field.full{grid-column:auto}.meli-toolbar .meli-input,.meli-toolbar .meli-select{width:100%;min-width:0;height:44px;font-size:16px}.meli-modal-foot{flex-wrap:wrap}.meli-modal-foot>.meli-btn{flex:1}.meli-toast-root{top:12px}}
-        @media(max-width:480px){.meli-panel,.meli-panel.is-wide{top:4px;right:4px;bottom:4px;left:4px;grid-template-columns:48px minmax(0,1fr)}.meli-head{padding:8px;gap:6px}.meli-logo{width:40px}.meli-brand-logo{width:37px}.meli-title{font-size:12.5px}.meli-subtitle{display:none}.meli-head-actions{gap:4px}.meli-icon,.meli-lang{width:29px;min-width:29px;height:29px}.meli-main{padding:10px}.meli-nav{padding:8px 5px}.meli-nav-btn{min-height:38px}.meli-grid,.meli-panel.is-wide .meli-grid{grid-template-columns:1fr 1fr;gap:7px}.meli-stat{padding:9px}.meli-view-title{font-size:16px}.meli-toolbar{padding:8px}.meli-field-toggle{white-space:normal;text-align:right}.meli-modal-head{padding:10px 12px}.meli-modal-title{font-size:14px}.meli-modal-subtitle{font-size:10.5px}.meli-modal-body{padding:10px}.meli-modal-foot{padding:10px}.meli-toast-root{top:8px;width:calc(100vw - 20px)}}
+        @media(max-width:480px){.meli-panel,.meli-panel.is-wide{top:4px;right:4px;bottom:4px;left:4px;width:auto;grid-template-columns:48px minmax(0,1fr)}.meli-head{padding:8px;gap:6px}.meli-logo{width:40px}.meli-brand-logo{width:37px}.meli-title{font-size:12.5px}.meli-subtitle{display:none}.meli-head-actions{gap:4px}.meli-icon,.meli-lang{width:29px;min-width:29px;height:29px}.meli-main{padding:10px}.meli-nav{padding:8px 5px}.meli-nav-btn{min-height:38px}.meli-grid,.meli-panel.is-wide .meli-grid{grid-template-columns:1fr 1fr;gap:7px}.meli-stat{padding:9px}.meli-view-title{font-size:16px}.meli-toolbar{padding:8px}.meli-field-toggle{white-space:normal;text-align:right}.meli-modal-head{padding:10px 12px}.meli-modal-title{font-size:14px}.meli-modal-subtitle{font-size:10.5px}.meli-modal-body{padding:10px}.meli-modal-foot{padding:10px}.meli-toast-root{top:8px;width:calc(100vw - 20px)}}
         @media(max-width:1100px){.meli-panel.is-wide .meli-listing-list{grid-template-columns:1fr}}
         @media(max-width:760px){.meli-analysis-controls{grid-template-columns:1fr}.meli-selection-tools{grid-column:auto;flex-wrap:wrap}.meli-listing-list,.meli-panel.is-wide .meli-listing-list{max-height:calc(100dvh - 280px);padding:9px;grid-template-columns:1fr}.meli-listing-card-head{grid-template-columns:22px 52px minmax(0,1fr);padding:11px;gap:9px}.meli-card-thumb{width:52px;height:52px}.meli-card-health{grid-column:2/-1;width:100%;padding-top:7px;display:grid;grid-template-columns:auto 1fr;align-items:center;justify-items:start}.meli-score-copy,.meli-card-confidence{justify-self:end}.meli-card-confidence,.meli-confidence-track{grid-column:1/-1}.meli-confidence-track{min-width:70px}.meli-metrics-strip{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 0}.meli-metric:nth-child(3){border-right:0}.meli-metric:nth-child(n+4){padding-top:7px;border-top:1px solid #e8e8e5}.meli-card-insight{grid-template-columns:28px minmax(0,1fr)}.meli-card-insight>span{grid-column:2;max-width:none;text-align:left}.meli-bulk-bar{align-items:stretch;flex-direction:column}.meli-bulk-bar>div:last-child{display:grid;grid-template-columns:1fr 1fr}.meli-card-action{flex:1}.meli-card-action span{display:block}.meli-confidence-row{grid-template-columns:106px 1fr 30px}}
         @media(max-width:480px){.meli-analysis-controls{padding:9px}.meli-listing-list{padding:7px}.meli-listing-card{border-radius:11px}.meli-card-insight p{font-size:9px}.meli-listing-card-foot{display:grid;grid-template-columns:1fr 1fr}.meli-card-action:first-child{grid-column:1/-1}.meli-bulk-bar>div:last-child{grid-template-columns:1fr}.meli-bulk-bar .meli-btn{width:100%}}
@@ -6566,12 +7383,23 @@
     function sanitizeImportedUrl(value, kind = 'etsy') {
         const source = String(value || '');
         if (!source) return '';
-        if (kind === 'image' && /^data:image\/(?:png|gif|jpeg|webp|svg\+xml)[;,]/i.test(source)) return source.slice(0, 250000);
+        if (kind === 'image' && /^data:image\/(?:png|gif|jpeg|webp)[;,]/i.test(source)) return source.slice(0, 250000);
         try {
             const url = new URL(source);
-            if (url.protocol !== 'https:') return '';
-            if (kind === 'etsy' && !/(^|\.)etsy\.com$/i.test(url.hostname)) return '';
+            if (url.protocol !== 'https:' || url.port || url.username || url.password) return '';
+            if (kind === 'etsy' && url.hostname.toLowerCase() !== 'www.etsy.com') return '';
+            if (kind === 'image' && !/(^|\.)etsystatic\.com$/i.test(url.hostname)) return '';
             return url.href.slice(0, 2000);
+        } catch { return ''; }
+    }
+
+    function sanitizeImportedPublicListingUrl(value, listingId) {
+        const sanitized = sanitizeImportedUrl(value, 'etsy');
+        if (!sanitized) return '';
+        try {
+            const url = new URL(sanitized);
+            const match = url.pathname.match(/^\/listing\/(\d+)(?:\/|$)/);
+            return match && match[1] === String(listingId) ? url.href.slice(0, 2000) : '';
         } catch { return ''; }
     }
 
@@ -6589,59 +7417,163 @@
             if (!record || record.unsupportedSchema) throw new Error(`records[${index}] uses an unsupported schema`);
             record.meta = {
                 ...record.meta,
-                editUrl: sanitizeImportedUrl(record.meta?.editUrl, 'etsy'),
-                publicUrl: sanitizeImportedUrl(record.meta?.publicUrl, 'etsy'),
+                editUrl: canonicalQueueEditUrl(listingId),
+                publicUrl: sanitizeImportedPublicListingUrl(record.meta?.publicUrl, listingId),
                 imageUrl: sanitizeImportedUrl(record.meta?.imageUrl, 'image'),
             };
             return record;
         });
-        const settingsRaw = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
-        const settings = {
-            ...DEFAULT_SETTINGS,
-            ...normalizeHealthThresholds(settingsRaw),
-            retentionDays: clamp(settingsRaw.retentionDays || APP.retentionDays, 30, APP.retentionDays),
-            maxSnapshots: clamp(settingsRaw.maxSnapshots || APP.maxSnapshots, 10, APP.maxSnapshots),
-        };
+        if (raw.settings !== undefined && (!raw.settings || typeof raw.settings !== 'object' || Array.isArray(raw.settings))) {
+            throw new Error('settings must be an object when provided');
+        }
+        const settingsRaw = raw.settings || {};
+        const settings = {};
+        Object.keys(HEALTH_THRESHOLD_CONTRACTS).forEach((key) => {
+            if (!Object.hasOwn(settingsRaw, key)) return;
+            const value = settingsRaw[key];
+            const contract = HEALTH_THRESHOLD_CONTRACTS[key];
+            if (typeof value !== 'number' || !Number.isInteger(value) || value < contract.min || value > contract.max) throw new Error(`settings.${key} is invalid`);
+            settings[key] = value;
+        });
+        for (const [key, min, max] of [['retentionDays', 30, APP.retentionDays], ['maxSnapshots', 10, APP.maxSnapshots]]) {
+            if (!Object.hasOwn(settingsRaw, key)) continue;
+            const value = settingsRaw[key];
+            if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) throw new Error(`settings.${key} is invalid`);
+            settings[key] = value;
+        }
+        if (raw.analysisFilters !== undefined && (!raw.analysisFilters || typeof raw.analysisFilters !== 'object' || Array.isArray(raw.analysisFilters))) {
+            throw new Error('analysisFilters must be an object when provided');
+        }
         return {
             records,
             settings,
-            analysisFilters: normalizeAnalysisFilters(raw.analysisFilters),
+            analysisFilters: raw.analysisFilters === undefined ? null : normalizeAnalysisFilters(raw.analysisFilters),
             filterPresets: normalizeFilterPresets(raw.filterPresets),
             queueSkipped: Boolean(raw.queue),
         };
     }
 
-    function mergeFilterPresetCollections(current, incoming) {
+    function mergeFilterPresetCollections(current, incoming, stats = null) {
         const merged = normalizeFilterPresets(current);
+        let applied = 0;
+        let skipped = 0;
         normalizeFilterPresets(incoming).forEach((preset) => {
-            const index = merged.findIndex((item) => item.name.toLocaleLowerCase() === preset.name.toLocaleLowerCase());
-            if (index >= 0) merged[index] = { ...preset, id: merged[index].id, createdAt: merged[index].createdAt };
-            else if (merged.length < MAX_FILTER_PRESETS) merged.push(preset);
+            const idIndex = merged.findIndex((item) => item.id === preset.id);
+            const nameIndex = merged.findIndex((item) => presetNameFold(item.name) === presetNameFold(preset.name));
+            if (idIndex >= 0 && nameIndex >= 0 && idIndex !== nameIndex) { skipped += 1; return; }
+            const index = idIndex >= 0 ? idIndex : nameIndex;
+            if (index >= 0) {
+                const existing = merged[index];
+                if ((validTime(preset.updatedAt) || 0) > (validTime(existing.updatedAt) || 0)) {
+                    merged[index] = { ...preset, id: existing.id, createdAt: existing.createdAt };
+                    applied += 1;
+                } else skipped += 1;
+            } else if (merged.length < MAX_FILTER_PRESETS) { merged.push(preset); applied += 1; }
+            else skipped += 1;
         });
+        if (stats && typeof stats === 'object') Object.assign(stats, { applied, skipped });
         return normalizeFilterPresets(merged);
     }
 
     async function importBackupDocument(raw) {
         const backup = normalizeBackupDocument(raw);
         const result = await withNamedLock(STORAGE_MUTATION_LOCK, async () => {
-            const batchIndex = { items: await Store.getIndex(), dirty: false };
-            for (const record of backup.records) await Store.putRecordLocked(record, batchIndex);
-            if (batchIndex.dirty) await requireStored(KEYS.index, batchIndex.items);
-            state.settings = {
+            const actionLease = await GMX.get(KEYS.lease, null);
+            const collectionLease = await GMX.get(KEYS.collectionLease, null);
+            const storedQueue = normalizeQueue(await GMX.get(KEYS.queue, null));
+            const storedCollection = normalizeCollection(await GMX.get(KEYS.collection, null));
+            const busy = durableLeaseIsActive(actionLease) || durableLeaseIsActive(collectionLease)
+                || storedQueueHasActiveItem(storedQueue) || storedCollection?.unsupportedSchema
+                || ['starting', 'running'].includes(String(storedCollection?.status || ''));
+            if (busy) {
+                const error = new Error('Backup import is blocked while an action queue or collection is active.');
+                error.code = 'IMPORT_BUSY';
+                throw error;
+            }
+            const storedSettings = await GMX.get(KEYS.settings, {});
+            const durableHealthSettings = healthSettingsSnapshot({ ...state.settings, ...(storedSettings && typeof storedSettings === 'object' ? storedSettings : {}) });
+            const mergedHealthSettings = { ...durableHealthSettings, ...backup.settings };
+            if (!validateThresholdSettings(mergedHealthSettings).valid) throw new Error('backup threshold settings are contradictory');
+            const nextSettings = {
                 ...state.settings,
-                ...backup.settings,
+                ...mergedHealthSettings,
                 language: state.settings.language,
                 collapsed: state.settings.collapsed,
             };
-            state.analysisFilters = backup.analysisFilters;
-            state.filterPresets = mergeFilterPresetCollections(state.filterPresets, backup.filterPresets);
-            await requireStored(KEYS.settings, state.settings);
-            await requireStored(KEYS.analysisFilters, state.analysisFilters);
-            await requireStored(KEYS.filterPresets, { schema: 1, items: state.filterPresets });
-            await Store.appendAuditLocked({ type: 'backup-imported', records: backup.records.length, presets: backup.filterPresets.length, queueSkipped: backup.queueSkipped });
-            return { records: backup.records.length, presets: backup.filterPresets.length, queueSkipped: backup.queueSkipped };
+            const durableAnalysisFilters = normalizeAnalysisFilters(await GMX.get(KEYS.analysisFilters, DEFAULT_ANALYSIS_FILTERS));
+            const durablePresetEnvelope = await GMX.get(KEYS.filterPresets, { schema: 1, items: [] });
+            const nextAnalysisFilters = backup.analysisFilters || durableAnalysisFilters;
+            const presetMergeStats = {};
+            const nextFilterPresets = mergeFilterPresetCollections(
+                normalizeFilterPresets(durablePresetEnvelope),
+                backup.filterPresets,
+                presetMergeStats,
+            );
+            const healthSettings = healthSettingsSnapshot(nextSettings);
+            const durableIndex = await Store.getIndex();
+            // Resolve every deterministic record conflict before the first write. This keeps
+            // a malformed late record from leaving earlier records or the collection changed.
+            for (const incoming of backup.records) {
+                const listingId = String(incoming.listingId);
+                const currentRaw = await GMX.get(KEYS.record(listingId), null);
+                if (currentRaw && typeof currentRaw === 'object') {
+                    const storedListingId = Object.hasOwn(currentRaw, 'listingId') ? String(currentRaw.listingId ?? '') : listingId;
+                    if (storedListingId !== listingId) {
+                        const error = new Error(`Listing record identity mismatch for ${listingId}.`);
+                        error.code = 'RECORD_ID_MISMATCH';
+                        throw error;
+                    }
+                }
+                const current = currentRaw && typeof currentRaw === 'object' ? normalizeRecord(currentRaw, listingId) : null;
+                if (current?.unsupportedSchema) throw new Error(`Listing record ${listingId} uses a newer schema.`);
+                const candidate = mergeRecordCopies(current, incoming, nextSettings);
+                if (!candidate || candidate.unsupportedSchema || String(candidate.listingId || '') !== listingId) {
+                    const error = new Error(`Listing record identity mismatch for ${listingId}.`);
+                    error.code = 'RECORD_ID_MISMATCH';
+                    throw error;
+                }
+            }
+            if (backup.records.length > 0 && storedCollection && ['paused', 'completed'].includes(String(storedCollection.status || ''))) {
+                const invalidatedAt = nowIso();
+                await Store.saveCollectionLocked({
+                    ...storedCollection,
+                    status: 'blocked',
+                    stoppedAt: invalidatedAt,
+                    updatedAt: invalidatedAt,
+                    leaseToken: '',
+                    handoffToken: '',
+                    handoffPage: 0,
+                    handoffExpiresAt: '',
+                    retry: null,
+                    error: {
+                        key: 'collectionPageChanged',
+                        reason: 'Imported listing data requires a new full collection.',
+                        reportId: '',
+                    },
+                }, {
+                    id: storedCollection.id,
+                    token: storedCollection.leaseToken,
+                    writeRevision: storedCollection.writeRevision,
+                    manifestFingerprint: collectionManifestFingerprint(storedCollection),
+                });
+                state.selectedIds.clear();
+            }
+            const batchIndex = { items: [...durableIndex], dirty: false };
+            for (const record of backup.records) await Store.putRecordLocked(record, batchIndex, { settings: nextSettings });
+            if (batchIndex.dirty) await requireStored(KEYS.index, batchIndex.items);
+            await requireStored(KEYS.settings, { ...(storedSettings && typeof storedSettings === 'object' ? storedSettings : {}), ...healthSettings });
+            await requireStored(KEYS.analysisFilters, nextAnalysisFilters);
+            await requireStored(KEYS.filterPresets, { schema: 1, items: nextFilterPresets });
+            state.settings = nextSettings;
+            state.analysisFilters = nextAnalysisFilters;
+            state.filterPresets = nextFilterPresets;
+            setCommittedPreference(KEYS.settings, healthSettings);
+            setCommittedPreference(KEYS.analysisFilters, { filters: nextAnalysisFilters, query: state.analysisQuery, limit: state.analysisLimit });
+            setCommittedPreference(KEYS.filterPresets, nextFilterPresets);
+            await Store.appendAuditLocked({ type: 'backup-imported', records: backup.records.length, presets: presetMergeStats.applied, presetsSkipped: presetMergeStats.skipped, queueSkipped: backup.queueSkipped });
+            return { records: backup.records.length, presets: presetMergeStats.applied, presetsSkipped: presetMergeStats.skipped, queueSkipped: backup.queueSkipped };
         });
-        await refreshRecords();
+        await refreshRecords({ render: false });
         refreshStorageEstimate();
         return result;
     }
@@ -6674,8 +7606,7 @@
             rating: clamp(input?.rating, 1, 5), note,
             diagnostics: input?.includeDiagnostics ? feedbackDiagnostics() : null,
         };
-        state.feedback.push(entry);
-        await Store.saveFeedback();
+        await Store.appendFeedback(entry);
         const markdown = feedbackMarkdown(entry);
         await copyText(markdown);
         const title = `[Listing Analyzer feedback] ${entry.category}`;
@@ -6684,16 +7615,56 @@
         return entry;
     }
 
+    function validateThresholdSettings(values) {
+        const fields = ['minVisitsToImprove', 'minVisitsToProtect', 'minRenewalsToReview', 'declinePercent'];
+        const invalid = fields.find((key) => !Number.isInteger(values?.[key])
+            || values[key] < HEALTH_THRESHOLD_CONTRACTS[key].min
+            || values[key] > HEALTH_THRESHOLD_CONTRACTS[key].max);
+        if (invalid) return { valid: false, reason: 'range', field: invalid, ...HEALTH_THRESHOLD_CONTRACTS[invalid] };
+        if (values.minVisitsToProtect <= values.minVisitsToImprove) return { valid: false, reason: 'relationship', field: 'minVisitsToProtect' };
+        return { valid: true, reason: '', field: '' };
+    }
+
 
     async function persistThresholdSettings(values) {
         const fields = ['minVisitsToImprove', 'minVisitsToProtect', 'minRenewalsToReview', 'declinePercent'];
-        const previous = Object.fromEntries(fields.map((key) => [key, state.settings[key]]));
+        const previous = healthSettingsSnapshot(state.settings);
+        const revision = beginPreferenceMutation('healthSettings');
         const normalized = normalizeHealthThresholds(values);
         fields.forEach((key) => { state.settings[key] = normalized[key]; });
         let saved = false;
-        try { saved = await Store.saveSettings(); } catch { saved = false; }
-        if (!saved) fields.forEach((key) => { state.settings[key] = previous[key]; });
-        return saved;
+        try { saved = await Store.saveHealthSettings(); } catch { saved = false; }
+        const current = preferenceMutationIsCurrent('healthSettings', revision);
+        if (!saved && current) {
+            applySettingsFields(state.settings, committedPreference(KEYS.settings, previous), HEALTH_SETTING_FIELDS);
+        }
+        return saved && current;
+    }
+
+    function capturePanelFocus() {
+        const active = state.shadow?.activeElement;
+        if (!(active instanceof HTMLElement) || !state.panel?.contains(active)) return null;
+        const dataAttribute = Array.from(active.attributes || []).find((attribute) => attribute.name.startsWith('data-') && attribute.name !== 'data-base-label');
+        let selector = '';
+        if (dataAttribute) selector = dataAttribute.value
+            ? `[${dataAttribute.name}="${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(dataAttribute.value) : dataAttribute.value}"]`
+            : `[${dataAttribute.name}]`;
+        else if (active.id) selector = `#${typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(active.id) : active.id}`;
+        const candidates = selector ? Array.from(state.panel.querySelectorAll(selector)) : [];
+        const selectionStart = typeof active.selectionStart === 'number' ? active.selectionStart : null;
+        const selectionEnd = typeof active.selectionEnd === 'number' ? active.selectionEnd : null;
+        return { selector, index: Math.max(0, candidates.indexOf(active)), selectionStart, selectionEnd };
+    }
+
+    function restorePanelFocus(snapshot) {
+        if (!snapshot?.selector || state.settings.collapsed || !state.panel) return;
+        const candidates = Array.from(state.panel.querySelectorAll(snapshot.selector));
+        const target = candidates[snapshot.index] || candidates[0];
+        if (!(target instanceof HTMLElement)) return;
+        target.focus();
+        if (snapshot.selectionStart !== null && typeof target.setSelectionRange === 'function') {
+            try { target.setSelectionRange(snapshot.selectionStart, snapshot.selectionEnd); } catch { /* not a text control */ }
+        }
     }
 
     const UI = {
@@ -6725,9 +7696,41 @@
             element.querySelector('span').textContent = t(state.status.key, state.status.params);
         },
         async setCollapsed(collapsed) {
-            state.settings.collapsed = Boolean(collapsed);
-            await Store.saveSettings();
+            const previous = uiSettingsSnapshot(state.settings);
+            const candidate = Boolean(collapsed);
+            const revisionKey = 'uiPreferences:collapsed';
+            const revision = beginPreferenceMutation(revisionKey);
+            state.settings.collapsed = candidate;
+            let saved = false;
+            try { saved = await Store.saveUiPreferences(['collapsed']); } catch { saved = false; }
+            if (!saved && preferenceMutationIsCurrent(revisionKey, revision)) {
+                applySettingsFields(state.settings, committedPreference(KEYS.uiPreferences, previous), ['collapsed']);
+            }
             this.renderVisibility();
+            if (!saved && preferenceMutationIsCurrent(revisionKey, revision)) this.toast(t('storageWriteFailed'), 'error');
+            const focusTarget = state.settings.collapsed
+                ? state.launcher
+                : state.panel?.querySelector(`[data-view="${state.activeView}"]`) || state.panel?.querySelector('[data-collapse]');
+            if (focusTarget instanceof HTMLElement) focusTarget.focus();
+            registerMenus();
+            return saved;
+        },
+        async toggleLanguage() {
+            const previous = uiSettingsSnapshot(state.settings);
+            const candidate = previous.language === 'tr' ? 'en' : 'tr';
+            const revisionKey = 'uiPreferences:language';
+            const revision = beginPreferenceMutation(revisionKey);
+            state.settings.language = candidate;
+            let saved = false;
+            try { saved = await Store.saveUiPreferences(['language']); } catch { saved = false; }
+            if (!saved && preferenceMutationIsCurrent(revisionKey, revision)) {
+                applySettingsFields(state.settings, committedPreference(KEYS.uiPreferences, previous), ['language']);
+            }
+            this.render(true);
+            registerMenus();
+            registerTelemetryMenuCommand(true);
+            if (!saved && preferenceMutationIsCurrent(revisionKey, revision)) this.toast(t('storageWriteFailed'), 'error');
+            return saved;
         },
         renderVisibility() {
             if (!state.panel || !state.launcher) return;
@@ -6749,6 +7752,7 @@
         },
         render(force = false) {
             if (!state.panel) return;
+            const focusSnapshot = capturePanelFocus();
             const views = new Set(['overview', 'analysis', 'ai', 'queue', 'settings']);
             if (!views.has(state.activeView)) state.activeView = 'overview';
             state.host?.setAttribute('lang', state.settings.language);
@@ -6772,6 +7776,7 @@
             this.bindPanel();
             this.renderVisibility();
             this.updateBadge();
+            restorePanelFocus(focusSnapshot);
         },
         navigation() {
             const items = [
@@ -6815,7 +7820,7 @@
             const progress = job ? clamp((pages / Math.max(1, total)) * 100, 0, 100) : 0;
             const status = job?.status === 'completed' ? t('saved') : job?.status === 'running' ? t('scanning') : job?.status === 'paused' || job?.status === 'blocked' ? t('blocked') : t('ready');
             const hasReport = job?.status === 'blocked' && job.failureReports?.length;
-            return `<article class="meli-collection-card" data-collection-status="${escapeHtml(job?.status || 'idle')}"><div class="meli-collection-head"><div><span>${escapeHtml(t('collectionStatus'))}</span><strong>${escapeHtml(status)}</strong></div><b>${formatNumber(Math.round(progress))}%</b></div><div class="meli-collection-track"><i style="width:${progress}%"></i></div><div class="meli-collection-meta"><span>${escapeHtml(t('collectionPages'))}<b>${formatNumber(pages)} / ${formatNumber(total)}</b></span><span>${escapeHtml(t('collectionListings'))}<b>${formatNumber(count)}</b></span></div>${hasReport ? `<div class="meli-actions"><button class="meli-btn" data-error-report type="button">${escapeHtml(t('errorReport'))}</button></div>` : ''}</article>`;
+            return `<article class="meli-collection-card" data-collection-status="${escapeHtml(job?.status || 'idle')}"><div class="meli-collection-head"><div><span>${escapeHtml(t('collectionStatus'))}</span><strong>${escapeHtml(status)}</strong></div><b>${formatNumber(Math.round(progress))}%</b></div><div class="meli-collection-track" role="progressbar" aria-label="${escapeHtml(t('collectionStatus'))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress)}"><i style="width:${progress}%"></i></div><div class="meli-collection-meta"><span>${escapeHtml(t('collectionPages'))}<b>${formatNumber(pages)} / ${formatNumber(total)}</b></span><span>${escapeHtml(t('collectionListings'))}<b>${formatNumber(count)}</b></span></div>${hasReport ? `<div class="meli-actions"><button class="meli-btn" data-error-report type="button">${escapeHtml(t('errorReport'))}</button></div>` : ''}</article>`;
         },
         overviewView() {
             const counts = this.summary();
@@ -6863,7 +7868,7 @@
                 <div class="meli-analysis-card">
                     <div class="meli-analysis-controls">
                         <div class="meli-preset-zone"><div class="meli-preset-head"><span>${escapeHtml(t('filterPresets'))}</span></div><div class="meli-preset-list">${builtinPresets}${customPresets}</div><div class="meli-preset-editor"><input class="meli-input" data-preset-name maxlength="32" placeholder="${escapeHtml(t('presetName'))}"><button class="meli-btn" data-save-preset type="button">${escapeHtml(t('savePreset'))}</button></div></div>
-                        <div class="meli-analysis-search">${iconSvg('analysis')}<input class="meli-input" data-table-search type="search" value="${escapeHtml(state.analysisQuery)}" placeholder="${escapeHtml(t('search'))}"></div>
+                        <div class="meli-analysis-search">${iconSvg('analysis')}<input class="meli-input" data-table-search data-analysis-search type="search" value="${escapeHtml(state.analysisQuery)}" placeholder="${escapeHtml(t('search'))}"></div>
                         <button class="meli-filter-toggle" data-toggle-filters type="button" aria-expanded="${state.analysisFilterDrawerOpen ? 'true' : 'false'}">${iconSvg('settings')}<span>${escapeHtml(t('filters'))}</span><b data-filter-count>${formatNumber(filterCount)}</b></button>
                         <label class="meli-sort-control"><span>${escapeHtml(t('sortBy'))}</span><select class="meli-select" data-analysis-filter="sort"><option value="priority"${selected('priority', filters.sort)}>${escapeHtml(t('sortPriority'))}</option><option value="score"${selected('score', filters.sort)}>${escapeHtml(t('sortScore'))}</option><option value="visits"${selected('visits', filters.sort)}>${escapeHtml(t('sortVisits'))}</option><option value="sales"${selected('sales', filters.sort)}>${escapeHtml(t('sortSales'))}</option><option value="revenue"${selected('revenue', filters.sort)}>${escapeHtml(t('sortRevenue'))}</option><option value="confidence"${selected('confidence', filters.sort)}>${escapeHtml(t('sortConfidence'))}</option><option value="title"${selected('title', filters.sort)}>${escapeHtml(t('sortTitle'))}</option></select></label>
                         <div class="meli-filter-drawer" data-filter-drawer ${state.analysisFilterDrawerOpen ? '' : 'hidden'}>
@@ -6892,7 +7897,7 @@
             const totalPages = Math.max(1, Number(state.collection?.totalPages) || 1);
             const completedPages = Object.keys(state.collection?.pages || {}).length;
             const progress = Math.max(0, Math.min(100, Math.round((completedPages / totalPages) * 100)));
-            const progressMarkup = ['running', 'paused'].includes(status) ? `<div class="meli-analysis-gate-progress" aria-label="${escapeHtml(t('collectionProgress', Collection.progressParams()))}"><div class="meli-collection-track"><i style="width:${progress}%"></i></div><span>${escapeHtml(t('collectionProgress', Collection.progressParams()))}</span></div>` : '';
+            const progressMarkup = ['running', 'paused'].includes(status) ? `<div class="meli-analysis-gate-progress"><div class="meli-collection-track" role="progressbar" aria-label="${escapeHtml(t('collectionProgress', Collection.progressParams()))}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(progress)}"><i style="width:${progress}%"></i></div><span>${escapeHtml(t('collectionProgress', Collection.progressParams()))}</span></div>` : '';
             const listingsHref = collectionScopeHref(state.collection?.scopeKey) || '/your/shops/me/tools/listings?stats=true';
             const actionMarkup = onListingsPage
                 ? `<button class="meli-btn primary" data-analysis-scan type="button">${escapeHtml(buttonLabel)}</button><span class="meli-analysis-gate-shortcut">${escapeHtml(t('collectionShortcut'))}</span>`
@@ -6941,7 +7946,9 @@
                 const copy = recovery.submitted ? t('queueRecoverySubmitted') : t('queueRecoveryCopy');
                 const canVerifyDeactivation = page === 'editor' && item.proposal?.action === 'DEACTIVATE_REVIEW'
                     && DEACTIVATION_VERIFY_STATUSES.includes(String(item.status || ''));
-                return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueRecoveryTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + 1, queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body"><div class="meli-queue-recovery" data-queue-recovery role="alert"><strong>${escapeHtml(t('listing'))} ${escapeHtml(item.listingId)}</strong><p>${escapeHtml(copy)}</p><div class="meli-actions"><button class="meli-btn primary" data-recovery-open-listing type="button">${escapeHtml(t('queueRecoveryOpen'))}</button>${canVerifyDeactivation ? `<button class="meli-btn" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button>` : ''}${recovery.submitted ? '' : `<button class="meli-btn" data-queue-recover type="button">${escapeHtml(t('queueRecoveryRetry'))}</button>`}<button class="meli-btn danger" data-recovery-stop type="button">${escapeHtml(t('queueRecoveryStop'))}</button></div></div></div></div>`;
+                const canVerifyPublish = page === 'editor' && item.proposal?.action === 'UPDATE'
+                    && ['submitted', 'submitted-unverified'].includes(String(item.status || ''));
+                return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueRecoveryTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + 1, queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body"><div class="meli-queue-recovery" data-queue-recovery role="alert"><strong>${escapeHtml(t('listing'))} ${escapeHtml(item.listingId)}</strong><p>${escapeHtml(copy)}</p><div class="meli-actions"><button class="meli-btn primary" data-recovery-open-listing type="button">${escapeHtml(t('queueRecoveryOpen'))}</button>${canVerifyPublish ? `<button class="meli-btn" data-action="verify-publish" type="button">${escapeHtml(t('verifyPublish'))}</button>` : ''}${canVerifyDeactivation ? `<button class="meli-btn" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button>` : ''}${recovery.submitted ? '' : `<button class="meli-btn" data-queue-recover type="button">${escapeHtml(t('queueRecoveryRetry'))}</button>`}<button class="meli-btn danger" data-recovery-stop type="button">${escapeHtml(t('queueRecoveryStop'))}</button></div></div></div></div>`;
             }
             return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + (item ? 1 : 0), queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body">${item ? `<p>${escapeHtml(item.title || item.listingId)} · ${escapeHtml(item.status)}</p>${page === 'editor' ? this.editorQueueActions(item) : `<div class="meli-actions"><button class="meli-btn primary" data-action="go-current" type="button">${escapeHtml(t('goFirst'))}</button></div>`}` : `<p>${escapeHtml(t('noQueue'))}</p>`}</div></div>`;
         },
@@ -6957,16 +7964,14 @@
                 }
                 return `<div class="meli-actions"><button class="meli-btn primary" data-action="deactivate" type="button">${escapeHtml(t('openDeactivate'))}</button><button class="meli-btn" data-action="skip" type="button">${escapeHtml(t('skipItem'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
             }
+            if (['submitted', 'submitted-unverified'].includes(String(item.status || ''))) {
+                return `<div class="meli-actions"><button class="meli-btn primary" data-action="verify-publish" type="button">${escapeHtml(t('verifyPublish'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
+            }
             return `<div class="meli-actions"><button class="meli-btn primary" data-action="apply" type="button">${escapeHtml(t('applyForm'))}</button><button class="meli-btn" data-action="publish" type="button">${escapeHtml(t('publishAfterReview'))}</button><button class="meli-btn" data-action="skip" type="button">${escapeHtml(t('skipItem'))}</button><button class="meli-btn danger" data-action="stop" type="button">${escapeHtml(t('stopQueue'))}</button></div>`;
         },
         bindPanel() {
             const root = state.panel;
-            root.querySelector('[data-language]')?.addEventListener('click', async () => {
-                state.settings.language = state.settings.language === 'tr' ? 'en' : 'tr';
-                await Store.saveSettings();
-                this.render(true);
-                registerMenus();
-            });
+            root.querySelector('[data-language]')?.addEventListener('click', () => { void this.toggleLanguage(); });
             root.querySelector('[data-wide]')?.addEventListener('click', () => { state.wide = !state.wide; this.render(true); });
             root.querySelector('[data-collapse]')?.addEventListener('click', () => { void this.setCollapsed(true); });
             root.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => {
@@ -6995,6 +8000,7 @@
             root.querySelector('[data-action="go-current"]')?.addEventListener('click', () => { void Queue.navigate(); });
             root.querySelector('[data-action="apply"]')?.addEventListener('click', () => { void applyCurrentProposal(); });
             root.querySelector('[data-action="publish"]')?.addEventListener('click', () => { void publishCurrentProposal(); });
+            root.querySelector('[data-action="verify-publish"]')?.addEventListener('click', () => { void verifyCurrentPublish(); });
             root.querySelector('[data-action="deactivate"]')?.addEventListener('click', () => { void openCurrentDeactivate(); });
             root.querySelector('[data-action="verify-deactivate"]')?.addEventListener('click', () => { void verifyCurrentDeactivate(); });
             root.querySelector('[data-action="skip"]')?.addEventListener('click', () => { void skipCurrentItem(); });
@@ -7029,10 +8035,10 @@
                     button.classList.toggle('is-active', Boolean(preset && analysisPresetIsActive(preset)));
                 });
             };
-            const updateFacetCounts = (analysisRecords) => {
-                const query = normalizeSpace(state.analysisQuery).toLocaleLowerCase();
-                const pageIds = new Set(state.pageListings.map((item) => String(item.listingId)));
-                const counts = analysisFacetCounts(analysisRecords, state.analysisFilters, query, pageIds);
+            const updateFacetCounts = (analysisRecords, factRows = null) => {
+                const counts = factRows
+                    ? analysisFacetCountsFromFacts(factRows, state.analysisFilters)
+                    : analysisFacetCounts(analysisRecords, state.analysisFilters, normalizeSpace(state.analysisQuery), new Set(state.pageListings.map((item) => String(item.listingId))));
                 root.querySelectorAll('[data-analysis-filter]').forEach((control) => {
                     const facet = control.dataset.analysisFilter;
                     if (!counts[facet]) return;
@@ -7047,7 +8053,8 @@
             const renderRows = (options = {}) => {
                 const previousScrollTop = options.preserveScroll ? body.scrollTop : 0;
                 const analysisRecords = collectedAnalysisRecords();
-                const visible = filteredAnalysisRecords(analysisRecords);
+                const factRows = analysisFactsForRecords(analysisRecords, state.analysisQuery, new Set(state.pageListings.map((item) => String(item.listingId))));
+                const visible = filteredAnalysisRecords(analysisRecords, factRows);
                 const shown = visible.slice(0, state.analysisLimit);
                 const moreMarkup = shown.length < visible.length ? `<div class="meli-load-more"><span>${escapeHtml(t('showingCount', { shown: shown.length, total: visible.length }))}</span><button class="meli-btn" data-load-more type="button">${escapeHtml(t('loadMore'))}</button></div>` : '';
                 if (options.append && visible.length) {
@@ -7064,7 +8071,7 @@
                 const filterCount = analysisFilterCount() + (normalizeSpace(state.analysisQuery) ? 1 : 0);
                 const badge = root.querySelector('[data-filter-count]'); if (badge) badge.textContent = formatNumber(filterCount);
                 const reset = root.querySelector('[data-reset-filters]'); if (reset) reset.disabled = filterCount === 0;
-                updateFacetCounts(analysisRecords);
+                updateFacetCounts(analysisRecords, factRows);
                 syncPresetState();
                 updateSelected(visible);
                 return visible;
@@ -7074,21 +8081,47 @@
                 if (search) search.value = state.analysisQuery;
             };
             const resetFilters = async () => {
+                const previous = { filters: state.analysisFilters, query: state.analysisQuery, limit: state.analysisLimit };
+                const revision = beginPreferenceMutation('analysisFilters');
                 state.analysisFilters = { ...DEFAULT_ANALYSIS_FILTERS };
                 state.analysisQuery = '';
                 state.analysisLimit = ANALYSIS_BATCH_SIZE;
                 syncFilterControls();
-                await Store.saveAnalysisFilters();
                 visible = renderRows();
+                const saved = await Store.saveAnalysisFilters();
+                if (!saved && preferenceMutationIsCurrent('analysisFilters', revision)) {
+                    const committed = committedPreference(KEYS.analysisFilters, previous);
+                    state.analysisFilters = committed.filters;
+                    if (state.analysisQuery === '') state.analysisQuery = committed.query;
+                    state.analysisLimit = committed.limit;
+                    syncFilterControls();
+                    visible = renderRows();
+                    this.toast(t('storageWriteFailed'), 'error');
+                }
+                return saved;
             };
             const applyPreset = async (preset) => {
                 if (!preset) return;
-                state.analysisFilters = normalizeAnalysisFilters({ ...DEFAULT_ANALYSIS_FILTERS, ...(preset.filters || {}) });
-                state.analysisQuery = normalizeSpace(preset.query).slice(0, 120);
+                const previous = { filters: state.analysisFilters, query: state.analysisQuery, limit: state.analysisLimit };
+                const revision = beginPreferenceMutation('analysisFilters');
+                const candidateFilters = normalizeAnalysisFilters({ ...DEFAULT_ANALYSIS_FILTERS, ...(preset.filters || {}) });
+                const candidateQuery = normalizeSpace(preset.query).slice(0, 120);
+                state.analysisFilters = candidateFilters;
+                state.analysisQuery = candidateQuery;
                 state.analysisLimit = ANALYSIS_BATCH_SIZE;
                 syncFilterControls();
-                await Store.saveAnalysisFilters();
                 visible = renderRows();
+                const saved = await Store.saveAnalysisFilters();
+                if (!saved && preferenceMutationIsCurrent('analysisFilters', revision)) {
+                    const committed = committedPreference(KEYS.analysisFilters, previous);
+                    state.analysisFilters = committed.filters;
+                    if (state.analysisQuery === candidateQuery) state.analysisQuery = committed.query;
+                    state.analysisLimit = committed.limit;
+                    syncFilterControls();
+                    visible = renderRows();
+                    this.toast(t('storageWriteFailed'), 'error');
+                }
+                return saved;
             };
             let visible = renderRows();
             body.addEventListener('change', (event) => {
@@ -7126,16 +8159,30 @@
                 }
                 if (target.closest('[data-empty-reset]')) void resetFilters();
             });
+            let searchRenderTimer = null;
             search?.addEventListener('input', () => {
                 state.analysisQuery = search.value;
                 state.analysisLimit = ANALYSIS_BATCH_SIZE;
-                visible = renderRows();
+                searchRenderTimer = scheduleAnalysisSearch(searchRenderTimer, () => {
+                    searchRenderTimer = null;
+                    if (body.isConnected !== false) visible = renderRows();
+                });
             });
-            root.querySelectorAll('[data-analysis-filter]').forEach((control) => control.addEventListener('change', () => {
+            root.querySelectorAll('[data-analysis-filter]').forEach((control) => control.addEventListener('change', async () => {
+                const previous = { filters: state.analysisFilters, limit: state.analysisLimit };
+                const revision = beginPreferenceMutation('analysisFilters');
                 state.analysisFilters = normalizeAnalysisFilters({ ...state.analysisFilters, [control.dataset.analysisFilter]: control.value });
                 state.analysisLimit = ANALYSIS_BATCH_SIZE;
-                void Store.saveAnalysisFilters();
                 visible = renderRows();
+                const saved = await Store.saveAnalysisFilters();
+                if (!saved && preferenceMutationIsCurrent('analysisFilters', revision)) {
+                    const committed = committedPreference(KEYS.analysisFilters, { ...previous, query: state.analysisQuery });
+                    state.analysisFilters = committed.filters;
+                    state.analysisLimit = committed.limit;
+                    syncFilterControls();
+                    visible = renderRows();
+                    this.toast(t('storageWriteFailed'), 'error');
+                }
             }));
             root.querySelector('[data-toggle-filters]')?.addEventListener('click', (event) => {
                 state.analysisFilterDrawerOpen = !state.analysisFilterDrawerOpen;
@@ -7155,19 +8202,37 @@
                 const input = root.querySelector('[data-preset-name]');
                 const name = normalizeSpace(input?.value).slice(0, 32);
                 if (name.length < 2) { this.toast(t('presetInvalid'), 'warning'); input?.focus(); return; }
-                const existingIndex = state.filterPresets.findIndex((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase());
+                const existingIndex = state.filterPresets.findIndex((item) => presetNameFold(item.name) === presetNameFold(name));
                 if (existingIndex < 0 && state.filterPresets.length >= MAX_FILTER_PRESETS) { this.toast(t('presetLimit', { count: MAX_FILTER_PRESETS }), 'warning'); return; }
                 const previous = existingIndex >= 0 ? state.filterPresets[existingIndex] : null;
                 const candidate = { id: previous?.id || randomId('preset'), name, filters: normalizeAnalysisFilters(state.analysisFilters), query: normalizeSpace(state.analysisQuery).slice(0, 120), createdAt: previous?.createdAt || nowIso(), updatedAt: nowIso() };
-                if (existingIndex >= 0) state.filterPresets.splice(existingIndex, 1, candidate); else state.filterPresets.push(candidate);
-                await Store.saveFilterPresets();
-                this.toast(t('presetSaved'), 'success');
+                const previousPresets = state.filterPresets;
+                const nextPresets = [...state.filterPresets];
+                if (existingIndex >= 0) nextPresets.splice(existingIndex, 1, candidate); else nextPresets.push(candidate);
+                const revision = beginPreferenceMutation('filterPresets');
+                state.filterPresets = nextPresets;
+                let saved = false;
+                try { saved = await Store.upsertFilterPreset(candidate); }
+                catch { saved = false; }
+                if (!preferenceMutationIsCurrent('filterPresets', revision)) return;
+                if (!saved) {
+                    state.filterPresets = committedPreference(KEYS.filterPresets, previousPresets);
+                    this.toast(t('storageWriteFailed'), 'error');
+                } else this.toast(t('presetSaved'), 'success');
                 this.render(true);
             });
             root.querySelectorAll('[data-delete-preset]').forEach((button) => button.addEventListener('click', async () => {
+                const previousPresets = state.filterPresets;
+                const revision = beginPreferenceMutation('filterPresets');
                 state.filterPresets = state.filterPresets.filter((item) => item.id !== button.dataset.deletePreset);
-                await Store.saveFilterPresets();
-                this.toast(t('presetDeleted'), 'success');
+                let saved = false;
+                try { saved = await Store.deleteFilterPreset(button.dataset.deletePreset); }
+                catch { saved = false; }
+                if (!preferenceMutationIsCurrent('filterPresets', revision)) return;
+                if (!saved) {
+                    state.filterPresets = committedPreference(KEYS.filterPresets, previousPresets);
+                    this.toast(t('storageWriteFailed'), 'error');
+                } else this.toast(t('presetDeleted'), 'success');
                 this.render(true);
             }));
             root.querySelector('[data-select-visible]')?.addEventListener('click', () => {
@@ -7337,7 +8402,7 @@
             modal.querySelector('[data-research-reopen]')?.addEventListener('click', () => { GMX.openTab(researchInsightsUrl(entry)); this.updateResearchTransfer('researchWaitingReady', 'scanning'); });
             modal.querySelector('[data-research-review]')?.addEventListener('click', async () => {
                 const record = await Store.getRecord(entry.listingId);
-                if (record) { this.closeModal(); this.openProposal(record); }
+                if (record && state.modal === modal) { this.closeModal(); this.openProposal(record); }
             });
             modal.querySelector('[data-research-close]')?.addEventListener('click', () => this.closeModal());
         },
@@ -7461,11 +8526,15 @@
                 if (fields.includes('description')) saved.description = modal.querySelector('[data-proposal-input="description"]').value.trim();
                 if (fields.includes('tags')) saved.tags = tags;
                 if (fields.includes('materials')) saved.materials = materials;
-                await Store.saveProposal(record.listingId, saved);
-                state.records = await Store.listRecords();
-                this.closeModal();
-                this.setStatus('proposalSaved', 'ready');
-                this.render(true);
+                try {
+                    await Store.saveProposal(record.listingId, saved);
+                    state.records = await Store.listRecords();
+                    if (state.modal === modal) this.closeModal();
+                    this.setStatus('proposalSaved', 'ready');
+                    this.render(true);
+                } catch (error) {
+                    feedback.textContent = t(error?.code === 'PROPOSAL_QUEUE_LOCKED' ? 'proposalQueueLocked' : 'storageWriteFailed');
+                }
             });
         },
         historyChart(history, metric, label, moneyCurrency = '') {
@@ -7477,7 +8546,8 @@
             if (model.qualityCounts?.approximate) qualityNotes.push(`${model.qualityCounts.approximate} ${t('chartApproximate')}`);
             if (model.qualityCounts?.legacy) qualityNotes.push(`${model.qualityCounts.legacy} ${t('chartLegacy')}`);
             if (model.qualityCounts?.stale) qualityNotes.push(t('chartStaleExcluded', { count: model.qualityCounts.stale }));
-            if (model.excludedCurrencyCount) qualityNotes.push(`${model.excludedCurrencyCount} ${t('chartMixedCurrencies')}`);
+            if (model.qualityCounts?.missing) qualityNotes.push(t('chartMissingExcluded', { count: model.qualityCounts.missing }));
+            if (model.excludedCurrencyCount) qualityNotes.push(t('chartCurrencyExcluded', { count: model.excludedCurrencyCount }));
             const qualityMarkup = qualityNotes.length ? `<small class="meli-chart-quality">${escapeHtml(qualityNotes.join(' · '))}</small>` : '';
             if (model.points.length < 2) return `<article class="meli-chart" data-history-chart="${escapeHtml(metric)}"><div class="meli-chart-head"><b>${escapeHtml(label)}</b><span>—</span></div><div class="meli-chart-empty">${escapeHtml(t('noChartData'))}</div>${qualityMarkup}</article>`;
             const lineMarkup = model.segments.filter((segment) => segment.length > 1).map((segment) => {
@@ -7544,7 +8614,10 @@
             const componentKeys = ['dataQuality', 'historyDepth', 'trafficSample', 'cohortStrength', 'freshness', 'dataIntegrity'];
             const extraEvidence = evidence.slice(3);
             const experiment = analysis.experiment;
-            const basisKey = analysis.assessmentMode === 'snapshot' ? 'snapshotBasis' : analysis.assessmentMode === 'longitudinal' ? 'longitudinalBasis' : 'insufficientBasis';
+            const basisKey = analysis.scoreBasis === 'insufficient' || !Number.isFinite(analysis.score)
+                ? 'insufficientBasis'
+                : analysis.assessmentMode === 'snapshot' ? 'snapshotBasis'
+                    : analysis.assessmentMode === 'longitudinal' ? 'longitudinalBasis' : 'insufficientBasis';
             const capKey = analysis.assessmentMode === 'snapshot' ? 'snapshotConfidenceLimited' : 'confidenceLimited';
             const summary = `<section class="meli-health-summary"><div><span class="meli-pill ${escapeHtml(analysis.tone)}">${escapeHtml(lifecycleLabel(analysis.lifecycle))}</span><strong>${escapeHtml(analysisScoreLabel(analysis))}: ${escapeHtml(Number.isFinite(analysis.score) ? t('scoreOutOf', { score: formatNumber(analysis.score) }) : '—')}</strong></div><h3>${escapeHtml(assessmentLabel(analysis))}</h3><div class="meli-meta">${escapeHtml(analysisConfidenceLabel(analysis))}: ${formatNumber(analysis.confidence)}/100 · ${escapeHtml(confidenceLabel(analysis.confidenceBand))}</div><div class="meli-meta">${escapeHtml(t(basisKey))}</div><div class="meli-meta">${escapeHtml(t('nextReview'))}: ${escapeHtml(formatDate(analysis.nextReviewAt))}</div>${analysis.confidenceCaps?.length ? `<div class="meli-health-cap">${escapeHtml(t(capKey))}</div>` : ''}</section>`;
             const seasonality = normalizeSeasonality(record.meta?.seasonality, record.meta?.seasonal);
@@ -7564,21 +8637,22 @@
             const experimentTimeline = this.experimentTimeline(record);
             const timeline = `<section class="meli-detail-card"><h3>${escapeHtml(t('historyTitle'))}</h3><div class="meli-history">${history.length ? history.map((item) => `<article class="meli-history-item"><b>${escapeHtml(formatDate(item.at))}</b><div class="meli-history-metrics"><span>${t('visits30dLabel')}: ${formatNumber(item.visits)}</span><span>${t('favorites30dLabel')}: ${formatNumber(item.favorites)}</span><span>${t('salesAllTimeLabel')}: ${formatNumber(item.sales)}</span><span>${t('revenueAllTimeLabel')}: ${formatMoney(item.revenue, normalizeSpace(item.currency) || currency)}</span><span>${t('renewalsAllTimeLabel')}: ${formatNumber(item.renewals)}</span></div></article>`).join('') : `<div class="meli-empty">${escapeHtml(t('noHistory'))}</div>`}${improvements.map((item) => `<article class="meli-history-item"><span class="meli-pill warning">${escapeHtml(item.experiment ? experimentStateLabel(item.experiment) : item.status || 'planned')}</span> <b>${escapeHtml(formatDate(item.at))}</b><div class="meli-meta">${escapeHtml(item.note || item.action || '')}</div></article>`).join('')}</div></section>`;
             this.openModal(`${t('healthAndHistory')} · ${record.listingId}`, `<div class="meli-health-detail">${summary}${contextCard}${evidenceCard}${confidenceCard}${experimentCard}${safeguardCard}${charts}${experimentTimeline}${timeline}</div>`, { small: true });
-            state.modal?.querySelector('[data-show-evidence]')?.addEventListener('click', (event) => {
-                const extra = state.modal?.querySelector('[data-extra-evidence]'); if (!extra) return;
+            const modal = state.modal;
+            modal?.querySelector('[data-show-evidence]')?.addEventListener('click', (event) => {
+                const extra = modal.querySelector('[data-extra-evidence]'); if (!extra) return;
                 extra.hidden = false; event.currentTarget.remove();
             });
-            state.modal?.querySelector('[data-save-listing-context]')?.addEventListener('click', async (event) => {
-                const button = event.currentTarget; const feedback = state.modal?.querySelector('[data-listing-context-feedback]');
+            modal?.querySelector('[data-save-listing-context]')?.addEventListener('click', async (event) => {
+                const button = event.currentTarget; const feedback = modal.querySelector('[data-listing-context-feedback]');
                 button.disabled = true;
                 try {
                     await Store.saveListingContext(record.listingId, {
-                        seasonality: state.modal?.querySelector('[data-seasonality]')?.value,
-                        listingType: state.modal?.querySelector('[data-listing-type]')?.value,
+                        seasonality: modal.querySelector('[data-seasonality]')?.value,
+                        listingType: modal.querySelector('[data-listing-type]')?.value,
                     });
                     await refreshRecords({ persist: true, render: false });
                     const updated = state.records.find((item) => String(item.listingId) === String(record.listingId));
-                    this.closeModal(); this.render(true); if (updated) this.openHistory(updated);
+                    if (state.modal === modal) { this.closeModal(); this.render(true); if (updated) this.openHistory(updated); }
                     this.toast(t('contextSaved'), 'success');
                 } catch (error) {
                     button.disabled = false; if (feedback) feedback.textContent = normalizeSpace(error?.message || error);
@@ -7639,13 +8713,15 @@
                 confirmButton.disabled = true;
                 try {
                     const result = await importBackupDocument(parsed);
-                    this.closeModal();
+                    if (state.modal === modal) this.closeModal();
                     this.setStatus('backupImported', 'ready', result);
                     this.toast(t('backupImported', result), 'success');
                     this.render(true);
                 } catch (error) {
-                    confirmButton.disabled = false;
-                    feedback.textContent = t('backupInvalid', { message: normalizeSpace(error?.message || error).slice(0, 240) });
+                    if (state.modal === modal) {
+                        confirmButton.disabled = false;
+                        feedback.textContent = t('backupInvalid', { message: normalizeSpace(error?.message || error).slice(0, 240) });
+                    }
                 }
             });
             if (initialFile) void inspectFile(initialFile);
@@ -7656,8 +8732,13 @@
             this.openModal(t('feedbackTitle'), body, { small: true, footer });
             const modal = state.modal;
             modal.querySelector('[data-feedback-cancel]').addEventListener('click', () => this.closeModal());
-            modal.querySelector('[data-feedback-submit]').addEventListener('click', async () => {
+            const submitButton = modal.querySelector('[data-feedback-submit]');
+            let feedbackSaveInFlight = false;
+            submitButton.addEventListener('click', async () => {
+                if (feedbackSaveInFlight) return;
                 const errorNode = modal.querySelector('[data-feedback-error]');
+                feedbackSaveInFlight = true;
+                submitButton.disabled = true;
                 try {
                     await saveUserFeedback({
                         category: modal.querySelector('[data-feedback-category]').value,
@@ -7665,8 +8746,14 @@
                         note: modal.querySelector('[data-feedback-message]').value,
                         includeDiagnostics: modal.querySelector('[data-feedback-diagnostics]').checked,
                     });
-                    this.closeModal(); this.toast(t('feedbackSaved'), 'success'); this.render(true);
-                } catch (error) { errorNode.textContent = normalizeSpace(error?.message || error); }
+                    if (state.modal === modal) this.closeModal();
+                    this.toast(t('feedbackSaved'), 'success'); this.render(true);
+                } catch (error) {
+                    if (state.modal === modal) errorNode.textContent = normalizeSpace(error?.message || error);
+                } finally {
+                    feedbackSaveInFlight = false;
+                    if (state.modal === modal) submitButton.disabled = false;
+                }
             });
         },
         openSettings() {
@@ -7682,20 +8769,32 @@
             const recommended = normalizeHealthThresholds(calibration.values || DEFAULT_SETTINGS);
             const fieldMarkup = fields.map((key) => {
                 const contract = contracts[key]; const helpId = `meli-threshold-help-${key}`;
-                return `<label class="meli-field"><span class="meli-field-head">${escapeHtml(t(key))}<small>${escapeHtml(t('recommendedValue', { value: recommended[key] }))}</small></span><input class="meli-input" data-setting="${key}" type="number" min="${contract.min}" max="${contract.max}" step="${contract.step}" value="${escapeHtml(state.settings[key])}" aria-describedby="${helpId}"><small id="${helpId}">${escapeHtml(t(contract.help))}</small></label>`;
+                return `<label class="meli-field"><span class="meli-field-head">${escapeHtml(t(key))}<small>${escapeHtml(t('recommendedValue', { value: recommended[key] }))}</small></span><input class="meli-input" data-setting="${key}" type="number" min="${contract.min}" max="${contract.max}" step="${contract.step}" value="${escapeHtml(state.settings[key])}" aria-invalid="false" aria-describedby="${helpId}"><small id="${helpId}">${escapeHtml(t(contract.help))}</small></label>`;
             }).join('');
             const body = `<section class="meli-calibration"><h3>${escapeHtml(t('thresholdCalibration'))}</h3><p>${escapeHtml(t('thresholdCalibrationCopy'))}</p><p>${escapeHtml(calibrationCopy)}</p><div class="meli-actions"><button class="meli-btn" data-use-calibration type="button" ${calibration.available ? '' : 'disabled'}>${escapeHtml(t('useRecommended'))}</button><button class="meli-btn" data-threshold-defaults type="button">${escapeHtml(t('resetDefaults'))}</button></div></section><div class="meli-form-card"><div class="meli-form-grid">${fieldMarkup}</div></div><div class="meli-threshold-impact" data-threshold-impact aria-live="polite"></div><div class="meli-feedback" data-settings-feedback role="alert" aria-live="polite"></div>`;
             const footer = `<div class="meli-modal-foot"><button class="meli-btn danger" data-clear-data type="button">${escapeHtml(t('clearData'))}</button><span style="flex:1"></span><button class="meli-btn" data-settings-cancel type="button">${escapeHtml(t('cancel'))}</button><button class="meli-btn primary" data-settings-save type="button">${escapeHtml(t('saveSettings'))}</button></div>`;
             this.openModal(t('settingsTitle'), body, { small: true, footer });
             const modal = state.modal;
             const readValues = () => Object.fromEntries(fields.map((key) => [key, Number(modal.querySelector(`[data-setting="${key}"]`).value)]));
-            const writeValues = (values) => fields.forEach((key) => { modal.querySelector(`[data-setting="${key}"]`).value = String(values[key]); });
+            const feedback = modal.querySelector('[data-settings-feedback]');
+            const saveButton = modal.querySelector('[data-settings-save]');
+            let settingsSaveInFlight = false;
+            const writeValues = (values) => fields.forEach((key) => {
+                const input = modal.querySelector(`[data-setting="${key}"]`);
+                input.value = String(values[key]);
+                input.setAttribute('aria-invalid', 'false');
+                feedback.textContent = '';
+            });
             const updateImpact = () => {
                 const values = readValues();
                 const { improve, protect } = thresholdImpactCounts(null, values);
                 modal.querySelector('[data-threshold-impact]').textContent = t('thresholdImpact', { improve, protect });
             };
-            modal.querySelectorAll('[data-setting]').forEach((input) => input.addEventListener('input', updateImpact));
+            modal.querySelectorAll('[data-setting]').forEach((input) => input.addEventListener('input', () => {
+                input.setAttribute('aria-invalid', 'false');
+                if (!modal.querySelector('[data-setting][aria-invalid="true"]')) feedback.textContent = '';
+                updateImpact();
+            }));
             modal.querySelector('[data-use-calibration]').addEventListener('click', () => { writeValues(recommended); updateImpact(); });
             modal.querySelector('[data-threshold-defaults]').addEventListener('click', () => { writeValues(DEFAULT_SETTINGS); updateImpact(); });
             updateImpact();
@@ -7707,21 +8806,43 @@
                 this.setStatus('dataCleared', 'ready');
                 this.render(true);
             });
-            modal.querySelector('[data-settings-save]').addEventListener('click', async () => {
+            saveButton.addEventListener('click', async () => {
+                if (settingsSaveInFlight) return;
                 const values = readValues();
-                const invalid = fields.find((key) => !Number.isInteger(values[key]) || values[key] < contracts[key].min || values[key] > contracts[key].max);
-                const feedback = modal.querySelector('[data-settings-feedback]');
-                if (invalid) { feedback.textContent = t('storageWriteFailed'); modal.querySelector(`[data-setting="${invalid}"]`).focus(); return; }
-                if (values.minVisitsToProtect <= values.minVisitsToImprove) { feedback.textContent = t('thresholdRelationship'); modal.querySelector('[data-setting="minVisitsToProtect"]').focus(); return; }
-                feedback.textContent = '';
-                if (!await persistThresholdSettings(values)) {
-                    feedback.textContent = t('storageWriteFailed');
+                const validation = validateThresholdSettings(values);
+                modal.querySelectorAll('[data-setting]').forEach((input) => input.setAttribute('aria-invalid', 'false'));
+                if (!validation.valid && validation.reason === 'range') {
+                    const input = modal.querySelector(`[data-setting="${validation.field}"]`);
+                    input.setAttribute('aria-invalid', 'true');
+                    feedback.textContent = t('thresholdInvalidValue', { field: t(validation.field), min: validation.min, max: validation.max });
+                    input.focus();
                     return;
                 }
-                await refreshRecords({ persist: true });
-                this.closeModal();
-                this.setStatus('settingsSaved', 'ready');
-                this.render(true);
+                if (!validation.valid) {
+                    const input = modal.querySelector('[data-setting="minVisitsToProtect"]');
+                    input.setAttribute('aria-invalid', 'true');
+                    feedback.textContent = t('thresholdRelationship');
+                    input.focus();
+                    return;
+                }
+                feedback.textContent = '';
+                settingsSaveInFlight = true;
+                saveButton.disabled = true;
+                try {
+                    if (!await persistThresholdSettings(values)) {
+                        feedback.textContent = t(state.settingsSaveError === 'HEALTH_SETTINGS_QUEUE_LOCKED' ? 'thresholdQueueLocked' : 'storageWriteFailed');
+                        return;
+                    }
+                    await refreshRecords({ persist: true, render: false });
+                    if (state.modal === modal) this.closeModal();
+                    this.setStatus('settingsSaved', 'ready');
+                    this.render(true);
+                } catch (error) {
+                    if (state.modal === modal) feedback.textContent = t('storageWriteFailed');
+                } finally {
+                    settingsSaveInFlight = false;
+                    if (state.modal === modal && modal.isConnected !== false) saveButton.disabled = false;
+                }
             });
         },
     };
@@ -8009,6 +9130,7 @@
                 const duplicateReferences = references.filter((reference, index, array) => reference && array.indexOf(reference) !== index);
                 if (duplicateReferences.length) throw aiValidationError('AI_PROPOSAL', '$.proposals', `duplicate reference ${duplicateReferences[0]}`);
                 const validated = documentValue.proposals.map((proposal, index) => validateAiProposal(proposal, aliasMap, knownIds, index));
+                await assertProposalWritesAllowedLocked(validated.map((proposal) => proposal.listingId));
                 for (const proposal of validated) await Store.saveProposalLocked(proposal.listingId, { ...proposal, requestId });
                 delete requests[requestId];
                 await requireStored(KEYS.aiRequests, requests);
@@ -8133,21 +9255,118 @@
 
     function applyCurrentProposal() { return runActionTask(applyCurrentProposalOnce); }
 
+    function updateProposalStaleError(message = 'The queued UPDATE proposal is no longer current.') {
+        const error = new Error(message);
+        error.code = 'PROPOSAL_STALE';
+        return error;
+    }
+
+    function editableProposalFenceValue(proposal) {
+        const validated = validateEditableProposal(proposal);
+        return JSON.stringify({
+            action: 'UPDATE',
+            fields: validated.fields,
+            title: validated.title,
+            description: validated.description,
+            tags: validated.tags,
+            materials: validated.materials,
+        });
+    }
+
+    function publishOperationId(queue, item) {
+        return String(item?.publishAttemptId || `publish-${queue?.id || 'queue'}-${Number(queue?.cursor) || 0}-${item?.listingId || 'listing'}`);
+    }
+
+    function storedEditorMatchesExpectedProposal(editor, before, proposal) {
+        let expected;
+        try { expected = expectedEditorAfterProposal(before, proposal); } catch { return false; }
+        return Boolean(expected && ['title', 'description', 'tags', 'materials', 'quantity', 'sku']
+            .every((field) => editorFieldMatches(field, editor, expected)));
+    }
+
+    function legacyPublishedImprovementMatches(queue, item, record, improvement) {
+        if (!queue || !item || !record || !improvement
+            || item.publishAttemptId || item.publishSubmittedIntentAt || improvement.publishOperationId
+            || improvement.status !== 'published') return false;
+        const submittedAt = validTime(item.submittedAt);
+        const publishedAt = validTime(improvement.publishedAt);
+        const appliedAt = validTime(record.proposal?.appliedAt);
+        if (submittedAt === null || publishedAt === null || appliedAt !== publishedAt
+            || publishedAt < submittedAt || publishedAt - submittedAt > 10 * 60 * 1000) return false;
+        return storedEditorMatchesExpectedProposal(improvement.after, item.before, item.proposal)
+            && storedEditorMatchesExpectedProposal(record.editor, item.before, item.proposal);
+    }
+
+    function legacyPublishAuditMatches(entry, queue, item, publishedAt) {
+        const auditAt = validTime(entry?.at);
+        const publishedTime = validTime(publishedAt);
+        return Boolean(entry?.type === 'listing-published' && !entry.operationId
+            && String(entry.queueId || '') === String(queue?.id || '')
+            && String(entry.listingId || '') === String(item?.listingId || '')
+            && sameStringSet(entry.fields, item?.changedFields)
+            && auditAt !== null && publishedTime !== null
+            && auditAt >= publishedTime && auditAt - publishedTime <= 10 * 60 * 1000);
+    }
+
+    function currentEditorInteractionIsClean(item) {
+        return Boolean(item
+            && item.runtimeOwner === pageInstanceId
+            && !item.editorInteractionConflictAt
+            && !state.editorInteractionConflict
+            && Number(item.editorInteractionEpochAtApply) === Number(state.editorInteractionEpoch));
+    }
+
+    async function assertCurrentUpdateProposalLocked(queue, item, options = {}) {
+        if (!queue || !item || item.proposal?.action !== 'UPDATE') throw updateProposalStaleError();
+        const record = await Store.getRecord(item.listingId);
+        const current = record?.proposal;
+        if (!record || record.unsupportedSchema || current?.action !== 'UPDATE'
+            || !current.updatedAt || current.updatedAt !== item.proposal.updatedAt
+            || !current.improvementId || current.improvementId !== item.proposal.improvementId
+            || !recommendationBasisEquals(current.basis, item.proposal.basis)) throw updateProposalStaleError();
+        let queuedValue; let currentValue;
+        try {
+            queuedValue = editableProposalFenceValue(item.proposal);
+            currentValue = editableProposalFenceValue(current);
+        } catch { throw updateProposalStaleError(); }
+        const improvement = (record.improvements || []).find((entry) => entry?.id === current.improvementId);
+        const committedOperation = options.allowCommitted === true
+            && improvement?.status === 'published'
+            && improvement?.publishOperationId === publishOperationId(queue, item);
+        if (queuedValue !== currentValue || !improvement) throw updateProposalStaleError();
+        const legacyCommittedOperation = options.allowCommitted === true
+            && legacyPublishedImprovementMatches(queue, item, record, improvement);
+        if (committedOperation || legacyCommittedOperation) return record;
+        const storedPolicy = await storedHealthPolicyLocked();
+        if (improvement.status !== 'planned'
+            || !recommendationBasisMatches(record, current)
+            || current.basis?.policyFingerprint !== storedPolicy.fingerprint) throw updateProposalStaleError();
+        return record;
+    }
+
     async function applyCurrentProposalOnce() {
         let item = Queue.activeItem();
         const actionIdentity = Queue.activeIdentity();
         if (!item || currentListingId() !== String(item.listingId)) { UI.setStatus('routeMismatch', 'blocked'); return; }
         if (!['pending', 'failed'].includes(item.status)) { UI.setStatus('formNotReady', 'blocked'); return; }
         if (EditorAdapter.formIsClean() !== true) { UI.setStatus('formNotReady', 'blocked'); return; }
+        if (!editorPublishIsDormant()) { UI.setStatus('formNotReady', 'blocked'); return; }
         try { EditorAdapter.preflightProposal(item.proposal); }
         catch { UI.setStatus('formNotReady', 'blocked'); return; }
         if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
         const fenceToken = state.leaseToken;
         let before = null;
+        let interactionEpochAtApply = 0;
         let applying = false;
         try {
-            item = await Queue.withFencedActiveItem(fenceToken, ['pending', 'failed'], async (_queue, storedItem) => ({ ...storedItem }), actionIdentity);
+            item = await Queue.withFencedActiveItem(fenceToken, ['pending', 'failed'], async (queue, storedItem) => {
+                await assertCurrentUpdateProposalLocked(queue, storedItem);
+                return { ...storedItem };
+            }, actionIdentity);
+            state.editorInteractionConflict = false;
+            interactionEpochAtApply = state.editorInteractionEpoch;
             before = EditorAdapter.read();
+            if (!editorMatchesSnapshot(before, before)) throw new Error('The Etsy editor baseline could not be read completely.');
             const beforeFingerprint = await contentFingerprint(before);
             if (item.proposal?.baselineCapturedAt && item.proposal?.baselineFingerprint && beforeFingerprint !== item.proposal.baselineFingerprint) {
                 await Queue.updateItemFenced(
@@ -8160,12 +9379,16 @@
                 UI.setStatus('contentChanged', 'blocked'); return;
             }
             const baselineCapturedAt = nowIso();
-            await Queue.updateItemFenced(
-                { status: 'applying', changedFields: [], error: '', runtimeOwner: pageInstanceId, runtimeBaselineFingerprint: beforeFingerprint, runtimeBaselineCapturedAt: baselineCapturedAt },
-                fenceToken,
-                ['pending', 'failed'],
-                actionIdentity,
-            );
+            await Queue.withFencedActiveItem(fenceToken, ['pending', 'failed'], async (queue, storedItem) => {
+                await assertCurrentUpdateProposalLocked(queue, storedItem);
+                Object.assign(storedItem, {
+                    status: 'applying', changedFields: [], error: '', runtimeOwner: pageInstanceId,
+                    runtimeBaselineFingerprint: beforeFingerprint, runtimeBaselineCapturedAt: baselineCapturedAt,
+                    editorInteractionConflictAt: '', editorInteractionEpochAtApply: interactionEpochAtApply,
+                });
+                await Lease.assertOwnerLocked(fenceToken);
+                await Store.saveQueueLocked(queue);
+            }, actionIdentity);
             applying = true;
             await Lease.withFence(fenceToken, async () => {
                 const baselineRecord = await Store.getRecord(item.listingId);
@@ -8184,38 +9407,68 @@
                     await Store.putRecordLocked(baselineRecord);
                 }
             });
-            const changedFields = await EditorAdapter.applyProposal(item.proposal);
-            if (!editorMatchesProposal(EditorAdapter.read(), item.proposal)) {
-                void trackTelemetryError('selector_listing_editor');
-                const mismatch = new Error('The Etsy form does not exactly match the selected proposal fields.');
-                mismatch.changedFields = EditorAdapter.changedFields(before, EditorAdapter.read(), proposalFields(item.proposal, true));
-                mismatch.editorRestored = mismatch.changedFields.length === 0
-                    ? EditorAdapter.formIsClean() === true
-                    : await EditorAdapter.restore(before, mismatch.changedFields);
-                throw mismatch;
+            // `applying` is a durable proposal freeze. Long Etsy pill synchronization runs
+            // outside the storage lock so the action lease heartbeat can keep renewing.
+            const liveBeforeMutation = EditorAdapter.read();
+            if (routeKind() !== 'editor' || currentListingId() !== String(item.listingId)
+                || EditorAdapter.formIsClean() !== true || !editorPublishIsDormant()
+                || !editorMatchesSnapshot(liveBeforeMutation, before)) {
+                throw new Error('The Etsy editor changed before proposal application.');
             }
-            await Queue.updateItemFenced(
-                { status: 'awaiting-user-review', before, changedFields, attempts: (item.attempts || 0) + 1, appliedAt: nowIso(), error: '', runtimeOwner: pageInstanceId },
-                fenceToken,
-                ['applying'],
-                actionIdentity,
-            );
+            const changedFields = await EditorAdapter.applyProposal(item.proposal, before, {
+                listingId: item.listingId,
+                assertLease: () => Lease.assertOwner(fenceToken),
+            });
+            await Queue.withFencedActiveItem(fenceToken, ['applying'], async (queue, storedItem) => {
+                await assertCurrentUpdateProposalLocked(queue, storedItem);
+                if (storedItem.editorInteractionConflictAt || state.editorInteractionConflict
+                    || Number(storedItem.editorInteractionEpochAtApply) !== Number(state.editorInteractionEpoch)) {
+                    throw updateProposalStaleError('The Etsy editor was changed during proposal application.');
+                }
+                const editorAfterApply = EditorAdapter.read();
+                if (!editorMatchesExpectedProposal(editorAfterApply, before, storedItem.proposal)) {
+                    void trackTelemetryError('selector_listing_editor');
+                    const mismatch = new Error('The Etsy form does not exactly match the proposal overlay and untouched baseline fields.');
+                    mismatch.changedFields = EditorAdapter.changedFields(before, editorAfterApply, proposalFields(storedItem.proposal, true));
+                    throw mismatch;
+                }
+                Object.assign(storedItem, {
+                    status: 'awaiting-user-review', before, changedFields,
+                    attempts: (storedItem.attempts || 0) + 1, appliedAt: nowIso(), error: '', runtimeOwner: pageInstanceId,
+                });
+                await Lease.assertOwnerLocked(fenceToken);
+                await Store.saveQueueLocked(queue);
+            }, actionIdentity);
             UI.setStatus('formApplied', 'ready'); UI.render();
         } catch (error) {
-            let failureChangedFields = Array.isArray(error?.changedFields) ? error.changedFields : [];
-            let editorRestored = error?.editorRestored;
-            if (before && editorRestored === undefined) {
-                const selectedFields = (() => { try { return proposalFields(item?.proposal, true); } catch { return EDITABLE_FIELDS; } })();
-                failureChangedFields = EditorAdapter.changedFields(before, EditorAdapter.read(), selectedFields);
-                editorRestored = failureChangedFields.length === 0
-                    ? EditorAdapter.formIsClean() === true
-                    : await EditorAdapter.restore(before, failureChangedFields);
+            const ownedFields = before ? proposalFields(item.proposal, true) : [];
+            let rollbackFenceSafe = false;
+            if (before && state.leaseToken === fenceToken && routeKind() === 'editor' && currentListingId() === String(item.listingId)) {
+                try { await Lease.assertOwner(fenceToken); rollbackFenceSafe = true; } catch { /* Never mutate a different route after a lost fence. */ }
             }
-            const dirty = editorRestored === false;
+            if (before && rollbackFenceSafe && routeKind() === 'editor' && currentListingId() === String(item.listingId)) {
+                let expected = null;
+                try { expected = expectedEditorAfterProposal(before, item.proposal); } catch { /* invalid proposal already fails closed */ }
+                const live = EditorAdapter.read();
+                const safeScalarRollback = error?.trustedInputConflict ? [] : ownedFields.filter((field) => (
+                    ['title', 'description'].includes(field)
+                    && !editorFieldMatches(field, live, before)
+                    && editorFieldMatches(field, live, expected)
+                ));
+                if (safeScalarRollback.length) await EditorAdapter.restore(before, safeScalarRollback);
+            }
+            const remainingChangedFields = before
+                ? EditorAdapter.changedFields(before, EditorAdapter.read(), EDITABLE_FIELDS)
+                : [];
+            const dirty = before ? EditorAdapter.formIsClean() !== true : false;
+            const manualReview = dirty || remainingChangedFields.length > 0;
             try {
                 await Queue.updateItemFenced(
-                    dirty
-                        ? { status: 'awaiting-user-review', before, changedFields: failureChangedFields, error: String(error?.message || error), runtimeOwner: pageInstanceId }
+                    manualReview
+                        ? {
+                            status: 'awaiting-user-review', before, changedFields: remainingChangedFields,
+                            error: String(error?.message || error), runtimeOwner: dirty ? pageInstanceId : '',
+                        }
                         : { status: 'failed', changedFields: [], error: String(error?.message || error) },
                     fenceToken,
                     applying ? ['applying'] : ['pending', 'failed'],
@@ -8223,47 +9476,106 @@
                 );
             } catch { await Store.loadQueue(); }
             if (!dirty) await Lease.release(fenceToken);
-            UI.setStatus('formNotReady', dirty ? 'blocked' : 'error');
+            UI.setStatus('formNotReady', manualReview ? 'blocked' : 'error');
             UI.render();
         }
     }
 
-    async function commitVerifiedPublish(fenceToken, expectedIdentity) {
-        return Queue.withFencedActiveItem(fenceToken, ['submitted'], async (queue, item) => {
-            const publishedAt = nowIso();
+    function verifiedPublishedEditor(item, conflictDetected = () => false) {
+        if (conflictDetected() || item?.editorInteractionConflictAt) {
+            throw actionLeaseLostError('The Etsy editor was changed before publish commit.');
+        }
+        const verifiedEditor = EditorAdapter.read();
+        if (routeKind() !== 'editor' || currentListingId() !== String(item?.listingId)
+            || EditorAdapter.formIsClean() !== true || !editorPublishIsDormant()
+            || !editorMatchesExpectedProposal(verifiedEditor, item?.before, item?.proposal)) {
+            throw actionLeaseLostError('The published editor evidence changed before commit.');
+        }
+        return verifiedEditor;
+    }
+
+    async function commitVerifiedPublish(fenceToken, expectedIdentity, conflictDetected = () => false) {
+        return Queue.withFencedActiveItem(fenceToken, ['submitted', 'submitted-unverified'], async (queue, item) => {
+            await assertCurrentUpdateProposalLocked(queue, item, { allowCommitted: true });
+            await Lease.assertOwnerLocked(fenceToken);
+            const verifiedEditor = verifiedPublishedEditor(item, conflictDetected);
+            const durableHealthSettings = await storedHealthSettingsLocked();
+            await Lease.assertOwnerLocked(fenceToken);
+            const operationId = publishOperationId(queue, item);
             const record = await Store.getRecord(item.listingId);
-            if (record) {
-                record.editor = { ...EditorAdapter.read(), capturedAt: publishedAt };
+            const existingImprovement = (record?.improvements || []).find((entry) => entry.id === item.proposal?.improvementId);
+            const alreadyCommitted = existingImprovement?.status === 'published' && existingImprovement?.publishOperationId === operationId;
+            const legacyCommitted = legacyPublishedImprovementMatches(queue, item, record, existingImprovement);
+            const submittedIntentAt = validTime(item.publishSubmittedIntentAt) ?? validTime(item.submittedAt);
+            const publishedAt = new Date(validTime(alreadyCommitted || legacyCommitted ? existingImprovement.publishedAt : null) ?? submittedIntentAt ?? Date.now()).toISOString();
+            let savedRecord = record;
+            if (record && !alreadyCommitted && !legacyCommitted) {
+                record.editor = { ...verifiedEditor, capturedAt: publishedAt };
                 const improvement = (record.improvements || []).find((entry) => entry.id === item.proposal?.improvementId && entry.status === 'planned');
-                if (improvement) {
-                    (record.improvements || []).forEach((entry) => {
-                        if (entry !== improvement && entry?.status === 'published' && entry?.experiment?.state === 'observing') {
-                            entry.experiment.state = 'contaminated'; entry.experiment.contaminatedAt = publishedAt;
-                        }
-                    });
-                    if (!improvement.baselineCapturedAt && item.before) {
-                        improvement.before = {
-                            title: String(item.before.title || ''), description: String(item.before.description || ''),
-                            tags: Array.isArray(item.before.tags) ? [...item.before.tags] : [], materials: Array.isArray(item.before.materials) ? [...item.before.materials] : [],
-                        };
-                        improvement.baselineCapturedAt = item.runtimeBaselineCapturedAt || item.appliedAt || publishedAt;
-                        improvement.baselineFingerprint = item.runtimeBaselineFingerprint || improvement.baselineFingerprint;
+                if (!improvement) throw updateProposalStaleError();
+                (record.improvements || []).forEach((entry) => {
+                    if (entry !== improvement && entry?.status === 'published' && entry?.experiment?.state === 'observing') {
+                        entry.experiment.state = 'contaminated'; entry.experiment.contaminatedAt = publishedAt;
                     }
-                    improvement.status = 'published'; improvement.publishedAt = publishedAt; improvement.after = record.editor;
-                    improvement.baselineSnapshot = record.history?.at(-1) || improvement.baselineSnapshot || null;
-                    improvement.experiment = { ...(improvement.experiment || {}), state: 'observing', startAt: publishedAt, evaluateAt: addDays(publishedAt, HEALTH_RULES.experimentDays), day: 0, durationDays: HEALTH_RULES.experimentDays, primaryMetric: primaryMetricForFields(improvement.fields || []) };
+                });
+                if (!improvement.baselineCapturedAt && item.before) {
+                    improvement.before = {
+                        title: String(item.before.title || ''), description: String(item.before.description || ''),
+                        tags: Array.isArray(item.before.tags) ? [...item.before.tags] : [], materials: Array.isArray(item.before.materials) ? [...item.before.materials] : [],
+                    };
+                    improvement.baselineCapturedAt = item.runtimeBaselineCapturedAt || item.appliedAt || publishedAt;
+                    improvement.baselineFingerprint = item.runtimeBaselineFingerprint || improvement.baselineFingerprint;
                 }
-                if (record.proposal?.improvementId === improvement?.id) record.proposal = { ...record.proposal, appliedAt: publishedAt };
+                improvement.status = 'published';
+                improvement.publishOperationId = operationId;
+                improvement.publishedAt = publishedAt;
+                improvement.after = record.editor;
+                improvement.baselineSnapshot = record.history?.at(-1) || improvement.baselineSnapshot || null;
+                improvement.experiment = { ...(improvement.experiment || {}), state: 'observing', startAt: publishedAt, evaluateAt: addDays(publishedAt, HEALTH_RULES.experimentDays), day: 0, durationDays: HEALTH_RULES.experimentDays, primaryMetric: primaryMetricForFields(improvement.fields || []) };
+                if (record.proposal?.improvementId === improvement.id) record.proposal = { ...record.proposal, appliedAt: publishedAt };
                 updateExperimentEvaluations(record, publishedAt);
-                const health = evaluateHealthRecords([record], state.settings, publishedAt).get(record.listingId);
+                const health = evaluateHealthRecords([record], durableHealthSettings, publishedAt).get(record.listingId);
                 if (health) { record.health = health; record.analysis = health.result; }
                 await Lease.assertOwnerLocked(fenceToken);
-                await Store.putRecordLocked(record);
+                savedRecord = await Store.putRecordLocked(record, null, { settings: durableHealthSettings });
+            } else if (record && legacyCommitted) {
+                existingImprovement.publishOperationId = operationId;
+                const health = evaluateHealthRecords([record], durableHealthSettings, publishedAt).get(record.listingId);
+                if (health) { record.health = health; record.analysis = health.result; }
+                await Lease.assertOwnerLocked(fenceToken);
+                savedRecord = await Store.putRecordLocked(record, null, { settings: durableHealthSettings });
+            }
+            const savedImprovement = (savedRecord?.improvements || []).find((entry) => entry.id === item.proposal?.improvementId);
+            if (savedRecord && savedImprovement?.status === 'published' && savedImprovement?.publishOperationId === operationId) {
+                const stateIndex = state.records.findIndex((entry) => String(entry?.listingId || '') === String(savedRecord.listingId));
+                if (stateIndex >= 0) state.records[stateIndex] = savedRecord;
+                else state.records.push(savedRecord);
             }
 
             await Lease.assertOwnerLocked(fenceToken);
-            await Store.appendAuditLocked({ type: 'listing-published', queueId: queue.id, listingId: item.listingId, fields: item.changedFields });
+            await invalidateCollectionForRecordMutationLocked(
+                item.listingId,
+                publishedAt,
+                savedRecord?.meta?.shopKey || record?.meta?.shopKey || '',
+            );
+            await Lease.assertOwnerLocked(fenceToken);
+            const audit = await GMX.get(KEYS.audit, []);
+            const alreadyAudited = Array.isArray(audit)
+                && audit.some((entry) => (entry?.type === 'listing-published' && entry?.operationId === operationId)
+                    || (legacyCommitted && legacyPublishAuditMatches(entry, queue, item, publishedAt)));
+            if (!alreadyAudited) {
+                await Store.appendAuditLocked({
+                    type: 'listing-published', operationId, queueId: queue.id,
+                    listingId: item.listingId, fields: item.changedFields,
+                });
+            }
 
+            // Re-check after every awaited local write. If Etsy or the user changed the
+            // page meanwhile, the idempotent record/audit may remain, but the queue stays
+            // submitted so an explicit verification can safely finish it without re-clicking.
+            await assertCurrentUpdateProposalLocked(queue, item, { allowCommitted: true });
+            await Lease.assertOwnerLocked(fenceToken);
+            verifiedPublishedEditor(item, conflictDetected);
             item.status = 'verified';
             item.verifiedAt = publishedAt;
             item.error = '';
@@ -8272,16 +9584,28 @@
             if (completed) {
                 queue.status = 'completed';
                 queue.completedAt = publishedAt;
-            } else {
-                queue.status = 'running';
-            }
-            await Lease.assertOwnerLocked(fenceToken);
+            } else queue.status = 'running';
             const savedQueue = await Store.saveQueueLocked(queue);
-            return {
-                completed,
-                next: completed ? null : savedQueue.items[savedQueue.cursor] || null,
-            };
+            return { completed, next: completed ? null : savedQueue.items[savedQueue.cursor] || null };
         }, expectedIdentity);
+    }
+
+    async function finishVerifiedPublish(outcome, fenceToken, item, navigationAllowed = () => true) {
+        if (outcome.completed) {
+            await Lease.release(fenceToken);
+            UI.setStatus('queueComplete', 'ready');
+            UI.render();
+            return;
+        }
+        UI.setStatus('publishVerified', 'ready');
+        UI.render();
+        if (!navigationAllowed() || routeKind() !== 'editor' || currentListingId() !== String(item.listingId)) {
+            await Lease.release(fenceToken);
+            UI.setStatus('formNotReady', 'blocked');
+            UI.render();
+            return;
+        }
+        await Queue.navigate(outcome.next);
     }
 
     function publishCurrentProposal() { return runActionTask(publishCurrentProposalOnce); }
@@ -8289,12 +9613,17 @@
     async function publishCurrentProposalOnce() {
         const item = Queue.activeItem();
         const actionIdentity = Queue.activeIdentity();
-        if (!item || currentListingId() !== String(item.listingId)) { UI.setStatus('routeMismatch', 'blocked'); return; }
-        if (!item.changedFields?.length || item.status !== 'awaiting-user-review') { UI.setStatus('formNotReady', 'blocked'); return; }
-        if (!editorMatchesProposal(EditorAdapter.read(), item.proposal)) { UI.setStatus('formNotReady', 'blocked'); return; }
+        const blockBeforePublish = async (key) => {
+            if (state.leaseToken) await Lease.release(state.leaseToken);
+            UI.setStatus(key, 'blocked');
+        };
+        if (!item || currentListingId() !== String(item.listingId)) { await blockBeforePublish('routeMismatch'); return; }
+        if (!item.changedFields?.length || item.status !== 'awaiting-user-review') { await blockBeforePublish('formNotReady'); return; }
+        if (!currentEditorInteractionIsClean(item)) { await blockBeforePublish('formNotReady'); return; }
+        if (!editorMatchesExpectedProposal(EditorAdapter.read(), item.before, item.proposal)) { await blockBeforePublish('formNotReady'); return; }
         const button = EditorAdapter.publishButton();
-        if (!button) { void trackTelemetryError('selector_listing_editor'); UI.setStatus('publishDisabled', 'blocked'); return; }
-        if (button.disabled || button.getAttribute('aria-disabled') === 'true') { UI.setStatus('publishDisabled', 'blocked'); return; }
+        if (!button) { void trackTelemetryError('selector_listing_editor'); await blockBeforePublish('publishDisabled'); return; }
+        if (button.disabled || button.getAttribute('aria-disabled') === 'true') { await blockBeforePublish('publishDisabled'); return; }
         const currentRecord = await Store.getRecord(item.listingId);
         if (activeObservedImprovement(currentRecord) && !item.proposal?.experimentOverlapAcceptedAt) {
             if (!confirm(`${t('experimentOverlapTitle')}\n\n${t('experimentOverlapCopy')}`)) return;
@@ -8305,15 +9634,50 @@
         const fenceToken = state.leaseToken;
         const statusBefore = EditorAdapter.statusText();
         let providerSubmitted = false;
+        const conflictMonitor = monitorTrustedEditorInput();
         try {
-            await Queue.updateItemFenced(
-                { status: 'submitted', submittedAt: nowIso(), runtimeOwner: pageInstanceId, error: '' },
-                fenceToken,
-                ['awaiting-user-review'],
-                actionIdentity,
-            );
-            button.click();
-            providerSubmitted = true;
+            await Queue.withFencedActiveItem(fenceToken, ['awaiting-user-review'], async (queue, storedItem) => {
+                const publishButton = () => {
+                    if (routeKind() !== 'editor' || currentListingId() !== String(storedItem.listingId)
+                        || conflictMonitor.conflicted()
+                        || !currentEditorInteractionIsClean(storedItem)
+                        || EditorAdapter.formIsClean() !== true
+                        || !editorMatchesExpectedProposal(EditorAdapter.read(), storedItem.before, storedItem.proposal)) return null;
+                    const candidate = EditorAdapter.publishButton();
+                    return candidate && !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true'
+                        ? candidate
+                        : null;
+                };
+                await assertCurrentUpdateProposalLocked(queue, storedItem);
+                if (!publishButton()) throw updateProposalStaleError('The editor changed before publish.');
+                const publishAttemptId = randomId('publish-attempt');
+                const submittedIntentAt = nowIso();
+                storedItem.status = 'submitted';
+                storedItem.submittedAt = submittedIntentAt;
+                storedItem.publishAttemptId = publishAttemptId;
+                storedItem.publishSubmittedIntentAt = submittedIntentAt;
+                storedItem.runtimeOwner = pageInstanceId;
+                storedItem.error = '';
+                await Lease.assertOwnerLocked(fenceToken);
+                await Store.saveQueueLocked(queue);
+
+                // The storage lock fences proposal writers. Recheck both the durable proposal and
+                // the live editor after the submitted intent is durable and immediately before click.
+                await assertCurrentUpdateProposalLocked(queue, storedItem);
+                await Lease.assertOwnerLocked(fenceToken);
+                const finalButton = publishButton();
+                if (!finalButton) {
+                    storedItem.status = 'awaiting-user-review';
+                    delete storedItem.submittedAt;
+                    delete storedItem.publishAttemptId;
+                    delete storedItem.publishSubmittedIntentAt;
+                    await Lease.assertOwnerLocked(fenceToken);
+                    await Store.saveQueueLocked(queue);
+                    throw updateProposalStaleError('The editor changed before publish.');
+                }
+                providerSubmitted = true;
+                finalButton.click();
+            }, actionIdentity);
             UI.setStatus('publishSubmitted', 'scanning');
             const verified = await waitForActionVerification(() => {
                 const publish = EditorAdapter.publishButton();
@@ -8321,7 +9685,7 @@
                 return currentListingId() === String(item.listingId)
                     && text !== statusBefore
                     && EditorAdapter.formIsClean() === true
-                    && editorMatchesProposal(EditorAdapter.read(), item.proposal)
+                    && editorMatchesExpectedProposal(EditorAdapter.read(), item.before, item.proposal)
                     && (!publish || publish.disabled || publish.getAttribute('aria-disabled') === 'true');
             }, fenceToken, 25000, 300);
             if (!verified) {
@@ -8332,21 +9696,17 @@
                     ['submitted'],
                     actionIdentity,
                 );
+                await Lease.release(fenceToken);
                 UI.setStatus('publishUnverified', 'blocked');
                 UI.render();
                 return;
             }
 
-            const outcome = await commitVerifiedPublish(fenceToken, actionIdentity);
-            if (outcome.completed) {
-                await Lease.release(fenceToken);
-                UI.setStatus('queueComplete', 'ready');
-                UI.render();
-                return;
-            }
-            UI.setStatus('publishVerified', 'ready');
-            UI.render();
-            await Queue.navigate(outcome.next);
+            const publishConflict = () => conflictMonitor.conflicted() || state.editorInteractionConflict
+                || Number(item.editorInteractionEpochAtApply) !== Number(state.editorInteractionEpoch);
+            if (publishConflict()) throw actionLeaseLostError('The Etsy editor was changed during publish verification.');
+            const outcome = await commitVerifiedPublish(fenceToken, actionIdentity, publishConflict);
+            await finishVerifiedPublish(outcome, fenceToken, item, () => !publishConflict());
         } catch (error) {
             if (error?.code === 'ACTION_LEASE_LOST' && state.leaseToken === fenceToken) {
                 clearInterval(state.leaseTimer);
@@ -8356,12 +9716,52 @@
             await Store.loadQueue();
             const recovery = Queue.recoveryState();
             const uncertainSubmission = providerSubmitted || recovery?.submitted === true;
-            if (!uncertainSubmission && state.leaseToken === fenceToken) await Lease.release(fenceToken);
+            if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
             void trackTelemetryError(error?.code === 'ACTION_LEASE_LOST' || String(error?.code || '').startsWith('STORAGE_')
                 ? 'storage_listing_state'
                 : 'selector_listing_publish_verify');
             UI.setStatus(uncertainSubmission ? 'publishUnverified' : 'formNotReady', uncertainSubmission ? 'blocked' : 'error');
             UI.render();
+        } finally {
+            conflictMonitor.dispose();
+        }
+    }
+
+    function verifyCurrentPublish() { return runActionTask(verifyCurrentPublishOnce); }
+
+    async function verifyCurrentPublishOnce() {
+        let item = Queue.activeItem();
+        const actionIdentity = Queue.activeIdentity();
+        const submittedStatuses = ['submitted', 'submitted-unverified'];
+        if (!item || currentListingId() !== String(item.listingId) || item.proposal?.action !== 'UPDATE') {
+            UI.setStatus('routeMismatch', 'blocked'); return;
+        }
+        if (!submittedStatuses.includes(String(item.status || '')) || item.editorInteractionConflictAt) {
+            UI.setStatus('publishUnverified', 'blocked'); return;
+        }
+        try { verifiedPublishedEditor(item, () => state.editorInteractionConflict); }
+        catch { UI.setStatus('publishUnverified', 'blocked'); return; }
+        if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
+        const fenceToken = state.leaseToken;
+        const conflictMonitor = monitorTrustedEditorInput();
+        const publishConflict = () => conflictMonitor.conflicted() || state.editorInteractionConflict;
+        try {
+            item = await Queue.withFencedActiveItem(
+                fenceToken,
+                submittedStatuses,
+                async (_queue, storedItem) => ({ ...storedItem }),
+                actionIdentity,
+            );
+            verifiedPublishedEditor(item, publishConflict);
+            const outcome = await commitVerifiedPublish(fenceToken, actionIdentity, publishConflict);
+            await finishVerifiedPublish(outcome, fenceToken, item, () => !publishConflict());
+        } catch (error) {
+            if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
+            await Store.loadQueue();
+            UI.setStatus(error?.code === 'ACTION_LEASE_LOST' ? 'leaseBlocked' : 'publishUnverified', 'blocked');
+            UI.render();
+        } finally {
+            conflictMonitor.dispose();
         }
     }
 
@@ -8370,6 +9770,7 @@
     const DEACTIVATION_AUTO_RECOVERY_MAX_AGE_MS = 2 * 60 * 1000;
 
     function automaticDeactivationRecovery(item = Queue.activeItem(), at = Date.now()) {
+        if (!['ready', 'running'].includes(String(state.queue?.status || ''))) return null;
         if (!item || item.proposal?.action !== 'DEACTIVATE_REVIEW') return null;
         if (!['deactivation-submitted', 'deactivation-submitted-unverified'].includes(String(item.status || ''))) return null;
         const listingId = String(item.listingId || '');
@@ -8433,12 +9834,25 @@
         return evaluatedRecord;
     }
 
-    async function commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter) {
+    function verifiedDeactivationStatus(item, statusBefore, statusAfter, conflictDetected = () => false) {
+        if (conflictDetected() || item?.editorInteractionConflictAt) {
+            throw actionLeaseLostError('The Etsy editor changed before deactivation commit.');
+        }
+        const verifiedStatusAfter = routeKind() === 'editor' && currentListingId() === String(item?.listingId)
+            ? EditorAdapter.listingStatusLabels()
+            : [];
+        const storedBefore = Array.isArray(item?.deactivationStatusBefore) ? item.deactivationStatusBefore : [];
+        const activeBefore = storedBefore.length > 0 && storedBefore.every(isActiveStatus) && sameStringSet(storedBefore, statusBefore);
+        const inactiveAfter = verifiedStatusAfter.length > 0 && verifiedStatusAfter.every(isInactiveStatus)
+            && !sameStringSet(storedBefore, verifiedStatusAfter) && sameStringSet(statusAfter, verifiedStatusAfter);
+        if (!activeBefore || !inactiveAfter) throw actionLeaseLostError('The deactivation evidence changed before commit.');
+        return verifiedStatusAfter;
+    }
+
+    async function commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter, conflictDetected = () => false) {
         return Queue.withFencedActiveItem(fenceToken, DEACTIVATION_VERIFY_STATUSES, async (queue, storedItem) => {
-            const storedBefore = Array.isArray(storedItem.deactivationStatusBefore) ? storedItem.deactivationStatusBefore : [];
-            const activeBefore = storedBefore.length > 0 && storedBefore.every(isActiveStatus) && sameStringSet(storedBefore, statusBefore);
-            const inactiveAfter = statusAfter.length > 0 && statusAfter.every(isInactiveStatus) && !sameStringSet(storedBefore, statusAfter);
-            if (!activeBefore || !inactiveAfter) throw actionLeaseLostError('The deactivation evidence changed before commit.');
+            await Lease.assertOwnerLocked(fenceToken);
+            const verifiedStatusAfter = verifiedDeactivationStatus(storedItem, statusBefore, statusAfter, conflictDetected);
             const completedAt = nowIso();
             const operationId = String(storedItem.deactivationAttemptId || `deactivate-${queue.id}-${queue.cursor}-${storedItem.listingId}`);
             const record = await Store.getRecord(storedItem.listingId);
@@ -8489,43 +9903,53 @@
                     reason: storedItem.proposal?.reason || '', automated: true,
                 });
             }
+            await Lease.assertOwnerLocked(fenceToken);
+            const finalStatusAfter = verifiedDeactivationStatus(storedItem, statusBefore, statusAfter, conflictDetected);
             storedItem.status = 'verified-deactivated';
             storedItem.verifiedAt = completedAt;
-            storedItem.deactivationStatusAfter = statusAfter;
+            storedItem.deactivationStatusAfter = finalStatusAfter;
             storedItem.error = '';
             queue.cursor += 1;
             const completed = queue.cursor >= queue.items.length;
             if (completed) { queue.status = 'completed'; queue.completedAt = completedAt; }
             else queue.status = 'running';
-            await Lease.assertOwnerLocked(fenceToken);
             const saved = await Store.saveQueueLocked(queue);
             return { completed, next: completed ? null : saved.items[saved.cursor] || null };
         }, actionIdentity);
     }
 
-    async function finishVerifiedDeactivation(outcome, fenceToken) {
+    async function finishVerifiedDeactivation(outcome, fenceToken, navigationAllowed = () => true) {
         if (outcome.completed) {
             await Lease.release(fenceToken);
             UI.setStatus('queueComplete', 'ready'); UI.render(); return;
         }
         UI.setStatus('deactivateVerified', 'ready'); UI.render();
+        if (!navigationAllowed()) {
+            await Lease.release(fenceToken);
+            UI.setStatus('formNotReady', 'blocked'); UI.render(); return;
+        }
         await Queue.navigate(outcome.next);
     }
 
-    function openCurrentDeactivate() { return runActionTask(openCurrentDeactivateOnce); }
+    function openCurrentDeactivate() { return runActionTask(() => openCurrentDeactivateOnce()); }
 
-    async function openCurrentDeactivateOnce() {
+    async function openCurrentDeactivateOnce(options = {}) {
         let item = Queue.activeItem();
         const actionIdentity = Queue.activeIdentity();
         if (!item || currentListingId() !== String(item.listingId) || item.proposal?.action !== 'DEACTIVATE_REVIEW') { UI.setStatus('routeMismatch', 'blocked'); return; }
         if (!DEACTIVATION_START_STATUSES.includes(String(item.status || ''))) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
         const statusBefore = deactivationActiveBaseline(item);
         if (!statusBefore) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
-        if (!confirm(t('deactivateConfirm', { id: item.listingId }))) return;
+        if (options.confirmationGranted !== true && !confirm(t('deactivateConfirm', { id: item.listingId }))) return;
         if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
         const fenceToken = state.leaseToken;
+        state.editorInteractionConflict = false;
+        const interactionEpochAtDeactivation = state.editorInteractionEpoch;
         let submissionArmed = false;
         let providerClicked = false;
+        const conflictMonitor = monitorTrustedEditorInput();
+        const deactivationConflict = () => conflictMonitor.conflicted() || state.editorInteractionConflict
+            || Number(interactionEpochAtDeactivation) !== Number(state.editorInteractionEpoch);
         try {
             item = await Queue.withFencedActiveItem(fenceToken, DEACTIVATION_START_STATUSES, async (queue, storedItem) => {
                 await assertCurrentDeactivationEligibilityLocked(queue, storedItem);
@@ -8545,6 +9969,7 @@
                     status: 'deactivation-submitted', deactivationAttemptId: attemptId,
                     deactivationStatusBefore: statusBefore, deactivationAuthorizedAt: nowIso(),
                     deactivationSubmittedIntentAt: nowIso(), runtimeOwner: pageInstanceId, error: '',
+                    editorInteractionConflictAt: '', editorInteractionEpochAtDeactivation: interactionEpochAtDeactivation,
                 },
                 fenceToken,
                 DEACTIVATION_START_STATUSES,
@@ -8554,7 +9979,8 @@
             await Lease.assertOwner(fenceToken);
             await Queue.withFencedActiveItem(fenceToken, ['deactivation-submitted'], async (queue, storedItem) => {
                 await assertCurrentDeactivationEligibilityLocked(queue, storedItem);
-                if (!deactivationModalBaseline(storedItem, statusBefore)) {
+                await Lease.assertOwnerLocked(fenceToken);
+                if (deactivationConflict() || !deactivationModalBaseline(storedItem, statusBefore)) {
                     throw actionLeaseLostError('The listing changed after deactivation submission was armed.');
                 }
                 if (!EditorAdapter.clickDeactivateConfirmation()) throw new Error('The Etsy deactivation confirmation was no longer safe to click.');
@@ -8577,8 +10003,11 @@
                 await Lease.release(fenceToken);
                 UI.setStatus('deactivateUnverified', 'blocked'); UI.render(); return;
             }
-            const outcome = await commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter);
-            await finishVerifiedDeactivation(outcome, fenceToken);
+            if (deactivationConflict()) throw actionLeaseLostError('The Etsy editor changed during deactivation verification.');
+            const outcome = await commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter, deactivationConflict);
+            await finishVerifiedDeactivation(outcome, fenceToken, () => (
+                !deactivationConflict() && routeKind() === 'editor' && currentListingId() === String(item.listingId)
+            ));
         } catch (error) {
             if (!submissionArmed) await EditorAdapter.cancelDeactivateDialogWhenReady();
             if (submissionArmed && state.leaseToken === fenceToken) {
@@ -8600,6 +10029,8 @@
             const uncertain = submissionArmed || ['deactivation-submitted', 'deactivation-submitted-unverified'].includes(String(Queue.activeItem()?.status || ''));
             UI.setStatus(uncertain ? 'deactivateUnverified' : (error?.code === 'DEACTIVATION_STALE' ? 'deactivateNotVerified' : error?.code === 'ACTION_LEASE_LOST' ? 'leaseBlocked' : 'formNotReady'), uncertain || ['ACTION_LEASE_LOST', 'DEACTIVATION_STALE'].includes(error?.code) ? 'blocked' : 'error');
             UI.render();
+        } finally {
+            conflictMonitor.dispose();
         }
     }
 
@@ -8612,6 +10043,8 @@
         if (!DEACTIVATION_VERIFY_STATUSES.includes(String(item.status || ''))) { UI.setStatus('deactivateNotVerified', 'blocked'); return; }
         if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
         const fenceToken = state.leaseToken;
+        const conflictMonitor = monitorTrustedEditorInput();
+        const deactivationConflict = () => conflictMonitor.conflicted() || state.editorInteractionConflict;
         try {
             item = await Queue.withFencedActiveItem(fenceToken, DEACTIVATION_VERIFY_STATUSES, async (_queue, storedItem) => ({ ...storedItem }), actionIdentity);
             const statusBefore = Array.isArray(item.deactivationStatusBefore) ? item.deactivationStatusBefore : [];
@@ -8624,13 +10057,18 @@
                 await Lease.release(fenceToken);
                 UI.setStatus('deactivateNotVerified', 'blocked'); return;
             }
-            const outcome = await commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter);
-            await finishVerifiedDeactivation(outcome, fenceToken);
+            if (deactivationConflict()) throw actionLeaseLostError('The Etsy editor changed during deactivation verification.');
+            const outcome = await commitVerifiedDeactivation(fenceToken, actionIdentity, statusBefore, statusAfter, deactivationConflict);
+            await finishVerifiedDeactivation(outcome, fenceToken, () => (
+                !deactivationConflict() && routeKind() === 'editor' && currentListingId() === String(item.listingId)
+            ));
         } catch (error) {
             if (state.leaseToken === fenceToken) await Lease.release(fenceToken);
             await Store.loadQueue();
             UI.setStatus(error?.code === 'ACTION_LEASE_LOST' ? 'leaseBlocked' : 'deactivateNotVerified', 'blocked');
             UI.render();
+        } finally {
+            conflictMonitor.dispose();
         }
     }
 
@@ -8695,12 +10133,22 @@
         const recovery = Queue.recoveryState();
         const item = recovery?.item;
         const actionIdentity = Queue.activeIdentity();
-        if (!item || recovery.submitted || !confirm(t('queueRecoveryConfirm'))) return;
+        if (!item || recovery.submitted) return;
+        const editorIsDirty = () => routeKind() === 'editor'
+            && currentListingId() === String(item.listingId)
+            && EditorAdapter.formIsClean() !== true;
+        if (editorIsDirty()) { UI.setStatus('formNotReady', 'blocked'); return; }
+        if (!confirm(t('queueRecoveryConfirm'))) return;
         if (!await Lease.acquire()) { UI.setStatus('leaseBlocked', 'blocked'); return; }
         const fenceToken = state.leaseToken;
         try {
+            if (editorIsDirty()) {
+                await Lease.release(fenceToken);
+                UI.setStatus('formNotReady', 'blocked');
+                return;
+            }
             await Queue.updateItemFenced(
-                { status: 'pending', error: '', changedFields: [], runtimeOwner: '' },
+                { status: 'pending', error: '', changedFields: [], runtimeOwner: '', editorInteractionConflictAt: '' },
                 fenceToken,
                 [actionIdentity.itemStatus],
                 actionIdentity,
@@ -8723,7 +10171,7 @@
             ['aiExchange', () => UI.openAi()],
             ['exportData', () => exportBackup()],
             ['checkUpdate', () => checkForUpdates({ manual: true, force: true })],
-            ['switchLanguage', async () => { state.settings.language = state.settings.language === 'tr' ? 'en' : 'tr'; await Store.saveSettings(); UI.render(); registerMenus(); }],
+            ['switchLanguage', () => UI.toggleLanguage()],
         ].forEach(([key, callback]) => { const id = GMX.register(`Makaytron · ${t(key)}`, callback); if (id != null) state.menuIds.push(id); });
     }
 
@@ -8845,6 +10293,7 @@
         const changed = collectionFingerprint(stored) !== previousFingerprint;
         if (changed) {
             state.collection = stored;
+            markStorageEstimateDirty();
             pruneSelectionToCollection();
             if (stored?.status === 'completed') await refreshRecords();
             else UI.render();
@@ -8883,6 +10332,7 @@
 
     async function init() {
         await ensureUniqueTabIdentity();
+        installTrustedEditorInteractionWatcher();
         installResearchBridge();
         await Store.loadSettings(); await Store.loadAnalysisFilters(); await Store.loadFilterPresets(); await Store.loadFeedback(); await Store.loadUpdateState(); await Store.loadQueue(); await Store.loadCollection(); await UI.mount();
         await refreshRecords();
@@ -8906,16 +10356,19 @@
 
     if (window.__MAKAYTRON_LISTING_TEST__ === true) {
         window.__MELI_TEST__ = Object.freeze({
-            versions: Object.freeze({ app: APP_VERSION, recordSchema: RECORD_SCHEMA_VERSION, healthSchema: HEALTH_RESULT_SCHEMA_VERSION, engine: HEALTH_ENGINE_VERSION, policy: HEALTH_POLICY_VERSION, collectionSchema: COLLECTION_SCHEMA_VERSION }),
+            versions: Object.freeze({ app: APP_VERSION, recordSchema: RECORD_SCHEMA_VERSION, healthSchema: HEALTH_RESULT_SCHEMA_VERSION, engine: HEALTH_ENGINE_VERSION, policy: HEALTH_POLICY_VERSION, collectionSchema: COLLECTION_SCHEMA_VERSION, queueSchema: QUEUE_SCHEMA_VERSION }),
             parseCountValue,
             parseListingMetrics,
             parseScopedListingMetrics,
             normalizeMetricContract,
             statsViewEnabled,
+            routeKind,
+            currentListingId,
             currencyMarker,
             finiteOrNull,
             dayKey,
             formatDate,
+            translate: t,
             currentShopKey,
             normalizeListingState,
             normalizeSeasonality,
@@ -8924,7 +10377,10 @@
             recommendationBasisMatches,
             validateEditableProposal,
             validateAiProposal,
+            pillReadIntegrity: PILL_READ_INTEGRITY,
+            editorMatchesExpectedProposal,
             normalizeRecord,
+            normalizeQueue,
             normalizeSnapshot,
             mergeDailySnapshot,
             deriveRecordMetrics,
@@ -8936,8 +10392,13 @@
             normalizeHealthThresholds,
             thresholdContracts: HEALTH_THRESHOLD_CONTRACTS,
             normalizeAnalysisFilters,
+            filterFacetValues: FILTER_FACET_VALUES,
+            analysisCaseFold,
+            scheduleAnalysisSearch,
+            analysisRecordFacts,
             recentPerformanceMetrics,
             recordMatchesAnalysisFilters,
+            analysisFacetCounts,
             sortAnalysisRecords,
             thresholdCalibration,
             thresholdImpactCounts,
@@ -9010,8 +10471,10 @@
                 Lease,
                 Queue,
                 EditorAdapter,
+                installTrustedEditorInteractionWatcher,
                 applyCurrentProposal,
                 publishCurrentProposal,
+                verifyCurrentPublish,
                 openCurrentDeactivate,
                 verifyCurrentDeactivate,
                 automaticDeactivationRecovery,
@@ -9019,7 +10482,12 @@
                 stopCurrentQueue,
                 recoverCurrentItem,
             }),
-            settingsRuntime: Object.freeze({ state, Store, persistThresholdSettings }),
+            settingsRuntime: Object.freeze({
+                state, Store, persistThresholdSettings, validateThresholdSettings,
+                refreshStorageEstimate, markStorageEstimateDirty,
+                capturePanelFocus, restorePanelFocus, installStandaloneDialogBehavior,
+                committedPreference, beginPreferenceMutation, preferenceMutationIsCurrent,
+            }),
             routeRuntime: Object.freeze({ state, Store, UI, handleRoute, routeLocationKey }),
             updateExperimentEvaluations,
             evaluateRecord(record, peers = [record], settings = DEFAULT_SETTINGS, evaluatedAt = nowIso()) {
@@ -9028,6 +10496,11 @@
             },
             evaluateRecords(records, settings = DEFAULT_SETTINGS, evaluatedAt = nowIso()) {
                 return Object.fromEntries(evaluateHealthRecords(records, { ...DEFAULT_SETTINGS, ...(settings || {}) }, evaluatedAt));
+            },
+            evaluateRecordsWithDiagnostics(records, settings = DEFAULT_SETTINGS, evaluatedAt = nowIso()) {
+                const diagnostics = {};
+                const evaluations = Object.fromEntries(evaluateHealthRecords(records, { ...DEFAULT_SETTINGS, ...(settings || {}) }, evaluatedAt, diagnostics));
+                return { evaluations, diagnostics };
             },
         });
     }

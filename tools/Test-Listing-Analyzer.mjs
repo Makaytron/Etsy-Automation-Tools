@@ -126,6 +126,14 @@ function plain(value) {
     return JSON.parse(JSON.stringify(value));
 }
 
+function completeEditorSnapshot(api, value) {
+    const snapshot = plain(value);
+    Object.defineProperty(snapshot, api.pillReadIntegrity, {
+        value: Object.freeze({ tags: true, materials: true }),
+    });
+    return snapshot;
+}
+
 function splitSelectorList(selector) {
     const parts = [];
     let current = '';
@@ -514,6 +522,18 @@ test('scoped metric contract accepts only one complete rolling and lifetime sect
     assert.equal(api.normalizeMetricContract({ ...english.contract, countPrecision: {} }), null);
 });
 
+test('route recognition requires an exact supported Etsy pathname', () => {
+    const { api } = loadAnalyzer();
+    assert.equal(api.routeKind('/your/shops/me/tools/listings'), 'listings');
+    assert.equal(api.routeKind('/your/shops/me/listing-editor/edit/1234567890'), 'editor');
+    assert.equal(api.routeKind('/your/shops/me/listing-editor/edit/1234567890/'), 'editor');
+    assert.equal(api.currentListingId('/your/shops/me/listing-editor/edit/1234567890/'), '1234567890');
+    assert.equal(api.routeKind('/your/shops/me/listing-editor/edit/1234567890/delete'), 'unsupported');
+    assert.equal(api.routeKind('/your/shops/me/listing-editor/edit/1234567890anything'), 'unsupported');
+    assert.equal(api.currentListingId('/your/shops/me/listing-editor/edit/1234567890/delete'), '');
+    assert.equal(api.currentListingId('/your/shops/me/listing-editor/edit/1234567890anything'), '');
+});
+
 test('card adapter scopes metric rows, rejects menu-only edit links, and rejects partial non-final pages', () => {
     const { api, sandbox } = loadAnalyzer();
     const fadingElement = { closest: () => null };
@@ -571,6 +591,10 @@ test('card adapter scopes metric rows, rejects menu-only edit links, and rejects
     const approximateListing = plain(exactListing);
     approximateListing.metricContract.countPrecision.visits = 'approximate';
     assert.notEqual(adapter.readSignature([exactListing]), adapter.readSignature([approximateListing]));
+    const otherCurrencyListing = plain(exactListing);
+    exactListing.currency = '$';
+    otherCurrencyListing.currency = 'EUR';
+    assert.notEqual(adapter.readSignature([exactListing]), adapter.readSignature([otherCurrencyListing]));
 });
 
 test('sanitized current Etsy fixture parses 40 canonical inactive listings and preserves every explicit zero metric', () => {
@@ -1388,6 +1412,26 @@ test('exact trend anchors are not shadowed by a closer approximate snapshot', ()
     assert.equal(result.derived.trafficChangePercent, 100);
     assert.equal(result.derived.trendTrafficChangePercent, 300);
     assert.ok(result.derived.trendIntervals.recent);
+    const trafficEvidence = result.evidence.find((item) => item.key === 'evidenceTraffic');
+    assert.deepEqual(plain(trafficEvidence?.params), { current: 400, previous: 100, percent: 300 });
+});
+
+test('fallback traffic evidence and exported decline use the same exact anchor', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const candidate = record('traffic-evidence-fallback', [
+        snapshot('2026-08-02T12:00:00.000Z', { visits: 100 }),
+        snapshot(evaluatedAt, { visits: 50 }),
+    ]);
+    const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+    assert.equal(result.derived.anchors.d30.actualDays, 29);
+    assert.equal(result.derived.anchors.trend30, null);
+    assert.equal(result.derived.trafficChangePercent, -50);
+    assert.equal(result.derived.trendTrafficChangePercent, null);
+    assert.deepEqual(plain(result.evidence.find((item) => item.key === 'evidenceTraffic')?.params), {
+        current: 50, previous: 100, percent: -50,
+    });
+    assert.equal(result.declinePercent, 50);
 });
 
 test('compact approximate traffic can describe change but cannot produce an exact trend lifecycle', () => {
@@ -1472,6 +1516,66 @@ test('performance filters use rolling 30-day metrics rather than all-time counte
     assert.equal(api.recentPerformanceMetrics(historicalSale).sales, null);
 });
 
+test('analysis facet counts match the brute-force disjunctive reference in one record pass', () => {
+    const { api } = loadAnalyzer();
+    api.settingsRuntime.state.settings.language = 'tr';
+    const at = '2026-08-01T12:00:00.000Z';
+    const rows = [
+        record('facet-sale-missing', [snapshot(at)], { title: 'İPEK IŞIK', sku: 'SATIŞ-1' }),
+        record('facet-traffic', [snapshot(at)], { title: 'Trafik', sku: 'TR-2' }),
+        record('facet-zero', [snapshot(at)], { title: 'Boş', sku: 'ZERO-3' }),
+        record('facet-gap', [snapshot(at, { stock: null })], { title: 'Eksik', sku: 'GAP-4' }),
+    ];
+    rows[0].analysis = { lifecycle: 'ACTIVE_STABLE', diagnosis: 'HEALTHY_OR_MIXED', code: 'monitor', confidenceBand: 'veryHigh', deltas: { visits: 2 }, derived: { visits30: null, favorites30: null, sales30: 2, revenue30: 40 } };
+    rows[1].analysis = { lifecycle: 'ACTIVE_STABLE', diagnosis: 'PURCHASE_FRICTION', code: 'improve', confidenceBand: 'medium', deltas: { visits: -2 }, derived: { visits30: 50, favorites30: 0, sales30: 0, revenue30: 0 } };
+    rows[2].analysis = { lifecycle: 'DORMANT', diagnosis: 'DISCOVERY_WEAK', code: 'deactivateReview', confidenceBand: 'low', deltas: { visits: 0, favorites: 0 }, derived: { visits30: 0, favorites30: 0, sales30: 0, revenue30: 0 } };
+    rows[3].analysis = { lifecycle: 'DATA_GAP', diagnosis: 'INSUFFICIENT_SIGNAL', code: 'waiting', confidenceBand: 'low', deltas: {}, derived: { visits30: null, favorites30: null, sales30: null, revenue30: null } };
+    const filters = api.normalizeAnalysisFilters({ scope: 'page', lifecycle: 'ACTIVE_STABLE', recommendation: 'monitor', performance: 'sales', confidence: 'high' });
+    const pageIds = new Set(rows.slice(0, 3).map((item) => item.listingId));
+    const query = 'İPEK';
+    const expected = Object.fromEntries(Object.entries(plain(api.filterFacetValues)).map(([facet, values]) => [facet, Object.fromEntries(values.map((value) => [
+        value,
+        rows.filter((candidate) => api.recordMatchesAnalysisFilters(candidate, { ...filters, [facet]: value }, query, pageIds)).length,
+    ]))]));
+    const diagnostics = {};
+    const actual = plain(api.analysisFacetCounts(rows, filters, query, pageIds, diagnostics));
+    assert.deepEqual(actual, expected);
+    assert.equal(diagnostics.recordsScanned, rows.length);
+    assert.deepEqual({
+        scope: { all: actual.scope.all, page: actual.scope.page },
+        lifecycle: { all: actual.lifecycle[''], stable: actual.lifecycle.ACTIVE_STABLE, dormant: actual.lifecycle.DORMANT },
+        performance: { all: actual.performance[''], sales: actual.performance.sales, missing: actual.performance.missing, zero: actual.performance['no-activity'] },
+        trend: { all: actual.trend[''], rising: actual.trend.rising, falling: actual.trend.falling },
+        stock: { all: actual.stock[''], in: actual.stock.in, unknown: actual.stock.unknown },
+        confidence: { all: actual.confidence[''], high: actual.confidence.high, low: actual.confidence.low },
+    }, {
+        scope: { all: 1, page: 1 },
+        lifecycle: { all: 1, stable: 1, dormant: 0 },
+        performance: { all: 1, sales: 1, missing: 1, zero: 0 },
+        trend: { all: 1, rising: 1, falling: 0 },
+        stock: { all: 1, in: 1, unknown: 0 },
+        confidence: { all: 1, high: 1, low: 0 },
+    });
+
+    const overlapping = plain(api.analysisFacetCounts(rows, {}, '', pageIds));
+    assert.equal(overlapping.performance.sales, 1);
+    assert.equal(overlapping.performance.missing, 2);
+    assert.equal(api.analysisCaseFold('İPEK IŞIK', 'tr'), 'ipek ışık');
+    assert.equal(api.analysisCaseFold('I', 'en'), 'i');
+    assert.equal(api.recordMatchesAnalysisFilters(rows[0], {}, 'ipek ışık', pageIds), true);
+});
+
+test('analysis search debounce executes only the latest scheduled render', async () => {
+    const { api } = loadAnalyzer();
+    const calls = [];
+    let timer = null;
+    timer = api.scheduleAnalysisSearch(timer, () => calls.push('first'));
+    timer = api.scheduleAnalysisSearch(timer, () => calls.push('second'));
+    api.scheduleAnalysisSearch(timer, () => calls.push('latest'));
+    await new Promise((resolve) => setTimeout(resolve, 240));
+    assert.deepEqual(calls, ['latest']);
+});
+
 test('cohort benchmark excludes stale peers and reports price-band fallback honestly', () => {
     const { api } = loadAnalyzer();
     const evaluatedAt = '2026-08-01T12:00:00.000Z';
@@ -1501,6 +1605,53 @@ test('cohort benchmark excludes stale peers and reports price-band fallback hone
     ]);
     const withoutStale = api.evaluateRecord(target, [target, stalePeer], undefined, evaluatedAt).result.benchmark;
     assert.equal(withoutStale.size, 0);
+});
+
+test('known cohort segments exclude mismatched listing type and seasonality', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const historyFor = (visits) => [
+        snapshot('2026-07-02T12:00:00.000Z', { visits }),
+        snapshot(evaluatedAt, { visits: visits + 5 }),
+    ];
+    const target = record('cohort-segment-target', historyFor(20), {
+        listingType: 'physical', seasonality: 'non-seasonal',
+    });
+    const matching = Array.from({ length: 8 }, (_, index) => record(`cohort-segment-match-${index}`, historyFor(30 + index), {
+        listingType: 'physical', seasonality: 'non-seasonal',
+    }));
+    const wrongType = Array.from({ length: 8 }, (_, index) => record(`cohort-segment-digital-${index}`, historyFor(100 + index), {
+        listingType: 'digital', seasonality: 'non-seasonal',
+    }));
+    const wrongSeason = Array.from({ length: 8 }, (_, index) => record(`cohort-segment-seasonal-${index}`, historyFor(200 + index), {
+        listingType: 'physical', seasonality: 'seasonal',
+    }));
+    const peers = [target, ...matching, ...wrongType, ...wrongSeason];
+    const benchmark = api.evaluateRecord(target, peers, undefined, evaluatedAt).result.benchmark;
+    assert.equal(benchmark.size, matching.length);
+    assert.equal(benchmark.reliable, true);
+    assert.match(benchmark.scope, /physical-non-seasonal$/);
+    assert.deepEqual(plain(benchmark.limitations), []);
+});
+
+test('cohort eligibility, memberships, and sorted distributions are reused across equivalent targets', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-01T12:00:00.000Z';
+    const rows = Array.from({ length: 120 }, (_, index) => record(`cohort-scale-${index}`, [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 20 + index, favorites: index % 5 }),
+        snapshot(evaluatedAt, { visits: 25 + index, favorites: index % 5 }),
+    ]));
+    const { evaluations, diagnostics } = plain(api.evaluateRecordsWithDiagnostics(rows, undefined, evaluatedAt));
+    assert.equal(Object.keys(evaluations).length, rows.length);
+    assert.equal(evaluations[rows[0].listingId].result.benchmark.size, rows.length - 1);
+    assert.equal(diagnostics.eligibilityScans, rows.length);
+    assert.equal(diagnostics.eligibleCandidates, rows.length);
+    assert.equal(diagnostics.groupAssignments, rows.length);
+    assert.equal(diagnostics.groupBuilds, 1);
+    assert.equal(diagnostics.membershipBuilds, 2);
+    assert.equal(diagnostics.cohortMemberScans, rows.length);
+    assert.equal(diagnostics.benchmarkBuilds, rows.length);
+    assert.equal(diagnostics.distributionSorts, 5);
 });
 
 test('an eight-listing cohort is usable without claiming full statistical strength', () => {
@@ -1623,13 +1774,9 @@ test('record refresh persists a stale health-engine result before later fenced a
     const evaluatedAt = '2026-08-01T12:00:00.000Z';
     const runtime = api.collectionRuntime;
     const candidate = record('engine-migration', [snapshot(evaluatedAt, { renewals: 2 })]);
-    candidate.health = {
-        schemaVersion: api.versions.healthSchema,
-        engineVersion: 2,
-        policy: { version: 1, fingerprint: 'old-policy', thresholds: {} },
-        input: { latestAt: evaluatedAt, anchor30At: null, anchor60At: null, observedMetrics: [] },
-        result: { lifecycle: 'BASELINE', diagnosis: 'INSUFFICIENT_SIGNAL', code: 'waiting', confidence: 39 },
-    };
+    candidate.health = plain(api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt));
+    candidate.health.engineVersion = api.versions.engine - 1;
+    candidate.health.result = { ...candidate.health.result, code: 'waiting', bootstrap: null, score: null };
     candidate.analysis = candidate.health.result;
     storage.set(runtime.KEYS.index, [candidate.listingId]);
     storage.set(runtime.KEYS.record(candidate.listingId), candidate);
@@ -2211,6 +2358,253 @@ test('action queues and full collection mutually exclude their complete lifecycl
     assert.equal(await collectionRuntime.CollectionLease.acquire({ expectedCollectionId: overlappingCollection.id }), false);
 });
 
+test('safety-critical storage reads fail closed while optional UI preferences retain fallback behavior', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const action = api.actionRuntime;
+    const collection = api.collectionRuntime;
+    const originalGetValue = sandbox.GM.getValue;
+    const failReadOnce = async (key, operation) => {
+        let failed = false;
+        sandbox.GM.getValue = async (candidate, fallback) => {
+            if (!failed && candidate === key) {
+                failed = true;
+                throw new Error(`injected read failure for ${key}`);
+            }
+            return originalGetValue(candidate, fallback);
+        };
+        try { await operation(); }
+        finally { sandbox.GM.getValue = originalGetValue; }
+        assert.equal(failed, true);
+    };
+
+    const foreignLease = {
+        owner: 'another-tab', instanceId: 'another-page', token: 'foreign-action-token', expiresAt: Date.now() + 60_000,
+    };
+    storage.set(action.KEYS.lease, plain(foreignLease));
+    await failReadOnce(action.KEYS.lease, async () => {
+        assert.equal(await action.Lease.acquire(), false);
+    });
+    assert.deepEqual(plain(storage.get(action.KEYS.lease)), foreignLease);
+    assert.equal(action.state.leaseToken, '');
+    storage.delete(action.KEYS.lease);
+
+    await failReadOnce(action.KEYS.collectionLease, async () => {
+        assert.equal(await action.Lease.acquire(), false);
+    });
+    assert.equal(storage.has(action.KEYS.lease), false);
+
+    const activeQueue = {
+        schema: api.versions.queueSchema, id: 'queue-read-failure', status: 'ready', cursor: 0,
+        items: [{ listingId: 'read-failure-1', status: 'pending' }],
+    };
+    storage.set(action.KEYS.queue, plain(activeQueue));
+    await failReadOnce(action.KEYS.queue, async () => {
+        assert.equal(await collection.CollectionLease.acquire(), false);
+    });
+    assert.deepEqual(plain(storage.get(action.KEYS.queue)), activeQueue);
+    assert.equal(storage.has(collection.KEYS.collectionLease), false);
+
+    await failReadOnce(action.KEYS.index, async () => {
+        await assert.rejects(action.Store.getIndex(), (error) => error?.code === 'STORAGE_READ_FAILED');
+    });
+
+    const queueBeforeCasFailure = plain(activeQueue);
+    await failReadOnce(action.KEYS.queue, async () => {
+        await assert.rejects(
+            action.Store.saveQueueLocked({ ...plain(activeQueue), status: 'stopped' }),
+            (error) => error?.code === 'STORAGE_READ_FAILED',
+        );
+    });
+    assert.deepEqual(plain(storage.get(action.KEYS.queue)), queueBeforeCasFailure);
+    storage.delete(action.KEYS.queue);
+
+    const now = new Date().toISOString();
+    const pausedCollection = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-read-failure', status: 'paused',
+        scopeKey: 'etsy-shop:shopone|status:active|/your/shops/me/tools/listings?item_status=active&stats=true',
+        metricContractId, startedAt: now, updatedAt: now, stoppedAt: now,
+        expectedPage: 1, totalPages: 1, pages: {}, uniqueIds: [], duplicateCount: 0,
+    });
+    storage.set(collection.KEYS.collection, plain(pausedCollection));
+    const collectionBeforeCasFailure = plain(storage.get(collection.KEYS.collection));
+    await failReadOnce(collection.KEYS.collection, async () => {
+        await assert.rejects(
+            collection.Store.saveCollectionLocked({ ...plain(pausedCollection), error: { key: 'test' } }),
+            (error) => error?.code === 'STORAGE_READ_FAILED',
+        );
+    });
+    assert.deepEqual(plain(storage.get(collection.KEYS.collection)), collectionBeforeCasFailure);
+
+    await failReadOnce(action.KEYS.settings, async () => {
+        await assert.rejects(action.Store.loadSettings(), (error) => error?.code === 'STORAGE_READ_FAILED');
+    });
+    storage.set(action.KEYS.settings, { language: 'en', minVisitsToImprove: 27, minVisitsToProtect: 67 });
+    await failReadOnce(action.KEYS.uiPreferences, async () => {
+        const settings = await action.Store.loadSettings();
+        assert.equal(settings.language, 'en');
+        assert.equal(settings.minVisitsToImprove, 27);
+    });
+    for (const [key, load] of [
+        [action.KEYS.analysisFilters, () => action.Store.loadAnalysisFilters()],
+        [action.KEYS.filterPresets, () => action.Store.loadFilterPresets()],
+        [action.KEYS.feedback, () => action.Store.loadFeedback()],
+    ]) {
+        await failReadOnce(key, async () => {
+            await assert.rejects(load(), (error) => error?.code === 'STORAGE_READ_FAILED');
+        });
+    }
+});
+
+test('queue schema migration accepts legacy data but forward and malformed schemas stay immutable', async () => {
+    const { api, storage } = loadAnalyzer();
+    const action = api.actionRuntime;
+    const collection = api.collectionRuntime;
+    const futureQueue = {
+        schema: api.versions.queueSchema + 1,
+        id: 'queue-from-future', status: 'ready', cursor: 0,
+        futureField: { mustSurvive: true },
+        items: [{ listingId: 'future-1', status: 'pending' }],
+    };
+    storage.set(action.KEYS.queue, plain(futureQueue));
+    const loadedFuture = await action.Store.loadQueue();
+    assert.equal(loadedFuture.unsupportedSchema, true);
+    assert.equal(loadedFuture.status, 'blocked');
+    assert.equal(action.Queue.activeItem(), null);
+    assert.equal(await collection.CollectionLease.acquire(), false);
+    assert.equal(storage.has(collection.KEYS.collectionLease), false);
+    await action.skipCurrentItem();
+    await assert.rejects(
+        action.Store.saveQueue({ schema: api.versions.queueSchema, id: 'replacement', status: 'stopped', cursor: 0, items: [] }),
+        (error) => error?.code === 'QUEUE_NEWER_SCHEMA',
+    );
+    assert.deepEqual(plain(storage.get(action.KEYS.queue)), futureQueue);
+
+    const malformedQueue = { schema: api.versions.queueSchema, id: 'queue-malformed', status: 'ready', cursor: 4, items: [] };
+    storage.set(action.KEYS.queue, plain(malformedQueue));
+    const loadedMalformed = await action.Store.loadQueue();
+    assert.equal(loadedMalformed.invalidSchema, true);
+    assert.equal(action.Queue.activeItem(), null);
+    await assert.rejects(
+        action.Store.saveQueue({ schema: api.versions.queueSchema, id: 'replacement-2', status: 'stopped', cursor: 0, items: [] }),
+        (error) => error?.code === 'QUEUE_INVALID_SCHEMA',
+    );
+    assert.deepEqual(plain(storage.get(action.KEYS.queue)), malformedQueue);
+
+    const validItem = (listingId, status = 'pending', action = 'UPDATE') => ({
+        listingId, status, proposal: { action },
+        editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+    });
+    const inconsistentCompleted = {
+        schema: api.versions.queueSchema, id: 'queue-inconsistent-completed', status: 'completed', cursor: 0,
+        items: [validItem('9000000001')],
+    };
+    storage.set(action.KEYS.queue, plain(inconsistentCompleted));
+    assert.equal((await action.Store.loadQueue()).invalidSchema, true);
+    assert.equal(await collection.CollectionLease.acquire(), false);
+    assert.deepEqual(plain(storage.get(action.KEYS.queue)), inconsistentCompleted);
+
+    const unresolvedPredecessor = {
+        schema: api.versions.queueSchema, id: 'queue-unresolved-predecessor', status: 'running', cursor: 1,
+        items: [validItem('9000000002', 'submitted'), validItem('9000000003')],
+    };
+    assert.equal(api.normalizeQueue(unresolvedPredecessor).invalidSchema, true);
+
+    const pendingCompleted = {
+        schema: api.versions.queueSchema, id: 'queue-pending-completed', status: 'completed', cursor: 1,
+        items: [validItem('9000000004')],
+    };
+    assert.equal(api.normalizeQueue(pendingCompleted).invalidSchema, true);
+
+    const futureActionTimestamp = '9999-12-31T23:59:59.000Z';
+    const recentQueueCreatedAt = new Date(Date.now() - 60_000).toISOString();
+    const futurePublishIntent = {
+        schema: api.versions.queueSchema, id: 'queue-future-publish-intent', status: 'running', cursor: 0,
+        items: [{ ...validItem('9000000006', 'submitted', 'UPDATE'), submittedAt: futureActionTimestamp, publishSubmittedIntentAt: futureActionTimestamp }],
+    };
+    assert.equal(api.normalizeQueue(futurePublishIntent).invalidSchema, true);
+    const futureDeactivationIntent = {
+        schema: api.versions.queueSchema, id: 'queue-future-deactivation-intent', status: 'running', cursor: 0,
+        items: [{ ...validItem('9000000007', 'deactivation-submitted', 'DEACTIVATE_REVIEW'), deactivationSubmittedIntentAt: futureActionTimestamp }],
+    };
+    assert.equal(api.normalizeQueue(futureDeactivationIntent).invalidSchema, true);
+    const stalePublishIntent = {
+        schema: api.versions.queueSchema, id: 'queue-stale-publish-intent', status: 'running', cursor: 0,
+        createdAt: recentQueueCreatedAt,
+        items: [{ ...validItem('9000000009', 'submitted', 'UPDATE'), submittedAt: '1970-01-01T00:00:00.000Z' }],
+    };
+    assert.equal(api.normalizeQueue(stalePublishIntent).invalidSchema, true);
+    const staleDeactivationIntent = {
+        schema: api.versions.queueSchema, id: 'queue-stale-deactivation-intent', status: 'running', cursor: 0,
+        createdAt: recentQueueCreatedAt,
+        items: [{ ...validItem('9000000010', 'deactivation-submitted', 'DEACTIVATE_REVIEW'), deactivationSubmittedIntentAt: '1970-01-01T00:00:00.000Z' }],
+    };
+    assert.equal(api.normalizeQueue(staleDeactivationIntent).invalidSchema, true);
+    const preCreationPublishIntent = {
+        schema: api.versions.queueSchema, id: 'queue-pre-creation-publish-intent', status: 'running', cursor: 0,
+        createdAt: recentQueueCreatedAt,
+        items: [{ ...validItem('9000000011', 'submitted', 'UPDATE'), submittedAt: new Date(Date.parse(recentQueueCreatedAt) - 1).toISOString() }],
+    };
+    assert.equal(api.normalizeQueue(preCreationPublishIntent).invalidSchema, true);
+    const legacySubmittedWithoutIntent = {
+        schema: 1, id: 'queue-legacy-submitted-without-intent', status: 'running', cursor: 0,
+        items: [validItem('9000000008', 'submitted', 'UPDATE')],
+    };
+    assert.equal(api.normalizeQueue(legacySubmittedWithoutIntent).invalidSchema, undefined);
+
+    const legacyUnsafeUrl = {
+        schema: 1, id: 'queue-legacy-url', status: 'ready', cursor: 0,
+        items: [{ ...validItem('9000000005'), editUrl: 'https://example.com/unsafe' }],
+    };
+    const canonicalized = api.normalizeQueue(legacyUnsafeUrl);
+    assert.equal(canonicalized.invalidSchema, undefined);
+    assert.equal(canonicalized.schema, api.versions.queueSchema);
+    assert.equal(canonicalized.items[0].editUrl, 'https://www.etsy.com/your/shops/me/listing-editor/edit/9000000005');
+
+    const legacyQueue = { id: 'queue-legacy', status: 'stopped', cursor: 0, items: [] };
+    storage.set(action.KEYS.queue, plain(legacyQueue));
+    const migrated = await action.Store.loadQueue();
+    assert.equal(migrated.schema, api.versions.queueSchema);
+    await action.Store.saveQueue(migrated);
+    assert.equal(storage.get(action.KEYS.queue).schema, api.versions.queueSchema);
+});
+
+test('active queues freeze queued proposals and health thresholds but not display preferences', async () => {
+    const { api, storage } = loadAnalyzer();
+    const action = api.actionRuntime;
+    const settings = api.settingsRuntime;
+    await action.Store.loadSettings();
+    const listingId = '9100000001';
+    const candidate = record(listingId, [snapshot('2026-08-31T12:00:00.000Z')]);
+    candidate.editor = { title: candidate.meta.title, description: 'Stable', tags: [], materials: [], capturedAt: '2026-08-31T12:00:00.000Z' };
+    await action.Store.putRecord(candidate);
+    const saved = await action.Store.saveProposal(listingId, { action: 'UPDATE', fields: ['title'], title: 'Frozen proposal' });
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-freeze', status: 'ready', cursor: 0,
+        items: [{
+            listingId, status: 'applying', proposal: plain(saved.proposal),
+            editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+        }],
+    };
+    action.state.queue = plain(queue);
+    storage.set(action.KEYS.queue, plain(queue));
+    await assert.rejects(
+        action.Store.saveProposal(listingId, { action: 'UPDATE', fields: ['title'], title: 'Concurrent replacement' }),
+        (error) => error?.code === 'PROPOSAL_QUEUE_LOCKED',
+    );
+    assert.equal((await action.Store.getRecord(listingId)).proposal.title, 'Frozen proposal');
+
+    const thresholdsBefore = plain(storage.get(action.KEYS.settings) || {});
+    assert.equal(await settings.persistThresholdSettings({
+        minVisitsToImprove: 31, minVisitsToProtect: 71, minRenewalsToReview: 4, declinePercent: 41,
+    }), false);
+    assert.equal(settings.state.settingsSaveError, 'HEALTH_SETTINGS_QUEUE_LOCKED');
+    assert.deepEqual(plain(storage.get(action.KEYS.settings) || {}), thresholdsBefore);
+
+    settings.state.settings.language = 'en';
+    assert.equal(await action.Store.saveUiPreferences(['language']), true);
+    assert.equal(storage.get(action.KEYS.uiPreferences).language, 'en');
+});
+
 test('percentile ranks stay within the documented 0-100 range', () => {
     const { api } = loadAnalyzer();
     assert.equal(api.percentileRank([1, 2], 100), 100);
@@ -2267,6 +2661,32 @@ test('snapshot normalization preserves explicit zeroes without coercing blank or
     assert.equal(api.finiteOrNull(' 0 '), 0);
 });
 
+test('record storage keys cannot redirect snapshots through a mismatched embedded listing identity', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const expectedId = 'record-key-123';
+    const redirectedId = 'record-payload-999';
+    const corrupted = record(redirectedId, [snapshot(new Date().toISOString())]);
+    storage.set(runtime.KEYS.index, [expectedId]);
+
+    for (const embeddedId of ['', 0, redirectedId]) {
+        storage.set(runtime.KEYS.record(expectedId), { ...plain(corrupted), listingId: embeddedId });
+        await assert.rejects(
+            runtime.Store.getRecord(expectedId),
+            (error) => error?.code === 'RECORD_ID_MISMATCH',
+        );
+    }
+    storage.set(runtime.KEYS.record(expectedId), plain(corrupted));
+
+    await assert.rejects(
+        runtime.Store.saveSnapshot({ listingId: expectedId, capturedAt: new Date().toISOString() }),
+        (error) => error?.code === 'RECORD_ID_MISMATCH',
+    );
+    assert.deepEqual(plain(storage.get(runtime.KEYS.record(expectedId))), corrupted);
+    assert.equal(storage.has(runtime.KEYS.record(redirectedId)), false);
+    assert.deepEqual(plain(storage.get(runtime.KEYS.index)), [expectedId]);
+});
+
 test('history charts plot explicit zero points and leave unread values as gaps', () => {
     const { api } = loadAnalyzer();
     const model = plain(api.buildHistoryChartModel([
@@ -2301,22 +2721,72 @@ test('saved collection scope produces a validated listings return link', () => {
     assert.equal(api.collectionScopeHref('/your/shops/me/tools/listings?stats=true'), '');
 });
 
-test('failed threshold persistence restores the complete runtime settings bundle', async () => {
+test('failed threshold persistence restores health fields without clobbering display preferences', async () => {
     const { api } = loadAnalyzer();
     const runtime = api.settingsRuntime;
-    const originalSaveSettings = runtime.Store.saveSettings;
+    await runtime.Store.loadSettings();
+    const originalSaveSettings = runtime.Store.saveHealthSettings;
     const before = plain(runtime.state.settings);
-    runtime.Store.saveSettings = async () => false;
+    runtime.Store.saveHealthSettings = async () => false;
     try {
+        runtime.state.settings.language = 'en';
+        runtime.state.settings.collapsed = true;
         assert.equal(await runtime.persistThresholdSettings({
             minVisitsToImprove: 99,
             minVisitsToProtect: 199,
             minRenewalsToReview: 9,
             declinePercent: 55,
         }), false);
-        assert.deepEqual(plain(runtime.state.settings), before);
+        assert.deepEqual(plain(Object.fromEntries([
+            'minVisitsToImprove', 'minVisitsToProtect', 'minRenewalsToReview', 'declinePercent', 'retentionDays', 'maxSnapshots',
+        ].map((key) => [key, runtime.state.settings[key]]))), plain(Object.fromEntries([
+            'minVisitsToImprove', 'minVisitsToProtect', 'minRenewalsToReview', 'declinePercent', 'retentionDays', 'maxSnapshots',
+        ].map((key) => [key, before[key]]))));
+        assert.equal(runtime.state.settings.language, 'en');
+        assert.equal(runtime.state.settings.collapsed, true);
     } finally {
-        runtime.Store.saveSettings = originalSaveSettings;
+        runtime.Store.saveHealthSettings = originalSaveSettings;
+    }
+});
+
+test('overlapping threshold saves cannot report stale success or roll back past the last durable write', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    await runtime.Store.loadSettings();
+    const originalSetValue = sandbox.GM.setValue;
+    let settingsWrites = 0;
+    let releaseFirstWrite = null;
+    sandbox.GM.setValue = async (key, value) => {
+        if (key !== api.actionRuntime.KEYS.settings) return originalSetValue(key, value);
+        settingsWrites += 1;
+        if (settingsWrites === 1) {
+            await new Promise((resolve) => { releaseFirstWrite = resolve; });
+            storage.set(key, plain(value));
+            return;
+        }
+        throw new Error('second threshold write failed');
+    };
+    const firstValues = {
+        minVisitsToImprove: 21, minVisitsToProtect: 61, minRenewalsToReview: 3, declinePercent: 36,
+    };
+    const secondValues = {
+        minVisitsToImprove: 22, minVisitsToProtect: 62, minRenewalsToReview: 4, declinePercent: 37,
+    };
+    try {
+        const first = runtime.persistThresholdSettings(firstValues);
+        for (let attempt = 0; attempt < 20 && !releaseFirstWrite; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+        assert.equal(typeof releaseFirstWrite, 'function');
+        const second = runtime.persistThresholdSettings(secondValues);
+        releaseFirstWrite();
+        assert.equal(await first, false);
+        assert.equal(await second, false);
+        assert.equal(settingsWrites, 2);
+        assert.deepEqual(plain(Object.fromEntries(Object.keys(firstValues).map((key) => [key, runtime.state.settings[key]]))), firstValues);
+        assert.deepEqual(plain(Object.fromEntries(Object.keys(firstValues).map((key) => [key, storage.get(api.actionRuntime.KEYS.settings)[key]]))), firstValues);
+    } finally {
+        sandbox.GM.setValue = originalSetValue;
     }
 });
 
@@ -2760,7 +3230,7 @@ test('collection page persistence rejects a post-read deactivation and accepts a
     await runtime.CollectionLease.release();
 });
 
-test('backup import sanitizes non-Etsy URLs, skips its queue, and preserves local display settings', async () => {
+test('backup import replaces unsafe edit URLs, skips its queue, and preserves local display settings', async () => {
     const { api, storage } = loadAnalyzer();
     const runtime = api.collectionRuntime;
     const now = new Date().toISOString();
@@ -2773,6 +3243,15 @@ test('backup import sanitizes non-Etsy URLs, skips its queue, and preserves loca
     };
     runtime.state.analysisFilters = api.normalizeAnalysisFilters({});
     runtime.state.filterPresets = [];
+    storage.set(runtime.KEYS.uiPreferences, { language: 'en', collapsed: true });
+    storage.set(runtime.KEYS.filterPresets, { schema: 1, items: [{
+        id: 'preset-concurrent-durable',
+        name: 'Concurrent durable preset',
+        filters: { recommendation: 'monitor', sort: 'priority' },
+        query: 'durable only',
+        createdAt: now,
+        updatedAt: now,
+    }] });
     const existingQueue = { schema: 1, id: 'queue-existing-local', status: 'stopped', cursor: 0, items: [] };
     storage.set(runtime.KEYS.queue, plain(existingQueue));
 
@@ -2819,28 +3298,92 @@ test('backup import sanitizes non-Etsy URLs, skips its queue, and preserves loca
 
     const normalized = api.backupRuntime.normalizeBackupDocument(rawBackup);
     assert.equal(normalized.queueSkipped, true);
-    assert.equal(normalized.records[0].meta.editUrl, '');
+    const canonicalEditUrl = `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`;
+    assert.equal(normalized.records[0].meta.editUrl, canonicalEditUrl);
     assert.equal(normalized.records[0].meta.publicUrl, '');
     assert.equal(normalized.records[0].meta.imageUrl, '');
     assert.equal(normalized.settings.minVisitsToImprove, 41);
 
     const imported = await api.backupRuntime.importBackupDocument(rawBackup);
-    assert.deepEqual(plain(imported), { records: 1, presets: 1, queueSkipped: true });
+    assert.deepEqual(plain(imported), { records: 1, presets: 1, presetsSkipped: 0, queueSkipped: true });
     const importedRecord = await runtime.Store.getRecord(listingId);
     assert.equal(importedRecord.meta.title, 'Synthetic Backup Round Trip');
-    assert.equal(importedRecord.meta.editUrl, '');
+    assert.equal(importedRecord.meta.editUrl, canonicalEditUrl);
     assert.equal(importedRecord.meta.publicUrl, '');
     assert.equal(importedRecord.meta.imageUrl, '');
     assert.equal(runtime.state.settings.language, 'en');
     assert.equal(runtime.state.settings.collapsed, true);
     assert.equal(runtime.state.settings.minVisitsToImprove, 41);
-    assert.equal(storage.get(runtime.KEYS.settings).language, 'en');
-    assert.equal(storage.get(runtime.KEYS.settings).collapsed, true);
+    assert.equal(storage.get(runtime.KEYS.uiPreferences).language, 'en');
+    assert.equal(storage.get(runtime.KEYS.uiPreferences).collapsed, true);
     assert.equal(storage.get(runtime.KEYS.analysisFilters).performance, 'no-activity');
-    assert.equal(storage.get(runtime.KEYS.filterPresets).items[0].name, 'Synthetic review');
+    assert.deepEqual(
+        storage.get(runtime.KEYS.filterPresets).items.map((item) => item.name).sort(),
+        ['Concurrent durable preset', 'Synthetic review'],
+    );
     assert.deepEqual(plain(storage.get(runtime.KEYS.queue)), existingQueue);
     assert.equal(storage.get(runtime.KEYS.audit).at(-1).type, 'backup-imported');
     assert.equal(storage.get(runtime.KEYS.audit).at(-1).queueSkipped, true);
+});
+
+test('backup import refuses active work and invalidates a previously fresh completed collection', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.collectionRuntime;
+    const listingId = '9900000000000293';
+    const now = Date.now();
+    const existingAt = new Date(now - 2_000).toISOString();
+    const importedAt = new Date(now - 500).toISOString();
+    const importedRecord = record(listingId, [snapshot(importedAt, { visits: 999 })], {
+        title: 'Imported mutation', shopKey: 'etsy-shop:shopone',
+    });
+    const backup = {
+        schema: 'makaytron-listing-analyzer-backup/v1',
+        producerVersion: api.versions.app,
+        exportedAt: importedAt,
+        settings: {}, analysisFilters: {}, filterPresets: [], records: [importedRecord],
+    };
+
+    const activeLease = {
+        owner: 'other-tab', instanceId: 'other-page', token: 'active-import-blocker', expiresAt: now + 60_000,
+    };
+    storage.set(runtime.KEYS.lease, plain(activeLease));
+    await assert.rejects(
+        api.backupRuntime.importBackupDocument(backup),
+        (error) => error?.code === 'IMPORT_BUSY',
+    );
+    assert.deepEqual(plain(storage.get(runtime.KEYS.lease)), activeLease);
+    assert.equal(storage.has(runtime.KEYS.record(listingId)), false);
+    assert.equal(storage.has(runtime.KEYS.index), false);
+    storage.delete(runtime.KEYS.lease);
+
+    const existingRecord = await runtime.Store.putRecord(record(listingId, [snapshot(existingAt, { visits: 10 })]));
+    const scopeKey = 'etsy-shop:shopone|status:active|/your/shops/me/tools/listings?item_status=active&stats=true';
+    const completedAt = new Date(now - 1_000).toISOString();
+    const completed = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-before-backup-import', writeRevision: 4,
+        status: 'completed', scopeKey, metricContractId,
+        startedAt: new Date(now - 3_000).toISOString(), updatedAt: completedAt, completedAt,
+        expectedPage: 1, totalPages: 1,
+        pages: {
+            1: {
+                signature: `1|1|${listingId}`, contentSignature: listingId, ids: [listingId], count: 1,
+                capturedAt: existingAt, metricContractId,
+            },
+        },
+        uniqueIds: [listingId], duplicateCount: 0, leaseToken: '', failureReports: [],
+    });
+    runtime.state.collection = completed;
+    runtime.state.records = [existingRecord];
+    storage.set(runtime.KEYS.collection, plain(completed));
+    assert.equal(api.analysisCollectionIsFresh(completed, [existingRecord], now), true);
+
+    const result = await api.backupRuntime.importBackupDocument(backup);
+    assert.equal(result.records, 1);
+    const invalidated = plain(storage.get(runtime.KEYS.collection));
+    assert.equal(invalidated.status, 'blocked');
+    assert.equal(invalidated.error.key, 'collectionPageChanged');
+    assert.match(invalidated.error.reason, /new full collection/i);
+    assert.equal(api.analysisCollectionIsFresh(runtime.state.collection, runtime.state.records, now), false);
 });
 
 test('editor preflight accepts a full pill field whose input is disabled until a tag is removed', () => {
@@ -3025,29 +3568,37 @@ test('editor apply accepts a pill Add button that starts disabled until input', 
         cloneNode: () => ({ textContent: value, querySelectorAll: () => [] }),
     });
     const field = { querySelectorAll: () => pills.map(pillItem) };
+    const emptyField = { querySelectorAll: () => [] };
     const originalQuerySelector = sandbox.document.querySelector;
+    const originalQuerySelectorAll = sandbox.document.querySelectorAll;
     sandbox.document.querySelector = (selector) => ({
         '#listing-title-input': title,
         '#listing-description-textarea': description,
         '#field-tags': field,
         '#listing-tags-input': input,
         '#listing-tags-button': addButton,
+        '#field-materials': emptyField,
     })[selector] || null;
+    sandbox.document.querySelectorAll = (selector) => selector.includes('data-unsaved-changes') ? [{
+        textContent: 'You have no unsaved changes.', closest: () => null, checkVisibility: () => true,
+    }] : [];
     try {
         const changed = await api.actionRuntime.EditorAdapter.applyProposal({ action: 'UPDATE', fields: ['tags'], tags: ['new tag'] });
         assert.deepEqual(Array.from(changed), ['tags']);
         assert.deepEqual(pills, ['new tag']);
     } finally {
         sandbox.document.querySelector = originalQuerySelector;
+        sandbox.document.querySelectorAll = originalQuerySelectorAll;
     }
 });
 
-test('editor apply restores earlier field changes when a later pill control fails', async () => {
+test('editor apply reports earlier field changes without automatically overwriting them after a later failure', async () => {
     const { api, sandbox } = loadAnalyzer();
     const adapter = api.actionRuntime.EditorAdapter;
     const title = new sandbox.HTMLInputElement(); title.value = 'Original title'; title.disabled = false;
     const description = new sandbox.HTMLTextAreaElement(); description.value = 'Original description'; description.disabled = false;
     const tagField = { querySelectorAll: () => [] };
+    const materialField = { querySelectorAll: () => [] };
     const tagInput = new sandbox.HTMLInputElement(); tagInput.disabled = false;
     const tagButton = { disabled: false, getAttribute: () => null };
     const originalQuerySelector = sandbox.document.querySelector;
@@ -3059,6 +3610,7 @@ test('editor apply restores earlier field changes when a later pill control fail
         '#field-tags': tagField,
         '#listing-tags-input': tagInput,
         '#listing-tags-button': tagButton,
+        '#field-materials': materialField,
     })[selector] || null;
     sandbox.document.querySelectorAll = (selector) => selector.includes('data-unsaved-changes') ? [{
         textContent: 'You have no unsaved changes.',
@@ -3077,9 +3629,9 @@ test('editor apply restores earlier field changes when a later pill control fail
         sandbox.document.querySelectorAll = originalQuerySelectorAll;
     }
     assert.ok(failure);
-    assert.equal(failure.editorRestored, true);
+    assert.equal(failure.editorRestored, undefined);
     assert.deepEqual(Array.from(failure.changedFields), ['title']);
-    assert.equal(title.value, 'Original title');
+    assert.equal(title.value, 'Changed title');
 });
 
 test('editor clean-state ignores hidden status copies and recognizes one unsaved change', () => {
@@ -3851,15 +4403,15 @@ test('stale skip cannot resurrect or overwrite a newer stored queue', async () =
     const { api, storage } = loadAnalyzer();
     const runtime = api.actionRuntime;
     const stale = {
-        schema: 1, id: 'queue-old', status: 'ready', cursor: 0,
+        schema: api.versions.queueSchema, id: 'queue-old', status: 'ready', cursor: 0,
         items: [
-            { listingId: 'old-1', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/old-1' },
-            { listingId: 'old-2', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/old-2' },
+            { listingId: '9200000001', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/9200000001', proposal: { action: 'UPDATE' } },
+            { listingId: '9200000002', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/9200000002', proposal: { action: 'UPDATE' } },
         ],
     };
     const newer = {
-        schema: 1, id: 'queue-new', status: 'completed', cursor: 1,
-        items: [{ listingId: 'new-1', status: 'verified', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/new-1' }],
+        schema: api.versions.queueSchema, id: 'queue-new', status: 'completed', cursor: 1,
+        items: [{ listingId: '9200000003', status: 'verified', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/9200000003', proposal: { action: 'UPDATE' } }],
     };
     runtime.state.queue = plain(stale);
     storage.set(runtime.KEYS.queue, plain(newer));
@@ -3870,14 +4422,830 @@ test('stale skip cannot resurrect or overwrite a newer stored queue', async () =
     assert.equal(storage.has(runtime.KEYS.lease), false);
 });
 
+test('UPDATE apply and publish revalidate the durable proposal before DOM mutation and final click', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const listingId = '9300000001';
+    const editor = {
+        title: 'Original durable title', description: 'Stable description', tags: ['stable'], materials: ['cotton'],
+    };
+    const base = record(listingId, [snapshot(new Date().toISOString())], {
+        title: editor.title,
+        editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+    });
+    base.editor = { ...plain(editor), capturedAt: new Date().toISOString() };
+    await runtime.Store.putRecord(base);
+    const first = await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['title'], title: 'Queued title A', reason: 'first proposal',
+    });
+    const queuedProposal = plain(first.proposal);
+    const second = await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['title'], title: 'New durable title B', reason: 'replacement proposal',
+    });
+    assert.notEqual(second.proposal.improvementId, queuedProposal.improvementId);
+
+    const pendingQueue = {
+        schema: api.versions.queueSchema, id: 'queue-stale-update-apply', status: 'ready', cursor: 0,
+        items: [{
+            listingId, status: 'pending', attempts: 0, error: '', before: null, changedFields: [],
+            editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+            proposal: queuedProposal,
+        }],
+    };
+    runtime.state.queue = plain(pendingQueue);
+    storage.set(runtime.KEYS.queue, plain(pendingQueue));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+
+    const originals = {
+        preflight: runtime.EditorAdapter.preflightProposal,
+        clean: runtime.EditorAdapter.formIsClean,
+        read: runtime.EditorAdapter.read,
+        apply: runtime.EditorAdapter.applyProposal,
+        button: runtime.EditorAdapter.publishButton,
+        status: runtime.EditorAdapter.statusText,
+    };
+    let applyCalls = 0;
+    let publishClicks = 0;
+    let providerStatus = 'Editing';
+    let publishEnabled = false;
+    const publishButton = {
+        get disabled() { return !publishEnabled; },
+        getAttribute(name) { return name === 'aria-disabled' ? null : null; },
+        click() { publishClicks += 1; providerStatus = 'Saved'; publishEnabled = false; },
+    };
+    runtime.EditorAdapter.preflightProposal = () => true;
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.read = () => completeEditorSnapshot(api, editor);
+    runtime.EditorAdapter.applyProposal = async (proposal) => {
+        applyCalls += 1;
+        editor.title = proposal.title;
+        return ['title'];
+    };
+    runtime.EditorAdapter.publishButton = () => publishButton;
+    runtime.EditorAdapter.statusText = () => providerStatus;
+    try {
+        await runtime.applyCurrentProposal();
+        assert.equal(applyCalls, 0);
+        assert.equal(editor.title, 'Original durable title');
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'failed');
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+
+        const awaitingQueue = {
+            ...plain(pendingQueue), id: 'queue-stale-update-publish', status: 'running',
+            items: [{
+                ...plain(pendingQueue.items[0]), status: 'awaiting-user-review',
+                changedFields: ['title'], runtimeOwner: 'previous-page-instance',
+            }],
+        };
+        editor.title = queuedProposal.title;
+        publishEnabled = true;
+        runtime.state.queue = plain(awaitingQueue);
+        storage.set(runtime.KEYS.queue, plain(awaitingQueue));
+        await runtime.publishCurrentProposal();
+        assert.equal(publishClicks, 0);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+        assert.equal((await runtime.Store.getRecord(listingId)).proposal.improvementId, second.proposal.improvementId);
+    } finally {
+        runtime.EditorAdapter.preflightProposal = originals.preflight;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.read = originals.read;
+        runtime.EditorAdapter.applyProposal = originals.apply;
+        runtime.EditorAdapter.publishButton = originals.button;
+        runtime.EditorAdapter.statusText = originals.status;
+    }
+});
+
+test('UPDATE fences untouched editor fields after apply and before publish', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const listingId = '9300000010';
+    const baseline = {
+        title: 'Untouched title', description: 'Untouched description', tags: ['old-tag'], materials: ['cotton'],
+        quantity: '5', sku: 'SKU-5',
+    };
+    const editor = plain(baseline);
+    const candidate = record(listingId, [snapshot(new Date().toISOString())], {
+        title: baseline.title,
+        editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+    });
+    candidate.editor = { ...plain(baseline), capturedAt: new Date().toISOString() };
+    await runtime.Store.loadSettings();
+    await runtime.Store.putRecord(candidate);
+    const saved = await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['tags'], tags: ['new-tag'], reason: 'untouched-field fence',
+    });
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-editor-overlay-fence', status: 'ready', cursor: 0,
+        items: [{
+            listingId, status: 'pending', attempts: 0, error: '', before: null, changedFields: [],
+            editUrl: candidate.meta.editUrl, proposal: plain(saved.proposal),
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+    const originals = {
+        preflight: runtime.EditorAdapter.preflightProposal,
+        clean: runtime.EditorAdapter.formIsClean,
+        read: runtime.EditorAdapter.read,
+        apply: runtime.EditorAdapter.applyProposal,
+        restore: runtime.EditorAdapter.restore,
+        button: runtime.EditorAdapter.publishButton,
+        status: runtime.EditorAdapter.statusText,
+    };
+    let injectUntouchedDrift = true;
+    let applyCalls = 0;
+    let publishClicks = 0;
+    runtime.EditorAdapter.preflightProposal = () => true;
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.read = () => completeEditorSnapshot(api, editor);
+    runtime.EditorAdapter.applyProposal = async (proposal) => {
+        applyCalls += 1;
+        editor.tags = [...proposal.tags];
+        if (injectUntouchedDrift) editor.title = 'Parallel unexpected title';
+        return ['tags'];
+    };
+    runtime.EditorAdapter.restore = async (before, fields) => {
+        fields.forEach((field) => { editor[field] = Array.isArray(before[field]) ? [...before[field]] : before[field]; });
+        return true;
+    };
+    let publishEnabled = false;
+    const publishButton = {
+        get disabled() { return !publishEnabled; },
+        getAttribute: () => null,
+        click() { publishClicks += 1; },
+    };
+    runtime.EditorAdapter.publishButton = () => publishButton;
+    runtime.EditorAdapter.statusText = () => 'Editing';
+    try {
+        publishEnabled = true;
+        await runtime.applyCurrentProposal();
+        assert.equal(applyCalls, 0);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'pending');
+        publishEnabled = false;
+        await runtime.applyCurrentProposal();
+        assert.equal(applyCalls, 1);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        assert.equal(editor.title, 'Parallel unexpected title');
+        assert.deepEqual(editor.tags, ['new-tag']);
+        assert.deepEqual(plain(storage.get(runtime.KEYS.queue).items[0].changedFields), ['title', 'tags']);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+
+        editor.title = baseline.title;
+        editor.tags = [...baseline.tags];
+        await runtime.recoverCurrentItem();
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'pending');
+        injectUntouchedDrift = false;
+        await runtime.applyCurrentProposal();
+        const awaiting = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(awaiting.items[0].status, 'awaiting-user-review');
+        assert.deepEqual(awaiting.items[0].changedFields, ['tags']);
+        publishEnabled = true;
+        editor.title = 'Autosaved unrelated title';
+        await runtime.publishCurrentProposal();
+        assert.equal(publishClicks, 0);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.preflightProposal = originals.preflight;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.read = originals.read;
+        runtime.EditorAdapter.applyProposal = originals.apply;
+        runtime.EditorAdapter.restore = originals.restore;
+        runtime.EditorAdapter.publishButton = originals.button;
+        runtime.EditorAdapter.statusText = originals.status;
+        if (runtime.state.leaseToken) await runtime.Lease.release();
+    }
+});
+
+test('slow UPDATE form work leaves the storage lock free for lease renewal', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const listingId = '9300000011';
+    const capturedAt = new Date().toISOString();
+    const editor = { title: 'Lease baseline', description: 'Stable description', tags: ['stable'], materials: ['cotton'] };
+    const candidate = record(listingId, [snapshot(capturedAt)], {
+        title: editor.title, editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+    });
+    candidate.editor = { ...plain(editor), capturedAt };
+    await runtime.Store.loadSettings();
+    await runtime.Store.putRecord(candidate);
+    const saved = await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['title'], title: 'Lease-renewed title', reason: 'slow apply fixture',
+    });
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-slow-apply', status: 'ready', cursor: 0,
+        items: [{
+            listingId, status: 'pending', attempts: 0, error: '', before: null, changedFields: [],
+            editUrl: candidate.meta.editUrl, proposal: plain(saved.proposal),
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+
+    const originals = {
+        preflight: runtime.EditorAdapter.preflightProposal,
+        clean: runtime.EditorAdapter.formIsClean,
+        read: runtime.EditorAdapter.read,
+        apply: runtime.EditorAdapter.applyProposal,
+        requestLock: sandbox.navigator.locks.request,
+        setInterval: sandbox.setInterval,
+        clearInterval: sandbox.clearInterval,
+    };
+    const lockTails = new Map();
+    sandbox.navigator.locks.request = (name, _options, callback) => {
+        const previous = lockTails.get(name) || Promise.resolve();
+        const run = previous.catch(() => {}).then(callback);
+        lockTails.set(name, run.catch(() => {}));
+        return run;
+    };
+    let leaseTick = null;
+    sandbox.setInterval = (callback, milliseconds) => {
+        if (milliseconds === 5000) { leaseTick = callback; return 93011; }
+        return originals.setInterval(callback, milliseconds);
+    };
+    sandbox.clearInterval = (timer) => { if (timer !== 93011) originals.clearInterval(timer); };
+    let renewalFinishedDuringApply = false;
+    let renewalPromise = Promise.resolve();
+    runtime.EditorAdapter.preflightProposal = () => true;
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.read = () => completeEditorSnapshot(api, editor);
+    runtime.EditorAdapter.applyProposal = async (proposal) => {
+        assert.equal(typeof leaseTick, 'function');
+        const firstExpiry = Number(storage.get(runtime.KEYS.lease)?.expiresAt);
+        renewalPromise = Promise.resolve(leaseTick()).then(() => Number(storage.get(runtime.KEYS.lease)?.expiresAt) > firstExpiry);
+        renewalFinishedDuringApply = await Promise.race([
+            renewalPromise,
+            new Promise((resolve) => setTimeout(() => resolve(false), 20)),
+        ]);
+        editor.title = proposal.title;
+        return ['title'];
+    };
+    try {
+        await runtime.applyCurrentProposal();
+        assert.equal(await renewalPromise, true);
+        assert.equal(renewalFinishedDuringApply, true);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        assert.equal(editor.title, 'Lease-renewed title');
+    } finally {
+        runtime.EditorAdapter.preflightProposal = originals.preflight;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.read = originals.read;
+        runtime.EditorAdapter.applyProposal = originals.apply;
+        if (runtime.state.leaseToken) await runtime.Lease.release();
+        sandbox.navigator.locks.request = originals.requestLock;
+        sandbox.setInterval = originals.setInterval;
+        sandbox.clearInterval = originals.clearInterval;
+    }
+});
+
+test('stored threshold drift blocks UPDATE form mutation and the final publish click', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const listingId = '9300000012';
+    const capturedAt = new Date().toISOString();
+    const editor = { title: 'Policy baseline', description: 'Stable description', tags: ['stable'], materials: ['cotton'] };
+    const candidate = record(listingId, [snapshot(capturedAt)], {
+        title: editor.title, editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+    });
+    candidate.editor = { ...plain(editor), capturedAt };
+    await runtime.Store.loadSettings();
+    await runtime.Store.putRecord(candidate);
+    const saved = await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['title'], title: 'Policy proposal', reason: 'policy fence fixture',
+    });
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-policy-fence', status: 'ready', cursor: 0,
+        items: [{
+            listingId, status: 'pending', attempts: 0, error: '', before: null, changedFields: [],
+            editUrl: candidate.meta.editUrl, proposal: plain(saved.proposal),
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+    const originals = {
+        preflight: runtime.EditorAdapter.preflightProposal,
+        clean: runtime.EditorAdapter.formIsClean,
+        read: runtime.EditorAdapter.read,
+        apply: runtime.EditorAdapter.applyProposal,
+        button: runtime.EditorAdapter.publishButton,
+        status: runtime.EditorAdapter.statusText,
+    };
+    let applyCalls = 0;
+    let publishClicks = 0;
+    let publishEnabled = false;
+    const publishButton = { get disabled() { return !publishEnabled; }, getAttribute: () => null, click: () => { publishClicks += 1; } };
+    runtime.EditorAdapter.preflightProposal = () => true;
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.read = () => completeEditorSnapshot(api, editor);
+    runtime.EditorAdapter.applyProposal = async (proposal) => { applyCalls += 1; editor.title = proposal.title; return ['title']; };
+    runtime.EditorAdapter.publishButton = () => publishButton;
+    runtime.EditorAdapter.statusText = () => 'Editing';
+    try {
+        storage.set(runtime.KEYS.settings, {
+            minVisitsToImprove: 35, minVisitsToProtect: 85, minRenewalsToReview: 7, declinePercent: 49,
+            retentionDays: 400, maxSnapshots: 120,
+        });
+        await runtime.applyCurrentProposal();
+        assert.equal(applyCalls, 0);
+        assert.equal(editor.title, 'Policy baseline');
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'failed');
+
+        storage.set(runtime.KEYS.settings, {
+            minVisitsToImprove: 20, minVisitsToProtect: 60, minRenewalsToReview: 2, declinePercent: 35,
+            retentionDays: 400, maxSnapshots: 120,
+        });
+        const retryQueue = plain(storage.get(runtime.KEYS.queue));
+        retryQueue.items[0].status = 'pending';
+        retryQueue.items[0].error = '';
+        runtime.state.queue = plain(retryQueue);
+        storage.set(runtime.KEYS.queue, plain(retryQueue));
+        await runtime.applyCurrentProposal();
+        assert.equal(applyCalls, 1);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        publishEnabled = true;
+        storage.set(runtime.KEYS.settings, {
+            minVisitsToImprove: 35, minVisitsToProtect: 85, minRenewalsToReview: 7, declinePercent: 49,
+            retentionDays: 400, maxSnapshots: 120,
+        });
+        await runtime.publishCurrentProposal();
+        assert.equal(publishClicks, 0);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.preflightProposal = originals.preflight;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.read = originals.read;
+        runtime.EditorAdapter.applyProposal = originals.apply;
+        runtime.EditorAdapter.publishButton = originals.button;
+        runtime.EditorAdapter.statusText = originals.status;
+        if (runtime.state.leaseToken) await runtime.Lease.release();
+    }
+});
+
+test('two-item UPDATE publish is single-flight and advances once after verified provider save', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const firstListingId = '9300000020';
+    const secondListingId = '9300000021';
+    const capturedAt = new Date().toISOString();
+    const editor = {
+        title: 'Single-flight baseline', description: 'Stable description',
+        tags: ['stable'], materials: ['cotton'], quantity: '3', sku: 'SINGLE-3',
+    };
+    await runtime.Store.loadSettings();
+    const firstRecord = record(firstListingId, [snapshot(capturedAt)], {
+        title: editor.title,
+        editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${firstListingId}`,
+    });
+    firstRecord.editor = { ...plain(editor), capturedAt };
+    const secondRecord = record(secondListingId, [snapshot(capturedAt)], {
+        title: 'Second queued listing',
+        editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${secondListingId}`,
+    });
+    secondRecord.editor = {
+        title: 'Second queued listing', description: 'Second stable description',
+        tags: ['second'], materials: ['linen'], quantity: '2', sku: 'NEXT-2', capturedAt,
+    };
+    await runtime.Store.putRecord(firstRecord);
+    await runtime.Store.putRecord(secondRecord);
+    const firstSaved = await runtime.Store.saveProposal(firstListingId, {
+        action: 'UPDATE', fields: ['title'], title: 'Single-flight published title', reason: 'happy-path publish',
+    });
+    const secondSaved = await runtime.Store.saveProposal(secondListingId, {
+        action: 'UPDATE', fields: ['title'], title: 'Second proposed title', reason: 'next queue item',
+    });
+    const secondEditUrl = secondRecord.meta.editUrl;
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-two-item-publish-single-flight', status: 'ready', cursor: 0,
+        items: [
+            {
+                listingId: firstListingId, status: 'pending', attempts: 0, error: '', before: null, changedFields: [],
+                editUrl: firstRecord.meta.editUrl, proposal: plain(firstSaved.proposal),
+            },
+            {
+                listingId: secondListingId, status: 'pending', attempts: 0, error: '', before: null, changedFields: [],
+                editUrl: secondEditUrl, proposal: plain(secondSaved.proposal),
+            },
+        ],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${firstListingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+
+    const originals = {
+        preflight: runtime.EditorAdapter.preflightProposal,
+        clean: runtime.EditorAdapter.formIsClean,
+        read: runtime.EditorAdapter.read,
+        apply: runtime.EditorAdapter.applyProposal,
+        button: runtime.EditorAdapter.publishButton,
+        status: runtime.EditorAdapter.statusText,
+        navigate: sandbox.__MAKAYTRON_LISTING_NAVIGATE__,
+    };
+    let providerClicks = 0;
+    let publishEnabled = false;
+    let providerStatus = 'Editing';
+    const navigations = [];
+    runtime.EditorAdapter.preflightProposal = () => true;
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.read = () => completeEditorSnapshot(api, editor);
+    runtime.EditorAdapter.applyProposal = async (proposal) => {
+        editor.title = proposal.title;
+        return ['title'];
+    };
+    runtime.EditorAdapter.publishButton = () => ({
+        get disabled() { return !publishEnabled; },
+        getAttribute: (name) => (name === 'aria-disabled' && !publishEnabled ? 'true' : null),
+        click: () => {
+            providerClicks += 1;
+            providerStatus = 'Saved';
+            publishEnabled = false;
+        },
+    });
+    runtime.EditorAdapter.statusText = () => providerStatus;
+    sandbox.__MAKAYTRON_LISTING_NAVIGATE__ = (url) => { navigations.push(String(url)); };
+    try {
+        await runtime.applyCurrentProposal();
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        publishEnabled = true;
+
+        const firstPublish = runtime.publishCurrentProposal();
+        const concurrentPublish = runtime.publishCurrentProposal();
+        assert.strictEqual(concurrentPublish, firstPublish);
+        await Promise.all([firstPublish, concurrentPublish]);
+
+        const savedQueue = plain(storage.get(runtime.KEYS.queue));
+        const audit = plain(storage.get(runtime.KEYS.audit) || []);
+        assert.equal(providerClicks, 1);
+        assert.equal(savedQueue.items[0].status, 'verified');
+        assert.equal(savedQueue.cursor, 1);
+        assert.equal(savedQueue.status, 'running');
+        assert.equal(savedQueue.items[1].status, 'pending');
+        assert.equal(audit.filter((entry) => entry.type === 'listing-published').length, 1);
+        assert.deepEqual(navigations, [secondEditUrl]);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.preflightProposal = originals.preflight;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.read = originals.read;
+        runtime.EditorAdapter.applyProposal = originals.apply;
+        runtime.EditorAdapter.publishButton = originals.button;
+        runtime.EditorAdapter.statusText = originals.status;
+        if (originals.navigate === undefined) delete sandbox.__MAKAYTRON_LISTING_NAVIGATE__;
+        else sandbox.__MAKAYTRON_LISTING_NAVIGATE__ = originals.navigate;
+        if (runtime.state.leaseToken) await runtime.Lease.release();
+    }
+});
+
+test('submitted UPDATE verification recovers idempotently after a local queue write failure', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const listingId = '9300000013';
+    const submittedAt = new Date(Date.now() - 1000).toISOString();
+    const before = {
+        title: 'Publish recovery baseline', description: 'Stable description',
+        tags: ['stable'], materials: ['cotton'], quantity: '4', sku: 'RECOVERY-4',
+    };
+    const editor = { ...plain(before), title: 'Published recovery title' };
+    const recoveryHistory = Array.from({ length: 11 }, (_, index) => snapshot(
+        new Date(Date.parse(submittedAt) - (10 - index) * 6 * 86400000).toISOString(),
+    ));
+    const candidate = record(listingId, recoveryHistory, {
+        title: before.title,
+        editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+    });
+    candidate.editor = { ...plain(before), capturedAt: submittedAt };
+    await runtime.Store.loadSettings();
+    const durableHealthSettings = plain(runtime.state.settings);
+    candidate.health = plain(api.evaluateRecord(candidate, [candidate], durableHealthSettings, submittedAt));
+    candidate.analysis = plain(candidate.health.result);
+    const durablePolicyFingerprint = candidate.health.policy.fingerprint;
+    await runtime.Store.putRecord(candidate);
+    const saved = await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['title'], title: editor.title, reason: 'idempotent publish recovery',
+    });
+    runtime.state.records = [plain(saved)];
+    const operationId = 'publish-attempt-recovery-001';
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-publish-recovery', status: 'running', cursor: 0,
+        items: [{
+            listingId, status: 'submitted-unverified', attempts: 1, error: 'synthetic interrupted commit',
+            before: plain(before), changedFields: ['title'], runtimeOwner: 'previous-page-instance',
+            runtimeBaselineCapturedAt: submittedAt, publishAttemptId: operationId,
+            publishSubmittedIntentAt: submittedAt, submittedAt,
+            editUrl: candidate.meta.editUrl, proposal: plain(saved.proposal),
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+
+    const originals = {
+        read: runtime.EditorAdapter.read,
+        clean: runtime.EditorAdapter.formIsClean,
+        button: runtime.EditorAdapter.publishButton,
+        saveQueueLocked: runtime.Store.saveQueueLocked,
+    };
+    let providerClicks = 0;
+    runtime.EditorAdapter.read = () => completeEditorSnapshot(api, editor);
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.publishButton = () => ({
+        disabled: true,
+        getAttribute: (name) => (name === 'aria-disabled' ? 'true' : null),
+        click: () => { providerClicks += 1; },
+    });
+    runtime.state.settings = {
+        ...runtime.state.settings,
+        minVisitsToImprove: 35,
+        minVisitsToProtect: 85,
+        minRenewalsToReview: 7,
+        declinePercent: 49,
+        retentionDays: 30,
+        maxSnapshots: 10,
+    };
+    const durableSubmittedQueue = plain(queue);
+    let failQueueWrite = true;
+    runtime.Store.saveQueueLocked = async function saveQueueLockedWithOneFailure(...args) {
+        if (failQueueWrite) {
+            failQueueWrite = false;
+            storage.set(runtime.KEYS.queue, plain(durableSubmittedQueue));
+            const error = new Error('synthetic queue write failure');
+            error.code = 'STORAGE_WRITE_FAILED';
+            throw error;
+        }
+        return originals.saveQueueLocked.apply(this, args);
+    };
+    try {
+        await runtime.verifyCurrentPublish();
+        const afterFirst = await runtime.Store.getRecord(listingId);
+        const firstImprovement = afterFirst.improvements.find((entry) => entry.id === saved.proposal.improvementId);
+        assert.equal(firstImprovement.status, 'published');
+        assert.equal(firstImprovement.publishOperationId, operationId);
+        assert.equal(firstImprovement.publishedAt, submittedAt);
+        assert.equal(runtime.state.records[0].improvements.find((entry) => entry.id === saved.proposal.improvementId).status, 'published');
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'submitted-unverified');
+        assert.equal(plain(storage.get(runtime.KEYS.audit)).filter((entry) => entry.type === 'listing-published').length, 1);
+
+        await Promise.all([runtime.verifyCurrentPublish(), runtime.verifyCurrentPublish()]);
+        const afterRetry = await runtime.Store.getRecord(listingId);
+        const retriedImprovement = afterRetry.improvements.find((entry) => entry.id === saved.proposal.improvementId);
+        const savedQueue = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(retriedImprovement.publishedAt, submittedAt);
+        assert.equal(afterRetry.health.policy.fingerprint, durablePolicyFingerprint);
+        assert.equal(afterRetry.history.length, 11);
+        assert.equal(savedQueue.status, 'completed');
+        assert.equal(savedQueue.cursor, 1);
+        assert.equal(savedQueue.items[0].status, 'verified');
+        assert.equal(plain(storage.get(runtime.KEYS.audit)).filter((entry) => entry.type === 'listing-published').length, 1);
+        assert.equal(providerClicks, 0);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.read = originals.read;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.publishButton = originals.button;
+        runtime.Store.saveQueueLocked = originals.saveQueueLocked;
+        if (runtime.state.leaseToken) await runtime.Lease.release();
+    }
+});
+
+test('legacy UPDATE partial commit is adopted without republishing or duplicating its audit', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const listingId = '9300000015';
+    const submittedAt = new Date(Date.now() - 2000).toISOString();
+    const publishedAt = new Date(Date.now() - 1000).toISOString();
+    const before = {
+        title: 'Legacy publish baseline', description: 'Stable legacy description',
+        tags: ['legacy'], materials: ['linen'], quantity: '3', sku: 'LEGACY-3',
+    };
+    const editor = { ...plain(before), title: 'Legacy published title' };
+    const candidate = record(listingId, [snapshot(submittedAt)], {
+        title: before.title,
+        editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+    });
+    candidate.editor = { ...plain(before), capturedAt: submittedAt };
+    await runtime.Store.loadSettings();
+    candidate.health = plain(api.evaluateRecord(candidate, [candidate], runtime.state.settings, submittedAt));
+    candidate.analysis = plain(candidate.health.result);
+    await runtime.Store.putRecord(candidate);
+    const saved = await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['title'], title: editor.title, reason: 'legacy partial publish fixture',
+    });
+    const legacyRecord = await runtime.Store.getRecord(listingId);
+    const legacyImprovement = legacyRecord.improvements.find((entry) => entry.id === saved.proposal.improvementId);
+    legacyRecord.editor = { ...plain(editor), capturedAt: publishedAt };
+    legacyRecord.proposal = { ...legacyRecord.proposal, appliedAt: publishedAt };
+    legacyImprovement.status = 'published';
+    legacyImprovement.publishedAt = publishedAt;
+    legacyImprovement.after = plain(legacyRecord.editor);
+    legacyImprovement.experiment = {
+        ...(legacyImprovement.experiment || {}), state: 'observing', startAt: publishedAt,
+        evaluateAt: new Date(Date.parse(publishedAt) + 30 * 86400000).toISOString(), day: 0, durationDays: 30,
+    };
+    delete legacyImprovement.publishOperationId;
+    storage.set(runtime.KEYS.record(listingId), plain(legacyRecord));
+
+    const queueId = 'queue-legacy-publish-recovery';
+    const queue = {
+        schema: api.versions.queueSchema, id: queueId, status: 'running', cursor: 0,
+        items: [{
+            listingId, status: 'submitted', attempts: 1, error: '', submittedAt,
+            before: plain(before), changedFields: ['title'], runtimeOwner: 'legacy-page-instance',
+            editUrl: candidate.meta.editUrl, proposal: plain(saved.proposal),
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    storage.set(runtime.KEYS.audit, [{
+        at: new Date(Date.parse(publishedAt) + 100).toISOString(), type: 'listing-published',
+        queueId, listingId, fields: ['title'], writeId: 'legacy-audit-write',
+    }]);
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+
+    const originals = {
+        read: runtime.EditorAdapter.read,
+        clean: runtime.EditorAdapter.formIsClean,
+        button: runtime.EditorAdapter.publishButton,
+    };
+    let providerClicks = 0;
+    runtime.EditorAdapter.read = () => completeEditorSnapshot(api, editor);
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.publishButton = () => ({
+        disabled: true,
+        getAttribute: (name) => (name === 'aria-disabled' ? 'true' : null),
+        click: () => { providerClicks += 1; },
+    });
+    try {
+        await runtime.verifyCurrentPublish();
+        const recovered = await runtime.Store.getRecord(listingId);
+        const improvement = recovered.improvements.find((entry) => entry.id === saved.proposal.improvementId);
+        const durableQueue = plain(storage.get(runtime.KEYS.queue));
+        const audit = plain(storage.get(runtime.KEYS.audit));
+        assert.equal(improvement.status, 'published');
+        assert.equal(improvement.publishedAt, publishedAt);
+        assert.equal(improvement.experiment.startAt, publishedAt);
+        assert.equal(improvement.publishOperationId, `publish-${queueId}-0-${listingId}`);
+        assert.equal(durableQueue.status, 'completed');
+        assert.equal(durableQueue.items[0].status, 'verified');
+        assert.equal(audit.filter((entry) => entry.type === 'listing-published').length, 1);
+        assert.equal(providerClicks, 0);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.read = originals.read;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.publishButton = originals.button;
+        if (runtime.state.leaseToken) await runtime.Lease.release();
+    }
+});
+
+test('trusted editor input blocks UPDATE publish even when its durable conflict marker cannot be written', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const listingId = '9300000014';
+    const capturedAt = new Date().toISOString();
+    const before = {
+        title: 'Trusted-input baseline', description: 'Stable description',
+        tags: ['stable'], materials: ['cotton'], quantity: '2', sku: 'TRUSTED-2',
+    };
+    const editor = plain(before);
+    const candidate = record(listingId, [snapshot(capturedAt)], {
+        title: before.title,
+        editUrl: `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`,
+    });
+    candidate.editor = { ...plain(before), capturedAt };
+    await runtime.Store.loadSettings();
+    await runtime.Store.putRecord(candidate);
+    const saved = await runtime.Store.saveProposal(listingId, {
+        action: 'UPDATE', fields: ['title'], title: 'Trusted-input proposal', reason: 'synchronous conflict fence',
+    });
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-trusted-input-fence', status: 'ready', cursor: 0,
+        items: [{
+            listingId, status: 'pending', attempts: 0, error: '', before: null, changedFields: [],
+            editUrl: candidate.meta.editUrl, proposal: plain(saved.proposal),
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+
+    const originals = {
+        addEventListener: sandbox.document.addEventListener,
+        getValue: sandbox.GM.getValue,
+        preflight: runtime.EditorAdapter.preflightProposal,
+        clean: runtime.EditorAdapter.formIsClean,
+        read: runtime.EditorAdapter.read,
+        apply: runtime.EditorAdapter.applyProposal,
+        button: runtime.EditorAdapter.publishButton,
+    };
+    const listeners = new Map();
+    sandbox.document.addEventListener = (type, listener) => { listeners.set(type, listener); };
+    let publishEnabled = false;
+    let publishClicks = 0;
+    runtime.EditorAdapter.preflightProposal = () => true;
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.read = () => completeEditorSnapshot(api, editor);
+    runtime.EditorAdapter.applyProposal = async (proposal) => { editor.title = proposal.title; return ['title']; };
+    runtime.EditorAdapter.publishButton = () => ({
+        get disabled() { return !publishEnabled; },
+        getAttribute: () => null,
+        click: () => { publishClicks += 1; },
+    });
+    try {
+        runtime.installTrustedEditorInteractionWatcher();
+        await runtime.applyCurrentProposal();
+        publishEnabled = true;
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        assert.equal(typeof listeners.get('input'), 'function');
+
+        let failQueueRead = true;
+        sandbox.GM.getValue = async (key, fallback) => {
+            if (key === runtime.KEYS.queue && failQueueRead) {
+                failQueueRead = false;
+                throw new Error('synthetic watcher storage failure');
+            }
+            return originals.getValue(key, fallback);
+        };
+        listeners.get('input')({ type: 'input', isTrusted: true, target: new FakeElement() });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        assert.equal(runtime.state.editorInteractionConflict, true);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].editorInteractionConflictAt || '', '');
+
+        await runtime.publishCurrentProposal();
+        assert.equal(publishClicks, 0);
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        sandbox.document.addEventListener = originals.addEventListener;
+        sandbox.GM.getValue = originals.getValue;
+        runtime.EditorAdapter.preflightProposal = originals.preflight;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.read = originals.read;
+        runtime.EditorAdapter.applyProposal = originals.apply;
+        runtime.EditorAdapter.publishButton = originals.button;
+        if (runtime.state.leaseToken) await runtime.Lease.release();
+    }
+});
+
+test('dirty editor recovery never resets an uncertain queue item to pending', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const listingId = '9300000002';
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-dirty-recovery', status: 'running', cursor: 0,
+        items: [{
+            listingId, status: 'awaiting-user-review', runtimeOwner: 'previous-page-instance',
+            changedFields: ['title'], proposal: { action: 'UPDATE', fields: ['title'], title: 'Unsaved editor title' },
+        }],
+    };
+    runtime.state.queue = plain(queue);
+    storage.set(runtime.KEYS.queue, plain(queue));
+    sandbox.location.pathname = `/your/shops/me/listing-editor/edit/${listingId}`;
+    sandbox.location.search = '';
+    sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+    const originalClean = runtime.EditorAdapter.formIsClean;
+    const originalConfirm = sandbox.confirm;
+    let confirmations = 0;
+    runtime.EditorAdapter.formIsClean = () => false;
+    sandbox.confirm = () => { confirmations += 1; return true; };
+    try {
+        await runtime.recoverCurrentItem();
+        assert.equal(confirmations, 0);
+        assert.deepEqual(plain(storage.get(runtime.KEYS.queue)), queue);
+        assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.formIsClean = originalClean;
+        sandbox.confirm = originalConfirm;
+    }
+});
+
 test('concurrent skip clicks commit one fenced transition and one audit entry', async () => {
     const { api, storage } = loadAnalyzer();
     const runtime = api.actionRuntime;
     const queue = {
-        schema: 1, id: 'queue-double', status: 'ready', cursor: 0,
+        schema: api.versions.queueSchema, id: 'queue-double', status: 'ready', cursor: 0,
         items: [
-            { listingId: 'double-1', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/double-1' },
-            { listingId: 'double-2', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/double-2' },
+            { listingId: '9400000001', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/9400000001', proposal: { action: 'UPDATE' } },
+            { listingId: '9400000002', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/9400000002', proposal: { action: 'UPDATE' } },
         ],
     };
     runtime.state.queue = plain(queue);
@@ -3917,12 +5285,15 @@ test('fresh durable deactivation submission permits only canonical automatic ver
         deactivationSubmittedIntentAt: '2026-08-31T15:59:30.000Z',
         editUrl: 'https://example.com/unsafe',
     };
+    runtime.state.queue = { status: 'running', cursor: 0, items: [item] };
     const recovery = runtime.automaticDeactivationRecovery(item, now);
     assert.equal(recovery.editUrl, 'https://www.etsy.com/your/shops/me/listing-editor/edit/4309502756');
     assert.equal(runtime.automaticDeactivationRecovery({ ...item, status: 'awaiting-user-deactivation' }, now), null);
     assert.equal(runtime.automaticDeactivationRecovery({ ...item, deactivationAttemptId: '' }, now), null);
     assert.equal(runtime.automaticDeactivationRecovery({ ...item, deactivationStatusBefore: [] }, now), null);
     assert.equal(runtime.automaticDeactivationRecovery({ ...item, deactivationSubmittedIntentAt: '2026-08-31T15:55:00.000Z' }, now), null);
+    runtime.state.queue.status = 'stopped';
+    assert.equal(runtime.automaticDeactivationRecovery(item, now), null);
 });
 
 test('a missing deactivation menu releases the action lease without changing the queue', async () => {
@@ -4008,6 +5379,65 @@ test('automatic deactivation submits once, verifies Active to Inactive, and adva
         assert.equal(saved.items[1].status, 'pending');
         assert.equal(plain(storage.get(runtime.KEYS.audit)).filter((entry) => entry.type === 'listing-deactivated').length, 1);
         assert.equal(storage.has(runtime.KEYS.lease), false);
+    } finally {
+        runtime.EditorAdapter.listingStatusLabels = originals.labels;
+        runtime.EditorAdapter.formIsClean = originals.clean;
+        runtime.EditorAdapter.openDeactivateDialog = originals.open;
+        runtime.EditorAdapter.deactivateDialogContract = originals.modal;
+        runtime.EditorAdapter.clickDeactivateConfirmation = originals.confirm;
+    }
+});
+
+test('deactivation final click rejects a concurrent threshold change', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const settings = api.settingsRuntime;
+    const queue = {
+        id: 'deactivate-threshold-fence', status: 'ready', cursor: 0,
+        items: [{
+            listingId: '780', status: 'pending',
+            editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/780',
+            proposal: { action: 'DEACTIVATE_REVIEW', reason: 'test' },
+        }],
+    };
+    await settings.Store.loadSettings();
+    await installEligibleDeactivationQueue(api, runtime, storage, queue, '780');
+    sandbox.location.pathname = '/your/shops/me/listing-editor/edit/780';
+    sandbox.location.search = '';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/listing-editor/edit/780';
+    let status = 'Active';
+    let thresholdWrite = null;
+    const originals = {
+        labels: runtime.EditorAdapter.listingStatusLabels,
+        clean: runtime.EditorAdapter.formIsClean,
+        open: runtime.EditorAdapter.openDeactivateDialog,
+        modal: runtime.EditorAdapter.deactivateDialogContract,
+        confirm: runtime.EditorAdapter.clickDeactivateConfirmation,
+    };
+    runtime.EditorAdapter.listingStatusLabels = () => [status];
+    runtime.EditorAdapter.formIsClean = () => true;
+    runtime.EditorAdapter.openDeactivateDialog = async () => true;
+    runtime.EditorAdapter.deactivateDialogContract = () => ({});
+    runtime.EditorAdapter.clickDeactivateConfirmation = () => {
+        thresholdWrite = settings.persistThresholdSettings({
+            minVisitsToImprove: 21,
+            minVisitsToProtect: 60,
+            minRenewalsToReview: 4,
+            declinePercent: 35,
+        });
+        status = 'Inactive';
+        return true;
+    };
+    try {
+        await runtime.openCurrentDeactivate();
+        assert.ok(thresholdWrite);
+        assert.equal(await thresholdWrite, false);
+        assert.equal(settings.state.settingsSaveError, 'HEALTH_SETTINGS_QUEUE_LOCKED');
+        assert.equal(settings.state.settings.minVisitsToImprove, 20);
+        assert.equal(storage.has(runtime.KEYS.settings), false);
+        const saved = plain(storage.get(runtime.KEYS.queue));
+        assert.equal(saved.status, 'completed');
+        assert.equal(saved.items[0].status, 'verified-deactivated');
     } finally {
         runtime.EditorAdapter.listingStatusLabels = originals.labels;
         runtime.EditorAdapter.formIsClean = originals.clean;
@@ -4342,7 +5772,7 @@ test('route drift after a durable deactivation arm prevents the final click and 
     }
 });
 
-test('concurrent deactivation verification advances exactly one queue item', async () => {
+test('concurrent legacy deactivation verification advances exactly one queue item', async () => {
     const { api, sandbox, storage } = loadAnalyzer();
     const runtime = api.actionRuntime;
     const queue = {
@@ -4642,6 +6072,30 @@ test('approximate counters remain descriptive and cannot authorize deactivation 
     assert.deepEqual(plain(api.thresholdImpactCounts(approximateRows, undefined, evaluatedAt)), { improve: 0, protect: 0 });
 });
 
+test('exact precision labels still reject fractional, negative, and unsafe counters', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const invalidValues = [1.5, -1, Number.MAX_SAFE_INTEGER + 1];
+    invalidValues.forEach((visits, index) => {
+        const candidate = record(`invalid-exact-${index}`, [snapshot(evaluatedAt, { visits })]);
+        const derived = api.deriveRecordMetrics(candidate, evaluatedAt);
+        const result = api.evaluateRecord(candidate, [candidate], undefined, evaluatedAt).result;
+        assert.equal(derived.currentExactness.visits, false);
+        assert.equal(result.readiness.trend, false);
+        assert.equal(result.readiness.deactivationHistory, false);
+    });
+
+    const fractionalRenewals = record('fractional-renewal-history', [
+        snapshot('2026-07-02T12:00:00.000Z', { renewals: 0 }),
+        snapshot('2026-08-01T12:00:00.000Z', { renewals: 1.5 }),
+        snapshot(evaluatedAt, { renewals: 2.5 }),
+    ], { seasonality: 'non-seasonal' });
+    const result = api.evaluateRecord(fractionalRenewals, [fractionalRenewals], undefined, evaluatedAt).result;
+    assert.notEqual(result.lifecycle, 'DEACTIVATION_REVIEW');
+    assert.equal(result.readiness.deactivationHistory, false);
+    assert.equal(result.safeguards.find((item) => item.key === 'guardExactCounters')?.passed, false);
+});
+
 test('metric precision fences isolate traffic, engagement, demand, renewal, and deactivation consumers', () => {
     const { api } = loadAnalyzer();
     const evaluatedAt = '2026-08-31T12:00:00.000Z';
@@ -4673,8 +6127,30 @@ test('metric precision fences isolate traffic, engagement, demand, renewal, and 
     const discoveryResult = api.evaluateRecord(discovery, [discovery], undefined, evaluatedAt).result;
     assert.equal(discoveryResult.diagnosis, 'DISCOVERY_WEAK');
     assert.equal(discoveryResult.code, 'improve');
-    assert.ok(Number.isFinite(discoveryResult.score));
+    assert.equal(discoveryResult.score, null);
+    assert.equal(discoveryResult.scoreBasis, 'insufficient');
+    assert.notEqual(discoveryResult.currentAssessment.funnelSignal, 'STRONG_CURRENT');
     assert.equal(discoveryResult.currentAssessment.components.engagement, null);
+    assert.equal(discoveryResult.evidence.some((item) => item.key.startsWith('evidenceSnapshotScore')), false);
+
+    const highVisibilityOnly = record('precision-high-traffic-only', [snapshot(evaluatedAt, {
+        visits: 100, favorites: 20, metricContract: approximateFavorites,
+    })]);
+    const highVisibilityResult = api.evaluateRecord(highVisibilityOnly, [highVisibilityOnly], undefined, evaluatedAt).result;
+    assert.equal(highVisibilityResult.score, null);
+    assert.equal(highVisibilityResult.scoreBasis, 'insufficient');
+    assert.notEqual(highVisibilityResult.currentAssessment.funnelSignal, 'STRONG_CURRENT');
+    assert.equal(highVisibilityResult.currentAssessment.components.visibility, 100);
+    assert.equal(highVisibilityResult.currentAssessment.components.engagement, null);
+
+    const exactFavoritesControl = record('precision-engagement-control', [snapshot(evaluatedAt, {
+        visits: 100, favorites: 20,
+    })]);
+    const exactFavoritesResult = api.evaluateRecord(exactFavoritesControl, [exactFavoritesControl], undefined, evaluatedAt).result;
+    assert.ok(Number.isFinite(exactFavoritesResult.score));
+    assert.equal(exactFavoritesResult.scoreBasis, 'current-30d-reach-engagement');
+    assert.equal(exactFavoritesResult.currentAssessment.funnelSignal, 'STRONG_CURRENT');
+    assert.equal(exactFavoritesResult.evidence.some((item) => item.key.startsWith('evidenceSnapshotScore')), true);
 
     const approximateTrafficAndRenewals = approximate('visits', 'renewals');
     const provenDemand = record('precision-demand-only', [snapshot(evaluatedAt, {
@@ -4869,6 +6345,106 @@ test('price cohorts and revenue metrics never mix currencies', () => {
     assert.equal(result.benchmark.size, 8);
     assert.match(result.benchmark.scope, /price-band/);
     assert.equal(result.benchmark.metrics.revenuePerVisitProxy.samples, 8);
+});
+
+test('price-band cache treats canonical currency aliases as comparable', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const makePriced = (id, currency) => record(id, [
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 100, sales: 0, revenue: 0, priceMin: 100, priceMax: 100, currency }),
+        snapshot(evaluatedAt, { visits: 100, sales: 1, revenue: 10, priceMin: 100, priceMax: 100, currency }),
+    ]);
+    const target = makePriced('currency-alias-target', 'EUR ');
+    const aliases = Array.from({ length: 8 }, (_, index) => makePriced(`currency-alias-${index}`, index % 2 ? 'EUR ' : '€'));
+    const otherCurrency = Array.from({ length: 10 }, (_, index) => makePriced(`currency-alias-usd-${index}`, '$'));
+    const benchmark = api.evaluateRecord(target, [target, ...aliases, ...otherCurrency], undefined, evaluatedAt).result.benchmark;
+    assert.equal(benchmark.size, 8);
+    assert.match(benchmark.scope, /price-band/);
+    assert.equal(benchmark.metrics.revenuePerVisitProxy.samples, 8);
+});
+
+test('cached cohort distributions match the uncached price-band and self-exclusion oracle', () => {
+    const { api } = loadAnalyzer();
+    const evaluatedAt = '2026-08-31T12:00:00.000Z';
+    const makePriced = (id, price, currency, index) => record(id, [
+        snapshot('2026-08-01T12:00:00.000Z', {
+            visits: 40 + index, favorites: index % 5, sales: index, revenue: index * 10,
+            priceMin: price, priceMax: price, currency,
+        }),
+        snapshot(evaluatedAt, {
+            visits: 50 + index, favorites: (index % 5) + 1, sales: index + 1, revenue: (index + 1) * 12,
+            priceMin: price, priceMax: price, currency,
+        }),
+    ], { listingType: 'physical', seasonality: 'non-seasonal' });
+    const samePrice = Array.from({ length: 8 }, (_, index) => makePriced(`cache-oracle-${index}`, 100, '$', index));
+    const rows = [
+        ...samePrice,
+        makePriced('cache-oracle-boundary', 130, '$', 8),
+        makePriced('cache-oracle-outside', 130.01, '$', 9),
+        makePriced('cache-oracle-eur', 100, '€', 10),
+    ];
+    const evaluated = plain(api.evaluateRecordsWithDiagnostics(rows, undefined, evaluatedAt));
+    const derived = new Map(rows.map((item) => [item.listingId, api.deriveRecordMetrics(item, evaluatedAt)]));
+    const quantile = (sorted, q) => {
+        if (!sorted.length) return null;
+        const position = (sorted.length - 1) * q;
+        const lower = Math.floor(position);
+        const upper = Math.ceil(position);
+        return lower === upper ? sorted[lower] : sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+    };
+    const oracleMedian = (sorted) => {
+        if (!sorted.length) return null;
+        const middle = Math.floor(sorted.length / 2);
+        return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    };
+    const percentile = (sorted, target) => {
+        if (!sorted.length || !Number.isFinite(target)) return null;
+        const below = sorted.filter((value) => value < target).length;
+        const equal = sorted.filter((value) => value === target).length;
+        return Math.max(0, Math.min(100, Math.round(((below + equal * 0.5) / sorted.length) * 100)));
+    };
+    const metricValue = (name, item, targetCurrency) => {
+        const value = derived.get(item.listingId);
+        if (name === 'revenuePerVisitProxy' && item.history.at(-1).currency !== targetCurrency) return null;
+        return name === 'favoriteRate' ? value.favoriteRateSmoothed : value[name];
+    };
+    const manual = (target) => {
+        const targetDerived = derived.get(target.listingId);
+        const targetCurrency = target.history.at(-1).currency;
+        const targetPrice = targetDerived.current.priceMin;
+        let cohort = rows.filter((item) => item.listingId !== target.listingId);
+        const band = cohort.filter((item) => {
+            const candidate = derived.get(item.listingId);
+            return item.history.at(-1).currency === targetCurrency
+                && candidate.current.priceMin > 0
+                && Math.abs(Math.log(candidate.current.priceMin / targetPrice)) <= Math.log(1.3);
+        });
+        if (band.length >= 8) cohort = band;
+        const metrics = {};
+        for (const name of ['visits30', 'favoriteRate', 'salesRateProxy', 'revenuePerVisitProxy', 'sales30']) {
+            const sorted = cohort.map((item) => metricValue(name, item, targetCurrency)).filter(Number.isFinite).sort((a, b) => a - b);
+            const reliable = sorted.length >= 8;
+            metrics[name] = {
+                median: oracleMedian(sorted),
+                p25: quantile(sorted, 0.25),
+                p75: quantile(sorted, 0.75),
+                percentile: percentile(sorted, metricValue(name, target, targetCurrency)),
+                samples: sorted.length,
+                reliable,
+                strength: reliable ? Math.max(0, Math.min(1, (sorted.length - 8 + 1) / (30 - 8 + 1))) : 0,
+            };
+        }
+        return { size: cohort.length, metrics };
+    };
+
+    for (const target of samePrice) {
+        const expected = manual(target);
+        const actual = evaluated.evaluations[target.listingId].result.benchmark;
+        assert.equal(actual.size, expected.size);
+        assert.equal(actual.scope, 'active-shop-price-band-physical-non-seasonal');
+        assert.deepEqual(actual.metrics, expected.metrics);
+    }
+    assert.equal(evaluated.diagnostics.distributionSorts, 20);
 });
 
 test('calibration output and settings UI share one bounded threshold contract', () => {
@@ -5085,4 +6661,359 @@ test('snapshot day keys and displayed timestamps use one canonical UTC contract'
     assert.equal(merged.history[0].quality.mergedCaptures, 2);
     api.settingsRuntime.state.settings.language = 'en';
     assert.match(api.formatDate('2026-09-01T00:30:00+02:00'), /Aug 31, 2026.*UTC/);
+});
+
+test('history details never describe an unavailable longitudinal score as measured', () => {
+    const { api } = loadAnalyzer();
+    const ui = api.updater.UI;
+    api.settingsRuntime.state.settings.language = 'en';
+    const candidate = record('history-insufficient-score', [
+        snapshot('2026-07-02T12:00:00.000Z', { visits: 80 }),
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 100 }),
+    ]);
+    candidate.analysis = {
+        lifecycle: 'ACTIVE_STABLE', diagnosis: 'HEALTHY_OR_MIXED', code: 'monitor', tone: 'balanced',
+        score: null, scoreBasis: 'insufficient', assessmentMode: 'longitudinal', confidence: 50,
+        confidenceBand: 'medium', confidenceComponents: {}, confidenceCaps: [], evidence: [], safeguards: [],
+        nextReviewAt: '2026-09-01T12:00:00.000Z',
+    };
+    const originalOpenModal = ui.openModal;
+    let markup = '';
+    ui.openModal = (_title, body) => { markup = body; };
+    try { ui.openHistory(candidate); }
+    finally { ui.openModal = originalOpenModal; }
+    assert.ok(markup.includes(api.translate('insufficientBasis')));
+    assert.equal(markup.includes(api.translate('longitudinalBasis')), false);
+});
+
+test('UI preference writes are ordered snapshots and repeated failures restore last-confirmed settings', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    await runtime.Store.loadSettings();
+    const pending = [];
+    sandbox.GM.setValue = (key, value) => new Promise((resolve) => pending.push({ key, value: plain(value), resolve }));
+
+    runtime.state.settings.language = 'en';
+    const first = runtime.Store.saveUiPreferences(['language']);
+    runtime.state.settings.language = 'tr';
+    const second = runtime.Store.saveUiPreferences(['language']);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].value.language, 'en');
+    pending[0].resolve();
+    assert.equal(await first, true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(pending.length, 2);
+    assert.equal(pending[1].value.language, 'tr');
+    pending[1].resolve();
+    assert.equal(await second, true);
+
+    sandbox.GM.setValue = async () => { throw new Error('synthetic write failure'); };
+    const collapse = api.updater.UI.setCollapsed(true);
+    const language = api.updater.UI.toggleLanguage();
+    assert.deepEqual(await Promise.all([collapse, language]), [false, false]);
+    assert.equal(runtime.state.settings.collapsed, false);
+    assert.equal(runtime.state.settings.language, 'tr');
+});
+
+test('independent UI preferences reconcile mixed write outcomes field by field', async () => {
+    const runPair = async (outcomes) => {
+        const { api, sandbox, storage } = loadAnalyzer();
+        const runtime = api.settingsRuntime;
+        const key = api.actionRuntime.KEYS.uiPreferences;
+        await runtime.Store.loadSettings();
+        const pending = [];
+        sandbox.GM.setValue = (storageKey, value) => {
+            if (storageKey !== key) { storage.set(storageKey, plain(value)); return Promise.resolve(); }
+            return new Promise((resolve, reject) => pending.push({
+                key: storageKey,
+                value: plain(value),
+                resolve,
+                reject,
+            }));
+        };
+        const collapse = api.updater.UI.setCollapsed(true);
+        const language = api.updater.UI.toggleLanguage();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        assert.equal(pending.length, 1);
+        if (outcomes[0]) { storage.set(pending[0].key, pending[0].value); pending[0].resolve(); }
+        else pending[0].reject(new Error('synthetic first-write failure'));
+        assert.equal(await collapse, outcomes[0]);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        assert.equal(pending.length, 2);
+        if (outcomes[1]) { storage.set(pending[1].key, pending[1].value); pending[1].resolve(); }
+        else pending[1].reject(new Error('synthetic second-write failure'));
+        assert.equal(await language, outcomes[1]);
+        const durable = plain(storage.get(key));
+        return { state: plain(runtime.state.settings), durable };
+    };
+
+    const firstFails = await runPair([false, true]);
+    assert.equal(firstFails.state.collapsed, false);
+    assert.equal(firstFails.state.language, 'en');
+    assert.deepEqual(firstFails.durable, { language: 'en', collapsed: false });
+
+    const secondFails = await runPair([true, false]);
+    assert.equal(secondFails.state.collapsed, true);
+    assert.equal(secondFails.state.language, 'tr');
+    assert.deepEqual(secondFails.durable, { language: 'tr', collapsed: true });
+});
+
+test('preset UI rolls back optimistic save and delete state when persistence rejects', async () => {
+    const exercise = async (operation) => {
+        const { api, storage } = loadAnalyzer();
+        const runtime = api.settingsRuntime;
+        const UI = api.updater.UI;
+        const key = api.actionRuntime.KEYS.filterPresets;
+        const now = new Date().toISOString();
+        const originalPreset = {
+            id: 'preset-durable-rollback', name: 'Durable preset',
+            filters: { recommendation: 'monitor', sort: 'priority' }, query: 'durable',
+            createdAt: now, updatedAt: now,
+        };
+        storage.set(key, { schema: 1, items: [plain(originalPreset)] });
+        await runtime.Store.loadFilterPresets();
+        const durableBefore = plain(runtime.state.filterPresets);
+
+        const body = new FakeElement();
+        body.scrollTop = 0;
+        body.innerHTML = '';
+        const input = new FakeElement();
+        input.value = 'Optimistic preset';
+        const saveButton = new FakeElement();
+        const deleteButton = new FakeElement();
+        deleteButton.dataset = { deletePreset: originalPreset.id };
+        let handler = null;
+        saveButton.addEventListener = (type, callback) => { if (operation === 'save' && type === 'click') handler = callback; };
+        deleteButton.addEventListener = (type, callback) => { if (operation === 'delete' && type === 'click') handler = callback; };
+        const root = new FakeElement();
+        root.querySelector = (selector) => ({
+            '[data-table-body]': body,
+            '[data-preset-name]': input,
+            '[data-save-preset]': saveButton,
+        }[selector] || null);
+        root.querySelectorAll = (selector) => (selector === '[data-delete-preset]' ? [deleteButton] : []);
+
+        const method = operation === 'save' ? 'upsertFilterPreset' : 'deleteFilterPreset';
+        const originalMethod = runtime.Store[method];
+        runtime.Store[method] = async () => { throw new Error('synthetic preset persistence rejection'); };
+        try {
+            UI.bindAnalysis(root);
+            assert.equal(typeof handler, 'function');
+            await handler();
+            assert.deepEqual(plain(runtime.state.filterPresets), durableBefore);
+        } finally {
+            runtime.Store[method] = originalMethod;
+        }
+    };
+
+    await exercise('save');
+    await exercise('delete');
+});
+
+test('filter preset identity remains stable when the UI language changes', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    const key = api.actionRuntime.KEYS.filterPresets;
+    const createdAt = '2026-08-31T12:00:00.000Z';
+    const presets = [
+        { id: 'preset-latin-i-plan', name: 'I plan', filters: { sort: 'priority' }, query: '', createdAt, updatedAt: createdAt },
+        { id: 'preset-dotless-i-plan', name: 'ı plan', filters: { sort: 'score' }, query: '', createdAt, updatedAt: createdAt },
+    ];
+    storage.set(key, { schema: 1, items: plain(presets) });
+    runtime.state.settings.language = 'tr';
+    assert.equal((await runtime.Store.loadFilterPresets()).length, 2);
+    assert.equal(await runtime.Store.upsertFilterPreset({
+        id: 'preset-third-stable', name: 'Third plan', filters: { sort: 'visits' }, query: '',
+        createdAt, updatedAt: '2026-08-31T12:01:00.000Z',
+    }), true);
+    assert.deepEqual(
+        plain(storage.get(key).items).map((item) => item.id).sort(),
+        ['preset-dotless-i-plan', 'preset-latin-i-plan', 'preset-third-stable'],
+    );
+    runtime.state.settings.language = 'en';
+    assert.equal((await runtime.Store.loadFilterPresets()).length, 3);
+});
+
+test('display-only writes cannot overwrite thresholds changed by another tab', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    const keys = api.actionRuntime.KEYS;
+    await runtime.Store.loadSettings();
+    storage.set(keys.settings, {
+        minVisitsToImprove: 44,
+        minVisitsToProtect: 94,
+        minRenewalsToReview: 6,
+        declinePercent: 48,
+        retentionDays: 400,
+        maxSnapshots: 120,
+    });
+    runtime.state.settings.collapsed = true;
+    assert.equal(await runtime.Store.saveUiPreferences(['collapsed']), true);
+    const durableThresholds = storage.get(keys.settings);
+    assert.deepEqual({
+        minVisitsToImprove: durableThresholds.minVisitsToImprove,
+        minVisitsToProtect: durableThresholds.minVisitsToProtect,
+        minRenewalsToReview: durableThresholds.minRenewalsToReview,
+        declinePercent: durableThresholds.declinePercent,
+    }, {
+        minVisitsToImprove: 44,
+        minVisitsToProtect: 94,
+        minRenewalsToReview: 6,
+        declinePercent: 48,
+    });
+    assert.deepEqual(plain(storage.get(keys.uiPreferences)), { language: 'tr', collapsed: true });
+});
+
+test('storage size estimation is cached until a relevant state write marks it dirty', () => {
+    const { api } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    runtime.state.records = [{ listingId: 'storage-one', history: [] }];
+    runtime.markStorageEstimateDirty();
+    const first = runtime.refreshStorageEstimate().estimateBytes;
+    assert.equal(runtime.state.storageHealth.dirty, false);
+    runtime.state.records.push({ listingId: 'storage-two', history: [{ note: 'x'.repeat(500) }] });
+    assert.equal(runtime.refreshStorageEstimate().estimateBytes, first);
+    runtime.markStorageEstimateDirty();
+    assert.ok(runtime.refreshStorageEstimate().estimateBytes > first);
+});
+
+test('cross-tab collection synchronization invalidates the storage estimate cache', async () => {
+    const { api, storage } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    const collectionRuntime = api.collectionRuntime;
+    const now = '2026-08-31T12:00:00.000Z';
+    runtime.state.collection = api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-local-cache', status: 'paused',
+        startedAt: now, updatedAt: now, totalPages: 1, pages: {}, uniqueIds: [],
+    });
+    runtime.markStorageEstimateDirty();
+    runtime.refreshStorageEstimate();
+    assert.equal(runtime.state.storageHealth.dirty, false);
+    storage.set(collectionRuntime.KEYS.collection, api.normalizeCollection({
+        schema: api.versions.collectionSchema, id: 'collection-remote-cache', status: 'paused',
+        startedAt: now, updatedAt: '2026-08-31T12:01:00.000Z', totalPages: 1, pages: {}, uniqueIds: [],
+    }));
+    assert.equal(await api.syncCollectionState(), true);
+    assert.equal(runtime.state.storageHealth.dirty, true);
+});
+
+test('panel focus survives a full render without stealing focus from outside the panel', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    const active = new sandbox.HTMLElement();
+    active.attributes = [{ name: 'data-analysis-search', value: '' }];
+    active.selectionStart = 3;
+    active.selectionEnd = 6;
+    runtime.state.shadow = { activeElement: active };
+    runtime.state.panel = {
+        contains: (element) => element === active,
+        querySelectorAll: () => [active],
+    };
+    const snapshot = runtime.capturePanelFocus();
+    assert.deepEqual(plain(snapshot), { selector: '[data-analysis-search]', index: 0, selectionStart: 3, selectionEnd: 6 });
+
+    const replacement = new sandbox.HTMLElement();
+    let focused = false;
+    let selection = null;
+    replacement.focus = () => { focused = true; };
+    replacement.setSelectionRange = (start, end) => { selection = [start, end]; };
+    runtime.state.panel.querySelectorAll = () => [replacement];
+    runtime.restorePanelFocus(snapshot);
+    assert.equal(focused, true);
+    assert.deepEqual(selection, [3, 6]);
+
+    runtime.state.shadow.activeElement = new sandbox.HTMLElement();
+    assert.equal(runtime.capturePanelFocus(), null);
+});
+
+test('standalone telemetry dialog traps focus and restores it on Escape and backdrop close', async () => {
+    const { api, sandbox } = loadAnalyzer();
+    const runtime = api.settingsRuntime;
+    const returnFocus = new sandbox.HTMLElement();
+    returnFocus.isConnected = true;
+    let returned = 0;
+    returnFocus.focus = () => { returned += 1; sandbox.document.activeElement = returnFocus; };
+    sandbox.document.activeElement = returnFocus;
+    runtime.state.shadow = null;
+
+    const buildOverlay = () => {
+        const listeners = new Map();
+        const first = new sandbox.HTMLElement();
+        const close = new sandbox.HTMLElement();
+        first.focus = () => { sandbox.document.activeElement = first; };
+        close.focus = () => { sandbox.document.activeElement = close; };
+        const overlay = {
+            removed: false,
+            addEventListener: (type, listener) => listeners.set(type, listener),
+            querySelectorAll: () => [first, close],
+            querySelector: (selector) => selector === '[data-close]' ? close : first,
+            remove() { this.removed = true; },
+        };
+        return { overlay, listeners, first, close };
+    };
+
+    const escapeDialog = buildOverlay();
+    runtime.installStandaloneDialogBehavior(escapeDialog.overlay);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(sandbox.document.activeElement, escapeDialog.close);
+    let tabPrevented = false;
+    escapeDialog.listeners.get('keydown')({ key: 'Tab', shiftKey: false, preventDefault: () => { tabPrevented = true; } });
+    assert.equal(tabPrevented, true);
+    assert.equal(sandbox.document.activeElement, escapeDialog.first);
+    escapeDialog.listeners.get('keydown')({ key: 'Escape', preventDefault() {}, stopPropagation() {} });
+    assert.equal(escapeDialog.overlay.removed, true);
+    assert.equal(sandbox.document.activeElement, returnFocus);
+
+    const backdropDialog = buildOverlay();
+    runtime.installStandaloneDialogBehavior(backdropDialog.overlay);
+    backdropDialog.listeners.get('click')({ target: backdropDialog.overlay });
+    assert.equal(backdropDialog.overlay.removed, true);
+    assert.equal(returned, 2);
+});
+
+test('threshold validation distinguishes range input from storage errors', () => {
+    const { api } = loadAnalyzer();
+    const validate = api.settingsRuntime.validateThresholdSettings;
+    assert.deepEqual(plain(validate({ minVisitsToImprove: 20, minVisitsToProtect: 60, minRenewalsToReview: 4, declinePercent: 35 })), { valid: true, reason: '', field: '' });
+    const fractional = plain(validate({ minVisitsToImprove: 1.5, minVisitsToProtect: 60, minRenewalsToReview: 4, declinePercent: 35 }));
+    assert.equal(fractional.reason, 'range');
+    assert.equal(fractional.field, 'minVisitsToImprove');
+    assert.equal(fractional.min, 1);
+    const relationship = plain(validate({ minVisitsToImprove: 60, minVisitsToProtect: 60, minRenewalsToReview: 4, declinePercent: 35 }));
+    assert.deepEqual(relationship, { valid: false, reason: 'relationship', field: 'minVisitsToProtect' });
+});
+
+test('UI contracts keep the panel responsive and expose progress and localized telemetry', () => {
+    const { api } = loadAnalyzer();
+    const source = fs.readFileSync(scriptPath, 'utf8');
+    assert.match(source, /width:min\(620px,calc\(100vw - 24px\)\)/);
+    assert.match(source, /\.meli-panel\.is-wide\{width:min\(1120px,calc\(100vw - 24px\)\)/);
+    assert.match(source, /@media\(max-width:480px\).*?\.meli-panel,\.meli-panel\.is-wide\{[^}]*width:auto/s);
+    assert.match(api.updater.UI.collectionCard(), /role="progressbar"[^>]*aria-valuemin="0"[^>]*aria-valuemax="100"[^>]*aria-valuenow="0"/);
+    api.settingsRuntime.state.settings.language = 'tr';
+    assert.equal(api.translate('telemetryMenu'), 'Kullanım ölçümleri ayarları');
+    api.settingsRuntime.state.settings.language = 'en';
+    assert.equal(api.translate('telemetryMenu'), 'Usage metrics settings');
+    assert.match(source, /data-setting="\$\{key\}"[^>]*aria-invalid="false"/);
+    assert.match(source, /input\.setAttribute\('aria-invalid', 'true'\)/);
+});
+
+test('history chart markup reports missing and prior-currency exclusions explicitly', () => {
+    const { api } = loadAnalyzer();
+    api.settingsRuntime.state.settings.language = 'en';
+    const missingMarkup = api.updater.UI.historyChart([
+        snapshot('2026-08-01T12:00:00.000Z', { visits: 0 }),
+        snapshot('2026-08-02T12:00:00.000Z', { visits: '   ' }),
+        snapshot('2026-08-03T12:00:00.000Z', { visits: 2 }),
+    ], 'visits', 'Visits');
+    assert.match(missingMarkup, /1 missing or unreadable observation\(s\) excluded from the chart\./);
+
+    const currencyMarkup = api.updater.UI.historyChart([
+        snapshot('2026-08-01T12:00:00.000Z', { revenue: 100, currency: '$' }),
+        snapshot('2026-08-02T12:00:00.000Z', { revenue: 110, currency: '$' }),
+        snapshot('2026-08-03T12:00:00.000Z', { revenue: 120, currency: '€' }),
+        snapshot('2026-08-04T12:00:00.000Z', { revenue: 130, currency: '€' }),
+    ], 'revenue', 'Revenue', '€');
+    assert.match(currencyMarkup, /2 prior observation\(s\) excluded because their currency differs from the current record\./);
 });

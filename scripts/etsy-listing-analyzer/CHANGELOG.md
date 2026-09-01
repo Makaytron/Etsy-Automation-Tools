@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.2 - 2026-08-31
+
+- Made safety-critical GM storage reads fail closed and added explicit queue-schema/lifecycle validation, including bounded submitted-action timestamps. Record keys can no longer redirect through a mismatched embedded listing ID, active collection/queue work blocks backup import, and importing records invalidates any older completed collection.
+- Revalidated queued UPDATE proposals immediately before form mutation and again under the final publish-click lock. Stale proposals, uncertain dirty-editor recovery, and unsupported future queue data now stop without an Etsy write; verified publish recovery is idempotent across partial local writes, uses the durable health/retention policy, and adopts legacy partial commits without republishing. Stable DOM reads also include price-label and currency identity.
+- Advanced Health Engine results to version 7 and tightened mathematical evidence: an `exact` count must also be a non-negative safe integer, missing favorite precision cannot inflate a visibility-only result into a complete reach/engagement score, and lifecycle trend evidence now reports the exact anchor actually used by the decision.
+- Reworked cohort and analysis-filter computation to reuse precomputed eligibility/groups, sort each metric distribution once, and calculate disjunctive facet counts in one record pass. Search input is debounced and language-aware case folding is deterministic.
+- Hardened the existing interface with viewport-safe widths, focus preservation and transfer, fully localized accessible telemetry dialogs, truthful chart-quality exclusions, dedicated threshold validation, serialized preference writes with rollback, locale-independent preset identity, cross-tab storage-estimate invalidation, and progress semantics.
+- Regenerated all five Listing Analyzer gallery images from the final userscript in an isolated localhost fixture; no Etsy account data or write action was used.
+- Expanded the offline regression suite from 134 to 172 passing tests with adversarial storage, queue, proposal-race, exactness, score-evidence, cohort-scaling, facet-equivalence, persistence, localization, chart-quality, and accessibility cases.
+
 ## 1.2.1 - 2026-08-31
 
 - Scoped compact `K`/`M`/`B` counters to the decision consumer that uses them: an approximate lifetime counter no longer suppresses independent exact traffic evidence, while that approximate value still cannot authorize sales/renewal conclusions, deactivation, calibration, or threshold previews. Exact sales and renewal anchors are selected independently.
