@@ -36,6 +36,8 @@ jobs:
           $changelogPath = 'scripts/etsy-message-assistant/CHANGELOG.md'
           $readmeTrPath = 'scripts/etsy-message-assistant/README.md'
           $readmeEnPath = 'scripts/etsy-message-assistant/README.en.md'
+          $rootEnPath = 'README.md'
+          $rootTrPath = 'README.tr.md'
           $script = Get-Content -Raw -LiteralPath $scriptPath
 
           # Reconstruct the legacy account-specific placeholder only in runner memory so
@@ -89,6 +91,28 @@ jobs:
           $readmeEn = $readmeEn.Replace($enOld, $enNew)
           Set-Content -LiteralPath $readmeEnPath -Value $readmeEn -NoNewline -Encoding utf8
 
+          $rootEn = Get-Content -Raw -LiteralPath $rootEnPath
+          $rootEnReplacements = @(
+            @('| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.2.7 |', '| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.2.8 |'),
+            @('| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.0.3 |', '| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.0.4 |')
+          )
+          foreach ($pair in $rootEnReplacements) {
+            if (([regex]::Matches($rootEn, [regex]::Escape($pair[0]))).Count -ne 1) { throw 'English root README version-row anchor mismatch.' }
+            $rootEn = $rootEn.Replace($pair[0], $pair[1])
+          }
+          Set-Content -LiteralPath $rootEnPath -Value $rootEn -NoNewline -Encoding utf8
+
+          $rootTr = Get-Content -Raw -LiteralPath $rootTrPath
+          $rootTrReplacements = @(
+            @('| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.md) | 1.2.7 |', '| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.md) | 1.2.8 |'),
+            @('| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.md) | 1.0.3 |', '| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.md) | 1.0.4 |')
+          )
+          foreach ($pair in $rootTrReplacements) {
+            if (([regex]::Matches($rootTr, [regex]::Escape($pair[0]))).Count -ne 1) { throw 'Turkish root README version-row anchor mismatch.' }
+            $rootTr = $rootTr.Replace($pair[0], $pair[1])
+          }
+          Set-Content -LiteralPath $rootTrPath -Value $rootTr -NoNewline -Encoding utf8
+
       - name: Check JavaScript syntax
         run: node --check scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
 
@@ -114,6 +138,8 @@ jobs:
         run: |
           $changed = @(git diff --name-only)
           $expected = @(
+            'README.md',
+            'README.tr.md',
             'scripts/etsy-message-assistant/CHANGELOG.md',
             'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js',
             'scripts/etsy-message-assistant/README.en.md',
@@ -130,6 +156,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/etsy-message-assistant/CHANGELOG.md scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js scripts/etsy-message-assistant/README.md scripts/etsy-message-assistant/README.en.md
+          git add README.md README.tr.md scripts/etsy-message-assistant/CHANGELOG.md scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js scripts/etsy-message-assistant/README.md scripts/etsy-message-assistant/README.en.md
           git commit -m "security: neutralize Message Assistant store placeholder"
           git push origin HEAD:fix/privacy-blocked-literal
