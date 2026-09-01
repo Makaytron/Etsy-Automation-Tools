@@ -1,4 +1,4 @@
-name: Message Assistant Privacy Hotfix Verification
+name: Message Assistant Privacy Hotfix Final Verification
 
 on:
   push:
@@ -6,19 +6,16 @@ on:
       - fix/privacy-blocked-literal
     paths:
       - '.github/workflows/privacy-blocked-literal-diagnostic.yml'
-      - 'scripts/etsy-ads-keyword-manager/README.md'
-      - 'scripts/etsy-ads-keyword-manager/README.en.md'
-      - 'scripts/etsy-ads-keyword-manager/CHANGELOG.md'
 
 permissions:
   contents: write
 
 jobs:
-  verify-hotfix:
+  final-verify:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - name: Check out hotfix branch
+      - name: Check out verified hotfix branch
         uses: actions/checkout@v4
         with:
           ref: fix/privacy-blocked-literal
@@ -29,91 +26,39 @@ jobs:
         with:
           node-version: 22
 
-      - name: Apply exact privacy hotfix
+      - name: Normalize changelog control character
         shell: pwsh
         run: |
-          $scriptPath = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
-          $changelogPath = 'scripts/etsy-message-assistant/CHANGELOG.md'
-          $readmeTrPath = 'scripts/etsy-message-assistant/README.md'
-          $readmeEnPath = 'scripts/etsy-message-assistant/README.en.md'
-          $rootEnPath = 'README.md'
-          $rootTrPath = 'README.tr.md'
-          $script = Get-Content -Raw -LiteralPath $scriptPath
+          $path = 'scripts/etsy-message-assistant/CHANGELOG.md'
+          $text = Get-Content -Raw -LiteralPath $path
+          $bad = ([char]27) + 'xample-shop'
+          $good = [char]96 + 'example-shop' + [char]96
+          $count = ([regex]::Matches($text, [regex]::Escape($bad))).Count
+          if ($count -ne 1) { throw "Expected exactly one malformed changelog token; found $count." }
+          $text = $text.Replace($bad, $good)
+          Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding utf8
 
-          # Reconstruct the legacy account-specific placeholder only in runner memory so
-          # neither this workflow nor any tracked diagnostic file republishes the value.
-          $legacyStoreId = -join ([char[]](112,97,107,97,121,117,115))
-          $legacyPlaceholder = 'placeholder="' + $legacyStoreId + '"'
-          $syntheticPlaceholder = 'placeholder="example-shop"'
-
-          $anchors = @(
-            '// @version      1.2.7',
-            "const APP_VERSION = '1.2.7';",
-            $legacyPlaceholder
+      - name: Reject control characters in changed public text
+        shell: pwsh
+        run: |
+          $paths = @(
+            'README.md',
+            'README.tr.md',
+            'scripts/etsy-ads-keyword-manager/README.md',
+            'scripts/etsy-ads-keyword-manager/README.en.md',
+            'scripts/etsy-ads-keyword-manager/CHANGELOG.md',
+            'scripts/etsy-message-assistant/README.md',
+            'scripts/etsy-message-assistant/README.en.md',
+            'scripts/etsy-message-assistant/CHANGELOG.md'
           )
-          foreach ($anchor in $anchors) {
-            $count = ([regex]::Matches($script, [regex]::Escape($anchor))).Count
-            if ($count -ne 1) { throw "Expected exactly one hotfix anchor (found $count)." }
+          foreach ($path in $paths) {
+            $text = Get-Content -Raw -LiteralPath $path
+            if ($text -match '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]') {
+              throw "Unexpected control character in $path"
+            }
           }
 
-          $script = $script.Replace('// @version      1.2.7', '// @version      1.2.8')
-          $script = $script.Replace("const APP_VERSION = '1.2.7';", "const APP_VERSION = '1.2.8';")
-          $script = $script.Replace($legacyPlaceholder, $syntheticPlaceholder)
-          Set-Content -LiteralPath $scriptPath -Value $script -NoNewline -Encoding utf8
-
-          $changelog = Get-Content -Raw -LiteralPath $changelogPath
-          if ($changelog -match '(?m)^## \[1\.2\.8\]') { throw 'CHANGELOG already contains 1.2.8.' }
-          $entry = @"
-          ## [Unreleased]
-
-          ## [1.2.8] - 2026-09-02
-
-          ### Security
-
-          - Merkezi Mesaj Paneli ayarlarındaki mağaza kimliği placeholder'ı artık gerçek bir mağaza adını örnek olarak göstermiyor; public dağıtım yalnız sentetik `example-shop` örneğini kullanıyor.
-          - Userscript sürümü `1.2.8` yapılarak gizlilik düzeltmesinin mevcut kurulumlara normal update akışıyla ulaşması sağlandı.
-          "@
-          $updated = [regex]::Replace($changelog, '(?m)^## \[Unreleased\]\r?\n', ($entry.TrimEnd() + "`r`n`r`n"), 1)
-          if ($updated -eq $changelog) { throw 'Unable to insert 1.2.8 changelog entry.' }
-          Set-Content -LiteralPath $changelogPath -Value $updated -NoNewline -Encoding utf8
-
-          $readmeTr = Get-Content -Raw -LiteralPath $readmeTrPath
-          $trOld = '**Sürüm:** 1.2.7'
-          $trNew = '**Sürüm:** 1.2.8'
-          if (([regex]::Matches($readmeTr, [regex]::Escape($trOld))).Count -ne 1) { throw 'Turkish README version anchor mismatch.' }
-          $readmeTr = $readmeTr.Replace($trOld, $trNew)
-          Set-Content -LiteralPath $readmeTrPath -Value $readmeTr -NoNewline -Encoding utf8
-
-          $readmeEn = Get-Content -Raw -LiteralPath $readmeEnPath
-          $enOld = 'Version: `1.2.7`'
-          $enNew = 'Version: `1.2.8`'
-          if (([regex]::Matches($readmeEn, [regex]::Escape($enOld))).Count -ne 1) { throw 'English README version anchor mismatch.' }
-          $readmeEn = $readmeEn.Replace($enOld, $enNew)
-          Set-Content -LiteralPath $readmeEnPath -Value $readmeEn -NoNewline -Encoding utf8
-
-          $rootEn = Get-Content -Raw -LiteralPath $rootEnPath
-          $rootEnReplacements = @(
-            @('| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.2.7 |', '| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.2.8 |'),
-            @('| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.0.3 |', '| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.0.4 |')
-          )
-          foreach ($pair in $rootEnReplacements) {
-            if (([regex]::Matches($rootEn, [regex]::Escape($pair[0]))).Count -ne 1) { throw 'English root README version-row anchor mismatch.' }
-            $rootEn = $rootEn.Replace($pair[0], $pair[1])
-          }
-          Set-Content -LiteralPath $rootEnPath -Value $rootEn -NoNewline -Encoding utf8
-
-          $rootTr = Get-Content -Raw -LiteralPath $rootTrPath
-          $rootTrReplacements = @(
-            @('| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.md) | 1.2.7 |', '| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.md) | 1.2.8 |'),
-            @('| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.md) | 1.0.3 |', '| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.md) | 1.0.4 |')
-          )
-          foreach ($pair in $rootTrReplacements) {
-            if (([regex]::Matches($rootTr, [regex]::Escape($pair[0]))).Count -ne 1) { throw 'Turkish root README version-row anchor mismatch.' }
-            $rootTr = $rootTr.Replace($pair[0], $pair[1])
-          }
-          Set-Content -LiteralPath $rootTrPath -Value $rootTr -NoNewline -Encoding utf8
-
-      - name: Check JavaScript syntax
+      - name: Check Message Assistant JavaScript syntax
         run: node --check scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
 
       - name: Run Message Assistant behavior tests
@@ -133,29 +78,19 @@ jobs:
       - name: Patch hygiene
         run: git diff --check
 
-      - name: Confirm hotfix scope
+      - name: Confirm final normalization scope
         shell: pwsh
         run: |
           $changed = @(git diff --name-only)
-          $expected = @(
-            'README.md',
-            'README.tr.md',
-            'scripts/etsy-message-assistant/CHANGELOG.md',
-            'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js',
-            'scripts/etsy-message-assistant/README.en.md',
-            'scripts/etsy-message-assistant/README.md'
-          )
-          $actual = @($changed | Sort-Object)
-          $want = @($expected | Sort-Object)
-          if (($actual -join "`n") -ne ($want -join "`n")) {
-            throw "Unexpected hotfix scope: $($actual -join ', ')"
+          if (($changed -join "`n") -ne 'scripts/etsy-message-assistant/CHANGELOG.md') {
+            throw "Unexpected final normalization scope: $($changed -join ', ')"
           }
 
-      - name: Commit verified hotfix to branch
+      - name: Commit verified changelog normalization
         shell: pwsh
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md README.tr.md scripts/etsy-message-assistant/CHANGELOG.md scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js scripts/etsy-message-assistant/README.md scripts/etsy-message-assistant/README.en.md
-          git commit -m "security: neutralize Message Assistant store placeholder"
+          git add scripts/etsy-message-assistant/CHANGELOG.md
+          git commit -m "docs: normalize Message Assistant 1.2.8 changelog"
           git push origin HEAD:fix/privacy-blocked-literal
