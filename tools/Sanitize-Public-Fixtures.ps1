@@ -5,6 +5,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+$shopNamePattern = 'shopName:\s*[''"]([^''"]+)[''"]'
+$shopIdPattern = 'shopId:\s*[''"](\d{6,})[''"]'
 
 function Read-RepoText([string]$relativePath) {
     $path = Join-Path $repoRoot $relativePath
@@ -40,16 +42,16 @@ $fixtureText = Read-RepoText $fixturePath
 if ($null -ne $fixtureText) {
     $updated = $fixtureText
 
-    $realIds = @(Get-UniqueMatchValues $updated "shopId:\s*'(\d{6,})'" | Where-Object { -not (Test-SyntheticShopId $_) })
+    $realIds = @(Get-UniqueMatchValues $updated $shopIdPattern | Where-Object { -not (Test-SyntheticShopId $_) })
     for ($index = 0; $index -lt $realIds.Count; $index += 1) {
         $syntheticId = '900000{0:D2}' -f ($index + 1)
         $updated = $updated.Replace($realIds[$index], $syntheticId)
     }
 
-    $realNames = @(Get-UniqueMatchValues $updated "shopName:\s*'([^']+)'" | Where-Object { -not (Test-SyntheticShopName $_) })
+    $realNames = @(Get-UniqueMatchValues $updated $shopNamePattern | Where-Object { -not (Test-SyntheticShopName $_) })
     for ($index = 0; $index -lt $realNames.Count; $index += 1) {
         $syntheticName = 'SyntheticShop{0:D2}' -f ($index + 1)
-        $updated = $updated.Replace("'$($realNames[$index])'", "'$syntheticName'")
+        $updated = $updated.Replace($realNames[$index], $syntheticName)
     }
 
     if ($Fix -and $updated -cne $fixtureText) {
@@ -100,7 +102,7 @@ foreach ($relativePath in $tracked) {
     $text = Read-RepoText $relativePath
     if ($null -eq $text) { continue }
 
-    foreach ($match in [regex]::Matches($text, "shopName:\s*['\"]([^'\"]+)['\"]")) {
+    foreach ($match in [regex]::Matches($text, $shopNamePattern)) {
         $value = $match.Groups[1].Value
         if (-not (Test-SyntheticShopName $value)) {
             $problems.Add("$relativePath contains a non-synthetic literal shopName.")
@@ -108,7 +110,7 @@ foreach ($relativePath in $tracked) {
     }
 
     if ($relativePath -like 'tools/*' -or $relativePath -like '*fixtures/*') {
-        foreach ($match in [regex]::Matches($text, "shopId:\s*['\"](\d{6,})['\"]")) {
+        foreach ($match in [regex]::Matches($text, $shopIdPattern)) {
             $value = $match.Groups[1].Value
             if (-not (Test-SyntheticShopId $value)) {
                 $problems.Add("$relativePath contains a non-synthetic literal shopId.")
