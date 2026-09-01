@@ -17,7 +17,7 @@ GitHub is the only source of truth. Every hosted copy must be derived from the e
 
 Chocolatey and WinGet/WingetUI are not distribution targets for `.user.js` files. They require Windows installer/package formats and must not receive a fake wrapper package.
 
-OpenUserJS is not an active distribution target. Its production publisher currently rejects documented modern `GM.*` grants, and its GitHub importer returns `503`; both failures were reported to the official project in [issue #2102](https://github.com/OpenUserJS/OpenUserJS.org/issues/2102) and [issue #1705](https://github.com/OpenUserJS/OpenUserJS.org/issues/1705#issuecomment-5179490002). Do not create a host-specific modified script, share a PAT, or grant repository write access to work around those failures. Reconsider the channel only after an official fix is verified.
+OpenUserJS is not an active distribution target. The production publisher's documented modern `GM.*` grant rejection was fixed upstream in [issue #2102](https://github.com/OpenUserJS/OpenUserJS.org/issues/2102), but the GitHub importer failure in [issue #1705](https://github.com/OpenUserJS/OpenUserJS.org/issues/1705#issuecomment-5179490002) remains open and the Makaytron profile has no published scripts. Do not create a host-specific modified script, share a PAT, or grant repository write access to work around the remaining failure. Reconsider the channel only after the importer fix and exact-Raw synchronization are verified.
 
 ## Greasy Fork listings
 
@@ -39,7 +39,7 @@ OpenUserJS is not an active distribution target. Its production publisher curren
 
 ## Hosted validation semantics
 
-`-HostedChannels` never publishes, edits, retries, or authenticates to a distribution service. It validates the public release artifacts and signatures, the five Greasy Fork copies after excluding only host-managed `@updateURL` and `@downloadURL` lines, SourceForge's RSS file inventory, and SourceForge's public `latest/download` redirect for Windows, macOS, Linux, and generic clients. With `-PackageSlug`, GitHub Release and SourceForge asset checks are scoped to that standalone package while Raw parity and all Greasy Fork listings remain comprehensive. `-StandaloneLatest` changes only the expected GitHub `Latest` tag from the suite release to the selected standalone release; it performs no write. Userscript.Zone is passive and therefore advisory. The two official OpenUserJS blocker issues are also checked as an advisory signal so that the inactive-channel decision can be revisited after an upstream fix.
+`-HostedChannels` never publishes, edits, retries, or authenticates to a distribution service. It validates the public release artifacts and signatures, the five Greasy Fork copies after excluding only host-managed `@updateURL` and `@downloadURL` lines, SourceForge's RSS file inventory, and SourceForge's public `latest/download` redirect for Windows, macOS, Linux, and generic clients. With `-PackageSlug`, GitHub Release and SourceForge asset checks are scoped to that standalone package while Raw parity and all Greasy Fork listings remain comprehensive. `-StandaloneLatest` changes only the expected GitHub `Latest` tag from the suite release to the selected standalone release; it performs no write. Userscript.Zone is passive and therefore advisory. The fixed OpenUserJS grant-validation issue and the still-open importer issue are checked as advisory signals so that the inactive-channel decision is revisited if upstream status changes.
 
 ## Security invariants
 

@@ -615,14 +615,15 @@ if ($HostedChannels) {
         }
 
         try {
-            $openUserJsIssues = @(@(2102, 1705) | ForEach-Object {
-                ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $hostedClient -Url "https://api.github.com/repos/OpenUserJS/OpenUserJS.org/issues/$_")
-            })
-            if (@($openUserJsIssues | Where-Object { $_.state -ne 'open' }).Count -gt 0) {
+            $openUserJsGrantIssue = ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $hostedClient -Url 'https://api.github.com/repos/OpenUserJS/OpenUserJS.org/issues/2102')
+            $openUserJsImporterIssue = ConvertFrom-Json -InputObject (Get-HttpUtf8 -Client $hostedClient -Url 'https://api.github.com/repos/OpenUserJS/OpenUserJS.org/issues/1705')
+            if ($openUserJsGrantIssue.state -ne 'closed' -or
+                $openUserJsGrantIssue.state_reason -ne 'completed' -or
+                $openUserJsImporterIssue.state -ne 'open') {
                 Write-Warning -WarningAction Continue -Message 'OpenUserJS blocker status changed; reassess the inactive distribution policy manually.'
             }
             else {
-                Write-Host 'HOSTED INACTIVE OpenUserJS blockers #2102 and #1705 remain open'
+                Write-Host 'HOSTED INACTIVE OpenUserJS grant fix #2102 is complete; importer blocker #1705 remains open'
             }
         }
         catch {
