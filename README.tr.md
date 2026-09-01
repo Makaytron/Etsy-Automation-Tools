@@ -38,14 +38,7 @@ Bu görseller gerçek userscript kaynağının ağ erişimi kapalı sentetik fix
 
 ### Makaytron Etsy Message Assistant
 
-| Mesaj çalışma alanı | Yanıt inceleme |
-|---|---|
-| ![Message Assistant mesaj çalışma alanı paneli](./assets/screenshots/message-assistant-workspace-panel.png) | ![Message Assistant hazırlanmış yanıt inceleme paneli](./assets/screenshots/message-assistant-reply-review-panel.png) |
-
-| Şablonlar | Ayarlar |
-|---|---|
-| ![Message Assistant şablon yöneticisi paneli](./assets/screenshots/message-assistant-templates-panel.png) | ![Message Assistant ayarlar paneli](./assets/screenshots/message-assistant-settings-panel.png) |
-
+> **Gizlilik:** Message Assistant ekran görüntüleri public repoda tutulmaz. Gerçek hesap, mağaza, müşteri veya sipariş verisinin görsel varlıklara karışmasını önlemek için yalnız tamamen sentetik fixture'lardan yeniden üretilecek görseller kabul edilir.
 ### Makaytron Etsy Ads Keyword Manager
 
 | Ana panel | Anahtar kelime kural editörü |

@@ -38,14 +38,7 @@ These images capture only **standalone panel/modal elements** rendered by the re
 
 ### Makaytron Etsy Message Assistant
 
-| Message workspace | Reply review |
-|---|---|
-| ![Message Assistant message workspace panel](./assets/screenshots/message-assistant-workspace-panel.png) | ![Message Assistant generated-reply review panel](./assets/screenshots/message-assistant-reply-review-panel.png) |
-
-| Templates | Settings |
-|---|---|
-| ![Message Assistant template manager panel](./assets/screenshots/message-assistant-templates-panel.png) | ![Message Assistant settings panel](./assets/screenshots/message-assistant-settings-panel.png) |
-
+> **Privacy:** Message Assistant screenshots are not kept in the public repository. To prevent real account, shop, customer, or order data from entering visual assets, only screenshots regenerated from fully synthetic fixtures may be added.
 ### Makaytron Etsy Ads Keyword Manager
 
 | Main panel | Keyword rule editor |

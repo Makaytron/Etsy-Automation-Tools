@@ -275,7 +275,7 @@ function completionAckFixture(api, overrides = {}) {
         active: true, paused: false, pauseKind: '', phase: 'ack_complete', currentDate: '2026-08-16',
         batchStartDate: '2026-08-16', batchEndDate: '2026-08-17', saleDurationDays: 1,
         discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '54243850', shopName: 'MakayShirts' }, results: [], pendingVerifications: [],
+        shop: { shopId: '90000001', shopName: 'SyntheticShop01' }, results: [], pendingVerifications: [],
         actionLedger: {}, needsPreflight: false, cooldownMinMs: 1200, cooldownMaxMs: 1200,
         ...overrides,
     };
@@ -668,7 +668,7 @@ test('each success dialog is durably queued and closed before the next date star
         discountName: 'USA',
         countryValue: '0',
         listingScope: 'all',
-        shop: { shopId: '54243850', shopName: 'MakayShirts' },
+        shop: { shopId: '90000001', shopName: 'SyntheticShop01' },
         submission: null,
         results: [],
         pendingVerifications: [],
@@ -777,7 +777,7 @@ test('each success dialog is durably queued and closed before the next date star
 test('queued form evidence remains usable after the live submission state is cleared', async () => {
     const api = await loadManager();
     const job = {
-        shop: { shopId: '54243850' },
+        shop: { shopId: '90000001' },
         countryValue: '0', discount: 45, discountName: 'USA', saleDurationDays: 1,
     };
     const plan = api.buildPlan('2026-08-16', job);
@@ -817,7 +817,7 @@ test('an unsubmitted next day cannot enter created-sale verification', async () 
         active: true, paused: false, pauseKind: '', phase: 'verify_created',
         currentDate: '2026-08-11', batchStartDate: '2026-08-10', batchEndDate: '2026-08-31',
         saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '62669927', shopName: 'PakayUS' },
+        shop: { shopId: '90000002', shopName: 'SyntheticShop02' },
         submission: null, formEvidence: null, actionLedger: {}, needsPreflight: false,
         verifyState: { startedAt: Date.now() - 30_000, attempts: 5, nextFetchAt: 0 },
         results: [], pendingVerifications: [],
@@ -858,8 +858,8 @@ test('mismatched unaccounted final submission remains fail-closed', async () => 
         active: true, paused: false, phase: 'verify_created', currentDate: '2026-08-11',
         batchStartDate: '2026-08-10', batchEndDate: '2026-08-31', saleDurationDays: 1,
         discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '62669927', shopName: 'PakayUS' }, results: [], pendingVerifications: [],
-        actionLedger: {}, submission: { status: 'submitted', idempotencyKey: '62669927:2026-08-10:260810USA45' },
+        shop: { shopId: '90000002', shopName: 'SyntheticShop02' }, results: [], pendingVerifications: [],
+        actionLedger: {}, submission: { status: 'submitted', idempotencyKey: '90000002:2026-08-10:260810USA45' },
     };
     await api.setStoredTestJob(activeJob);
 
@@ -868,7 +868,7 @@ test('mismatched unaccounted final submission remains fail-closed', async () => 
     const blocked = await api.getStoredTestJob();
     assert.equal(blocked.paused, true);
     assert.equal(blocked.pauseKind, 'submission_ambiguous');
-    assert.equal(blocked.submission.idempotencyKey, '62669927:2026-08-10:260810USA45');
+    assert.equal(blocked.submission.idempotencyKey, '90000002:2026-08-10:260810USA45');
     assert.match(blocked.errorReason, /Yanlış güne ait kayıt doğrulanmadı/);
 });
 
@@ -880,7 +880,7 @@ test('v1.0.8 active verification queue survives the v1.0.12 patch migration', as
         active: true, paused: true, pauseKind: 'runtime_error', phase: 'verify_created',
         currentDate: '2026-08-11', batchStartDate: '2026-08-10', batchEndDate: '2026-08-31',
         saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '62669927', shopName: 'PakayUS' }, submission: null, formEvidence: null,
+        shop: { shopId: '90000002', shopName: 'SyntheticShop02' }, submission: null, formEvidence: null,
         needsPreflight: false, actionLedger: {}, verifyState: { attempts: 5 },
         results: [], pendingVerifications: [],
         errorReason: '260811USA45 kesin kod bulunamadı.',
@@ -927,7 +927,7 @@ test('a paused v1.0.10 job at 18 of 20 preserves its date, phase, results, and v
         active: true, paused: true, pauseKind: 'foreign_modal_blocking', phase: 'fill_form',
         currentDate: '2026-08-30', batchStartDate: '2026-08-12', batchEndDate: '2026-08-31',
         saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '62669927', shopName: 'PakayUS' }, originTabId: api.getTabId(),
+        shop: { shopId: '90000002', shopName: 'SyntheticShop02' }, originTabId: api.getTabId(),
         results: [], pendingVerifications: [], batchVerifyState: null, completionAck: null,
         actionLedger: {}, submission: null, formEvidence: null, needsPreflight: false,
         verifyState: null, verifyTimeoutMs: 20_000, cooldownMinMs: 2_200, cooldownMaxMs: 4_200,
@@ -978,7 +978,7 @@ test('an active v1.0.11 transient-loading step survives the v1.0.12 patch migrat
         active: true, paused: false, pauseKind: '', phase: 'select_listings',
         currentDate: '2026-08-30', batchStartDate: '2026-08-12', batchEndDate: '2026-08-31',
         saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '62669927', shopName: 'PakayUS' }, originTabId: api.getTabId(),
+        shop: { shopId: '90000002', shopName: 'SyntheticShop02' }, originTabId: api.getTabId(),
         results: [], pendingVerifications: [], batchVerifyState: null, completionAck: null,
         actionLedger: { keep: { status: 'clicked', at: 1234 } }, submission: null,
         formEvidence: { saleName: '260830USA45' }, needsPreflight: false, verifyState: null,
@@ -1030,7 +1030,7 @@ test('a v1.0.9 next-day loop dismisses the previous success modal before resumin
         active: true, paused: false, pauseKind: '', phase: 'preflight',
         currentDate: '2026-08-12', batchStartDate: '2026-08-11', batchEndDate: '2026-08-31',
         saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '62669927', shopName: 'PakayUS' }, submission: null, formEvidence: null,
+        shop: { shopId: '90000002', shopName: 'SyntheticShop02' }, submission: null, formEvidence: null,
         needsPreflight: true, actionLedger: {}, verifyState: null, results: [], pendingVerifications: [],
         cooldownMinMs: 1200, cooldownMaxMs: 1200,
     };
@@ -1085,7 +1085,7 @@ test('a missing Done action falls back to safe navigation without starting the n
         active: true, paused: false, phase: 'ack_complete', currentDate: '2026-08-16',
         batchStartDate: '2026-08-16', batchEndDate: '2026-08-17', saleDurationDays: 1,
         discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '54243850', shopName: 'MakayShirts' }, results: [], pendingVerifications: [],
+        shop: { shopId: '90000001', shopName: 'SyntheticShop01' }, results: [], pendingVerifications: [],
         actionLedger: {}, needsPreflight: false, cooldownMinMs: 1200, cooldownMaxMs: 1200,
     };
     const plan = api.buildPlan(activeJob.currentDate, activeJob);
@@ -1292,7 +1292,7 @@ test('a corrupt acknowledgement without its queue pauses instead of polling fore
         active: true, paused: false, pauseKind: '', phase: 'ack_complete', currentDate: '2026-08-16',
         batchStartDate: '2026-08-16', batchEndDate: '2026-08-17', saleDurationDays: 1,
         discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '54243850', shopName: 'MakayShirts' }, results: [], pendingVerifications: [],
+        shop: { shopId: '90000001', shopName: 'SyntheticShop01' }, results: [], pendingVerifications: [],
         actionLedger: {}, needsPreflight: false,
         completionAck: { idempotencyKey: 'missing-queue-entry', saleName: '260816USA45', startDate: '2026-08-16' },
     };
@@ -1323,7 +1323,7 @@ test('batch verification cannot be remapped by a stale completion modal', async 
         active: true, paused: false, phase: 'batch_verify', currentDate: '2026-08-17',
         batchStartDate: '2026-08-16', batchEndDate: '2026-08-17', saleDurationDays: 1,
         discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '54243850', shopName: 'MakayShirts' }, pendingVerifications: [], results: [],
+        shop: { shopId: '90000001', shopName: 'SyntheticShop01' }, pendingVerifications: [], results: [],
     };
     api.setTestJob(activeJob);
     const refs = {
@@ -1343,7 +1343,7 @@ test('batch verification completion finalizes only after its persistent queue is
         active: true, paused: false, phase: 'batch_verify', currentDate: '2026-08-17',
         batchStartDate: '2026-08-16', batchEndDate: '2026-08-17', saleDurationDays: 1,
         discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '54243850', shopName: 'MakayShirts' },
+        shop: { shopId: '90000001', shopName: 'SyntheticShop01' },
         pendingVerifications: [], batchVerifyState: { attempts: 1 },
         results: [{ idempotencyKey: 'verified-1', status: 'SUCCESS', saleName: '260816USA45' }],
         startedAt: new Date().toISOString(), configSnapshot: {},
@@ -1371,7 +1371,7 @@ test('batch verification cannot skip one queued campaign', async () => {
         active: true, paused: true, pauseKind: 'batch_verification_incomplete', phase: 'batch_verify',
         currentDate: '2026-08-17', batchStartDate: '2026-08-16', batchEndDate: '2026-08-17',
         saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '54243850', shopName: 'MakayShirts' },
+        shop: { shopId: '90000001', shopName: 'SyntheticShop01' },
         pendingVerifications: [{ idempotencyKey: 'queued', saleName: '260816USA45', startDate: '2026-08-16' }],
         results: [{ idempotencyKey: 'queued', status: 'PENDING_VERIFICATION', saleName: '260816USA45' }],
     };
@@ -1391,7 +1391,7 @@ test('stopping batch verification reports every unresolved campaign without resu
         version: '1.0.10', jobId: 'batch-stop-report', active: true, phase: 'batch_verify',
         currentDate: '2026-08-17', batchStartDate: '2026-08-16', batchEndDate: '2026-08-17',
         saleDurationDays: 1, discount: 45, discountName: 'USA', countryValue: '0', listingScope: 'all',
-        shop: { shopId: '54243850', shopName: 'MakayShirts' },
+        shop: { shopId: '90000001', shopName: 'SyntheticShop01' },
         results: [], pendingVerifications: [], batchVerifyState: { attempts: 3 },
     };
     for (const date of ['2026-08-16', '2026-08-17']) {
@@ -1498,7 +1498,7 @@ test('Details and Stats shop-wide server record proves the current sale policy w
         text: '',
     };
     const plan = {
-        idempotencyKey: '54243850:2026-08-11:260811USA45',
+        idempotencyKey: '90000001:2026-08-11:260811USA45',
         saleName: '260811USA45', discount: 45,
         startDateIso: '2026-08-11', endDateIso: '2026-08-11',
     };
