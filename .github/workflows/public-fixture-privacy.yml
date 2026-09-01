@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - privacy/scrub-public-fixtures
   pull_request:
   workflow_dispatch:
 
@@ -26,20 +25,20 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Sanitize public remediation branch
-        if: github.event_name == 'push' && github.ref == 'refs/heads/privacy/scrub-public-fixtures'
+      - name: Sanitize public main
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         run: ./tools/Sanitize-Public-Fixtures.ps1 -Fix
 
       - name: Validate sanitized Sale Manager fixture
-        if: github.event_name == 'push' && github.ref == 'refs/heads/privacy/scrub-public-fixtures'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           node --check tools/Test-Sale-Manager.mjs
           node --test tools/Test-Sale-Manager.mjs
 
       - name: Commit automatic privacy scrub
-        if: github.event_name == 'push' && github.ref == 'refs/heads/privacy/scrub-public-fixtures'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         run: |
           $changes = git status --porcelain
@@ -51,7 +50,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
           git commit -m 'fix: scrub public fixture account data'
-          git push origin HEAD:privacy/scrub-public-fixtures
+          git push origin HEAD:main
 
       - name: Enforce public fixture privacy
         shell: pwsh
