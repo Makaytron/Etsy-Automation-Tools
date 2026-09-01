@@ -11,6 +11,14 @@ $messageAssistantPath = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-A
 $messageAssistantDefaultIdentityPattern = '(?m)(^\s*shopName:\s*'''',\r?\n)(\s*)signature:\s*''[^'']*'','
 $messageAssistantNeutralDefaultsPattern = '(?m)^\s*shopName:\s*'''',\r?\n\s*signature:\s*'''','
 
+# SHA-256 hashes of account-specific literals that must never re-enter tracked public text.
+# Keep only hashes here so the privacy guard itself does not republish the sensitive values.
+$blockedLiteralHashes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+@(
+    'd46f0fe3643440087b136dbcc40db14d94a14bec4cd6d8eb167f98e2fdf763a7',
+    '3a4e2596cd8de7ff0cc3508bf1ca98a7a3767218bb8dc9fbdd690f7c4949e88a'
+) | ForEach-Object { [void]$blockedLiteralHashes.Add($_) }
+
 function Read-RepoText([string]$relativePath) {
     $path = Join-Path $repoRoot $relativePath
     if (-not (Test-Path -LiteralPath $path)) { return $null }
@@ -30,6 +38,12 @@ function Get-UniqueMatchValues([string]$text, [string]$pattern) {
         if ($seen.Add($value)) { $values.Add($value) }
     }
     return $values
+}
+
+function Get-Sha256Hex([string]$value) {
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($value)
+    $hash = [System.Security.Cryptography.SHA256]::HashData($bytes)
+    return [Convert]::ToHexString($hash).ToLowerInvariant()
 }
 
 function Test-SyntheticShopName([string]$value) {
@@ -131,6 +145,16 @@ foreach ($relativePath in $tracked) {
     if ($textExtensions -notcontains $extension) { continue }
     $text = Read-RepoText $relativePath
     if ($null -eq $text) { continue }
+
+    # Repo-wide hash guard: catch known account-specific names/IDs even when they are
+    # pasted outside a structured shopName/shopId fixture field.
+    foreach ($candidate in [regex]::Matches($text, '(?i)\b(?:[a-z][a-z0-9_-]{3,63}|\d{6,})\b')) {
+        $normalized = $candidate.Value.ToLowerInvariant()
+        if ($blockedLiteralHashes.Contains((Get-Sha256Hex $normalized))) {
+            $problems.Add("$relativePath contains a blocked account-specific literal.")
+            break
+        }
+    }
 
     $isFixtureSurface = $relativePath -like 'tools/*' -or $relativePath -like '*fixtures/*'
     if (-not $isFixtureSurface) { continue }
