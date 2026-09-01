@@ -10,7 +10,7 @@ Etsy Ads anahtar kelime satırlarını anlaşılır filtrelerle bulmak, vurgulam
 
 Script standalone çalışır; başka bir Etsy Automation Tools paketinin kurulması gerekmez.
 
-**Sürüm:** 1.0.3 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.0.4 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
@@ -60,7 +60,7 @@ Form teknik işaretleri kullanıcıdan gizler; kaydederken eski satır biçimiyl
 
 ## Script sürümünü denetleme
 
-Canonical GitHub dosyasından kurulan script, panel yüklendikten sonra sürüm bilgisini en fazla 24 saatte bir denetler. Paneldeki `v1.0.3` rozeti veya Tampermonkey menüsündeki **Makaytron · Script sürümünü denetle** komutu elle denetim başlatır. Denetim uzak `.user.js` metninden yalnız `@version` değerini okur; uzak kodu çalıştırmaz. Ağ hatası ana anahtar kelime aracını engellemez.
+Canonical GitHub dosyasından kurulan script, panel yüklendikten sonra sürüm bilgisini en fazla 24 saatte bir denetler. Paneldeki `v1.0.4` rozeti veya Tampermonkey menüsündeki **Makaytron · Script sürümünü denetle** komutu elle denetim başlatır. Denetim uzak `.user.js` metninden yalnız `@version` değerini okur; uzak kodu çalıştırmaz. Ağ hatası ana anahtar kelime aracını engellemez.
 
 Yeni sürüm varsa panelde **Kurulum sayfasını aç** düğmesi görünür. Düğme ve ardından açık onay verilmedikçe sekme açılmaz; Tampermonkey son kurulum onayını ayrıca ister. Sessiz kurulum yapılmaz. Canlı anahtar kelime işlemi, liste güncellemesi veya liste editörü açıkken sürüm denetimi ve kurulum sayfası güvenli biçimde engellenir. Script Greasy Fork gibi başka bir kaynaktan kurulmuşsa veya kaynak GitHub olarak doğrulanamıyorsa özel GitHub denetimi zorlanmaz; doğrulanmış harici kurulumda güncellemeyi o kaynak yönetir.
 
