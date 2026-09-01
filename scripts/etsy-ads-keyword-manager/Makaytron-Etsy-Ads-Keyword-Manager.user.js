@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Ads Keyword Manager
 // @name:tr      Makaytron Etsy Ads Keyword Manager
 // @name:en      Makaytron Etsy Ads Keyword Manager
-// @version      1.0.3
+// @version      1.0.4
 // @description  Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:tr Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:en Manage Etsy Ads keyword matches from a form-based control panel.
@@ -38,7 +38,8 @@
 
     const SCRIPT_SOURCE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
     const WORD_LIST_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/keyword-rules.txt';
-    const APP_VERSION = '1.0.3';
+    const APP_VERSION = '1.0.4';
+    const MKUI_VERSION = '1.0.0';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -1354,20 +1355,20 @@ oversized
     }
 
     addStyle(`
-        #${PANEL_ROOT_ID}{--maw-bg:#fff;--maw-fg:#171717;--maw-card:#fff;--maw-muted:#f7f7f7;--maw-muted-2:#f2f2f2;--maw-muted-fg:#737373;--maw-border:#e7e7e7;--maw-input:#dedede;--maw-primary:#1f1f1f;--maw-primary-fg:#fafafa;--maw-danger:#b91c1c;--maw-danger-soft:#fff1f1;--maw-warning:#8a5a00;--maw-warning-soft:#fff8ed;--maw-success:#276749;--maw-success-soft:#eef8f1;position:fixed;right:18px;top:86px;width:372px;z-index:2147483645;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--maw-fg);font-variant-numeric:tabular-nums}
+        #${PANEL_ROOT_ID}{--maw-bg:#fff;--maw-fg:#171717;--maw-card:#fff;--maw-muted:#f2f2f2;--maw-muted-2:#eeeeee;--maw-muted-fg:#595959;--maw-border:#dedede;--maw-input:#cfcfcf;--maw-primary:#1f1f1f;--maw-primary-fg:#fafafa;--maw-danger:#b42318;--maw-danger-soft:#fff1f0;--maw-warning:#8a5a00;--maw-warning-soft:#fff9df;--maw-success:#1f7a4d;--maw-success-soft:#edf8f1;--maw-radius-sm:7px;--maw-radius-md:10px;--maw-radius-lg:14px;--maw-radius-pill:999px;--maw-focus:0 0 0 3px rgba(23,23,23,.14);position:fixed;right:18px;top:86px;width:372px;z-index:2147483645;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--maw-fg);font-variant-numeric:tabular-nums}
         #${PANEL_ROOT_ID} *,#${EDITOR_MODAL_ID} *{box-sizing:border-box}
-        #${PANEL_ROOT_ID} .maw-card{max-height:calc(100vh - 104px);max-height:calc(100dvh - 104px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--maw-border);border-radius:11px;background:var(--maw-card);box-shadow:0 1px 3px rgba(15,23,42,.08),0 12px 30px rgba(15,23,42,.08)}
+        #${PANEL_ROOT_ID} .maw-card{max-height:calc(100vh - 104px);max-height:calc(100dvh - 104px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--maw-border);border-radius:var(--maw-radius-lg);background:var(--maw-card);box-shadow:0 1px 3px rgba(0,0,0,.08),0 18px 44px rgba(0,0,0,.14)}
         #${PANEL_ROOT_ID} .maw-card[hidden],#${PANEL_ROOT_ID} .maw-collapsed-tab[hidden]{display:none!important}
-        #${PANEL_ROOT_ID} .maw-head{padding:13px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--maw-border);background:#fff}
+        #${PANEL_ROOT_ID} .maw-head{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--maw-border);background:#fff}
         #${PANEL_ROOT_ID} .maw-brand,.maw-modal-brand{min-width:0;display:flex;align-items:center;gap:10px}
         #${PANEL_ROOT_ID} .maw-logo-shell,.maw-modal-logo-shell{width:48px;height:32px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;text-decoration:none}
         #${PANEL_ROOT_ID} .maw-logo,.maw-modal-logo{display:block;width:43px;height:auto;object-fit:contain}
         #${PANEL_ROOT_ID} .maw-brand-copy{min-width:0}
-        #${PANEL_ROOT_ID} .maw-title{margin:0;font-size:13.5px;font-weight:700;letter-spacing:-.015em;line-height:1.22}
+        #${PANEL_ROOT_ID} .maw-title{margin:0;font-size:14px;font-weight:760;letter-spacing:-.015em;line-height:1.22}
         #${PANEL_ROOT_ID} .maw-sub{margin-top:3px;color:var(--maw-muted-fg);font-size:11.5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         #${PANEL_ROOT_ID} .maw-head-tools{display:flex;align-items:center;gap:7px;flex:0 0 auto}
         #${PANEL_ROOT_ID} .maw-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
-        #${PANEL_ROOT_ID} .maw-version,#${PANEL_ROOT_ID} .maw-pill{height:20px;padding:0 7px;display:inline-flex;align-items:center;border:1px solid var(--maw-border);border-radius:999px;background:var(--maw-muted);color:#525252;font-size:10.5px;font-weight:650;white-space:nowrap}
+        #${PANEL_ROOT_ID} .maw-version,#${PANEL_ROOT_ID} .maw-pill{height:22px;padding:0 8px;display:inline-flex;align-items:center;border:1px solid var(--maw-border);border-radius:var(--maw-radius-pill);background:var(--maw-muted);color:#404040;font-size:10.5px;font-weight:700;white-space:nowrap}
         #${PANEL_ROOT_ID} .maw-version{min-height:20px!important;cursor:pointer}
         #${PANEL_ROOT_ID} .maw-version:hover{border-color:#cfcfcf;background:#fff;color:#171717}
         #${PANEL_ROOT_ID} .maw-pill{gap:5px;background:#fff}
@@ -1379,17 +1380,17 @@ oversized
         #${PANEL_ROOT_ID} .maw-pill[data-state='warning']::before{background:var(--maw-warning)}
         #${PANEL_ROOT_ID} .maw-pill[data-state='error']{color:#991b1b;background:var(--maw-danger-soft);border-color:#f1c0c0}
         #${PANEL_ROOT_ID} .maw-pill[data-state='error']::before{background:var(--maw-danger)}
-        #${PANEL_ROOT_ID} button,.maw-modal button{min-height:36px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:6px;font:650 12.5px/1 Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;white-space:nowrap}
-        #${PANEL_ROOT_ID} button:focus-visible,.maw-modal button:focus-visible,.maw-modal textarea:focus-visible{outline:2px solid #525252;outline-offset:2px}
+        #${PANEL_ROOT_ID} button,.maw-modal button{min-height:38px;padding:0 12px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:var(--maw-radius-sm);font:650 12.5px/1 Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;white-space:nowrap}
+        #${PANEL_ROOT_ID} button:focus-visible,.maw-modal button:focus-visible,.maw-modal textarea:focus-visible{outline:0;box-shadow:var(--maw-focus)}
         #${PANEL_ROOT_ID} button:disabled,.maw-modal button:disabled{opacity:.5;cursor:not-allowed}
-        #${PANEL_ROOT_ID} .maw-icon-btn,.maw-modal .maw-icon-btn{width:30px;min-width:30px;height:30px;min-height:30px;padding:0;border:1px solid var(--maw-border,#e7e7e7);background:#fff;color:#737373}
+        #${PANEL_ROOT_ID} .maw-icon-btn,.maw-modal .maw-icon-btn{width:32px;min-width:32px;height:32px;min-height:32px;padding:0;border:1px solid var(--maw-border,#dedede);border-radius:var(--maw-radius-sm);background:#fff;color:var(--maw-muted-fg)}
         #${PANEL_ROOT_ID} .maw-icon-btn:hover,.maw-modal .maw-icon-btn:hover{background:#f7f7f7;color:#171717}
         #${PANEL_ROOT_ID} .maw-lang-btn{height:24px;min-height:24px!important;min-width:30px;padding:0 7px!important;border:1px solid var(--maw-border);border-radius:6px;background:#fff;color:#404040;font-size:10.5px!important;font-weight:750!important;letter-spacing:.03em}
         #${PANEL_ROOT_ID} .maw-lang-btn:hover{border-color:#cfcfcf;background:#f7f7f7}
         .maw-svg{width:15px;height:15px;display:block;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
-        #${PANEL_ROOT_ID} .maw-body{min-height:0;padding:14px;overflow-x:hidden;overflow-y:auto}
-        #${PANEL_ROOT_ID} .maw-status-card{margin-bottom:12px;padding:10px 11px;display:flex;align-items:flex-start;gap:9px;border:1px solid var(--maw-border);border-radius:8px;background:var(--maw-muted)}
-        #${PANEL_ROOT_ID} .maw-status-icon{width:25px;height:25px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--maw-border);border-radius:7px;background:#fff;color:#525252}
+        #${PANEL_ROOT_ID} .maw-body{min-height:0;padding:16px;overflow-x:hidden;overflow-y:auto}
+        #${PANEL_ROOT_ID} .maw-status-card{margin-bottom:12px;padding:12px;display:flex;align-items:flex-start;gap:10px;border:1px solid var(--maw-border);border-radius:var(--maw-radius-md);background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.025)}
+        #${PANEL_ROOT_ID} .maw-status-icon{width:28px;height:28px;display:grid;place-items:center;flex:0 0 auto;border:1px solid var(--maw-border);border-radius:var(--maw-radius-sm);background:var(--maw-muted);color:#404040}
         #${PANEL_ROOT_ID} .maw-status-copy{min-width:0}
         #${PANEL_ROOT_ID} .maw-status-title{font-size:12.5px;font-weight:700;color:#262626}
         #${PANEL_ROOT_ID} .maw-status-text{margin-top:2px;color:#525252;font-size:11.5px;line-height:1.42;overflow-wrap:anywhere}
@@ -1402,7 +1403,7 @@ oversized
         #${PANEL_ROOT_ID} .maw-update-install{min-height:30px;padding:0 9px;flex:0 0 auto;border:1px solid currentColor;background:#fff;color:inherit;font-size:11px}
         #${PANEL_ROOT_ID} .maw-update-install[hidden]{display:none}
         #${PANEL_ROOT_ID} .maw-grid{margin-bottom:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-        #${PANEL_ROOT_ID} .maw-chip{min-width:0;padding:9px 10px;border:1px solid var(--maw-border);border-radius:8px;background:#fff}
+        #${PANEL_ROOT_ID} .maw-chip{min-width:0;padding:10px 11px;border:1px solid var(--maw-border);border-radius:var(--maw-radius-md);background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.02)}
         #${PANEL_ROOT_ID} .maw-label{margin-bottom:4px;color:#8a8a8a;font-size:10px;font-weight:650;letter-spacing:.07em;text-transform:uppercase}
         #${PANEL_ROOT_ID} .maw-value{overflow:hidden;color:#171717;font-size:13px;font-weight:700;line-height:1.3;text-overflow:ellipsis;white-space:nowrap}
         #${PANEL_ROOT_ID} .maw-value[data-tone='warning']{color:var(--maw-warning)}
@@ -1423,16 +1424,16 @@ oversized
         #${PANEL_ROOT_ID} .maw-footer-tools{display:flex;align-items:center;justify-content:flex-end;gap:7px;min-width:0}
         #${PANEL_ROOT_ID} .maw-footer a{display:inline-flex;align-items:center;gap:5px;color:#525252;font-weight:600;text-decoration:none}
         #${PANEL_ROOT_ID} .maw-footer a:hover{color:#171717;text-decoration:underline;text-underline-offset:3px}
-        #${PANEL_ROOT_ID} .maw-collapsed-tab{width:62px;height:52px;min-height:52px;padding:0;border:1px solid #d7d7d7;border-right:0;border-radius:10px 0 0 10px;background:#fff;color:#171717;box-shadow:0 10px 26px rgba(0,0,0,.17)}
+        #${PANEL_ROOT_ID} .maw-collapsed-tab{width:62px;height:52px;min-height:52px;padding:0;border:1px solid var(--maw-border);border-right:0;border-radius:14px 0 0 14px;background:#fff;color:#171717;box-shadow:0 12px 30px rgba(0,0,0,.14)}
         #${PANEL_ROOT_ID} .maw-collapsed-logo{display:block;width:43px;height:auto;object-fit:contain}
         #${PANEL_ROOT_ID}.is-collapsed{right:0;top:148px;width:62px}
         #${TOAST_ROOT_ID}{position:fixed;right:18px;bottom:18px;z-index:2147483647;max-width:390px;display:flex;flex-direction:column;gap:8px;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;pointer-events:none}
-        .maw-toast{opacity:0;transform:translateY(8px);padding:11px 13px;border:1px solid rgba(255,255,255,.13);border-radius:8px;background:#262626;color:#fff;box-shadow:0 12px 28px rgba(15,23,42,.2);font-size:12.5px;line-height:1.45;white-space:pre-line;transition:opacity .2s ease,transform .2s ease}
-        .maw-toast.is-visible{opacity:1;transform:translateY(0)}.maw-toast.success{background:#276749}.maw-toast.warning{background:#8a5a00}.maw-toast.error{background:#b91c1c}
+        .maw-toast{opacity:0;transform:translateY(8px);padding:11px 13px;border:1px solid rgba(255,255,255,.13);border-radius:var(--maw-radius-md);background:#262626;color:#fff;box-shadow:0 12px 28px rgba(15,23,42,.2);font-size:12.5px;line-height:1.45;white-space:pre-line;transition:opacity .2s ease,transform .2s ease}
+        .maw-toast.is-visible{opacity:1;transform:translateY(0)}.maw-toast.success{background:#1f7a4d}.maw-toast.warning{background:#8a5a00}.maw-toast.error{background:#b42318}
         .maw-modal-backdrop{position:fixed;inset:0;z-index:2147483646;padding:6vh 18px 24px;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;background:rgba(0,0,0,.30);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#171717}
-        .maw-modal{--maw-border:#e7e7e7;--maw-muted:#f7f7f7;--maw-input:#dedede;--maw-primary:#1f1f1f;width:min(820px,calc(100vw - 32px));max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--maw-border);border-radius:12px;background:#fff;box-shadow:0 25px 50px -12px rgba(0,0,0,.26)}
+        .maw-modal{--maw-border:#dedede;--maw-muted:#f2f2f2;--maw-input:#cfcfcf;--maw-primary:#1f1f1f;--maw-radius-sm:7px;--maw-radius-md:10px;--maw-radius-lg:14px;--maw-focus:0 0 0 3px rgba(23,23,23,.14);width:min(820px,calc(100vw - 32px));max-height:88vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--maw-border);border-radius:var(--maw-radius-lg);background:#fff;box-shadow:0 25px 50px -12px rgba(0,0,0,.26)}
         .maw-modal-head{min-height:64px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--maw-border);background:#fff}
-        .maw-modal-logo{width:43px}.maw-modal-title{margin:0;font-size:15px;font-weight:700;letter-spacing:-.015em}.maw-modal-subtitle{margin-top:3px;color:#737373;font-size:11.5px;line-height:1.35}
+        .maw-modal-logo{width:43px}.maw-modal-title{margin:0;font-size:15px;font-weight:760;letter-spacing:-.015em}.maw-modal-subtitle{margin-top:3px;color:#595959;font-size:11.5px;line-height:1.35}
         .maw-modal-body{padding:18px;overflow:auto;background:#f7f7f7}
         .maw-modal-note{margin-bottom:12px;padding:11px 12px;border:1px solid #e7e7e7;border-radius:8px;background:#fff;color:#525252;font-size:12px;line-height:1.5}
         .maw-modal-note code{padding:2px 5px;border:1px solid #e1e1e1;border-radius:4px;background:#f5f5f5;color:#262626;font:11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace}
