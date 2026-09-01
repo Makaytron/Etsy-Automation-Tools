@@ -15,7 +15,7 @@ Etsy satıcıları için açık kaynak Etsy automation tools ve Tampermonkey use
 | Script | Sürüm | Amaç |
 |---|---:|---|
 | [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/README.md) | 1.0.12 | Bulk Sales & Discounts Automation ile Etsy kampanyalarını kontrollü, doğrulamalı ve fail-closed seriler hâlinde planlar ve raporlar. |
-| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.md) | 1.2.6 | Rol ayrımlı konuşma çevirisi, doğrulamalı hızlı cevaplar ve yorum cevap taslakları sunarken açık opt-in ile alıcıları tek tek işleyen Otopilotu korur. |
+| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.md) | 1.2.7 | Rol ayrımlı konuşma çevirisi, doğrulamalı hızlı cevaplar ve yorum cevap taslakları sunarken açık opt-in ile alıcıları tek tek işleyen Otopilotu korur. |
 | [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.md) | 1.0.3 | Form tabanlı filtrelerle mevcut sayfadaki eşleşmeleri açıp kapatır; açık onayla tüm sayfalardaki eşleşmeleri kapatır. |
 | [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.md) | 1.2.2 | Tüm sayfaları sırayla toplar, Etsy metrik kapsamını doğrular; aktif dönem analizi, bağlamlı kohortlar, exact deney aralıkları, veri-kaliteli grafikler, AI karşılaştırması ve Health Engine sunar. |
 | [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/README.md) | 1.0.3 | Marketplace Insights metriklerini görünür DOM'dan okur, keyword satırlarının altında açıklar ve isteğe bağlı olarak Listing Analyzer'a kanıtlı araştırma sonucu gönderir; Listing Analyzer öneriyi bu kanıttan üretir. |
