@@ -10082,7 +10082,6 @@ zu|Zulu
             }
             if (!finalText) finalText = baseText;
             finalText = String(finalText || '').trim();
-            finalText = String(finalText || '').trim();
             const textarea = await MessageAdapter.waitForTextarea();
             if (!textarea) throw new Error('Etsy cevap alanı bulunamadı. Konuşmayı açıp tekrar deneyin.');
             if (this.orderIsBlockedFromSend(item)) {
