@@ -1,0 +1,48 @@
+name: MKUI Ads Pilot
+
+on:
+  push:
+    branches:
+      - mkui-ads-pilot
+    paths:
+      - '.github/workflows/mkui-ads-pilot.yml'
+      - 'tools/Apply-Mkui-Ads-Pilot.mjs'
+      - 'shared/mkui/**'
+      - 'docs/design/**'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pilot branch
+        uses: actions/checkout@v4
+        with:
+          ref: mkui-ads-pilot
+          fetch-depth: 0
+
+      - name: Apply deterministic presentation-only pilot
+        run: node tools/Apply-Mkui-Ads-Pilot.mjs --write
+
+      - name: JavaScript syntax check
+        run: node --check scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
+
+      - name: Patch hygiene
+        run: git diff --check
+
+      - name: Confirm only the intended production script changed
+        shell: bash
+        run: |
+          changed="$(git diff --name-only)"
+          test "$changed" = "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js"
+
+      - name: Commit verified pilot result
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
+          git commit -m "refactor: apply MKUI v1 Ads pilot [skip ci]"
+          git push origin HEAD:mkui-ads-pilot
