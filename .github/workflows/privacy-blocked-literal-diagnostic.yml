@@ -1,4 +1,4 @@
-name: Privacy Blocked Literal Diagnostic
+name: Message Assistant Privacy Hotfix Verification
 
 on:
   push:
@@ -8,36 +8,101 @@ on:
       - '.github/workflows/privacy-blocked-literal-diagnostic.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  locate:
+  verify-hotfix:
     runs-on: windows-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - name: Locate blocked hash safely
+      - name: Check out hotfix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/privacy-blocked-literal
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply exact privacy hotfix
         shell: pwsh
         run: |
-          $path = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
-          $blocked = @(
-            'd46f0fe3643440087b136dbcc40db14d94a14bec4cd6d8eb167f98e2fdf763a7',
-            '3a4e2596cd8de7ff0cc3508bf1ca98a7a3767218bb8dc9fbdd690f7c4949e88a'
+          $scriptPath = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+          $changelogPath = 'scripts/etsy-message-assistant/CHANGELOG.md'
+          $script = Get-Content -Raw -LiteralPath $scriptPath
+
+          $anchors = @(
+            '// @version      1.2.7',
+            "const APP_VERSION = '1.2.7';",
+            'placeholder="pakayus"'
           )
-          function Hash([string]$value) {
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($value)
-            $digest = [System.Security.Cryptography.SHA256]::HashData($bytes)
-            return [Convert]::ToHexString($digest).ToLowerInvariant()
+          foreach ($anchor in $anchors) {
+            $count = ([regex]::Matches($script, [regex]::Escape($anchor))).Count
+            if ($count -ne 1) { throw "Expected exactly one hotfix anchor: $anchor (found $count)" }
           }
-          $lines = Get-Content -LiteralPath $path
-          $found = $false
-          for ($i = 0; $i -lt $lines.Count; $i++) {
-            foreach ($m in [regex]::Matches($lines[$i], '(?i)\b(?:[a-z][a-z0-9_-]{3,63}|\d{6,})\b')) {
-              $hash = Hash($m.Value.ToLowerInvariant())
-              $index = [Array]::IndexOf($blocked, $hash)
-              if ($index -ge 0) {
-                Write-Host "BLOCKED_LITERAL line=$($i + 1) denylist_index=$index"
-                $found = $true
-              }
-            }
+
+          $script = $script.Replace('// @version      1.2.7', '// @version      1.2.8')
+          $script = $script.Replace("const APP_VERSION = '1.2.7';", "const APP_VERSION = '1.2.8';")
+          $script = $script.Replace('placeholder="pakayus"', 'placeholder="example-shop"')
+          Set-Content -LiteralPath $scriptPath -Value $script -NoNewline -Encoding utf8
+
+          $changelog = Get-Content -Raw -LiteralPath $changelogPath
+          if ($changelog -match '(?m)^## \[1\.2\.8\]') { throw 'CHANGELOG already contains 1.2.8.' }
+          $entry = @"
+          ## [Unreleased]
+
+          ## [1.2.8] - 2026-09-02
+
+          ### Security
+
+          - Merkezi Mesaj Paneli ayarlarındaki mağaza kimliği placeholder'ı artık gerçek bir mağaza adını örnek olarak göstermiyor; public dağıtım yalnız sentetik `example-shop` örneğini kullanıyor.
+          - Userscript sürümü `1.2.8` yapılarak gizlilik düzeltmesinin mevcut kurulumlara normal update akışıyla ulaşması sağlandı.
+          "@
+          $updated = [regex]::Replace($changelog, '(?m)^## \[Unreleased\]\r?\n', ($entry.TrimEnd() + "`r`n`r`n"), 1)
+          if ($updated -eq $changelog) { throw 'Unable to insert 1.2.8 changelog entry.' }
+          Set-Content -LiteralPath $changelogPath -Value $updated -NoNewline -Encoding utf8
+
+      - name: Check JavaScript syntax
+        run: node --check scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
+
+      - name: Run Message Assistant behavior tests
+        run: node --test tools/Test-Message-Assistant.mjs
+
+      - name: Smoke-test browser fixture
+        run: node --test tools/Test-Message-Assistant-Browser-Fixture.mjs
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1
+
+      - name: Patch hygiene
+        run: git diff --check
+
+      - name: Confirm hotfix scope
+        shell: pwsh
+        run: |
+          $changed = @(git diff --name-only)
+          $expected = @(
+            'scripts/etsy-message-assistant/CHANGELOG.md',
+            'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+          )
+          $actual = @($changed | Sort-Object)
+          $want = @($expected | Sort-Object)
+          if (($actual -join "`n") -ne ($want -join "`n")) {
+            throw "Unexpected hotfix scope: $($actual -join ', ')"
           }
-          if (-not $found) { throw 'No blocked literal located.' }
+
+      - name: Commit verified hotfix to branch
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/etsy-message-assistant/CHANGELOG.md scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
+          git commit -m "security: neutralize Message Assistant store placeholder"
+          git push origin HEAD:fix/privacy-blocked-literal
