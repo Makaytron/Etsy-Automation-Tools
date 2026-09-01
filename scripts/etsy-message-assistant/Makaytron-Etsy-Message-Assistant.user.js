@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.2.6
+// @version      1.2.7
 // @description  Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages into your selected language and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -51,7 +51,7 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.2.6';
+    const APP_VERSION = '1.2.7';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';

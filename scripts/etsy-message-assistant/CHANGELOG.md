@@ -7,6 +7,17 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-09-02
+
+### Fixed
+
+- Varsayılan imza boş olduğunda teslimat sonrası yorum talebi şablonunun sonunda kalan boşluklar artık gönderimden önce kanonikleştiriliyor; Otopilot canlı composer/hash karşılaştırmasında aynı mesajı farklı sanıp fail-closed durmuyor.
+
+### Security
+
+- Public varsayılan mağaza kimliği artık kişiselleştirilmiş imza taşımıyor; `shopName` ve `signature` alanları yeni kurulumlarda boş başlıyor.
+- Public fixture privacy guard, Message Assistant için varsayılan `shopName` ve `signature` değerlerinin boş kalmasını CI'da zorunlu tutuyor.
+
 ## [1.2.6] - 2026-09-01
 
 ### Added
