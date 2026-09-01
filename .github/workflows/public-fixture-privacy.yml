@@ -15,7 +15,7 @@ jobs:
   privacy:
     name: Sanitize and validate public fixtures
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: write
 
@@ -24,6 +24,89 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref == 'privacy/remove-personalized-defaults' && github.head_ref || github.ref }}
+
+      - name: Prepare Message Assistant 1.2.7
+        if: github.event_name == 'pull_request' && github.head_ref == 'privacy/remove-personalized-defaults'
+        shell: pwsh
+        run: |
+          $utf8 = [System.Text.UTF8Encoding]::new($false)
+          $scriptPath = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+          $script = [System.IO.File]::ReadAllText($scriptPath, [System.Text.Encoding]::UTF8)
+          $script = $script.Replace('// @version      1.2.6', '// @version      1.2.7')
+          $script = $script.Replace("const APP_VERSION = '1.2.6';", "const APP_VERSION = '1.2.7';")
+          if ($script -notmatch '(?m)^// @version\s+1\.2\.7\s*$' -or $script -notmatch "const APP_VERSION = '1\.2\.7';") {
+              throw 'Message Assistant version bump did not apply cleanly.'
+          }
+          [System.IO.File]::WriteAllText($scriptPath, $script, $utf8)
+
+          $readmeEnPath = 'scripts/etsy-message-assistant/README.en.md'
+          $readmeEn = [System.IO.File]::ReadAllText($readmeEnPath, [System.Text.Encoding]::UTF8).Replace('Version: `1.2.6`', 'Version: `1.2.7`')
+          [System.IO.File]::WriteAllText($readmeEnPath, $readmeEn, $utf8)
+
+          $readmeTrPath = 'scripts/etsy-message-assistant/README.md'
+          $readmeTr = [System.IO.File]::ReadAllText($readmeTrPath, [System.Text.Encoding]::UTF8).Replace('**Sürüm:** 1.2.6', '**Sürüm:** 1.2.7')
+          [System.IO.File]::WriteAllText($readmeTrPath, $readmeTr, $utf8)
+
+          foreach ($rootReadmePath in @('README.md', 'README.tr.md')) {
+              $rootReadme = [System.IO.File]::ReadAllText($rootReadmePath, [System.Text.Encoding]::UTF8)
+              $rootReadme = [regex]::Replace(
+                  $rootReadme,
+                  '(?m)(\[Makaytron Etsy Message Assistant\]\([^\r\n]+\)\s*\|\s*)1\.2\.6(\s*\|)',
+                  '${1}1.2.7$2',
+                  1
+              )
+              [System.IO.File]::WriteAllText($rootReadmePath, $rootReadme, $utf8)
+          }
+
+          $changelogPath = 'scripts/etsy-message-assistant/CHANGELOG.md'
+          $changelog = [System.IO.File]::ReadAllText($changelogPath, [System.Text.Encoding]::UTF8)
+          if ($changelog -notmatch '(?m)^## \[1\.2\.7\] - 2026-09-02$') {
+              $entry = @"
+## [Unreleased]
+
+## [1.2.7] - 2026-09-02
+
+### Fixed
+
+- Varsayılan imza boş olduğunda teslimat sonrası yorum talebi şablonunun sonunda kalan boşluklar artık gönderimden önce kanonikleştiriliyor; Otopilot canlı composer/hash karşılaştırmasında aynı mesajı farklı sanıp fail-closed durmuyor.
+
+### Security
+
+- Public varsayılan mağaza kimliği artık kişiselleştirilmiş imza taşımıyor; `shopName` ve `signature` alanları yeni kurulumlarda boş başlıyor.
+- Public fixture privacy guard, Message Assistant için varsayılan `shopName` ve `signature` değerlerinin boş kalmasını CI'da zorunlu tutuyor.
+
+"@
+              $changelog = [regex]::Replace($changelog, '(?m)^## \[Unreleased\]\r?\n', $entry, 1)
+              [System.IO.File]::WriteAllText($changelogPath, $changelog, $utf8)
+          }
+
+          node --check $scriptPath
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test tools/Test-Message-Assistant.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Sanitize-Public-Fixtures.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $assetDir = Join-Path $env:RUNNER_TEMP 'message-assistant-1.2.7'
+          ./tools/New-Message-Assistant-ReleaseAssets.ps1 -ExpectedVersion '1.2.7' -OutputDirectory $assetDir
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $releaseFiles = @(
+              $scriptPath,
+              $readmeEnPath,
+              $readmeTrPath,
+              'README.md',
+              'README.tr.md',
+              $changelogPath
+          )
+          $changes = git status --porcelain -- $releaseFiles
+          if ($changes) {
+              git config user.name 'github-actions[bot]'
+              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+              git add -- $releaseFiles
+              git commit -m 'release: prepare Message Assistant 1.2.7'
+              git push origin HEAD:privacy/remove-personalized-defaults
+          }
 
       - name: Sanitize public main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
