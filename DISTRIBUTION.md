@@ -1,6 +1,6 @@
 # Distribution and update policy
 
-Suite version: `1.0.4`
+Suite version: `1.1.0`
 
 GitHub repository: <https://github.com/Makaytron/Etsy-Automation-Tools>
 

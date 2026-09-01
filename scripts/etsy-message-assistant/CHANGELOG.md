@@ -7,6 +7,8 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.2.6] - 2026-09-01
+
 ### Added
 
 - 4–5 yıldızlı mağaza yorumlarını puan ve gerçek yorum ayrıntısıyla birlikte analiz eden; müşteriye özel, sıcak teşekkür mesajı ile ayrı bir public cevap taslağı hazırlayan review politikası eklendi.

@@ -10,7 +10,7 @@ Etsy mesajlarını seçtiğiniz görüntüleme dilinde önizlemek, Türkçe ceva
 
 Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulması gerekmez.
 
-**Sürüm:** 1.2.5 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.2.6 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
