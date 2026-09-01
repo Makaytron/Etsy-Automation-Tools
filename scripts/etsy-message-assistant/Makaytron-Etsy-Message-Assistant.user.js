@@ -735,7 +735,7 @@
         previewLanguage: 'tr',
         aiProvider: 'openai',
         shopName: '',
-        signature: 'Best, Sophia',
+        signature: '',
         storeInstruction: 'Cevapları sıcak, doğal, kısa ve çözüm odaklı tut. Gerçek bağlamda bulunmayan stok, kargo, iade veya para iadesi taahhüdü verme.',
         showRiskTags: true,
         openOnMessagePage: false,
