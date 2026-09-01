@@ -7,6 +7,9 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $shopNamePattern = 'shopName:\s*[''"]([^''"]+)[''"]'
 $shopIdPattern = 'shopId:\s*[''"](\d{6,})[''"]'
+$messageAssistantPath = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+$messageAssistantDefaultIdentityPattern = '(?m)(^\s*shopName:\s*'''',\r?\n)(\s*)signature:\s*''[^'']*'','
+$messageAssistantNeutralDefaultsPattern = '(?m)^\s*shopName:\s*'''',\r?\n\s*signature:\s*'''','
 
 function Read-RepoText([string]$relativePath) {
     $path = Join-Path $repoRoot $relativePath
@@ -51,7 +54,7 @@ if ($null -ne $fixtureText) {
     $realNames = @(Get-UniqueMatchValues $updated $shopNamePattern | Where-Object { -not (Test-SyntheticShopName $_) })
     for ($index = 0; $index -lt $realNames.Count; $index += 1) {
         $syntheticName = 'SyntheticShop{0:D2}' -f ($index + 1)
-        $updated = $updated.Replace($realNames[$index], $syntheticName)
+        $updated = $updated.Replace("'$($realNames[$index])'", "'$syntheticName'")
     }
 
     if ($Fix -and $updated -cne $fixtureText) {
@@ -60,6 +63,25 @@ if ($null -ne $fixtureText) {
 }
 
 if ($Fix) {
+    $messageAssistantText = Read-RepoText $messageAssistantPath
+    if ($null -ne $messageAssistantText) {
+        $identityRegex = [regex]::new(
+            $messageAssistantDefaultIdentityPattern,
+            [System.Text.RegularExpressions.RegexOptions]::Multiline
+        )
+        $sanitizedMessageAssistant = $identityRegex.Replace(
+            $messageAssistantText,
+            {
+                param($match)
+                return "$($match.Groups[1].Value)$($match.Groups[2].Value)signature: '',"
+            },
+            1
+        )
+        if ($sanitizedMessageAssistant -cne $messageAssistantText) {
+            Write-RepoText $messageAssistantPath $sanitizedMessageAssistant
+        }
+    }
+
     $screenshotRoot = Join-Path $repoRoot 'assets/screenshots'
     if (Test-Path -LiteralPath $screenshotRoot) {
         Get-ChildItem -LiteralPath $screenshotRoot -File -Filter 'message-assistant-*.png' |
@@ -92,6 +114,14 @@ if ($Fix) {
 }
 
 $problems = [System.Collections.Generic.List[string]]::new()
+
+$messageAssistantText = Read-RepoText $messageAssistantPath
+if ($null -eq $messageAssistantText) {
+    $problems.Add("$messageAssistantPath is missing.")
+}
+elseif ($messageAssistantText -notmatch $messageAssistantNeutralDefaultsPattern) {
+    $problems.Add("$messageAssistantPath must keep both default shopName and default signature empty.")
+}
 
 $tracked = @(& git -C $repoRoot ls-files)
 if ($LASTEXITCODE -ne 0) { throw 'git ls-files failed.' }
