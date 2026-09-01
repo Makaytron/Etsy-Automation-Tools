@@ -1,0 +1,46 @@
+/* MKUI v1 framework-free primitives. Scope under .mkui-root or a script-specific mapped root. */
+.mkui-root *, .mkui-root *::before, .mkui-root *::after { box-sizing: border-box; }
+.mkui-root button, .mkui-root input, .mkui-root textarea, .mkui-root select { font: inherit; }
+
+.mk-card { overflow: hidden; border: 1px solid var(--mk-border); border-radius: var(--mk-radius-lg); background: var(--mk-surface); box-shadow: var(--mk-shadow-card); }
+.mk-card__head { min-height: 44px; padding: 10px var(--mk-space-4); display: flex; align-items: center; gap: var(--mk-space-2); border-bottom: 1px solid var(--mk-border); }
+.mk-card__body { padding: var(--mk-space-4); }
+.mk-card__foot { padding: var(--mk-space-3) var(--mk-space-4); display: flex; align-items: center; gap: var(--mk-space-2); border-top: 1px solid var(--mk-border); }
+
+.mk-btn { min-height: 38px; padding: 0 12px; border: 1px solid var(--mk-input); border-radius: var(--mk-radius-sm); display: inline-flex; align-items: center; justify-content: center; gap: var(--mk-space-2); background: var(--mk-surface); color: var(--mk-fg); font-weight: 650; cursor: pointer; }
+.mk-btn:hover { background: var(--mk-muted); }
+.mk-btn:disabled, .mk-btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+.mk-btn:focus-visible { outline: 0; box-shadow: var(--mk-focus); }
+.mk-btn--primary { border-color: var(--mk-primary); background: var(--mk-primary); color: var(--mk-primary-fg); }
+.mk-btn--primary:hover { background: var(--mk-primary-strong); }
+.mk-btn--danger { border-color: #efb4ae; background: var(--mk-danger-soft); color: var(--mk-danger); }
+.mk-btn--ghost { border-color: transparent; background: transparent; color: var(--mk-muted-fg); }
+.mk-btn--small { min-height: 32px; padding-inline: 10px; font-size: 12px; }
+.mk-icon-btn { width: 36px; height: 36px; padding: 0; border: 1px solid transparent; border-radius: var(--mk-radius-sm); display: inline-grid; place-items: center; background: transparent; color: var(--mk-muted-fg); cursor: pointer; }
+.mk-icon-btn:hover { background: var(--mk-muted); color: var(--mk-fg); }
+.mk-icon-btn:focus-visible { outline: 0; box-shadow: var(--mk-focus); }
+
+.mk-field { display: grid; gap: var(--mk-space-1); }
+.mk-field > label, .mk-label { color: #404040; font-size: 12px; font-weight: 700; }
+.mk-input, .mk-select, .mk-textarea { width: 100%; border: 1px solid var(--mk-input); border-radius: var(--mk-radius-sm); outline: 0; background: var(--mk-surface); color: var(--mk-fg); }
+.mk-input, .mk-select { min-height: 40px; padding: 0 11px; }
+.mk-textarea { min-height: 112px; padding: 10px 11px; resize: vertical; line-height: 1.5; }
+.mk-input:focus, .mk-select:focus, .mk-textarea:focus { border-color: #525252; box-shadow: var(--mk-focus); }
+.mk-help { color: var(--mk-muted-fg); font-size: 11px; line-height: 1.4; }
+.mk-validation { color: var(--mk-danger); font-size: 11px; font-weight: 650; }
+
+.mk-pill { padding: 4px 8px; border: 1px solid var(--mk-border); border-radius: var(--mk-radius-pill); display: inline-flex; align-items: center; gap: var(--mk-space-1); background: var(--mk-surface); color: #404040; font-size: 11px; font-weight: 750; }
+.mk-pill--success { border-color: #a9d8be; background: var(--mk-success-soft); color: var(--mk-success); }
+.mk-pill--warning { border-color: #e5c56b; background: var(--mk-warning-soft); color: var(--mk-warning); }
+.mk-pill--danger { border-color: #efb4ae; background: var(--mk-danger-soft); color: var(--mk-danger); }
+
+.mk-alert { padding: var(--mk-space-3); border: 1px solid var(--mk-border); border-radius: var(--mk-radius-md); display: flex; align-items: flex-start; gap: var(--mk-space-2); background: var(--mk-surface); }
+.mk-alert--warning { border-color: #e5c56b; background: var(--mk-warning-soft); color: #704900; }
+.mk-alert--danger { border-color: #efb4ae; background: var(--mk-danger-soft); color: #8f3030; }
+
+.mk-toolbar { min-height: 44px; display: flex; align-items: center; flex-wrap: wrap; gap: var(--mk-space-2); }
+.mk-empty { min-height: 160px; padding: var(--mk-space-6); display: grid; place-items: center; text-align: center; color: var(--mk-muted-fg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .mkui-root *, .mkui-root *::before, .mkui-root *::after { transition: none !important; animation: none !important; }
+}

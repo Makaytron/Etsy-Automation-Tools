@@ -1,0 +1,44 @@
+/* MKUI v1 canonical light tokens. Source-only until the Ads pilot is wired. */
+.mkui-root {
+  --mk-font: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --mk-bg: #f7f7f7;
+  --mk-surface: #ffffff;
+  --mk-fg: #171717;
+  --mk-muted: #f2f2f2;
+  --mk-muted-fg: #595959;
+  --mk-border: #dedede;
+  --mk-input: #cfcfcf;
+  --mk-primary: #1f1f1f;
+  --mk-primary-strong: #0f0f0f;
+  --mk-primary-fg: #fafafa;
+
+  --mk-success: #1f7a4d;
+  --mk-success-soft: #edf8f1;
+  --mk-warning: #8a5a00;
+  --mk-warning-soft: #fff9df;
+  --mk-danger: #b42318;
+  --mk-danger-soft: #fff1f0;
+
+  --mk-radius-sm: 7px;
+  --mk-radius-md: 10px;
+  --mk-radius-lg: 14px;
+  --mk-radius-xl: 18px;
+  --mk-radius-pill: 999px;
+
+  --mk-space-1: 4px;
+  --mk-space-2: 8px;
+  --mk-space-3: 12px;
+  --mk-space-4: 16px;
+  --mk-space-5: 20px;
+  --mk-space-6: 24px;
+
+  --mk-shadow-card: 0 1px 2px rgba(0,0,0,.04);
+  --mk-shadow-panel: 0 1px 3px rgba(0,0,0,.08), 0 18px 44px rgba(0,0,0,.14);
+  --mk-shadow-modal: 0 25px 50px -12px rgba(0,0,0,.26);
+  --mk-focus: 0 0 0 3px rgba(23,23,23,.14);
+
+  font-family: var(--mk-font);
+  color: var(--mk-fg);
+  font-variant-numeric: tabular-nums;
+}

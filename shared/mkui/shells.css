@@ -1,0 +1,24 @@
+/* MKUI shell geometry. These selectors are canonical references, not yet production-wired. */
+.mk-shell { position: fixed; z-index: 2147483000; overflow: hidden; border: 1px solid var(--mk-border); border-radius: var(--mk-radius-lg); background: var(--mk-surface); box-shadow: var(--mk-shadow-panel); }
+.mk-shell__header { min-height: 60px; padding: 0 var(--mk-space-4); display: flex; align-items: center; gap: var(--mk-space-3); border-bottom: 1px solid var(--mk-border); background: var(--mk-surface); }
+.mk-shell__brand { min-width: 0; flex: 1; }
+.mk-shell__title { margin: 0; font-size: 14px; font-weight: 760; letter-spacing: -.015em; }
+.mk-shell__subtitle { margin-top: 3px; overflow: hidden; color: var(--mk-muted-fg); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.mk-shell__main { min-width: 0; min-height: 0; overflow: auto; background: var(--mk-bg); }
+
+.mk-shell--compact { top: 12px; right: 12px; bottom: 12px; width: min(460px, calc(100vw - 24px)); display: grid; grid-template-rows: auto minmax(0,1fr); }
+
+.mk-shell--workspace { top: 12px; right: 12px; bottom: 12px; width: min(680px, calc(100vw - 24px)); display: grid; grid-template-columns: 60px minmax(0,1fr); grid-template-rows: auto minmax(0,1fr); }
+.mk-shell--workspace.is-wide { width: min(1200px, calc(100vw - 24px)); grid-template-columns: 184px minmax(0,1fr); }
+
+.mk-shell--dashboard { top: 12px; right: 12px; bottom: 12px; width: min(620px, calc(100vw - 24px)); display: grid; grid-template-columns: 60px minmax(0,1fr); grid-template-rows: 60px minmax(0,1fr); }
+.mk-shell--dashboard.is-wide { width: min(1120px, calc(100vw - 24px)); grid-template-columns: 184px minmax(0,1fr); }
+.mk-shell__nav { min-height: 0; padding: 10px 7px; display: flex; flex-direction: column; gap: 5px; border-right: 1px solid var(--mk-border); background: #fafafa; overflow: auto; }
+.mk-shell__nav-item { min-height: 40px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--mk-radius-sm); display: flex; align-items: center; gap: var(--mk-space-2); background: transparent; color: var(--mk-muted-fg); cursor: pointer; }
+.mk-shell__nav-item:hover { background: var(--mk-surface); color: var(--mk-fg); }
+.mk-shell__nav-item.is-active { border-color: var(--mk-border); background: var(--mk-surface); color: var(--mk-fg); box-shadow: var(--mk-shadow-card); }
+
+@media (max-width: 760px) {
+  .mk-shell--compact, .mk-shell--workspace, .mk-shell--workspace.is-wide, .mk-shell--dashboard, .mk-shell--dashboard.is-wide { inset: 8px; width: auto; }
+  .mk-shell--workspace, .mk-shell--workspace.is-wide, .mk-shell--dashboard, .mk-shell--dashboard.is-wide { grid-template-columns: 52px minmax(0,1fr); }
+}
