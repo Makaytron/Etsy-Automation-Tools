@@ -1,0 +1,43 @@
+name: Privacy Blocked Literal Diagnostic
+
+on:
+  push:
+    branches:
+      - fix/privacy-blocked-literal
+    paths:
+      - '.github/workflows/privacy-blocked-literal-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Locate blocked hash safely
+        shell: pwsh
+        run: |
+          $path = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+          $blocked = @(
+            'd46f0fe3643440087b136dbcc40db14d94a14bec4cd6d8eb167f98e2fdf763a7',
+            '3a4e2596cd8de7ff0cc3508bf1ca98a7a3767218bb8dc9fbdd690f7c4949e88a'
+          )
+          function Hash([string]$value) {
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($value)
+            $digest = [System.Security.Cryptography.SHA256]::HashData($bytes)
+            return [Convert]::ToHexString($digest).ToLowerInvariant()
+          }
+          $lines = Get-Content -LiteralPath $path
+          $found = $false
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            foreach ($m in [regex]::Matches($lines[$i], '(?i)\b(?:[a-z][a-z0-9_-]{3,63}|\d{6,})\b')) {
+              $hash = Hash($m.Value.ToLowerInvariant())
+              $index = [Array]::IndexOf($blocked, $hash)
+              if ($index -ge 0) {
+                Write-Host "BLOCKED_LITERAL line=$($i + 1) denylist_index=$index"
+                $found = $true
+              }
+            }
+          }
+          if (-not $found) { throw 'No blocked literal located.' }
