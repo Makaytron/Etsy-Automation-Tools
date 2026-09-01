@@ -15,7 +15,7 @@ jobs:
   privacy:
     name: Sanitize and validate public fixtures
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: write
 
@@ -24,6 +24,37 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref == 'privacy/remove-personalized-defaults' && github.head_ref || github.ref }}
+
+      - name: Apply blank-signature campaign normalization
+        if: github.event_name == 'pull_request' && github.head_ref == 'privacy/remove-personalized-defaults'
+        shell: pwsh
+        run: |
+          $path = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+          $text = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+          $old = "            if (!finalText) finalText = baseText;"
+          $new = "            if (!finalText) finalText = baseText;`r`n            finalText = String(finalText || '').trim();"
+          if ($text.Contains($new)) {
+              Write-Host 'Runtime normalization is already present.'
+          } elseif ($text.Contains($old)) {
+              $text = $text.Replace($old, $new)
+              [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+          } else {
+              throw 'Expected campaign finalText assignment was not found.'
+          }
+          node --check $path
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test tools/Test-Message-Assistant.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Sanitize-Public-Fixtures.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (git status --porcelain -- $path) {
+              git config user.name 'github-actions[bot]'
+              git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+              git add $path
+              git commit -m 'fix: normalize blank-signature campaign drafts'
+              git push origin HEAD:privacy/remove-personalized-defaults
+          }
 
       - name: Sanitize public main
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
