@@ -1,0 +1,49 @@
+name: Neutral Default Remediation
+
+on:
+  push:
+    branches:
+      - privacy/remove-personalized-defaults
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: neutral-default-remediation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  remediate:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out remediation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Sanitize neutral defaults
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1 -Fix
+
+      - name: Validate Message Assistant
+        shell: pwsh
+        run: |
+          node --check scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
+          node --test tools/Test-Message-Assistant.mjs
+          ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Commit remediation
+        shell: pwsh
+        run: |
+          $changes = git status --porcelain
+          if (-not $changes) {
+              Write-Host 'No remediation changes required.'
+              exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: remove personalized Message Assistant defaults'
+          git push origin HEAD:privacy/remove-personalized-defaults
