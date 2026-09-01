@@ -30,6 +30,13 @@ jobs:
         shell: pwsh
         run: ./tools/Sanitize-Public-Fixtures.ps1 -Fix
 
+      - name: Validate sanitized Sale Manager fixture
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          node --check tools/Test-Sale-Manager.mjs
+          node --test tools/Test-Sale-Manager.mjs
+
       - name: Commit automatic privacy scrub
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
