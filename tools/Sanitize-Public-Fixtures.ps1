@@ -102,19 +102,23 @@ foreach ($relativePath in $tracked) {
     $text = Read-RepoText $relativePath
     if ($null -eq $text) { continue }
 
-    foreach ($match in [regex]::Matches($text, $shopNamePattern)) {
+    $isFixtureSurface = $relativePath -like 'tools/*' -or $relativePath -like '*fixtures/*'
+    if (-not $isFixtureSurface) { continue }
+
+    $shopIdMatches = @([regex]::Matches($text, $shopIdPattern))
+    if ($shopIdMatches.Count -eq 0) { continue }
+
+    foreach ($match in $shopIdMatches) {
         $value = $match.Groups[1].Value
-        if (-not (Test-SyntheticShopName $value)) {
-            $problems.Add("$relativePath contains a non-synthetic literal shopName.")
+        if (-not (Test-SyntheticShopId $value)) {
+            $problems.Add("$relativePath contains a non-synthetic literal shopId.")
         }
     }
 
-    if ($relativePath -like 'tools/*' -or $relativePath -like '*fixtures/*') {
-        foreach ($match in [regex]::Matches($text, $shopIdPattern)) {
-            $value = $match.Groups[1].Value
-            if (-not (Test-SyntheticShopId $value)) {
-                $problems.Add("$relativePath contains a non-synthetic literal shopId.")
-            }
+    foreach ($match in [regex]::Matches($text, $shopNamePattern)) {
+        $value = $match.Groups[1].Value
+        if (-not (Test-SyntheticShopName $value)) {
+            $problems.Add("$relativePath contains a non-synthetic literal shopName next to account fixture data.")
         }
     }
 }
