@@ -4,6 +4,17 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.0.4] - 2026-09-02
+
+### Changed
+
+- `Tamplate-Back-White-01` referans alınarak MKUI v1'in ilk production pilotu uygulandı; panelin nötr renk tokenları, radius/spacing ölçüleri, focus ring'i, durum/özet kartları, launcher, toast ve modal yüzeyleri aynı Makaytron tasarım diline yaklaştırıldı.
+- Migration yalnız presentation katmanında tutuldu; Etsy selector'ları, anahtar kelime iş mantığı, storage/telemetry sözleşmeleri, userscript grant/connect izinleri ve update/download URL'leri değiştirilmedi.
+
+### Validation
+
+- Ads davranış testleri, JavaScript syntax kontrolü, korunan DOM hook/metadata invariantları ve patch hygiene gate'i geçildi.
+
 ## [1.0.3] - 2026-08-08
 
 ### Fixed
