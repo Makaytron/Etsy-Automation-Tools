@@ -6,6 +6,9 @@ on:
       - fix/privacy-blocked-literal
     paths:
       - '.github/workflows/privacy-blocked-literal-diagnostic.yml'
+      - 'scripts/etsy-ads-keyword-manager/README.md'
+      - 'scripts/etsy-ads-keyword-manager/README.en.md'
+      - 'scripts/etsy-ads-keyword-manager/CHANGELOG.md'
 
 permissions:
   contents: write
