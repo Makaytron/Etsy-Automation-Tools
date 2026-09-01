@@ -4,7 +4,7 @@
 
 Son güncelleme: 2026-08-27
 
-Etsy Automation Tools, tarayıcı içinde çalışan Tampermonkey userscriptlerinden oluşur. Beş script de yalnız ürün kullanımını ölçen sınırlı, psödonimleştirilmiş telemetriyi varsayılan olarak açık getirir; ilk kullanımda görünür bir bildirim gösterir ve Ayarlar'dan tek tıkla kapatma olanağı verir. Telemetri Etsy içeriğini veya hesap verisini toplamaz. Message Assistant paneli varsayılan olarak kapalıdır ve **Otomatik Çeviri Önizlemesi** açık gelir. Kullanıcı paneli konuşma listesinde açarsa görünür mesaj önizlemeleri, tekil konuşmada açarsa son müşteri mesajı seçili çeviri sağlayıcısına gönderilebilir. Bu aktarımı istemiyorsanız paneli açmadan önce Tampermonkey menüsünden Makaytron ayarlarını açıp otomatik çeviri önizlemesini kapatın.
+Etsy Automation Tools, tarayıcı içinde çalışan Tampermonkey userscriptlerinden oluşur. Beş script de yalnız ürün kullanımını ölçen sınırlı, psödonimleştirilmiş telemetriyi varsayılan olarak açık getirir; ilk kullanımda görünür bir bildirim gösterir ve Ayarlar'dan tek tıkla kapatma olanağı verir. Telemetri Etsy içeriğini veya hesap verisini toplamaz. Message Assistant paneli varsayılan olarak kapalıdır ve **Otomatik Çeviri Önizlemesi** açık gelir. Kullanıcı tekil konuşma sayfasına girdiğinde panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajı Türkçe çeviri için seçili sağlayıcıya gönderilebilir; panel konuşma listesinde açılırsa en fazla 50 görünür önizleme gönderilebilir. Bu aktarımı istemiyorsanız konuşmayı veya paneli açmadan önce Tampermonkey menüsünden Makaytron ayarlarını açıp otomatik çeviri önizlemesini kapatın.
 
 ## Yerel olarak işlenen veriler
 
@@ -51,7 +51,7 @@ Tarayıcı Do Not Track (`navigator.doNotTrack === "1"`) veya Global Privacy Con
 
 ## Üçüncü taraf alıcıları
 
-- Google Translate varsayılan çeviri sağlayıcısıdır. Varsayılan açık otomatik çeviri önizlemesi, kullanıcı paneli konuşma listesinde açtığında en fazla 50 görünür mesaj önizlemesini; tekil konuşmada açtığında son müşteri mesajını `translate.googleapis.com` adresine gönderebilir. Hızlı görüntüleme dilini değiştirmek görünür liste önizlemelerini yeni hedef için yeniden gönderir; manuel ücretsiz çeviri de seçilen metni aynı alıcıya gönderir.
+- Google Translate varsayılan çeviri sağlayıcısıdır. Varsayılan açık otomatik çeviri önizlemesi, kullanıcı tekil konuşmaya girdiğinde panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajını Türkçe çeviri için `translate.googleapis.com` adresine gönderebilir; panel konuşma listesinde açıldığında en fazla 50 görünür önizleme gönderilebilir. Hızlı görüntüleme dilini değiştirmek görünür liste önizlemelerini yeni hedef için yeniden gönderir; manuel ücretsiz çeviri de seçilen metni aynı alıcıya gönderir.
 - DeepL seçildiğinde metin ve kullanıcıya ait API anahtarı DeepL API'sine gönderilir.
 - AI özelliği seçildiğinde ilgili mesaj bağlamı ve talimatlar kullanıcı tarafından seçilen OpenAI, Anthropic, Google Gemini, DeepSeek veya OpenRouter API'sine gönderilir.
 - Listing Analyzer `v1.2.2` bir AI sağlayıcısına ağ isteği göndermez ve AI API anahtarı saklamaz. Kullanıcı anonimleştirilebilir istek JSON'u/prompt'u dışa aktarabilir veya kopyalayabilir; harici araçtan aldığı teklif JSON'unu doğrulamadan sonra içe aktarabilir. Harici araca ne gönderileceğini kullanıcı kontrol eder.

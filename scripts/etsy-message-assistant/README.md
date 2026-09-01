@@ -25,11 +25,12 @@ Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulma
 
 ## Özellikler
 
-- Etsy müşteri mesajını Türkçe önizler.
+- Tekil konuşmada hem müşterinin hem satıcının yazdığı mesajların Türkçe çevirisini kaynak balonu değiştirmeden hemen altında gösterir; aynı metinler tek çeviri isteğini paylaşır.
 - Mesaj sayfasında varsayılan olarak kapalı kalır; panel yalnız sağ üstteki kompakt **Asistan · Aç** kontrolüyle veya kullanıcının ayrıca etkinleştirdiği otomatik-açma tercihiyle görünür.
 - Konuşma listesi, tekil konuşma, Completed Orders ve Recent activity/Reviews bağlamlarını ayrı doğrular; yanlış sayfada taslak, sıra veya aktarım kontrolü göstermez.
 - Konuşma listesinde Etsy'de görünür konuşmaları panel içinde gösterir; Türkçe varsayılan hızlı görüntüleme dili, geniş dil seçimi, çevrilmiş önizleme/orijinal metin ve güvenli konuşma açma akışı sunar.
 - Türkçe cevabı müşterinin diline çevirir.
+- AI cevaplarını selamlama, kısa gövde paragrafları ve kapanış ayrı satırlarda olacak biçimde hazırlar; normal mesaj akışında doğrulanmış **Müşteriye Gönder** düğmesiyle tek sefer gönderip yeni giden balonu doğrular.
 - OpenAI, Anthropic Claude, Google Gemini, DeepSeek ve OpenRouter için kullanıcıya ait API profillerini destekler.
 - Şablonlar, değişkenler, geçmiş ve teslim edilmiş siparişler için kontrollü mesaj sırası sunar.
 - Çalışma ve araç bölümlerini ayıran premium sade panel, tek ana aksiyonlu **Otomasyon** görünümü, ilerleme özeti ve dar ekranda yatay tablo gerektirmeyen alıcı kartları sunar.
@@ -57,9 +58,9 @@ Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulma
 2. Panelde Türkçe cevabınızı yazın.
 3. **Sadece Çevir**, **AI ile Düzenle** veya **AI Cevap Önersin** seçeneklerinden birini kullanın.
 4. Oluşan metni okuyup gerekiyorsa düzenleyin.
-5. **Etsy'ye Aktar** düğmesinden sonra Etsy'nin kendi **Gönder** düğmesiyle son onayı verin.
+5. **Müşteriye Gönder** düğmesine basın. Script konuşma, metin, composer, gönderim sahipliği ve Etsy Gönder kontrolünü yeniden doğrular; sonuç belirsizse tekrar göndermeden önce konuşmadaki son balonu inceleyin.
 
-Panel mesaj sayfasında varsayılan olarak kapalıdır. Google Translate varsayılan sağlayıcıdır ve otomatik çeviri önizlemesi açıktır; panel konuşma listesinde açıldığında görünür mesaj önizlemelerini, tekil konuşmada açıldığında son müşteri mesajını seçili çeviri sağlayıcısına gönderebilir. Hızlı görüntüleme dili seçimi görünür liste önizlemelerini yeni hedef dil için yeniden çevirir. Bu aktarımı istemiyorsanız paneli kapalı tutun ya da açmadan önce Tampermonkey menüsündeki Makaytron ayarlarından otomatik önizlemeyi kapatın. Diğer AI ve çeviri özellikleri kullanıldığında ilgili metin seçilen üçüncü taraf sağlayıcıya gönderilir. API anahtarları Tampermonkey depolamasında tutulur; ayrı anahtar ve sağlayıcı tarafında harcama limiti kullanılması önerilir.
+Panel mesaj sayfasında varsayılan olarak kapalıdır. Google Translate varsayılan sağlayıcıdır ve otomatik çeviri önizlemesi açıktır; bu nedenle tekil konuşmayı açmak, panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajını Türkçe çeviri için seçili sağlayıcıya gönderebilir. Panel konuşma listesinde açıldığında en fazla 50 görünür önizleme çevrilebilir. Bu aktarımı istemiyorsanız konuşmayı açmadan önce Tampermonkey menüsündeki Makaytron ayarlarından otomatik önizlemeyi kapatın. Diğer AI ve çeviri özellikleri kullanıldığında ilgili metin seçilen üçüncü taraf sağlayıcıya gönderilir. API anahtarları Tampermonkey depolamasında tutulur; ayrı anahtar ve sağlayıcı tarafında harcama limiti kullanılması önerilir.
 
 ## Psödonimleştirilmiş kullanım telemetrisi
 

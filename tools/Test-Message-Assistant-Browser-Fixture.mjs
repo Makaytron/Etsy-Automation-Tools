@@ -657,6 +657,42 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.deepEqual(consoleErrors, []);
         });
 
+        await t.test('customer and seller Etsy bubbles get sibling Turkish translations without changing message context', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/',
+                'runInlineTranslationScenario',
+            );
+            assert.equal(result.after.translationCount, 2);
+            assert.deepEqual(result.after.translatedRows, [
+                { messageId: 'fixture-incoming-1', text: 'Türkçe: Hello from the fixture buyer.' },
+                { messageId: 'fixture-outgoing-1', text: 'Türkçe: Our fixture reply.' },
+            ]);
+            assert.deepEqual(result.after.translatedMessages, result.after.originalMessages);
+            assert.equal(result.after.translationRequests.length, 2);
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('Müşteriye Gönder preserves multiline AI text and performs one verified native send', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/',
+                'runDirectCustomerSendScenario',
+            );
+            assert.equal(result.after.sendActionCount, 1);
+            assert.match(result.after.sendLabel, /Müşteriye Gönder/);
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.nativeTargetClickCount, 1);
+            assert.equal(result.after.formSubmitCount, 1);
+            assert.equal(result.after.lastSentText, result.after.expectedReply);
+            assert.match(result.after.lastSentText, /\n\n/);
+            assert.equal(result.after.composerText, '');
+            assert.equal(result.after.conversationStatus, 'sent');
+            assert.deepEqual(consoleErrors, []);
+        });
+
         await t.test('wrong order after compose hydration cannot create sent ledgers', { timeout: TIMEOUT_MS }, async () => {
             const { result } = await runBrowserScenario(
                 chrome,

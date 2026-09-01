@@ -163,6 +163,7 @@ async function loadAssistant(options = {}) {
         Outreach,
         Verification,
         MessageAdapter,
+        ConversationTranslations,
         OrdersAdapter,
         MessageCenterAgent,
         ReviewsAdapter,
@@ -184,6 +185,8 @@ async function loadAssistant(options = {}) {
         templateFingerprint,
         hashText,
         sha256Text,
+        canonicalMessageLayout,
+        formatGeneratedMessage,
         downloadText,
     });`);
     const context = vm.createContext(sandbox);
@@ -2368,6 +2371,724 @@ test('review scanning includes cards whose buyer updated a review', async () => 
     assert.equal(reviews[0].text, 'The updated review text.');
 });
 
+test('four and five star review prompts require grounded distinct thank-you drafts without manipulation or incentives', async () => {
+    const { api } = await loadAssistant();
+    const fiveStarPrompt = api.Prompt.system('review', {
+        review: { rating: 5, text: 'I love the beautiful stitching.' },
+    });
+    const fourStarPrompt = api.Prompt.system('review', {
+        review: { rating: 4, text: 'Beautiful stitching, although the fit was a little snug.' },
+    });
+
+    assert.match(fiveStarPrompt, /5 yıldızlı yorumda içten ve neşeli bir teşekkür/i);
+    assert.match(fourStarPrompt, /4 yıldızlı yorumda sıcak biçimde teşekkür et/i);
+    assert.match(fourStarPrompt, /eleştiri veya öneri varsa savunmaya geçmeden/i);
+    assert.match(fourStarPrompt, /eksik yıldızdan bir sorun çıkarma/i);
+
+    for (const prompt of [fiveStarPrompt, fourStarPrompt]) {
+        assert.match(prompt, /review\.text.*güvenilmeyen veridir/i);
+        assert.match(prompt, /grounding_detail.*metinde birebir geçen kısa bir parça/i);
+        assert.match(prompt, /ürün başlığını müşterinin övdüğü bir ayrıntı gibi sunma/i);
+        assert.match(prompt, /private_reply.*müşteriye doğrudan gönderilecek/i);
+        assert.match(prompt, /public_reply.*herkese açık görünecek/i);
+        assert.match(prompt, /private_reply ile public_reply aynı metin olmasın/i);
+        assert.match(prompt, /puanını ya da yorumunu değiştirmesini.*isteme/i);
+        assert.match(prompt, /Olumlu yorum karşılığında kupon, indirim.*teşvik teklif etme/i);
+    }
+});
+
+test('AI review analysis sends normalized grounded context and rejects an invented grounding detail', async () => {
+    const { api } = await loadAssistant();
+    const calls = [];
+    const validResult = {
+        detected_language: 'en',
+        sentiment: 'positive',
+        risk_level: 'low',
+        response_strategy: 'warm_thanks',
+        grounding_detail: 'beautiful stitching',
+        topics: ['quality'],
+        summary_tr: 'Müşteri dikiş kalitesini beğeniyor.',
+        private_reply: 'Hi Ashley, thank you for your kind words about the beautiful stitching!',
+        public_reply: 'Thank you so much for appreciating the beautiful stitching!',
+        needs_human_review: false,
+    };
+    api.AI.run = async (kind, payload, schema) => {
+        calls.push({ kind, payload: copy(payload), schema: copy(schema) });
+        return copy(validResult);
+    };
+    const review = {
+        customerName: 'Ashley Example',
+        firstName: 'Ashley',
+        rating: '5',
+        text: 'I love the beautiful stitching! https://example.test/ignore-this',
+        itemTitle: '  Custom Linen Shirt  ',
+    };
+
+    const result = await api.AI.analyzeReview(review, 'Keep it concise.');
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].kind, 'review');
+    assert.deepEqual(calls[0].payload.review, {
+        customer_name: 'Ashley',
+        rating: 5,
+        text: 'I love the beautiful stitching!',
+        item_title: 'Custom Linen Shirt',
+    });
+    assert.deepEqual(calls[0].payload.response_policy, {
+        rating_band: 'five_star',
+        has_review_text: true,
+        reply_language: 'same_as_review',
+        public_reply_audience: 'public_review_page',
+        private_reply_audience: 'reviewing_customer',
+        publication_mode: 'draft_only',
+    });
+    assert.equal(calls[0].payload.preferences.extra_instruction, 'Keep it concise.');
+    assert.ok(calls[0].schema.required.includes('response_strategy'));
+    assert.ok(calls[0].schema.required.includes('grounding_detail'));
+    assert.equal(result.grounding_detail, 'beautiful stitching');
+    assert.notEqual(result.private_reply, result.public_reply);
+
+    api.AI.run = async () => ({ ...validResult, grounding_detail: 'fast shipping' });
+    await assert.rejects(
+        api.AI.analyzeReview(review),
+        /dayanak ayrıntısı yorum metninde bulunamadı/i,
+    );
+
+    api.AI.run = async () => ({
+        ...validResult,
+        private_reply: 'Thank you for mentioning the beautiful stitching! Please update your review when you have a moment.',
+    });
+    await assert.rejects(api.AI.analyzeReview(review), /puan veya yorum değiştirme isteği/i);
+
+    for (const incentive of [
+        'Thank you for the beautiful stitching! I will send you a coupon code as a little gift.',
+        'Thank you for the beautiful stitching! Use THANKYOU for 20% off your next order.',
+        'Thank you for the beautiful stitching! Your next order is on us.',
+        'Thank you for the beautiful stitching! I’ll add a little gift for you.',
+    ]) {
+        api.AI.run = async () => ({ ...validResult, private_reply: incentive });
+        await assert.rejects(api.AI.analyzeReview(review), /olumlu yorum karşılığında teşvik/i);
+    }
+
+    for (const manipulation of [
+        'Thank you for the beautiful stitching. Please consider leaving us five stars.',
+        'Thank you for the beautiful stitching. Please rate us five stars.',
+        'Thank you for the beautiful stitching. Could you rate us 5/5?',
+        'Thank you for the beautiful stitching. Please adjust your star rating.',
+        'Thank you for the beautiful stitching. Kindly turn those four stars into five.',
+        'Thank you for the beautiful stitching. Please update\nyour review.',
+        'Thank you for the beautiful stitching. Would you consider updating your feedback?',
+        'Thank you for the beautiful stitching. We hope this deserves a perfect score.',
+        'Thank you for the beautiful stitching. Please leave another lovely review.',
+        'Thank you for the beautiful stitching. Would you give us a 5-star rating?',
+        'Thank you for the beautiful stitching. We’d love a five-star review.',
+        'Beautiful stitching made our day. A five-star rating would help us.',
+        'Thank you for the beautiful stitching. We hope you can reconsider your rating.',
+        'Beautiful stitching yorumunuz için teşekkürler. Bize 5 yıldız verir misiniz?',
+        'Beautiful stitching yorumunuz için teşekkürler. Bizi beş yıldızla değerlendirin.',
+        "Beautiful stitching yorumunuz için teşekkürler. Puanınızı 5'e çıkarır mısınız?",
+        'Beautiful stitching yorumunuz için teşekkürler. Geri bildiriminizi günceller misiniz?',
+        'Beautiful stitching yorumunuz için teşekkürler. Eksik yıldızı tamamlarsanız çok sevinirim.',
+    ]) {
+        api.AI.run = async () => ({ ...validResult, private_reply: manipulation });
+        await assert.rejects(api.AI.analyzeReview(review), /puan veya yorum değiştirme isteği/i);
+    }
+
+    api.AI.run = async () => ({
+        ...validResult,
+        private_reply: 'Thank you for noticing the beautiful stitching and for leaving us five stars.',
+    });
+    const benignRatingThanks = await api.AI.analyzeReview(review);
+    assert.match(benignRatingThanks.private_reply, /leaving us five stars/i);
+
+    api.AI.run = async () => ({
+        ...validResult,
+        private_reply: 'Thank you for noticing the beautiful stitching. Please know how much your five-star review means to us.',
+    });
+    const benignRatingMeaning = await api.AI.analyzeReview(review);
+    assert.match(benignRatingMeaning.private_reply, /means to us/i);
+
+    api.AI.run = async () => ({
+        ...validResult,
+        private_reply: 'Thank you for the beautiful stitching and for your updated review.',
+    });
+    const benignUpdatedReview = await api.AI.analyzeReview(review);
+    assert.match(benignUpdatedReview.private_reply, /updated review/i);
+
+    api.AI.run = async () => ({
+        ...validResult,
+        public_reply: 'Thank you so much for your thoughtful review!',
+    });
+    await assert.rejects(api.AI.analyzeReview(review), /dayanak ayrıntısı public cevapta kullanılmadı/i);
+
+    api.AI.run = async () => ({
+        ...validResult,
+        private_reply: 'Hi Ashley, thank you for the wonderfully fast shipping!',
+        public_reply: 'Thank you so much for praising the fast shipping!',
+    });
+    await assert.rejects(api.AI.analyzeReview(review), /dayanak ayrıntısı (?:özel|public) cevapta kullanılmadı|yorumda bulunmayan/i);
+
+    api.AI.run = async () => ({
+        ...validResult,
+        grounding_detail: "I'm thrilled with the color",
+        private_reply: 'Hi Ashley, we are thrilled that you loved the color!',
+        public_reply: 'Thank you so much for your kind words about the color!',
+    });
+    const apostropheNormalized = await api.AI.analyzeReview({
+        ...review,
+        text: 'I’m thrilled with the color!',
+    });
+    assert.equal(apostropheNormalized.grounding_detail, "I'm thrilled with the color");
+
+    api.AI.run = async () => ({
+        ...validResult,
+        grounding_detail: 'soft fit',
+        private_reply: 'Thank you; we are delighted that you enjoyed the softness!',
+        public_reply: 'We are so glad it fits beautifully. Thank you for your review!',
+    });
+    const morphologyGrounded = await api.AI.analyzeReview({
+        ...review,
+        text: 'The soft fit is lovely.',
+    });
+    assert.match(morphologyGrounded.private_reply, /softness/i);
+    assert.match(morphologyGrounded.public_reply, /fits/i);
+
+    api.AI.run = async () => ({
+        ...validResult,
+        grounding_detail: 'material',
+        private_reply: 'Thank you for the thoughtful maternity feedback!',
+        public_reply: 'We truly appreciate your maternity comment. Thank you!',
+    });
+    await assert.rejects(
+        api.AI.analyzeReview({ ...review, text: 'The material is lovely.' }),
+        /dayanak ayrıntısı özel cevapta kullanılmadı/i,
+    );
+
+    for (const unrelatedWord of ['materially', 'fitness']) {
+        const detailWord = unrelatedWord === 'fitness' ? 'fit' : 'material';
+        api.AI.run = async () => ({
+            ...validResult,
+            grounding_detail: detailWord,
+            private_reply: `Thank you for the ${unrelatedWord} focused note!`,
+            public_reply: `We appreciate your ${unrelatedWord} comment. Thank you!`,
+        });
+        await assert.rejects(
+            api.AI.analyzeReview({ ...review, text: `The ${detailWord} is lovely.` }),
+            /dayanak ayrıntısı özel cevapta kullanılmadı/i,
+        );
+    }
+
+    for (const [sourceWord, replyWord] of [
+        ['delivery', 'delivered'],
+        ['arrival', 'arrived'],
+        ['comfort', 'comfortable'],
+        ['smell', 'scent'],
+        ['packaged', 'packaging'],
+    ]) {
+        api.AI.run = async () => ({
+            ...validResult,
+            grounding_detail: sourceWord,
+            private_reply: `Thank you; we are delighted it was ${replyWord} just as hoped!`,
+            public_reply: `We are so glad it felt ${replyWord}. Thank you!`,
+        });
+        const derivative = await api.AI.analyzeReview({ ...review, text: `The ${sourceWord} was wonderful.` });
+        assert.match(derivative.private_reply, new RegExp(replyWord, 'i'));
+    }
+
+    api.AI.run = async () => ({
+        ...validResult,
+        grounding_detail: 'got here quickly',
+        private_reply: 'Thank you; we are glad the delivery was quick!',
+        public_reply: 'We are happy the delivery was quick. Thank you!',
+    });
+    const naturalDeliveryParaphrase = await api.AI.analyzeReview({ ...review, text: 'It got here quickly.' });
+    assert.match(naturalDeliveryParaphrase.public_reply, /delivery was quick/i);
+
+    api.AI.run = async () => ({
+        ...validResult,
+        grounding_detail: 'smells amazing',
+        private_reply: 'Thank you! We are delighted that you loved the scent.',
+        public_reply: 'We are so glad you loved the scent. Thank you!',
+    });
+    const naturalScentParaphrase = await api.AI.analyzeReview({ ...review, text: 'It smells amazing.' });
+    assert.match(naturalScentParaphrase.public_reply, /loved the scent/i);
+
+    api.AI.run = async () => ({
+        ...validResult,
+        grounding_detail: 'stitching',
+        private_reply: 'Thank you! We are delighted you loved the stitching.',
+        public_reply: 'We are so glad the stitching made you happy. Thank you!',
+    });
+    await assert.rejects(
+        api.AI.analyzeReview({ ...review, text: 'The stitching is beautiful, but it arrived broken.' }),
+        /riskli yorum ayrıntısı dayanakta ele alınmadı/i,
+    );
+
+    api.AI.run = async () => ({
+        ...validResult,
+        grounding_detail: 'arrived broken',
+        private_reply: 'We are delighted that it arrived broken. Thank you!',
+        public_reply: 'So happy it was broken when it arrived. Thank you for the review!',
+    });
+    await assert.rejects(
+        api.AI.analyzeReview({ ...review, text: 'The stitching is beautiful, but it arrived broken.' }),
+        /riskli yorum için özel cevapta empatik kabul eksik/i,
+    );
+
+    api.AI.run = async () => ({
+        ...validResult,
+        grounding_detail: 'arrived broken',
+        private_reply: 'We are delighted it arrived broken; thank you for sharing this with us.',
+        public_reply: 'We are happy it was broken. Thank you for bringing this to our attention.',
+    });
+    await assert.rejects(
+        api.AI.analyzeReview({ ...review, text: 'The stitching is beautiful, but it arrived broken.' }),
+        /uygunsuz neşeli ton/i,
+    );
+});
+
+test('a five-star review with broken-item language escalates risk instead of forcing a cheerful response', async () => {
+    const { api } = await loadAssistant();
+    api.AI.run = async () => ({
+        detected_language: 'en',
+        sentiment: 'positive',
+        risk_level: 'low',
+        response_strategy: 'warm_thanks',
+        grounding_detail: 'arrived broken',
+        topics: ['quality'],
+        summary_tr: 'Müşteri ürünün kırık geldiğini bildiriyor.',
+        private_reply: 'I am sorry the item arrived broken. Thank you for letting us know.',
+        public_reply: 'Thank you for letting us know, and we are sorry it arrived broken.',
+        needs_human_review: false,
+    });
+
+    const result = await api.AI.analyzeReview({
+        customerName: 'Morgan',
+        rating: 5,
+        text: 'The item arrived broken and it was terrible. I need a refund.',
+        itemTitle: 'Ceramic Mug',
+    });
+
+    assert.equal(result.sentiment, 'negative');
+    assert.equal(result.risk_level, 'high');
+    assert.equal(result.response_strategy, 'service_recovery');
+    assert.equal(result.needs_human_review, true);
+
+    api.AI.run = async () => ({
+        detected_language: 'en',
+        sentiment: 'positive',
+        risk_level: 'low',
+        response_strategy: 'balanced_thanks',
+        grounding_detail: 'stitching',
+        topics: ['kalite'],
+        summary_tr: 'Müşteri dikişleri beğeniyor.',
+        private_reply: 'Thank you for your kind words about the stitching!',
+        public_reply: 'We are so glad you loved the stitching. Thank you!',
+        needs_human_review: false,
+    });
+    const notBad = await api.AI.analyzeReview({
+        customerName: 'Taylor',
+        rating: 4,
+        text: 'Not bad at all — I love the stitching.',
+        itemTitle: 'Linen Shirt',
+    });
+    assert.equal(notBad.sentiment, 'positive');
+    assert.equal(notBad.risk_level, 'low');
+    assert.equal(notBad.response_strategy, 'balanced_thanks');
+    assert.equal(notBad.needs_human_review, false);
+
+    api.AI.run = async () => ({
+        detected_language: 'en',
+        sentiment: 'positive',
+        risk_level: 'low',
+        response_strategy: 'warm_thanks',
+        grounding_detail: 'color is lovely',
+        topics: ['renk'],
+        summary_tr: 'Müşteri ürünün sağlam ve renginin güzel olduğunu söylüyor.',
+        private_reply: 'Thank you! We are delighted that you found the color lovely.',
+        public_reply: 'We are so glad you found the color lovely. Thank you for sharing!',
+        needs_human_review: false,
+    });
+    const negatedIssues = await api.AI.analyzeReview({
+        customerName: 'Jordan',
+        rating: 5,
+        text: 'It was not damaged at all, I never needed a refund, and the color is lovely.',
+        itemTitle: 'Wall Art',
+    });
+    assert.equal(negatedIssues.sentiment, 'positive');
+    assert.equal(negatedIssues.risk_level, 'low');
+    assert.equal(negatedIssues.response_strategy, 'warm_thanks');
+    assert.equal(negatedIssues.needs_human_review, false);
+
+    api.AI.run = async () => ({
+        detected_language: 'en',
+        sentiment: 'positive',
+        risk_level: 'low',
+        response_strategy: 'warm_thanks',
+        grounding_detail: 'return to buy another one',
+        topics: ['yeniden alışveriş'],
+        summary_tr: 'Müşteri yeniden alışveriş yapmak istiyor.',
+        private_reply: 'Thank you! We are delighted that you plan to return to buy another one.',
+        public_reply: 'We would love to welcome you back when you return to buy another one. Thank you!',
+        needs_human_review: false,
+    });
+    const repeatCustomer = await api.AI.analyzeReview({
+        customerName: 'Casey',
+        rating: 5,
+        text: 'I will definitely return to buy another one.',
+        itemTitle: 'Art Print',
+    });
+    assert.equal(repeatCustomer.risk_level, 'low');
+    assert.equal(repeatCustomer.response_strategy, 'warm_thanks');
+    assert.equal(repeatCustomer.needs_human_review, false);
+
+    for (const returnText of [
+        'I need to return to order the right size.',
+        'I would like to return for another size.',
+    ]) {
+        api.AI.run = async () => ({
+            detected_language: 'en',
+            sentiment: 'negative',
+            risk_level: 'high',
+            response_strategy: 'service_recovery',
+            grounding_detail: returnText.slice(2, -1),
+            topics: ['iade'],
+            summary_tr: 'Müşteri ürünü iade etmek istiyor.',
+            private_reply: 'We are sorry this did not work out and understand that you need to return it.',
+            public_reply: 'We are sorry it was not the right fit and understand the return concern.',
+            needs_human_review: true,
+        });
+        const actualReturn = await api.AI.analyzeReview({
+            customerName: 'Jamie', rating: 5, text: returnText, itemTitle: 'Sweater',
+        });
+        assert.equal(actualReturn.risk_level, 'high');
+        assert.equal(actualReturn.response_strategy, 'service_recovery');
+        assert.equal(actualReturn.needs_human_review, true);
+    }
+
+    for (const benignRefundText of [
+        "I don't think I will need a refund; the color is lovely.",
+        'Refund? No, I love it. The color is lovely.',
+        'Lately I have loved it; the color is lovely.',
+    ]) {
+        api.AI.run = async () => ({
+            detected_language: 'en',
+            sentiment: 'positive',
+            risk_level: 'low',
+            response_strategy: 'warm_thanks',
+            grounding_detail: 'color is lovely',
+            topics: ['renk'],
+            summary_tr: 'Müşteri rengi beğeniyor.',
+            private_reply: 'Thank you! We are delighted that the color is lovely.',
+            public_reply: 'We are so glad you found the color lovely. Thank you!',
+            needs_human_review: false,
+        });
+        const benignRefund = await api.AI.analyzeReview({
+            customerName: 'Quinn', rating: 5, text: benignRefundText, itemTitle: 'Scarf',
+        });
+        assert.equal(benignRefund.risk_level, 'low');
+        assert.equal(benignRefund.needs_human_review, false);
+    }
+
+    api.AI.run = async () => ({
+        detected_language: 'en',
+        sentiment: 'positive',
+        risk_level: 'low',
+        response_strategy: 'warm_thanks',
+        grounding_detail: 'arrived perfectly',
+        topics: ['teslimat'],
+        summary_tr: 'Müşteri ürünün sorunsuz ulaştığını söylüyor.',
+        private_reply: 'Thank you! We are so glad everything arrived perfectly.',
+        public_reply: 'We are delighted it arrived perfectly. Thank you for sharing!',
+        needs_human_review: false,
+    });
+    const nothingBroken = await api.AI.analyzeReview({
+        customerName: 'Riley',
+        rating: 5,
+        text: 'Nothing was broken; it arrived perfectly.',
+        itemTitle: 'Glass Ornament',
+    });
+    assert.equal(nothingBroken.risk_level, 'low');
+    assert.equal(nothingBroken.needs_human_review, false);
+
+    api.AI.run = async () => ({
+        detected_language: 'en',
+        sentiment: 'positive',
+        risk_level: 'low',
+        response_strategy: 'warm_thanks',
+        grounding_detail: 'color is lovely',
+        topics: ['renk'],
+        summary_tr: 'Müşteri yanlış alarmdan sonra rengi beğendiğini söylüyor.',
+        private_reply: 'Thank you! We are happy that you found the color lovely.',
+        public_reply: 'We are so glad the color is lovely. Thank you for sharing!',
+        needs_human_review: false,
+    });
+    const correctedBrokenStatement = await api.AI.analyzeReview({
+        customerName: 'Avery',
+        rating: 5,
+        text: "I thought it was broken, but it wasn't; the color is lovely.",
+        itemTitle: 'Wooden Box',
+    });
+    assert.equal(correctedBrokenStatement.risk_level, 'low');
+    assert.equal(correctedBrokenStatement.needs_human_review, false);
+
+    for (const [reviewText, groundingDetail, issueWord] of [
+        ['The candle caused a fire and burned my hand.', 'caused a fire', 'fire'],
+        ['This gave my baby a rash.', 'gave my baby a rash', 'rash'],
+        ['The seller threatened me.', 'seller threatened me', 'threatened'],
+        ['The item appears counterfeit.', 'appears counterfeit', 'counterfeit'],
+    ]) {
+        api.AI.run = async () => ({
+            detected_language: 'en',
+            sentiment: 'negative',
+            risk_level: 'low',
+            response_strategy: 'warm_thanks',
+            grounding_detail: groundingDetail,
+            topics: ['risk'],
+            summary_tr: 'Müşteri ciddi ve insan incelemesi gerektiren bir sorun bildiriyor.',
+            private_reply: `We are very sorry about the ${issueWord} concern and appreciate you telling us.`,
+            public_reply: `We are sorry about the ${issueWord} concern. Thank you for bringing it to our attention.`,
+            needs_human_review: false,
+        });
+        const seriousRisk = await api.AI.analyzeReview({
+            customerName: 'Parker', rating: 5, text: reviewText, itemTitle: 'Handmade Item',
+        });
+        assert.equal(seriousRisk.risk_level, 'high');
+        assert.equal(seriousRisk.response_strategy, 'service_recovery');
+        assert.equal(seriousRisk.needs_human_review, true);
+    }
+
+    api.AI.run = async () => ({
+        detected_language: 'en',
+        sentiment: 'positive',
+        risk_level: 'low',
+        response_strategy: 'balanced_thanks',
+        grounding_detail: 'delivery was late',
+        topics: ['teslimat'],
+        summary_tr: 'Müşteri teslimatın geciktiğini ancak dikişi beğendiğini söylüyor.',
+        private_reply: 'We are sorry the delivery was late, and we appreciate your patience.',
+        public_reply: 'We are sorry the delivery was late. Thank you for your patience.',
+        needs_human_review: false,
+    });
+    const delayedFourStar = await api.AI.analyzeReview({
+        customerName: 'Drew', rating: 4,
+        text: 'The stitching is beautiful, though the delivery was late.', itemTitle: 'Linen Top',
+    });
+    assert.equal(delayedFourStar.risk_level, 'medium');
+    assert.equal(delayedFourStar.response_strategy, 'service_recovery');
+    assert.equal(delayedFourStar.needs_human_review, true);
+});
+
+test('review scanning parses Turkish "5 üzerinden 4" labels and retains a textless five-star review', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const makeCard = ({ id, eventText, customerName, itemTitle, ratingLabel, text }) => {
+        const reviewLink = { href: `https://www.etsy.com/reviews/${id}` };
+        const customer = { textContent: customerName };
+        const item = { textContent: itemTitle };
+        const rating = {
+            textContent: '',
+            getAttribute(name) { return name === 'aria-label' ? ratingLabel : null; },
+        };
+        const reviewText = text ? { textContent: text } : null;
+        return {
+            textContent: eventText,
+            querySelector(selector) {
+                if (selector === 'a[href*="/reviews/"]') return reviewLink;
+                if (selector === 'h4 a[href*="/people/"]' || selector === 'h4 a') return customer;
+                if (selector === 'p.wt-mb-xs-2.wt-text-body-small') return item;
+                if (selector === '[aria-label^="Rating:" i]') return /^Rating:/i.test(ratingLabel) ? rating : null;
+                if (selector === '[aria-label*=" out of 5" i]') return / out of 5/i.test(ratingLabel) ? rating : null;
+                if (selector === '[aria-label*=" üzerinden " i]') return / üzerinden /i.test(ratingLabel) ? rating : null;
+                if (selector === '[aria-label*="yıldız" i]') return /yıldız/i.test(ratingLabel) ? rating : null;
+                if (selector === '[data-rating]') return null;
+                if (selector === '.wt-p-xs-2.wt-b-xs p.wt-mt-xs-1, .wt-p-xs-2.wt-b-xs .wt-text-body-small') return reviewText;
+                if (selector === '[data-review-text], blockquote') return reviewText;
+                if (selector === 'img') return null;
+                return null;
+            },
+            querySelectorAll(selector) {
+                if (selector === '[aria-label], [data-rating]') return [rating];
+                return [];
+            },
+        };
+    };
+    const cards = [
+        makeCard({
+            id: '400001',
+            eventText: 'Ayşe yorumunu bıraktı',
+            customerName: 'Ayşe',
+            itemTitle: 'Keten Gömlek',
+            ratingLabel: '5 üzerinden 4',
+            text: 'Dikişleri çok güzel.',
+        }),
+        makeCard({
+            id: '500001',
+            eventText: 'Morgan left a review',
+            customerName: 'Morgan',
+            itemTitle: 'Ceramic Mug',
+            ratingLabel: 'Rating: 5 out of 5',
+            text: '',
+        }),
+        makeCard({
+            id: '400002',
+            eventText: 'Robin left a review',
+            customerName: 'Robin',
+            itemTitle: 'Wooden Tray',
+            ratingLabel: '4 out of 5',
+            text: '',
+        }),
+        makeCard({
+            id: 'counter-only',
+            eventText: 'Alex left a review',
+            customerName: 'Alex',
+            itemTitle: 'Photo Frame',
+            ratingLabel: '2',
+            text: '',
+        }),
+    ];
+    sandbox.document.querySelectorAll = selector => selector === '.dashboard-activity-item' ? cards : [];
+
+    assert.equal(api.ReviewsAdapter.ratingFromText('5 üzerinden 4'), 4);
+    const reviews = api.ReviewsAdapter.scan();
+    assert.equal(reviews.length, 3);
+    assert.equal(reviews[0].rating, 4);
+    assert.equal(reviews[0].text, 'Dikişleri çok güzel.');
+    assert.equal(reviews[1].rating, 5);
+    assert.equal(reviews[1].text, '');
+    assert.equal(reviews[2].rating, 4);
+    assert.equal(reviews[2].text, '');
+    assert.equal(api.ReviewsAdapter.ratingFromCard(cards[3]), null, 'an unrelated bare ARIA counter must not become a review rating');
+});
+
+test('changing only a review rating invalidates its old work binding and analysis', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/your/shops/me/dashboard/activity';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/dashboard/activity';
+    const original = {
+        id: 'review-rating-change',
+        customerName: 'Ashley',
+        itemTitle: 'Custom Shirt',
+        rating: 5,
+        text: 'Beautiful stitching.',
+    };
+    api.UI.state.reviews = [original];
+    api.UI.state.selectedReviewId = original.id;
+    const binding = api.UI.beginReviewWork(original);
+    api.UI.state.reviewAnalysisBinding = binding;
+    api.UI.state.reviewAnalysis = {
+        summary_tr: 'Old five-star analysis',
+        private_reply: 'Old private five-star reply',
+        public_reply: 'Old public five-star reply',
+    };
+    assert.equal(api.UI.reviewAnalysisIsCurrent(original), true);
+
+    const changed = { ...original, rating: 4 };
+    api.UI.state.reviews = [changed];
+    assert.equal(api.UI.reviewWorkIsCurrent(binding), false);
+    assert.equal(api.UI.reviewAnalysisIsCurrent(changed), false);
+    await assert.rejects(api.UI.copySource('review-private'), /Yorum veya puan değişti|Eski cevap kopyalanmadı/i);
+
+    api.UI.state.reviews = [original];
+    api.ReviewsAdapter.scan = () => [changed];
+    api.UI.refreshReviews();
+    assert.equal(api.UI.state.selectedReviewId, original.id);
+    assert.equal(api.UI.state.reviews[0].rating, 4);
+    assert.equal(api.UI.state.reviewAnalysis, null);
+    assert.equal(api.UI.state.reviewAnalysisBinding, null);
+});
+
+test('public review insertion re-reads the live card and rejects a rating change before opening Etsy reply UI', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/your/shops/me/dashboard/activity';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/dashboard/activity';
+    let ratingLabel = 'Rating: 5 out of 5';
+    let clickCount = 0;
+    const ratingNode = {
+        textContent: '',
+        getAttribute(name) { return name === 'aria-label' ? ratingLabel : null; },
+    };
+    const publicButton = {
+        textContent: 'Public response',
+        getAttribute: () => '',
+        click() { clickCount += 1; },
+    };
+    const card = {
+        isConnected: true,
+        textContent: 'Ashley left a review',
+        contains: () => false,
+        querySelector(selector) {
+            if (selector === 'a[href*="/reviews/"]') return { href: 'https://www.etsy.com/reviews/987654' };
+            if (selector === 'h4 a[href*="/people/"]' || selector === 'h4 a') return { textContent: 'Ashley' };
+            if (selector === 'p.wt-mb-xs-2.wt-text-body-small') return { textContent: 'Custom Shirt' };
+            if (selector === '[aria-label^="Rating:" i]' || selector === '[aria-label*="star" i]') return ratingNode;
+            if (selector === '.wt-p-xs-2.wt-b-xs p.wt-mt-xs-1, .wt-p-xs-2.wt-b-xs .wt-text-body-small') return { textContent: 'Beautiful stitching.' };
+            if (selector === 'img' || selector === '[data-rating]') return null;
+            return null;
+        },
+        querySelectorAll(selector) {
+            if (selector === '[aria-label], [data-rating]') return [ratingNode];
+            if (selector === 'button') return [publicButton];
+            if (selector === 'textarea') return [];
+            return [];
+        },
+    };
+    const review = api.ReviewsAdapter.fromCard(card, 0);
+    api.UI.state.reviews = [review];
+    api.UI.state.selectedReviewId = review.id;
+    api.UI.state.reviewAnalysisBinding = api.UI.beginReviewWork(review);
+    api.UI.state.reviewAnalysis = { public_reply: 'Thank you for the beautiful stitching!' };
+
+    ratingLabel = 'Rating: 4 out of 5';
+    await assert.rejects(api.UI.insertReviewPublic(), /Yorum veya sayfa değişti|güncel yorum/i);
+    assert.equal(clickCount, 0);
+});
+
+test('positive review UI uses thank-you labels for both four-star text and textless five-star feedback', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/your/shops/me/dashboard/activity';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/dashboard/activity';
+
+    for (const review of [
+        {
+            id: 'review-positive-four', customerName: 'Ashley', itemTitle: 'Custom Shirt',
+            rating: 4, text: 'Beautiful stitching.', publicButton: {},
+        },
+        {
+            id: 'review-positive-five', customerName: 'Morgan', itemTitle: 'Ceramic Mug',
+            rating: 5, text: '', publicButton: null,
+        },
+    ]) {
+        api.UI.state.reviews = [review];
+        api.UI.state.selectedReviewId = review.id;
+        api.UI.state.reviewAnalysis = null;
+        api.UI.state.reviewAnalysisBinding = null;
+        const markup = api.UI.renderReviews();
+        assert.match(markup, /AI ile Sevimli Teşekkür Hazırla/);
+        assert.match(markup, /Müşteriye Gönderilecek Teşekkür Mesajı/);
+        assert.match(markup, /data-copy-source="review-private"[^>]*>.*Mesajı Kopyala/s);
+        assert.match(markup, /AI, yorumu ve yıldız puanını birlikte değerlendirir/);
+    }
+
+    const textless = api.UI.state.reviews[0];
+    assert.equal(textless.rating, 5);
+    const textlessMarkup = api.UI.renderReviews();
+    assert.match(textlessMarkup, /Yalnızca yıldız puanı bırakıldı\./);
+    assert.match(textlessMarkup, /Teşekkür/);
+    assert.match(textlessMarkup, /data-action="review-translate" disabled/);
+    assert.match(textlessMarkup, /public cevap alanı güvenle doğrulanamadı/);
+
+    const riskyHighRating = {
+        id: 'review-risky-five', customerName: 'Riley', itemTitle: 'Ceramic Mug',
+        rating: 5, text: 'It arrived broken and I need a refund.', publicButton: {},
+    };
+    api.UI.state.reviews = [riskyHighRating];
+    api.UI.state.selectedReviewId = riskyHighRating.id;
+    const riskyMarkup = api.UI.renderReviews();
+    assert.doesNotMatch(riskyMarkup, /Sevimli Teşekkür/);
+    assert.match(riskyMarkup, /AI Analiz ve Çözüm Taslağı Hazırla/);
+    assert.match(riskyMarkup, /Müşteriye Gönderilecek Çözüm Mesajı/);
+});
+
 test('busy state exposes status and aria-busy while leaving the header close control interactive', async () => {
     const { api } = await loadAssistant();
     const classes = new Set();
@@ -3531,6 +4252,437 @@ test('message adapter and UI translation paths preserve trimmed multiline custom
     await api.UI.translateLast();
 
     assert.deepEqual(copy(translatedTexts), [expected, expected]);
+});
+
+test('AI reply layout uses real paragraph breaks and preserves existing multiline structure', async () => {
+    const { api } = await loadAssistant();
+    const prompt = api.Prompt.system('reply', { preferences: { target_language: 'en' } });
+
+    assert.match(prompt, /tek satır.*yazma/i);
+    assert.match(prompt, /gerçek \\n\\n satır sonları/i);
+    assert.match(api.Prompt.replySchema().properties.reply.description, /satır sonları/i);
+    assert.equal(
+        api.formatGeneratedMessage('Hi Ashley, Thank you for your message. I can help with that.'),
+        'Hi Ashley,\n\nThank you for your message.\n\nI can help with that.',
+    );
+    assert.equal(
+        api.formatGeneratedMessage('Hi Ashley,\\n\\nThank you for your message.\r\n\r\nBest,\r\nMakaytron'),
+        'Hi Ashley,\n\nThank you for your message.\n\nBest,\nMakaytron',
+    );
+    assert.equal(
+        api.formatGeneratedMessage('Please keep C:\\new and print("\\n") exactly as written.'),
+        'Please keep C:\\new and print("\\n") exactly as written.',
+        'a lone literal backslash-n in user content must not be rewritten',
+    );
+});
+
+test('normal message output exposes one verified customer-send action and dispatches it once', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/customer-send';
+    sandbox.location.href = 'https://www.etsy.com/messages/customer-send';
+    const context = {
+        conversationId: api.Router.conversationId(),
+        routeFingerprint: api.Router.routeFingerprint(),
+        customerName: 'Ashley',
+        customerAvatar: '',
+        orderId: '',
+        itemTitle: '',
+        lastCustomerMessage: 'Could you help me?',
+        messages: [{ id: 'incoming', role: 'customer', text: 'Could you help me?' }],
+    };
+    const textarea = { value: 'Hi Ashley,\n\nOf course I can help.' };
+    const button = {};
+    const binding = {
+        conversationId: context.conversationId,
+        routeFingerprint: context.routeFingerprint,
+        messageHash: 'current',
+    };
+    api.MessageAdapter.context = () => context;
+    api.MessageAdapter.getTextarea = () => textarea;
+    api.MessageAdapter.getSendButton = () => button;
+    api.Campaign.current = () => null;
+    api.Campaign.unresolvedSendItem = () => null;
+    api.UI.toast = () => {};
+    api.UI.replyIsCurrent = candidate => candidate === binding;
+    api.UI.state.context = context;
+    api.UI.state.reply = textarea.value;
+    api.UI.state.replyBinding = binding;
+    api.UI.state.analysis = api.Heuristics.analyze(context.lastCustomerMessage);
+
+    const markup = api.UI.renderMessages();
+    assert.match(markup, /data-action="send-reply"[^>]*data-real-send-action="1"/);
+    assert.match(markup, />Müşteriye Gönder<\/button>/);
+    assert.doesNotMatch(markup, /data-action="insert-reply"/);
+    assert.equal((markup.match(/data-real-send-action="1"/g) || []).length, 1);
+
+    let insertCalls = 0;
+    let dispatchCalls = 0;
+    let releaseDispatch;
+    const dispatchGate = new Promise(resolve => { releaseDispatch = resolve; });
+    api.UI.insertReply = async ({ notify, prepareVerification, persistInserted, logInsertion }) => {
+        insertCalls += 1;
+        assert.equal(notify, false);
+        assert.equal(prepareVerification, false);
+        assert.equal(persistInserted, false);
+        assert.equal(logInsertion, false);
+        return { textarea };
+    };
+    api.MessageAdapter.waitForSendButton = async () => button;
+    const guard = { token: 'customer-send-guard' };
+    api.Verification.beginNativeDispatchGuard = () => guard;
+    api.Verification.dispatchNativeSend = async (actualButton, actualGuard, options) => {
+        dispatchCalls += 1;
+        assert.equal(actualButton, null);
+        assert.equal(actualGuard, null);
+        assert.equal(options.expectedConversationIdentity, api.Router.conversationIdentity());
+        assert.equal(options.prepareMeta.conversationId, context.conversationId);
+        assert.match(options.prepareMeta.verificationId, /^reply-send-/);
+        const prepared = await options.prepareDispatch();
+        assert.equal(prepared.button, button);
+        assert.equal(prepared.guard, guard);
+        assert.equal(prepared.verifyCaptured, false);
+        await dispatchGate;
+        return true;
+    };
+    let releases = 0;
+    api.Verification.releaseNativeDispatchGuard = actualGuard => {
+        if (!actualGuard) return;
+        assert.equal(actualGuard, guard);
+        releases += 1;
+    };
+
+    const first = api.UI.sendReplyToCustomer();
+    const second = api.UI.sendReplyToCustomer();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(insertCalls, 1);
+    assert.equal(dispatchCalls, 1);
+    releaseDispatch();
+    assert.equal(await first, true);
+    assert.equal(await second, true);
+    assert.equal(releases, 1);
+    assert.equal(api.UI.state.replyBinding, null, 'a verified reply is consumed and cannot be dispatched again');
+    await assert.rejects(api.UI.sendReplyToCustomer(), /güncel konuşmayla eşleşmiyor/i);
+    assert.equal(dispatchCalls, 1, 'a sequential click after verified send must not dispatch again');
+});
+
+test('normal customer-send preflight rejects every existing owner before composer mutation', async () => {
+    const scenarios = [
+        {
+            name: 'local verification',
+            arrange(api) { api.Verification.pending = { verificationToken: 1 }; },
+        },
+        {
+            name: 'Message Center hold',
+            arrange(api) { api.MessageCenterAgent.activeSendHold = async () => ({ id: 'mc-hold' }); },
+        },
+        {
+            name: 'campaign owner',
+            arrange(api) {
+                api.MessageCenterAgent.activeSendHold = async () => null;
+                api.Campaign.persistedSendOwnership = async () => ({ id: 'campaign-hold' });
+            },
+        },
+        {
+            name: 'native outcome hold',
+            arrange(api) {
+                api.MessageCenterAgent.activeSendHold = async () => null;
+                api.Campaign.persistedSendOwnership = async () => null;
+                api.Verification.activeNativeSendHold = async () => ({ id: 'native-hold' });
+            },
+        },
+    ];
+
+    for (const scenario of scenarios) {
+        const { api, sandbox } = await loadAssistant();
+        sandbox.location.pathname = '/messages/preflight-owner';
+        sandbox.location.href = 'https://www.etsy.com/messages/preflight-owner';
+        api.MessageCenterAgent.activeSendHold = async () => null;
+        api.Campaign.persistedSendOwnership = async () => null;
+        api.Verification.activeNativeSendHold = async () => null;
+        api.UI.toast = () => {};
+        scenario.arrange(api);
+        let composerMutations = 0;
+        const result = await api.Verification.dispatchNativeSend(null, null, {
+            expectedConversationIdentity: api.Router.conversationIdentity(),
+            prepareDispatch: async () => {
+                composerMutations += 1;
+                return null;
+            },
+        });
+        assert.equal(result, false, scenario.name);
+        assert.equal(composerMutations, 0, `${scenario.name} must fail before the composer callback`);
+    }
+});
+
+test('message entries collapse nested Etsy selectors and inline-translate customer and seller siblings', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/inline-translation';
+    sandbox.location.href = 'https://www.etsy.com/messages/inline-translation';
+
+    const row = { className: 'wt-grid' };
+    const makeContainer = (id, direction, text, className = '') => {
+        const inner = {
+            id: '', className: '', innerText: text, textContent: text,
+            closest: selector => selector === '[data-message-id]' ? container : selector === '.wt-grid' ? row : null,
+        };
+        const container = {
+            id: '', className, innerText: '', textContent: '',
+            matches: selector => selector === '[data-message-text]' ? false : selector === '.message-bubble',
+            querySelector: selector => selector === '[data-message-text]' ? inner : null,
+            querySelectorAll: selector => selector === '[data-message-text]' ? [inner] : [],
+            closest: selector => {
+                if (selector === '[data-message-id]') return container;
+                if (selector === '.wt-grid') return row;
+                if (selector.includes('[data-message-direction]')) return container;
+                return null;
+            },
+            getAttribute: name => name === 'data-message-id' ? id : name === 'data-message-direction' ? direction : '',
+        };
+        return { container, inner };
+    };
+    const incoming = makeContainer('etsy-message-17', 'incoming', 'Hello there.');
+    const outerIncoming = {
+        className: 'message-bubble',
+        closest: selector => selector === '.wt-grid' ? row : null,
+        querySelectorAll: selector => selector === '[data-message-id]' ? [incoming.container] : [],
+    };
+    const legacySeller = makeContainer('etsy-message-18', '', 'Seller answer.', 'message-bubble surface-informational-subtle');
+    const scopeForEntries = {
+        querySelectorAll: selector => selector === api.MessageAdapter.bubbleSelector
+            ? [outerIncoming, incoming.inner, legacySeller.inner]
+            : [],
+    };
+    const descriptors = api.MessageAdapter.getMessageEntries(scopeForEntries);
+    assert.equal(descriptors.length, 2);
+    assert.equal(descriptors[0].id, 'etsy-message-17');
+    assert.equal(descriptors[0].role, 'customer');
+    assert.equal(descriptors[0].text, 'Hello there.');
+    assert.equal(descriptors[0].container, incoming.container);
+    assert.equal(descriptors[1].id, 'etsy-message-18');
+    assert.equal(descriptors[1].role, 'seller', 'a legacy outgoing class on the canonical container must be retained');
+
+    let multipartContainer;
+    const nestedFragment = {
+        className: '', innerText: 'nested detail.', textContent: 'nested detail.', parentElement: null,
+        closest: selector => selector === '[data-message-id]' ? multipartContainer : selector === '.wt-grid' ? row : null,
+    };
+    const firstFragment = {
+        className: '', innerText: 'First paragraph with nested detail.', textContent: 'First paragraph with nested detail.',
+        parentElement: null,
+        contains: node => node === nestedFragment,
+        closest: selector => selector === '[data-message-id]' ? multipartContainer : selector === '.wt-grid' ? row : null,
+    };
+    const secondFragment = {
+        className: '', innerText: 'Second paragraph.', textContent: 'Second paragraph.', parentElement: null,
+        closest: selector => selector === '[data-message-id]' ? multipartContainer : selector === '.wt-grid' ? row : null,
+    };
+    multipartContainer = {
+        id: '', className: '', innerText: '', textContent: '',
+        matches: selector => selector === '[data-message-text]' ? false : selector === '.message-bubble',
+        querySelector: selector => selector === '[data-message-text]' ? firstFragment : null,
+        querySelectorAll: selector => selector === '[data-message-text]'
+            ? [firstFragment, nestedFragment, secondFragment]
+            : [],
+        closest: selector => {
+            if (selector === '[data-message-id]') return multipartContainer;
+            if (selector === '.wt-grid') return row;
+            if (selector.includes('[data-message-direction]')) return multipartContainer;
+            return null;
+        },
+        getAttribute: name => name === 'data-message-id' ? 'etsy-message-multipart' : name === 'data-message-direction' ? 'incoming' : '',
+    };
+    firstFragment.parentElement = multipartContainer;
+    nestedFragment.parentElement = firstFragment;
+    secondFragment.parentElement = multipartContainer;
+    const multipartScope = {
+        querySelectorAll: selector => selector === api.MessageAdapter.bubbleSelector
+            ? [firstFragment, nestedFragment, secondFragment]
+            : [],
+    };
+    const multipartEntries = api.MessageAdapter.getMessageEntries(multipartScope);
+    assert.equal(multipartEntries.length, 1);
+    assert.equal(multipartEntries[0].text, 'First paragraph with nested detail.\n\nSecond paragraph.');
+
+    const createdNodes = [];
+    const createNode = () => {
+        const attributes = new Map();
+        const node = {
+            nodeType: 1,
+            className: '',
+            textContent: '',
+            children: [],
+            parentNode: null,
+            isConnected: true,
+            setAttribute(name, value) { attributes.set(name, String(value)); },
+            getAttribute(name) { return attributes.get(name) || ''; },
+            append(...children) { this.children.push(...children); for (const child of children) child.parentNode = this; },
+            appendChild(child) { this.append(child); },
+            matches(selector) { return selector === '[data-mema-conversation-translation]' && attributes.has('data-mema-conversation-translation'); },
+            closest(selector) { return this.matches(selector) ? this : this.parentNode?.closest?.(selector) || null; },
+            remove() {
+                this.isConnected = false;
+                if (this.parentNode?.children) this.parentNode.children = this.parentNode.children.filter(child => child !== this);
+                this.parentNode = null;
+            },
+        };
+        createdNodes.push(node);
+        return node;
+    };
+    sandbox.document.createElement = createNode;
+    const makeSource = id => {
+        const parent = {
+            children: [],
+            insertBefore(node, reference) {
+                const index = reference ? this.children.indexOf(reference) : -1;
+                if (index < 0) this.children.push(node); else this.children.splice(index, 0, node);
+                node.parentNode = this;
+                node.isConnected = true;
+            },
+            removeChild(node) { node.remove(); },
+        };
+        const source = { id, nodeType: 1, isConnected: true, parentNode: parent, parentElement: parent, nextSibling: null };
+        parent.children.push(source);
+        return source;
+    };
+    const firstSource = makeSource('first');
+    const secondSource = makeSource('second');
+    const sellerSource = makeSource('seller');
+    const entries = [
+        { id: 'first', role: 'customer', text: 'Same incoming text.', bubble: firstSource, container: firstSource, anchor: firstSource },
+        { id: 'second', role: 'customer', text: 'Same incoming text.', bubble: secondSource, container: secondSource, anchor: secondSource },
+        { id: 'seller', role: 'seller', text: 'Same incoming text.', bubble: sellerSource, container: sellerSource, anchor: sellerSource },
+    ];
+    const scope = { isConnected: true };
+    api.MessageAdapter.getConversationScope = () => scope;
+    api.MessageAdapter.getMessageEntries = () => entries;
+    api.MessageAdapter.getMessages = () => entries.map(({ id, role, text }) => ({ id, role, text }));
+    api.MessageAdapter.getTextarea = () => ({});
+    api.Store.settings.autoTurkishPreview = true;
+    api.Store.settings.translator = 'google';
+    api.ConversationTranslations.clear();
+    let translationCalls = 0;
+    api.Translator.translate = async (text, target, options) => {
+        translationCalls += 1;
+        assert.equal(text, 'Same incoming text.');
+        assert.equal(target, 'tr');
+        assert.equal(options.logHistory, false);
+        return { text: '<img onerror=alert(1)> Türkçe metin', detectedLanguage: 'en', provider: api.Store.settings.translator };
+    };
+
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(translationCalls, 1, 'identical customer and seller messages should share one provider request');
+    assert.equal(api.ConversationTranslations.records.size, 3, 'each customer and seller bubble needs its own sibling');
+    assert.ok(api.ConversationTranslations.records.has(sellerSource), 'the seller-authored message must also receive a Turkish translation record');
+    for (const record of api.ConversationTranslations.records.values()) {
+        assert.equal(record.state, 'translated');
+        assert.equal(record.body.textContent, '<img onerror=alert(1)> Türkçe metin');
+        assert.equal(record.node.parentNode, record.sourceNode.parentNode);
+        assert.notEqual(record.node.parentNode, record.sourceNode, 'translation must never be inserted inside the source bubble');
+    }
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(translationCalls, 1, 'a second refresh must reuse the completed inline translation');
+    assert.equal(entries[0].text, 'Same incoming text.');
+
+    const removedRecord = api.ConversationTranslations.records.get(firstSource);
+    const removedNode = removedRecord.node;
+    removedNode.remove();
+    assert.equal(api.ConversationTranslations.mutationIsOwned({
+        type: 'childList', target: firstSource.parentNode, addedNodes: [], removedNodes: [removedNode],
+    }), false, 'unexpected removal of an owned sibling must trigger a repair scan');
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(translationCalls, 2);
+    assert.notEqual(api.ConversationTranslations.records.get(firstSource).node, removedNode);
+    assert.equal(api.ConversationTranslations.records.get(firstSource).node.isConnected, true);
+
+    const recordBeforeMove = api.ConversationTranslations.records.get(firstSource);
+    const oldParent = firstSource.parentNode;
+    const movedParent = {
+        children: [],
+        insertBefore(node, reference) {
+            const index = reference ? this.children.indexOf(reference) : -1;
+            if (index < 0) this.children.push(node); else this.children.splice(index, 0, node);
+            node.parentNode = this;
+            node.isConnected = true;
+        },
+        removeChild(node) { node.remove(); },
+    };
+    oldParent.children = oldParent.children.filter(child => child !== firstSource);
+    movedParent.children.push(firstSource);
+    firstSource.parentNode = movedParent;
+    firstSource.parentElement = movedParent;
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(translationCalls, 3);
+    const recordAfterMove = api.ConversationTranslations.records.get(firstSource);
+    assert.notEqual(recordAfterMove.node, recordBeforeMove.node);
+    assert.equal(recordBeforeMove.node.isConnected, false);
+    assert.deepEqual(movedParent.children.slice(0, 2), [firstSource, recordAfterMove.node]);
+
+    const recordBeforeBodyRemoval = api.ConversationTranslations.records.get(secondSource);
+    const removedBody = recordBeforeBodyRemoval.body;
+    removedBody.remove();
+    assert.equal(api.ConversationTranslations.mutationIsOwned({
+        type: 'childList', target: recordBeforeBodyRemoval.node, addedNodes: [], removedNodes: [removedBody],
+    }), false, 'removing the owned record body must trigger a repair scan');
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(translationCalls, 4);
+    const recordAfterBodyRemoval = api.ConversationTranslations.records.get(secondSource);
+    assert.notEqual(recordAfterBodyRemoval.node, recordBeforeBodyRemoval.node);
+    assert.notEqual(recordAfterBodyRemoval.body, removedBody);
+    assert.equal(recordAfterBodyRemoval.body.parentNode, recordAfterBodyRemoval.node);
+
+    api.Store.settings.translator = 'deepl';
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(translationCalls, 5, 'provider policy changes must rebuild all three siblings with one deduplicated request');
+    assert.ok([...api.ConversationTranslations.records.values()].every(record => record.policy.includes('deepl')));
+
+    const turkishSellerSource = makeSource('seller-tr');
+    entries.push({
+        id: 'seller-tr', role: 'seller', text: 'Teşekkür ederim.',
+        bubble: turkishSellerSource, container: turkishSellerSource, anchor: turkishSellerSource,
+    });
+    let turkishDetectionCalls = 0;
+    api.Translator.translate = async (text, target, options) => {
+        turkishDetectionCalls += 1;
+        assert.equal(text, 'Teşekkür ederim.');
+        assert.equal(target, 'tr');
+        assert.equal(options.logHistory, false);
+        return { text, detectedLanguage: 'tr', provider: 'deepl' };
+    };
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    const turkishSellerRecord = api.ConversationTranslations.records.get(turkishSellerSource);
+    assert.equal(turkishSellerRecord.state, 'source-tr');
+    assert.equal(turkishSellerRecord.node, null, 'an already-Turkish seller message needs no redundant note');
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(turkishDetectionCalls, 1, 'the Turkish source sentinel prevents repeat provider requests');
+
+    api.Store.settings.autoTurkishPreview = false;
+    assert.equal(await api.ConversationTranslations.refresh(), false);
+    assert.equal(api.ConversationTranslations.records.size, 0);
+    assert.ok(createdNodes.filter(node => node.getAttribute('data-mema-conversation-translation')).every(node => node.isConnected === false));
+});
+
+test('translator shares an in-flight exact request without merging distinct source text', async () => {
+    const { api } = await loadAssistant();
+    api.Store.settings.translator = 'google';
+    let requests = 0;
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    api.Translator.google = async text => {
+        requests += 1;
+        await gate;
+        return { text: `TR:${text}`, detectedLanguage: 'en', provider: 'google' };
+    };
+
+    const first = api.Translator.translate('Exact shared text', 'tr', { logHistory: false });
+    const second = api.Translator.translate('Exact shared text', 'tr', { logHistory: false });
+    const distinct = api.Translator.translate('Exact shared text🙂', 'tr', { logHistory: false });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(requests, 2);
+    release();
+    assert.equal((await first).text, 'TR:Exact shared text');
+    assert.equal((await second).text, 'TR:Exact shared text');
+    assert.equal((await distinct).text, 'TR:Exact shared text🙂');
+    assert.equal(api.Translator.inflight.size, 0);
 });
 
 test('manual target language survives detection when automatic customer-language replies are disabled', async () => {

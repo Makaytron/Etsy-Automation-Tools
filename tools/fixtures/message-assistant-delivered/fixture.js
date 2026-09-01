@@ -28,6 +28,7 @@
     const storage = new Map();
     const valueListeners = new Map();
     const networkAttempts = [];
+    const translationRequests = [];
     const shortcutEvents = [];
     const submitIntents = [];
     const sendClickIntents = [];
@@ -239,7 +240,7 @@
         else await appendMismatchedOutgoing(text);
     }
 
-    function renderConversation({ thread = false, incoming = false } = {}) {
+    function renderConversation({ thread = false, incoming = false, existingOutgoing = false } = {}) {
         route = 'messages';
         routeUrl = thread ? THREAD_URL : MESSAGE_URL;
         const effectiveBuyerName = thread ? transitionBuyerName : BUYER_NAME;
@@ -259,6 +260,7 @@
               <div id="fixture-order-context" ${delayOrderContext ? 'aria-busy="true"' : ''}>${delayOrderContext ? '' : orderContextMarkup}</div>
               <a href="https://www.etsy.com/transaction/30000003" title="Fixture Item">Fixture Item</a>
               ${incoming ? `<div class="wt-grid"><div data-message-direction="incoming" data-message-id="fixture-incoming-1"><span data-message-text>Hello from the fixture buyer.</span></div></div>` : ''}
+              ${existingOutgoing ? `<div class="wt-grid"><div data-message-direction="outgoing" data-message-id="fixture-outgoing-1"><span data-message-text>Our fixture reply.</span></div></div>` : ''}
               <div class="fixture-composer">
                 <form id="fixture-message-form">
                   <label for="fixture-message">Reply</label>
@@ -895,6 +897,80 @@
         }
     }
 
+    async function runInlineTranslationScenario() {
+        renderConversation({ thread: true, incoming: true, existingOutgoing: true });
+        const originalContext = api.MessageAdapter.context();
+        await api.App.onRoute();
+        const translations = await waitUntil(() => {
+            const nodes = [...document.querySelectorAll('[data-mema-conversation-translation][data-state="translated"]')];
+            return nodes.length === 2 && nodes.every(node => node.querySelector('.mema-inline-translation__text')?.textContent)
+                ? nodes
+                : null;
+        }, 'customer and seller inline Turkish translations', 5000);
+        const translatedContext = api.MessageAdapter.context();
+        const translatedRows = translations.map((translation) => ({
+            messageId: translation.previousElementSibling?.querySelector('[data-message-id]')?.getAttribute('data-message-id') || '',
+            text: translation.querySelector('.mema-inline-translation__text')?.textContent || '',
+        }));
+        const result = {
+            translationCount: document.querySelectorAll('[data-mema-conversation-translation]').length,
+            translatedRows,
+            originalMessages: originalContext.messages,
+            translatedMessages: translatedContext.messages,
+            translationRequests: copy(translationRequests),
+        };
+        assertFixture(result.translationCount === 2, 'customer and seller messages each receive an inline translation');
+        assertFixture(result.translatedRows.some(row => row.messageId === 'fixture-incoming-1'
+            && row.text === 'Türkçe: Hello from the fixture buyer.'), 'incoming translation is mounted below the exact customer row');
+        assertFixture(result.translatedRows.some(row => row.messageId === 'fixture-outgoing-1'
+            && row.text === 'Türkçe: Our fixture reply.'), 'outgoing translation is mounted below the exact seller row');
+        assertFixture(JSON.stringify(result.translatedMessages) === JSON.stringify(result.originalMessages),
+            'inline translation never changes the AI conversation context');
+        assertFixture(result.translationRequests.length === 2, 'customer and seller messages use their own translation requests');
+        return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
+    async function runDirectCustomerSendScenario() {
+        renderConversation({ thread: true, incoming: true });
+        await api.App.onRoute();
+        const context = api.MessageAdapter.context();
+        const reply = 'Hi Fixture Buyer,\n\nThank you for your message.\n\nI am happy to help.';
+        api.UI.state.context = context;
+        api.UI.state.reply = reply;
+        api.UI.state.replyTr = '';
+        api.UI.state.replyMethod = 'ai:fixture';
+        api.UI.state.analysis = { intent: 'general_question', summary: 'Fixture mesajı.', risk: 'low', tags: [] };
+        api.UI.state.replyBinding = api.UI.beginMessageWork(context);
+        api.UI.open('messages');
+        api.UI.render();
+        const sendActions = [...api.UI.shadow.querySelectorAll('[data-real-send-action="1"]')];
+        const sendAction = api.UI.shadow.querySelector('[data-action="send-reply"]');
+        assertFixture(sendActions.length === 1, 'normal message UI exposes exactly one real send action');
+        assertFixture(sendAction && !sendAction.disabled && /Müşteriye Gönder/.test(sendAction.textContent),
+            'normal message UI exposes the enabled customer-send button');
+        sendAction.click();
+        await waitUntil(() => window.__MEMA_FIXTURE__.sendCount === 1, 'direct customer send', 10000);
+        await waitUntil(() => api.Store.statuses.conversations?.['fixture-created-thread']?.status === 'sent',
+            'direct customer send ledger', 10000);
+        const result = {
+            sendActionCount: sendActions.length,
+            sendLabel: sendAction.textContent.trim(),
+            sendCount: window.__MEMA_FIXTURE__.sendCount,
+            nativeTargetClickCount: window.__MEMA_FIXTURE__.nativeTargetClickCount,
+            formSubmitCount: formSubmitEvents.length,
+            lastSentText: window.__MEMA_FIXTURE__.lastSentText,
+            expectedReply: reply,
+            composerText: document.getElementById('fixture-message')?.value || '',
+            conversationStatus: api.Store.statuses.conversations?.['fixture-created-thread']?.status || '',
+        };
+        assertFixture(result.sendCount === 1 && result.nativeTargetClickCount === 1 && result.formSubmitCount === 1,
+            'customer-send action reaches one guarded Etsy send');
+        assertFixture(result.lastSentText === reply, 'customer-send preserves exact multiline reply layout');
+        assertFixture(result.composerText === '' && result.conversationStatus === 'sent',
+            'verified customer send clears the composer and records the conversation');
+        return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
     async function runResponsiveOrdersScenario() {
         api.UI.open('orders');
         await api.UI.refreshCurrent();
@@ -1069,6 +1145,7 @@
         nativeShortcutHandlerCount: 0,
         lastSentText: '',
         networkAttempts,
+        translationRequests,
         runScenario,
         runDisabledSendScenario,
         runOrderSurfaceScenario,
@@ -1078,6 +1155,8 @@
         runNativeInputScenario,
         runNonSendSubmitterScenario,
         runMessageCenterScenario,
+        runInlineTranslationScenario,
+        runDirectCustomerSendScenario,
         runResponsiveOrdersScenario,
         runResponsiveMessageListScenario,
         get api() { return api; },
@@ -1087,6 +1166,10 @@
     else renderOrders();
     globalThis.addEventListener('mema:test-api-ready', async () => {
         api = globalThis.__MEMA_TEST__;
+        api.Translator.translate = async (text, target, options = {}) => {
+            translationRequests.push({ text: String(text), target: String(target), logHistory: options.logHistory !== false });
+            return { text: `Türkçe: ${text}`, detectedLanguage: 'en', provider: 'google' };
+        };
         const originalConversationIdFromUrl = api.Router.conversationIdFromUrl.bind(api.Router);
         const originalCanonicalConversationUrl = api.Router.canonicalConversationUrl.bind(api.Router);
         const originalIsComposeTarget = api.Router.isComposeTarget.bind(api.Router);

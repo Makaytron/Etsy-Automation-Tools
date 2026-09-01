@@ -9,10 +9,10 @@ Message Assistant supports three distinct workflows: translation/drafting in an 
 | Etsy context | Panel tab | Available action |
 |---|---|---|
 | `/messages` or `/messages/all` conversation list | **Messages** | A safe list read from Etsy's DOM with name/preview/unread details, display-language control, and a validated **Open** action; draft and insert controls stay hidden. |
-| `/messages/<conversation-id>` with exactly one trusted composer | **Messages** | Preview/translate, Turkish draft, AI, templates, copy, and **Insert into Etsy** for that composer only. |
+| `/messages/<conversation-id>` with exactly one trusted composer | **Messages** | Turkish translations below customer and seller messages, Turkish drafts, multi-paragraph AI replies, templates, copy, and a verified **Send to Customer** action. |
 | `/your/orders/sold/completed` | **Otomasyon (Automation)** | Scan Delivered cards, record review eligibility, select recipients, and explicitly start one-at-a-time Otopilot. |
 | New, open, or another `/your/orders/sold*` view | **Automation** | No production controls; links to **Completed Orders**. |
-| `/your/shops/<shop>/dashboard/activity` with the **Reviews** filter | **Reviews** | Scan new/updated text reviews, translate/analyse, and insert a draft into the public reply field. |
+| `/your/shops/<shop>/dashboard/activity` with the **Reviews** filter | **Reviews** | Scan new/updated reviews and safely readable star ratings, prepare private/public AI drafts, and insert a draft into the public reply field under user control. |
 | `/dashboard/activity` with another activity filter | **Reviews** | No production controls; guidance to select the **Reviews** filter. |
 | Another or unsupported Shop Manager page | **No direct workflow** | Safe links to Messages, Completed Orders, and Recent activity. |
 | Every supported Etsy page | **Templates / History / Settings** | Context-independent local management; the selected utility tab and unsaved draft survive Etsy route changes. |
@@ -21,7 +21,7 @@ The script fails closed when it cannot verify one visible conversation composer,
 
 The simplified premium panel separates **Messages / Automation / Reviews** workspaces from **Templates / History / Settings** utilities. Automation presents one primary action, durable campaign status and progress, and responsive recipient cards. This visual simplification does not remove identity, durable-state, verification, or explicit-authorization boundaries.
 
-The conversation list reads only safe links currently visible in Etsy's page and displays at most 50 rows. The **Display language** choice is persisted. Translated text is shown only inside the panel; Etsy's DOM is not changed, and the source preview remains available under **Show original message**. If DeepL does not support the selected target, the panel says so explicitly and uses Google only when **Free fallback** is enabled.
+The conversation list reads only safe links currently visible in Etsy's page and displays at most 50 rows. The **Display language** choice is persisted; list translations stay inside the panel and the source preview remains under **Show original message**. In one open conversation, a Turkish translation of up to the latest 40 customer and seller messages appears as a separate note immediately below each unchanged source bubble. A source detected as Turkish gets no redundant note. If DeepL does not support the selected target, the panel says so explicitly and uses Google only when **Free fallback** is enabled.
 
 ## Install and initial setup
 
@@ -31,25 +31,24 @@ The conversation list reads only safe links currently visible in Etsy's page and
 4. Choose a translation engine. If needed, save and test your DeepL or AI provider, model, and API key.
 5. Configure templates, signature, and reply preferences.
 
-> **Privacy warning:** The panel is closed by default on message pages. Google Translate is the default provider and automatic Turkish preview is enabled by default. When the panel opens on the conversation list, it may send up to 50 visible preview texts to the selected translation provider, with no more than three concurrent requests; cached results are used first. Opening the list makes no translation requests when automatic preview is disabled. Changing **Display language** or selecting **Translate previews / Retry** explicitly starts translation of the visible previews. In an individual conversation, opening the panel through **Assistant · Open** or explicitly enabling **Open Automatically on Message Page** may send the latest customer message to the provider. If DeepL fails while **Free fallback** is enabled, translation may fall back to Google. Other, non-review delivered-order templates may also send the latest message to the selected translation provider to determine the target language even when automatic preview is off. The dedicated review-request template skips that language-detection transfer; choosing AI drafting can still send the context described below. Review the provider, automatic-preview, and fallback settings in **Makaytron Ayarları (Makaytron Settings)** before opening the panel or a queue if you do not want these transfers.
+> **Privacy warning:** The panel is closed by default on message pages, but Google Translate is the default provider and **Automatic Translation Preview** is enabled by default. With that setting on, visiting an individual conversation may send up to the latest 40 customer and seller messages to the selected provider for Turkish translation even while the panel is closed, using no more than three concurrent requests and reusing identical/cached results. Disable automatic preview in **Makaytron Settings** from the Tampermonkey menu before opening a conversation if you do not want that transfer. Opening the panel on the conversation list may translate up to 50 visible previews; changing **Display language** or selecting **Translate previews / Retry** also starts those requests. If DeepL fails while **Free fallback** is enabled, translation may fall back to Google. Other, non-review delivered-order templates may send the latest message to the selected translation provider to determine the target language even when automatic preview is off. The dedicated review-request template skips that language-detection transfer; choosing AI drafting can still send the context described below.
 
 An AI drafting or polishing request may send the customer name, conversation and order IDs, item title, shop name/signature, up to the last 10 messages, and the draft, template, or instruction to the selected AI provider. Review that provider's privacy and retention terms.
 
 ## Individual customer reply
 
 1. Open the correct Etsy conversation.
-2. Open the panel from the top-right **Assistant · Open** control. The compact control remains on the page; the panel does not appear in the middle of the page by itself.
-3. Read **Müşterinin Mesajı (Customer Message)** and, when needed, **Türkçe Göster (Show in Turkish)**.
+2. When automatic translation is on, read the **Türkçe çeviri (Turkish translation)** note immediately below both customer and seller messages. Source bubbles remain unchanged.
+3. Open the panel from the top-right **Assistant · Open** control. **Müşterinin Mesajı (Customer Message)** and manual **Türkçe Göster (Show in Turkish)** provide a fallback view of the latest message.
 4. Write your Turkish response or choose a template from **Hazır mesaj ekle… (Insert Saved Template)**.
 5. Choose the appropriate action:
    - **Sadece Çevir (Translate Only):** translates your draft into the customer's language.
    - **AI ile Düzenle (Polish with AI):** improves the existing draft with the selected AI provider.
    - **AI Cevap Önersin (Suggest an AI Reply):** creates a new draft from the conversation context.
-6. Read and edit **Gönderilecek Mesaj (Message to Send)**; regenerate or copy it if needed.
-7. Select **Etsy'ye Aktar (Insert into Etsy)**.
-8. Recheck the text in Etsy's composer and click Etsy's own **Send** button yourself.
+6. Read and edit **Gönderilecek Mesaj (Message to Send)**; regenerate or copy it if needed. AI output separates the greeting, short body paragraphs, and optional closing with real line breaks.
+7. Select **Müşteriye Gönder (Send to Customer)**. The script revalidates the current conversation, unchanged draft, single composer, Etsy's one enabled Send control, and competing send owners; it then dispatches once and waits for a matching outgoing bubble.
 
-In the normal individual workflow, **Insert into Etsy** fills the composer only; it does not send. If the conversation identity changes after drafting, the stale draft is rejected.
+After successful verification, the draft is consumed and cannot be dispatched a second time. A conversation, text, or ownership change fails before touching the composer. If Etsy's Send control does not become enabled after insertion, the draft remains in the composer but is not sent. If the post-click outcome is inconclusive, do not retry until you inspect the latest outgoing bubble in that Etsy conversation.
 
 ## Explicit Otopilot for delivered orders
 
@@ -85,12 +84,12 @@ In the normal individual workflow, **Insert into Etsy** fills the composer only;
 ## Review reply draft
 
 1. Open the **Reviews** filter and review cards in Shop Manager dashboard.
-2. Use **TR Gör (Show in Turkish)** on the relevant card.
-3. Select **AI Analiz ve Taslak Hazırla (Analyze and Draft with AI)**.
-4. You may copy the private note and use **Etsy Alanına Aktar (Insert into Etsy)** for the public reply field.
+2. Use **TR Gör (Show in Turkish)** on a text-bearing card. A rating-only card shows its score instead of offering translation.
+3. For a low-risk four- or five-star review, select **AI ile Sevimli Teşekkür Hazırla (Prepare a Friendly AI Thank-you)**. For a low rating or a review mentioning damage, delay, returns, safety, or serious dissatisfaction, select **AI Analiz ve Çözüm Taslağı Hazırla (Analyze and Prepare a Resolution Draft)**. The AI considers the rating and only details grounded in the review; it must not invent a detail when none exists.
+4. You may copy the private customer message and use **Etsy Alanına Aktar (Insert into Etsy)** for the public reply field. The private message is never inserted or sent automatically because the review card does not provide a safely verified Etsy conversation binding.
 5. Review the public reply and use Etsy's own publish control yourself.
 
-Review replies are never published automatically.
+Review replies are never published automatically. **Insert into Etsy** only fills the verified reply field.
 
 ## Templates, API keys, and backup
 
@@ -103,8 +102,8 @@ Review replies are never published automatically.
 
 ## If something goes wrong
 
-- If the wrong conversation or customer is detected, do not insert the draft; reopen the correct conversation and regenerate it.
-- Always verify the recipient and Etsy composer after insertion.
+- If the wrong conversation or customer is detected, do not select **Send to Customer**; reopen the correct conversation and regenerate the draft.
+- If send verification is inconclusive, inspect the recipient, composer, and latest outgoing Etsy bubble before any retry.
 - Do not restart an unverified Otopilot item. First inspect the exact conversation for the outgoing bubble; suspicious or `pending` state must never produce an automatic resend.
 - Update installation is blocked while a message campaign is active.
 - Never include customer messages, names, order IDs, API keys, cookies, or session data in an issue or screenshot.

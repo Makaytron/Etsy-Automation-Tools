@@ -5,6 +5,21 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak
 hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [Unreleased]
+
+### Added
+
+- 4–5 yıldızlı mağaza yorumlarını puan ve gerçek yorum ayrıntısıyla birlikte analiz eden; müşteriye özel, sıcak teşekkür mesajı ile ayrı bir public cevap taslağı hazırlayan review politikası eklendi.
+- Türkçe/İngilizce puan etiketleri ve yalnız yıldız puanı içeren yorum kartları destekleniyor.
+- Tekil Etsy konuşmasındaki müşteri ve satıcıya ait son 40'a kadar mesajın hemen altında, kaynak balonu değiştirmeyen otomatik Türkçe çeviri notları eklendi. Türkçe olduğu algılanan kaynağa gereksiz not eklenmiyor; aynı metinler tek sağlayıcı isteğini paylaşıyor.
+
+### Changed
+
+- AI yorum taslakları kaynak yorumdan birebir bir dayanakla doğrulanıyor; puan/yorum değiştirme talebi, olumlu yorum teşviki, link/iletişim bilgisi, public sipariş bilgisi, boş veya birbirinin aynı taslaklar reddediliyor. Hasar, gecikme, iade, sağlık/güvenlik, tehdit veya ciddi memnuniyetsizlik sinyali yüksek puanda bile çözüm akışına alınıyor ve her iki taslakta empatik biçimde ele alınıyor.
+- Yorum puanı, metni, müşteri veya ürün bağlamı değişirse önceki analiz ve cevap taslağı artık güncel sayılmıyor. Hiçbir özel mesaj gönderilmiyor ve hiçbir public cevap otomatik yayınlanmıyor.
+- AI mesaj cevapları selamlama, kısa gövde paragrafları ve kapanışı gerçek satır sonlarıyla ayırıyor; tek satırlı model çıktıları içerik değiştirilmeden okunabilir paragraflara bölünüyor.
+- Normal bireysel mesaj akışındaki eski doldurma CTA'sı, konuşma/metin/composer/sahiplik kontrollerini gönderimden önce yapan, tek native Etsy tıklamasını yeni giden balonla doğrulayan ve başarılı taslağı tüketen **Müşteriye Gönder** işlemiyle değiştirildi. Belirsiz sonuç otomatik yeniden gönderilmiyor.
+
 ## [1.2.5] - 2026-08-30
 
 ### Added
