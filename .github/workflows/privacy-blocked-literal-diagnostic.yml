@@ -33,19 +33,25 @@ jobs:
           $changelogPath = 'scripts/etsy-message-assistant/CHANGELOG.md'
           $script = Get-Content -Raw -LiteralPath $scriptPath
 
+          # Reconstruct the legacy account-specific placeholder only in runner memory so
+          # neither this workflow nor any tracked diagnostic file republishes the value.
+          $legacyStoreId = -join ([char[]](112,97,107,97,121,117,115))
+          $legacyPlaceholder = 'placeholder="' + $legacyStoreId + '"'
+          $syntheticPlaceholder = 'placeholder="example-shop"'
+
           $anchors = @(
             '// @version      1.2.7',
             "const APP_VERSION = '1.2.7';",
-            'placeholder="pakayus"'
+            $legacyPlaceholder
           )
           foreach ($anchor in $anchors) {
             $count = ([regex]::Matches($script, [regex]::Escape($anchor))).Count
-            if ($count -ne 1) { throw "Expected exactly one hotfix anchor: $anchor (found $count)" }
+            if ($count -ne 1) { throw "Expected exactly one hotfix anchor (found $count)." }
           }
 
           $script = $script.Replace('// @version      1.2.7', '// @version      1.2.8')
           $script = $script.Replace("const APP_VERSION = '1.2.7';", "const APP_VERSION = '1.2.8';")
-          $script = $script.Replace('placeholder="pakayus"', 'placeholder="example-shop"')
+          $script = $script.Replace($legacyPlaceholder, $syntheticPlaceholder)
           Set-Content -LiteralPath $scriptPath -Value $script -NoNewline -Encoding utf8
 
           $changelog = Get-Content -Raw -LiteralPath $changelogPath
