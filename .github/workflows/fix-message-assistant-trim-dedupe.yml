@@ -24,10 +24,10 @@ jobs:
           $path = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
           $text = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
           $line = "            finalText = String(finalText || '').trim();"
-          $double = "$line`r`n$line"
-          if (-not $text.Contains($double)) { throw 'Expected duplicate canonicalization lines were not found.' }
-          $text = $text.Replace($double, $line)
-          if ($text.Contains($double)) { throw 'Duplicate canonicalization line remains after replacement.' }
+          $pattern = [regex]::Escape($line) + '\r?\n' + [regex]::Escape($line)
+          if ($text -notmatch $pattern) { throw 'Expected duplicate canonicalization lines were not found.' }
+          $text = [regex]::Replace($text, $pattern, [System.Text.RegularExpressions.MatchEvaluator]{ param($match) $line }, 1)
+          if ($text -match $pattern) { throw 'Duplicate canonicalization line remains after replacement.' }
           [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
 
       - name: Validate Message Assistant
