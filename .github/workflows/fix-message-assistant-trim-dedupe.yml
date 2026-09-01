@@ -1,0 +1,56 @@
+name: Message Assistant Trim Dedupe Remediation
+
+on:
+  push:
+    branches:
+      - fix/message-assistant-trim-dedupe
+
+permissions:
+  contents: write
+
+jobs:
+  remediate:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out remediation branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Remove duplicate canonicalization line
+        shell: pwsh
+        run: |
+          $path = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+          $text = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+          $line = "            finalText = String(finalText || '').trim();"
+          $double = "$line`r`n$line"
+          if (-not $text.Contains($double)) { throw 'Expected duplicate canonicalization lines were not found.' }
+          $text = $text.Replace($double, $line)
+          if ($text.Contains($double)) { throw 'Duplicate canonicalization line remains after replacement.' }
+          [System.IO.File]::WriteAllText($path, $text, [System.Text.UTF8Encoding]::new($false))
+
+      - name: Validate Message Assistant
+        shell: pwsh
+        run: |
+          node --check scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test tools/Test-Message-Assistant.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Test-Distribution.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./tools/Sanitize-Public-Fixtures.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Commit cleanup
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain -- scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js)) {
+              Write-Host 'No cleanup change required.'
+              exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
+          git commit -m 'fix: deduplicate campaign text canonicalization'
+          git push origin HEAD:fix/message-assistant-trim-dedupe
