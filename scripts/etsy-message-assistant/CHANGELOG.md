@@ -11,7 +11,7 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - 4–5 yıldızlı mağaza yorumlarını puan ve gerçek yorum ayrıntısıyla birlikte analiz eden; müşteriye özel, sıcak teşekkür mesajı ile ayrı bir public cevap taslağı hazırlayan review politikası eklendi.
 - Türkçe/İngilizce puan etiketleri ve yalnız yıldız puanı içeren yorum kartları destekleniyor.
-- Tekil Etsy konuşmasındaki müşteri ve satıcıya ait son 40'a kadar mesajın hemen altında, kaynak balonu değiştirmeyen otomatik Türkçe çeviri notları eklendi. Türkçe olduğu algılanan kaynağa gereksiz not eklenmiyor; aynı metinler tek sağlayıcı isteğini paylaşıyor.
+- Tekil Etsy konuşmasındaki müşteri ve satıcıya ait son 40'a kadar mesajın hemen altında, kaynak balonu değiştirmeyen ve seçili görüntüleme dilini izleyen otomatik çeviri notları eklendi. Kaynağın zaten hedef dilde olduğu algılanırsa gereksiz not eklenmiyor; aynı metinler tek sağlayıcı isteğini paylaşıyor.
 
 ### Changed
 
@@ -19,6 +19,7 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - Yorum puanı, metni, müşteri veya ürün bağlamı değişirse önceki analiz ve cevap taslağı artık güncel sayılmıyor. Hiçbir özel mesaj gönderilmiyor ve hiçbir public cevap otomatik yayınlanmıyor.
 - AI mesaj cevapları selamlama, kısa gövde paragrafları ve kapanışı gerçek satır sonlarıyla ayırıyor; tek satırlı model çıktıları içerik değiştirilmeden okunabilir paragraflara bölünüyor.
 - Normal bireysel mesaj akışındaki eski doldurma CTA'sı, konuşma/metin/composer/sahiplik kontrollerini gönderimden önce yapan, tek native Etsy tıklamasını yeni giden balonla doğrulayan ve başarılı taslağı tüketen **Müşteriye Gönder** işlemiyle değiştirildi. Belirsiz sonuç otomatik yeniden gönderilmiyor.
+- Müşteri ve satıcı çeviri notları artık açık rol etiketi, farklı renk ve karşılıklı hizalamayla ayırt ediliyor. Etsy cevap alanının yanına eklenen hızlı AI önerme/düzenleme, çeviri ve **Müşteriye Gönder** kontrolleri panelle aynı ortak eylem tanımlarını ve doğrulanmış gönderim yolunu kullanıyor.
 
 ## [1.2.5] - 2026-08-30
 

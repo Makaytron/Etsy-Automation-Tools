@@ -657,20 +657,65 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.deepEqual(consoleErrors, []);
         });
 
-        await t.test('customer and seller Etsy bubbles get sibling Turkish translations without changing message context', { timeout: TIMEOUT_MS }, async () => {
+        await t.test('customer and seller inline translations follow previewLanguage from Turkish to German', { timeout: TIMEOUT_MS }, async () => {
             const { result, consoleErrors } = await runBrowserScenario(
                 chrome,
                 server.url,
                 '/',
                 'runInlineTranslationScenario',
             );
+            assert.equal(result.after.previewLanguage, 'de');
+            assert.equal(result.after.initialTranslationCount, 2);
             assert.equal(result.after.translationCount, 2);
-            assert.deepEqual(result.after.translatedRows, [
-                { messageId: 'fixture-incoming-1', text: 'Türkçe: Hello from the fixture buyer.' },
-                { messageId: 'fixture-outgoing-1', text: 'Türkçe: Our fixture reply.' },
+            const initialColors = result.after.initialTranslatedRows.map(row => row.backgroundColor);
+            const translatedColors = result.after.translatedRows.map(row => row.backgroundColor);
+            const withoutColor = rows => rows.map(({ backgroundColor, ...row }) => row);
+            assert.deepEqual(withoutColor(result.after.initialTranslatedRows), [
+                {
+                    messageId: 'fixture-incoming-1',
+                    messageRole: 'customer',
+                    label: 'Müşteri mesajı · Türkçe çeviri',
+                    labelLang: 'tr',
+                    lang: 'tr',
+                    text: 'Türkçe: Hello from the fixture buyer.',
+                },
+                {
+                    messageId: 'fixture-outgoing-1',
+                    messageRole: 'seller',
+                    label: 'Sizin mesajınız · Türkçe çeviri',
+                    labelLang: 'tr',
+                    lang: 'tr',
+                    text: 'Türkçe: Our fixture reply.',
+                },
             ]);
+            assert.deepEqual(withoutColor(result.after.translatedRows), [
+                {
+                    messageId: 'fixture-incoming-1',
+                    messageRole: 'customer',
+                    label: 'Müşteri mesajı · Almanca çeviri',
+                    labelLang: 'tr',
+                    lang: 'de',
+                    text: 'Almanca: Hello from the fixture buyer.',
+                },
+                {
+                    messageId: 'fixture-outgoing-1',
+                    messageRole: 'seller',
+                    label: 'Sizin mesajınız · Almanca çeviri',
+                    labelLang: 'tr',
+                    lang: 'de',
+                    text: 'Almanca: Our fixture reply.',
+                },
+            ]);
+            assert.notEqual(initialColors[0], initialColors[1], 'customer and seller translations need distinct surfaces');
+            assert.deepEqual(translatedColors, initialColors, 'role styling must remain stable when the display language changes');
+            assert.equal(result.after.oldTranslationsRemoved, true);
             assert.deepEqual(result.after.translatedMessages, result.after.originalMessages);
-            assert.equal(result.after.translationRequests.length, 2);
+            assert.deepEqual(result.after.translationRequests, [
+                { text: 'Hello from the fixture buyer.', target: 'tr', logHistory: false },
+                { text: 'Our fixture reply.', target: 'tr', logHistory: false },
+                { text: 'Hello from the fixture buyer.', target: 'de', logHistory: false },
+                { text: 'Our fixture reply.', target: 'de', logHistory: false },
+            ]);
             assert.deepEqual(consoleErrors, []);
         });
 
@@ -689,6 +734,56 @@ test('Message Assistant isolated Chrome regression fixture', { timeout: 600_000 
             assert.equal(result.after.lastSentText, result.after.expectedReply);
             assert.match(result.after.lastSentText, /\n\n/);
             assert.equal(result.after.composerText, '');
+            assert.equal(result.after.conversationStatus, 'sent');
+            assert.deepEqual(consoleErrors, []);
+        });
+
+        await t.test('closed-panel native composer quick actions are idempotent, remount-safe, and verified', { timeout: TIMEOUT_MS }, async () => {
+            const { result, consoleErrors } = await runBrowserScenario(
+                chrome,
+                server.url,
+                '/',
+                'runNativeComposerQuickActionsScenario',
+            );
+            assert.equal(result.after.panelOpenBefore, false);
+            assert.equal(result.after.panelOpenAfterAi, false);
+            assert.equal(result.after.panelOpenAfterSend, false);
+            assert.equal(result.after.initialToolbarCount, 1);
+            assert.equal(result.after.initialQuickActionCount, 4);
+            assert.equal(result.after.initialRealSendActionCount, 1);
+            assert.equal(result.after.remountedToolbarCount, 1);
+            assert.equal(result.after.remountedQuickActionCount, 4);
+            assert.equal(result.after.remountedRealSendActionCount, 1);
+            assert.equal(result.after.finalToolbarCount, 1);
+            assert.equal(result.after.toolbarReplaced, true);
+            assert.equal(result.after.oldToolbarConnectedAfterRemount, false);
+            assert.equal(result.after.oldTextareaConnectedAfterRemount, false);
+            assert.equal(result.after.staleButtonWasEnabled, true);
+            assert.deepEqual(result.after.staleClick, {
+                sendCount: 0,
+                nativeTargetClickCount: 0,
+                formSubmitCount: 0,
+                aiCallCount: 0,
+                composerText: '',
+            });
+            assert.notEqual(result.after.initialRouteFingerprint, result.after.remountedRouteFingerprint);
+            assert.equal(result.after.initialConversationIdentity, 'fixture-created-thread');
+            assert.equal(result.after.remountedConversationIdentity, 'fixture-created-thread');
+            assert.deepEqual(result.after.aiRequests, [{
+                conversationId: 'fixture-created-thread',
+                lastCustomerMessage: 'Hello from the fixture buyer.',
+                replyMode: 'auto',
+                targetLanguage: 'en',
+            }]);
+            assert.equal(result.after.composerAfterAi, result.after.expectedReply);
+            assert.match(result.after.composerAfterAi, /\n\n/);
+            assert.match(result.after.quickSendLabel, /Müşteriye Gönder/);
+            assert.equal(result.after.sendCount, 1);
+            assert.equal(result.after.nativeTargetClickCount, 1);
+            assert.equal(result.after.formSubmitCount, 1);
+            assert.equal(result.after.lastSentText, result.after.expectedReply);
+            assert.equal(result.after.composerAfterSend, '');
+            assert.equal(result.after.outgoingCount, 1);
             assert.equal(result.after.conversationStatus, 'sent');
             assert.deepEqual(consoleErrors, []);
         });

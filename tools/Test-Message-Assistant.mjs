@@ -164,6 +164,7 @@ async function loadAssistant(options = {}) {
         Verification,
         MessageAdapter,
         ConversationTranslations,
+        ComposerQuickActions,
         OrdersAdapter,
         MessageCenterAgent,
         ReviewsAdapter,
@@ -4365,6 +4366,383 @@ test('normal message output exposes one verified customer-send action and dispat
     assert.equal(dispatchCalls, 1, 'a sequential click after verified send must not dispatch again');
 });
 
+test('shared message actions keep panel labels and dispatcher behavior in one registry', async () => {
+    const { api } = await loadAssistant();
+    const expectedDefinitions = [
+        ['ai-polish-reply', 'AI ile Düzenle', 'edit', false],
+        ['free-translate-reply', 'Sadece Çevir', 'globe', false],
+        ['ai-auto-reply', 'AI Cevap Önersin', 'star', false],
+        ['regenerate-reply', 'Tekrar Hazırla', 'refresh', false],
+        ['send-reply', 'Müşteriye Gönder', 'send', true],
+    ];
+
+    for (const [action, label, icon, realSend] of expectedDefinitions) {
+        const definition = api.UI.messageActionDefinition(action);
+        assert.ok(definition, `${action} must be registered`);
+        assert.equal(definition.label, label);
+        assert.equal(definition.icon, icon);
+        assert.equal(Boolean(definition.realSend), realSend);
+        const markup = api.UI.renderMessageActionButton(action, {
+            className: 'shared-action',
+            disabled: action === 'regenerate-reply',
+            attributes: 'aria-label="shared message action"',
+        });
+        assert.match(markup, new RegExp(`data-action="${action}"`));
+        assert.match(markup, new RegExp(label));
+        assert.match(markup, /class="shared-action"/);
+        assert.match(markup, /aria-label="shared message action"/);
+        assert.equal(markup.includes('data-real-send-action="1"'), realSend);
+        assert.equal(markup.includes(' disabled'), action === 'regenerate-reply');
+    }
+    assert.equal(api.UI.messageActionDefinition('not-an-action'), null);
+    assert.equal(api.UI.renderMessageActionButton('not-an-action'), '');
+
+    const generated = [];
+    const events = [];
+    const snapshot = { textarea: {}, text: 'Composer draft', conversationIdentity: 'conversation-1' };
+    api.UI.generateReply = async options => {
+        generated.push(copy(options));
+        return true;
+    };
+    api.UI.regenerateReply = async () => {
+        events.push('regenerate');
+        return true;
+    };
+    api.UI.adoptComposerReply = actualSnapshot => {
+        assert.equal(actualSnapshot, snapshot);
+        events.push('adopt');
+        return {};
+    };
+    api.UI.replaceComposerWithCurrentReply = actualSnapshot => {
+        assert.equal(actualSnapshot, snapshot);
+        events.push('replace');
+        return true;
+    };
+    api.UI.setBusy = value => events.push(`busy:${value}`);
+    api.UI.sendReplyToCustomer = async () => {
+        events.push('send');
+        return true;
+    };
+
+    assert.equal(await api.UI.runMessageAction('ai-polish-reply', {
+        draftText: 'Polish this draft',
+        insertIntoComposer: true,
+        composerSnapshot: snapshot,
+    }), true);
+    assert.equal(api.UI.state.draftTr, 'Polish this draft');
+    assert.equal(await api.UI.runMessageAction('ai-auto-reply'), true);
+    assert.equal(await api.UI.runMessageAction('free-translate-reply', { draftText: 'Bunu çevir' }), true);
+    assert.equal(await api.UI.runMessageAction('regenerate-reply'), true);
+    assert.equal(await api.UI.runMessageAction('send-reply', {
+        adoptComposerText: true,
+        composerSnapshot: snapshot,
+    }), true);
+
+    assert.deepEqual(generated, [
+        { method: 'ai', replyMode: 'polish' },
+        { method: 'ai', replyMode: 'auto' },
+        { method: 'free', replyMode: 'free' },
+    ]);
+    assert.deepEqual(events, ['replace', 'regenerate', 'adopt', 'busy:true', 'send']);
+    await assert.rejects(api.UI.runMessageAction('not-an-action'), /Bilinmeyen mesaj işlemi/i);
+});
+
+test('composer snapshots protect generated replacement and native draft adoption from stale Etsy state', async () => {
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/composer-snapshot';
+    sandbox.location.href = 'https://www.etsy.com/messages/composer-snapshot';
+    const textarea = { value: 'Original composer text', isConnected: true };
+    const snapshot = {
+        textarea,
+        text: textarea.value,
+        conversationIdentity: api.Router.conversationIdentity(),
+    };
+    api.MessageAdapter.getTextarea = () => textarea;
+
+    assert.equal(api.UI.composerSnapshotIsCurrent(snapshot), true);
+    textarea.value = 'Buyer edited this while AI was running';
+    assert.equal(api.UI.composerSnapshotIsCurrent(snapshot), false);
+    textarea.value = snapshot.text;
+
+    const replyBinding = { token: 'reply-binding' };
+    let inserted = null;
+    let toastCalls = 0;
+    api.UI.state.reply = 'Generated customer reply';
+    api.UI.state.replyBinding = replyBinding;
+    api.UI.replyIsCurrent = binding => binding === replyBinding;
+    api.MessageAdapter.insert = (text, target) => { inserted = { text, target }; };
+    api.UI.toast = () => { toastCalls += 1; };
+    assert.equal(api.UI.replaceComposerWithCurrentReply(snapshot), true);
+    assert.deepEqual(inserted, { text: 'Generated customer reply', target: textarea });
+    assert.equal(toastCalls, 1);
+
+    textarea.value = 'A newer unsaved draft';
+    assert.throws(
+        () => api.UI.replaceComposerWithCurrentReply(snapshot),
+        /mevcut metin korunarak üzerine yazılmadı/i,
+    );
+
+    const adoptedText = 'Send this exact Etsy composer draft';
+    textarea.value = adoptedText;
+    const adoptionSnapshot = { ...snapshot, text: adoptedText };
+    const context = {
+        conversationId: api.Router.conversationId(),
+        routeFingerprint: api.Router.routeFingerprint(),
+        customerName: 'Ashley',
+        lastCustomerMessage: 'Can you help?',
+        messages: [{ id: 'incoming', role: 'customer', text: 'Can you help?' }],
+    };
+    const adoptedBinding = { token: 'adopted-binding' };
+    let adoptedContext = null;
+    api.UI.state.reply = '';
+    api.UI.state.replyBinding = null;
+    api.MessageAdapter.context = () => context;
+    api.UI.beginMessageWork = actualContext => {
+        assert.equal(actualContext, context);
+        return adoptedBinding;
+    };
+    api.UI.adoptMessageContext = actualContext => { adoptedContext = actualContext; };
+    assert.deepEqual(copy(api.UI.adoptComposerReply(adoptionSnapshot)), adoptedBinding);
+    assert.equal(adoptedContext, context);
+    assert.equal(api.UI.state.reply, adoptedText);
+    assert.deepEqual(copy(api.UI.state.replyBinding), adoptedBinding);
+    assert.equal(api.UI.state.replyTr, '', 'a native composer draft must not be mislabeled as a translated reply');
+    assert.equal(api.UI.state.replyMethod, 'native');
+
+    sandbox.location.pathname = '/messages/different-conversation';
+    sandbox.location.href = 'https://www.etsy.com/messages/different-conversation';
+    assert.throws(
+        () => api.UI.adoptComposerReply(adoptionSnapshot),
+        /Mesaj gönderilmedi/i,
+    );
+});
+
+test('composer quick actions revalidate live drafts, remount after external removal, and stay idempotent across routes', async () => {
+    const { api, sandbox } = await loadAssistant();
+    const setRoute = id => {
+        sandbox.location.pathname = id ? `/messages/${id}` : '/messages';
+        sandbox.location.href = `https://www.etsy.com${sandbox.location.pathname}`;
+        sandbox.location.search = '';
+    };
+    const connectTree = (node, connected) => {
+        node.isConnected = connected;
+        for (const child of node.children || []) connectTree(child, connected);
+    };
+    const makeElement = (tagName = 'div') => {
+        const attributes = new Map();
+        const listeners = new Map();
+        const node = {
+            nodeType: 1,
+            tagName: String(tagName).toUpperCase(),
+            className: '',
+            textContent: '',
+            value: '',
+            disabled: false,
+            children: [],
+            parentNode: null,
+            parentElement: null,
+            isConnected: false,
+            appendChild(child) {
+                return this.insertBefore(child, null);
+            },
+            append(...children) {
+                for (const child of children) this.appendChild(child);
+            },
+            insertBefore(child, before) {
+                child.remove?.();
+                const index = before ? this.children.indexOf(before) : -1;
+                if (index >= 0) this.children.splice(index, 0, child);
+                else this.children.push(child);
+                child.parentNode = this;
+                child.parentElement = this;
+                connectTree(child, this.isConnected);
+                return child;
+            },
+            removeChild(child) {
+                const index = this.children.indexOf(child);
+                if (index < 0) return child;
+                this.children.splice(index, 1);
+                child.parentNode = null;
+                child.parentElement = null;
+                connectTree(child, false);
+                return child;
+            },
+            remove() {
+                this.parentNode?.removeChild?.(this);
+            },
+            setAttribute(name, value) {
+                attributes.set(name, String(value));
+            },
+            getAttribute(name) {
+                return attributes.has(name) ? attributes.get(name) : null;
+            },
+            hasAttribute(name) {
+                return attributes.has(name);
+            },
+            matches(selector) {
+                const attribute = /^\[([^\]]+)\]$/.exec(selector)?.[1];
+                if (attribute) return this.hasAttribute(attribute);
+                return selector.toUpperCase() === this.tagName;
+            },
+            closest(selector) {
+                for (let current = this; current; current = current.parentElement) {
+                    if (current.matches?.(selector)) return current;
+                }
+                return null;
+            },
+            contains(candidate) {
+                if (candidate === this) return true;
+                return this.children.some(child => child.contains?.(candidate));
+            },
+            querySelectorAll(selector) {
+                const matches = [];
+                const visit = current => {
+                    for (const child of current.children || []) {
+                        if (child.matches?.(selector)) matches.push(child);
+                        visit(child);
+                    }
+                };
+                visit(this);
+                return matches;
+            },
+            addEventListener(type, listener) {
+                const handlers = listeners.get(type) || [];
+                handlers.push(listener);
+                listeners.set(type, handlers);
+            },
+            removeEventListener(type, listener) {
+                listeners.set(type, (listeners.get(type) || []).filter(handler => handler !== listener));
+            },
+        };
+        Object.defineProperty(node, 'nextSibling', {
+            get() {
+                if (!this.parentNode) return null;
+                const index = this.parentNode.children.indexOf(this);
+                return this.parentNode.children[index + 1] || null;
+            },
+        });
+        return node;
+    };
+
+    const host = makeElement('section');
+    connectTree(host, true);
+    const form = makeElement('form');
+    const textarea = makeElement('textarea');
+    host.appendChild(form);
+    form.appendChild(textarea);
+    sandbox.document.createElement = tagName => makeElement(tagName);
+    let observerCallback = null;
+    let observerDisconnected = false;
+    sandbox.MutationObserver = class {
+        constructor(callback) { observerCallback = callback; }
+        observe() {}
+        disconnect() { observerDisconnected = true; }
+    };
+    let activeTextarea = textarea;
+    api.MessageAdapter.getTextarea = () => activeTextarea;
+    api.Campaign.current = () => null;
+    api.UI.state.busy = false;
+    setRoute('quick-actions-one');
+
+    assert.equal(api.ComposerQuickActions.start(), true);
+    assert.equal(typeof observerCallback, 'function');
+    const firstRoot = api.ComposerQuickActions.root;
+    assert.ok(firstRoot);
+    assert.equal(host.querySelectorAll('[data-mema-composer-actions]').length, 1);
+    const firstButtons = firstRoot.querySelectorAll('[data-mema-message-action]');
+    assert.deepEqual(
+        firstButtons.map(button => button.textContent),
+        ['ai-auto-reply', 'ai-polish-reply', 'free-translate-reply', 'send-reply']
+            .map(action => api.UI.messageActionDefinition(action).label),
+    );
+    assert.equal(firstButtons.find(button => button.getAttribute('data-mema-message-action') === 'send-reply').getAttribute('data-real-send-action'), '1');
+    assert.equal(firstButtons.find(button => button.getAttribute('data-mema-message-action') === 'ai-auto-reply').disabled, false);
+    assert.ok(firstButtons.filter(button => button.getAttribute('data-mema-message-action') !== 'ai-auto-reply').every(button => button.disabled));
+
+    assert.equal(api.ComposerQuickActions.sync(), true);
+    assert.equal(api.ComposerQuickActions.root, firstRoot, 'syncing the same composer must not duplicate the toolbar');
+    assert.equal(host.querySelectorAll('[data-mema-composer-actions]').length, 1);
+
+    const autoButton = firstButtons.find(button => button.getAttribute('data-mema-message-action') === 'ai-auto-reply');
+    let unsafeAutoDispatches = 0;
+    api.UI.runMessageAction = async () => {
+        unsafeAutoDispatches += 1;
+        return true;
+    };
+    textarea.value = 'Programmatically restored Etsy draft';
+    api.ComposerQuickActions.handleClick({
+        target: autoButton,
+        preventDefault: () => assert.fail('a newly ineligible action must not consume the click'),
+        stopPropagation: () => {},
+    });
+    const unsafeOperation = api.ComposerQuickActions.actionPromise;
+    if (unsafeOperation) await unsafeOperation;
+    assert.equal(unsafeAutoDispatches, 0, 'click handling must re-read a draft restored without an input event');
+    assert.equal(autoButton.disabled, true);
+    assert.equal(textarea.value, 'Programmatically restored Etsy draft', 'the restored draft must never be overwritten');
+
+    textarea.value = 'Draft from the Etsy composer';
+    assert.equal(api.ComposerQuickActions.syncState(), true);
+    assert.equal(autoButton.disabled, true);
+    assert.ok(firstButtons.filter(button => button.getAttribute('data-mema-message-action') !== 'ai-auto-reply').every(button => !button.disabled));
+
+    let dispatched = null;
+    api.UI.runMessageAction = async (action, options) => {
+        dispatched = { action, options };
+        return true;
+    };
+    api.UI.reportUiError = error => assert.fail(error);
+    api.UI.setBusy = value => { api.UI.state.busy = value; };
+    api.UI.state.open = false;
+    const polishButton = firstButtons.find(button => button.getAttribute('data-mema-message-action') === 'ai-polish-reply');
+    let prevented = 0;
+    api.ComposerQuickActions.handleClick({
+        target: polishButton,
+        preventDefault: () => { prevented += 1; },
+        stopPropagation: () => {},
+    });
+    const operation = api.ComposerQuickActions.actionPromise;
+    assert.ok(operation);
+    await operation;
+    assert.equal(prevented, 1);
+    assert.equal(dispatched.action, 'ai-polish-reply');
+    assert.equal(dispatched.options.surface, 'composer');
+    assert.equal(dispatched.options.draftText, textarea.value);
+    assert.equal(dispatched.options.insertIntoComposer, true);
+    assert.equal(dispatched.options.adoptComposerText, false);
+    assert.equal(dispatched.options.composerSnapshot.textarea, textarea);
+    assert.equal(dispatched.options.composerSnapshot.text, textarea.value);
+    assert.equal(dispatched.options.composerSnapshot.conversationIdentity, api.Router.conversationIdentity());
+
+    setRoute('quick-actions-two');
+    assert.equal(api.ComposerQuickActions.sync(), true);
+    assert.notEqual(api.ComposerQuickActions.root, firstRoot, 'a new conversation identity must replace the stale toolbar');
+    assert.equal(firstRoot.isConnected, false);
+    assert.equal(host.querySelectorAll('[data-mema-composer-actions]').length, 1);
+
+    const externallyRemovedRoot = api.ComposerQuickActions.root;
+    externallyRemovedRoot.remove();
+    assert.equal(externallyRemovedRoot.isConnected, false);
+    assert.equal(host.querySelectorAll('[data-mema-composer-actions]').length, 0);
+    observerCallback([{ addedNodes: [], removedNodes: [externallyRemovedRoot] }]);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.notEqual(api.ComposerQuickActions.root, externallyRemovedRoot, 'an externally removed toolbar must be remounted');
+    assert.equal(api.ComposerQuickActions.root.isConnected, true);
+    assert.equal(host.querySelectorAll('[data-mema-composer-actions]').length, 1);
+
+    setRoute('');
+    assert.equal(api.ComposerQuickActions.sync(), false);
+    assert.equal(api.ComposerQuickActions.root, null);
+    assert.equal(host.querySelectorAll('[data-mema-composer-actions]').length, 0, 'message-list routes must not expose composer actions');
+
+    setRoute('quick-actions-three');
+    activeTextarea = null;
+    assert.equal(api.ComposerQuickActions.sync(), false);
+    assert.equal(host.querySelectorAll('[data-mema-composer-actions]').length, 0, 'missing trusted composers must fail closed');
+    api.ComposerQuickActions.stop();
+    assert.equal(observerDisconnected, true);
+});
+
 test('normal customer-send preflight rejects every existing owner before composer mutation', async () => {
     const scenarios = [
         {
@@ -4559,6 +4937,7 @@ test('message entries collapse nested Etsy selectors and inline-translate custom
     api.MessageAdapter.getTextarea = () => ({});
     api.Store.settings.autoTurkishPreview = true;
     api.Store.settings.translator = 'google';
+    api.Store.settings.previewLanguage = 'tr';
     api.ConversationTranslations.clear();
     let translationCalls = 0;
     api.Translator.translate = async (text, target, options) => {
@@ -4574,7 +4953,15 @@ test('message entries collapse nested Etsy selectors and inline-translate custom
     assert.equal(api.ConversationTranslations.records.size, 3, 'each customer and seller bubble needs its own sibling');
     assert.ok(api.ConversationTranslations.records.has(sellerSource), 'the seller-authored message must also receive a Turkish translation record');
     for (const record of api.ConversationTranslations.records.values()) {
+        const ownerLabel = record.role === 'seller' ? 'Sizin mesajınız' : 'Müşteri mesajı';
         assert.equal(record.state, 'translated');
+        assert.equal(record.target, 'tr');
+        assert.ok(['customer', 'seller'].includes(record.role));
+        assert.equal(record.node.getAttribute('data-mema-message-role'), record.role);
+        assert.ok(record.node.className.includes(`mema-inline-translation--${record.role}`));
+        assert.equal(record.body.getAttribute('lang'), 'tr');
+        assert.equal(record.node.children[0].getAttribute('lang'), 'tr');
+        assert.equal(record.node.children[0].textContent, `${ownerLabel} · Türkçe çeviri`);
         assert.equal(record.body.textContent, '<img onerror=alert(1)> Türkçe metin');
         assert.equal(record.node.parentNode, record.sourceNode.parentNode);
         assert.notEqual(record.node.parentNode, record.sourceNode, 'translation must never be inserted inside the source bubble');
@@ -4650,10 +5037,113 @@ test('message entries collapse nested Etsy selectors and inline-translate custom
     };
     assert.equal(await api.ConversationTranslations.refresh(), true);
     const turkishSellerRecord = api.ConversationTranslations.records.get(turkishSellerSource);
-    assert.equal(turkishSellerRecord.state, 'source-tr');
+    assert.equal(turkishSellerRecord.state, 'source-target');
     assert.equal(turkishSellerRecord.node, null, 'an already-Turkish seller message needs no redundant note');
     assert.equal(await api.ConversationTranslations.refresh(), true);
     assert.equal(turkishDetectionCalls, 1, 'the Turkish source sentinel prevents repeat provider requests');
+
+    const previousTranslationNodes = [...api.ConversationTranslations.records.values()]
+        .map(record => record.node)
+        .filter(Boolean);
+    api.Store.settings.previewLanguage = 'de';
+    let germanTranslationCalls = 0;
+    api.Translator.translate = async (text, target, options) => {
+        germanTranslationCalls += 1;
+        assert.equal(target, 'de');
+        assert.equal(options.logHistory, false);
+        if (text === 'Teşekkür ederim.') {
+            return { text: 'Vielen Dank.', detectedLanguage: 'tr', provider: 'deepl' };
+        }
+        assert.equal(text, 'Same incoming text.');
+        return { text: 'Derselbe eingehende Text.', detectedLanguage: 'en', provider: 'deepl' };
+    };
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(germanTranslationCalls, 2, 'a new display language must request each unique source text in that language');
+    assert.ok(previousTranslationNodes.every(node => node.isConnected === false), 'changing the display language must remove stale translation notes');
+    for (const record of api.ConversationTranslations.records.values()) {
+        const ownerLabel = record.role === 'seller' ? 'Sizin mesajınız' : 'Müşteri mesajı';
+        assert.equal(record.state, 'translated');
+        assert.equal(record.target, 'de');
+        assert.equal(record.body.getAttribute('lang'), 'de');
+        assert.equal(record.node.children[0].getAttribute('lang'), 'tr');
+        assert.equal(record.node.children[0].textContent, `${ownerLabel} · Almanca çeviri`);
+    }
+    assert.equal(api.ConversationTranslations.records.get(turkishSellerSource).body.textContent, 'Vielen Dank.', 'a Turkish source must be translated when German is selected');
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(germanTranslationCalls, 2, 'completed translations in the selected language must be reused');
+
+    const germanSellerSource = makeSource('seller-de');
+    entries.push({
+        id: 'seller-de', role: 'seller', text: 'Danke schön.',
+        bubble: germanSellerSource, container: germanSellerSource, anchor: germanSellerSource,
+    });
+    let germanDetectionCalls = 0;
+    api.Translator.translate = async (text, target, options) => {
+        germanDetectionCalls += 1;
+        assert.equal(text, 'Danke schön.');
+        assert.equal(target, 'de');
+        assert.equal(options.logHistory, false);
+        return { text, detectedLanguage: 'de-DE', provider: 'deepl' };
+    };
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    const germanSellerRecord = api.ConversationTranslations.records.get(germanSellerSource);
+    assert.equal(germanSellerRecord.state, 'source-target');
+    assert.equal(germanSellerRecord.node, null, 'a source already in the selected language needs no redundant note');
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(germanDetectionCalls, 1, 'the selected-language source sentinel prevents repeat provider requests');
+
+    api.Store.settings.previewLanguage = 'zu';
+    api.Store.settings.freeFallback = false;
+    let unsupportedTargetCalls = 0;
+    api.Translator.translate = async () => {
+        unsupportedTargetCalls += 1;
+        throw new Error('the provider must not be called for an unsupported target');
+    };
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(unsupportedTargetCalls, 0, 'unsupported DeepL targets must be rejected before provider work starts');
+    for (const record of api.ConversationTranslations.records.values()) {
+        const ownerLabel = record.role === 'seller' ? 'Sizin mesajınız' : 'Müşteri mesajı';
+        assert.equal(record.state, 'error');
+        assert.equal(record.target, 'zu');
+        assert.equal(record.node.children[0].textContent, `${ownerLabel} · Zulu çeviri`);
+        assert.equal(record.body.getAttribute('lang'), 'tr', 'a Turkish provider error must not be announced as translated content');
+        assert.match(record.body.textContent, /DeepL Zulu hedef dilini desteklemiyor/);
+    }
+
+    entries.splice(1);
+    api.Store.settings.previewLanguage = 'fr';
+    let releaseFrench;
+    const frenchGate = new Promise(resolve => { releaseFrench = resolve; });
+    let frenchCalls = 0;
+    api.Translator.translate = async (_text, target) => {
+        frenchCalls += 1;
+        assert.equal(target, 'fr');
+        await frenchGate;
+        return { text: 'Ancienne traduction française.', detectedLanguage: 'en', provider: 'deepl' };
+    };
+    const staleFrenchRefresh = api.ConversationTranslations.refresh();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(frenchCalls, 1);
+    const staleFrenchNode = api.ConversationTranslations.records.get(firstSource).node;
+    api.Store.settings.previewLanguage = 'es';
+    releaseFrench();
+    assert.equal(await staleFrenchRefresh, false, 'a language change must invalidate an in-flight inline translation');
+    assert.equal(api.ConversationTranslations.records.get(firstSource).state, 'loading', 'the stale provider result must not update the note');
+
+    let spanishCalls = 0;
+    api.Translator.translate = async (_text, target) => {
+        spanishCalls += 1;
+        assert.equal(target, 'es');
+        return { text: 'Nuevo texto traducido.', detectedLanguage: 'en', provider: 'deepl' };
+    };
+    assert.equal(await api.ConversationTranslations.refresh(), true);
+    assert.equal(spanishCalls, 1);
+    const spanishRecord = api.ConversationTranslations.records.get(firstSource);
+    assert.equal(staleFrenchNode.isConnected, false);
+    assert.equal(spanishRecord.target, 'es');
+    assert.equal(spanishRecord.node.children[0].textContent, 'Müşteri mesajı · İspanyolca çeviri');
+    assert.equal(spanishRecord.body.getAttribute('lang'), 'es');
+    assert.equal(spanishRecord.body.textContent, 'Nuevo texto traducido.');
 
     api.Store.settings.autoTurkishPreview = false;
     assert.equal(await api.ConversationTranslations.refresh(), false);

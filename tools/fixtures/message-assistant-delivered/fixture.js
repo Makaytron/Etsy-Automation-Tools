@@ -971,6 +971,143 @@
         return { after: result, externalNetworkAttempts: copy(networkAttempts) };
     }
 
+    async function runNativeComposerQuickActionsScenario() {
+        const expectedReply = 'Hi Fixture Buyer,\n\nThank you for reaching out.\n\nI am happy to help with your order.';
+        const staleDraft = 'This detached composer draft must never be sent.';
+        const aiRequests = [];
+
+        renderConversation({ thread: true, incoming: true });
+        await api.App.onRoute();
+        const initialToolbar = await waitUntil(() => {
+            const toolbars = [...document.querySelectorAll('[data-mema-composer-actions]')];
+            return toolbars.length === 1 ? toolbars[0] : null;
+        }, 'initial native composer quick actions');
+        const initialTextarea = document.getElementById('fixture-message');
+        const staleSendButton = initialToolbar.querySelector('[data-mema-message-action="send-reply"]');
+        const initialRouteFingerprint = api.Router.routeFingerprint();
+        const initialConversationIdentity = api.Router.conversationIdentity();
+        const panelOpenBefore = api.UI.state.open;
+
+        api.ComposerQuickActions.sync();
+        api.ComposerQuickActions.sync();
+        api.ComposerQuickActions.start();
+        const initialToolbarCount = document.querySelectorAll('[data-mema-composer-actions]').length;
+        const initialQuickActionCount = initialToolbar.querySelectorAll('[data-mema-message-action]').length;
+        const initialRealSendActionCount = initialToolbar.querySelectorAll('[data-real-send-action="1"]').length;
+
+        initialTextarea.value = staleDraft;
+        initialTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+        await waitUntil(() => staleSendButton && !staleSendButton.disabled, 'enabled stale quick send button');
+
+        api.AI.generateReply = async (context, options) => {
+            aiRequests.push({
+                conversationId: context.conversationId,
+                lastCustomerMessage: context.lastCustomerMessage,
+                replyMode: options.replyMode,
+                targetLanguage: options.targetLanguage,
+            });
+            return {
+                reply: expectedReply,
+                reply_turkish_preview: 'Merhaba Fixture Buyer,\n\nMesajÄ±nÄ±z iÃ§in teÅŸekkÃ¼rler.\n\nSipariÅŸiniz konusunda yardÄ±mcÄ± olmaktan memnuniyet duyarÄ±m.',
+                customer_intent: 'general_question',
+                internal_summary_tr: 'Fixture mÃ¼ÅŸterisi yardÄ±m istiyor.',
+                needs_human_review: false,
+                risk_flags: [],
+            };
+        };
+
+        renderConversation({ thread: true, incoming: true });
+        routeUrl = `${THREAD_URL}?fixture_quick_actions=remounted`;
+        history.pushState({}, '', '/fixture/quick-actions-remounted');
+        await routeListener?.(api.Router.routeFingerprint());
+        const remountedToolbar = await waitUntil(() => {
+            const toolbars = [...document.querySelectorAll('[data-mema-composer-actions]')];
+            return toolbars.length === 1 && toolbars[0] !== initialToolbar ? toolbars[0] : null;
+        }, 'remounted native composer quick actions');
+        const remountedTextarea = document.getElementById('fixture-message');
+        const remountedRouteFingerprint = api.Router.routeFingerprint();
+        const remountedConversationIdentity = api.Router.conversationIdentity();
+
+        staleSendButton.click();
+        await new Promise(resolve => setTimeout(resolve, 150));
+        const staleClick = {
+            sendCount: window.__MEMA_FIXTURE__.sendCount,
+            nativeTargetClickCount: window.__MEMA_FIXTURE__.nativeTargetClickCount,
+            formSubmitCount: formSubmitEvents.length,
+            aiCallCount: aiRequests.length,
+            composerText: remountedTextarea.value,
+        };
+
+        api.ComposerQuickActions.sync();
+        api.ComposerQuickActions.sync();
+        const remountedToolbarCount = document.querySelectorAll('[data-mema-composer-actions]').length;
+        const quickAiButton = remountedToolbar.querySelector('[data-mema-message-action="ai-auto-reply"]');
+        const quickSendButton = remountedToolbar.querySelector('[data-mema-message-action="send-reply"]');
+        quickAiButton.click();
+        await waitUntil(() => remountedTextarea.value === expectedReply
+            && !api.ComposerQuickActions.actionPromise, 'quick AI reply in native composer', 10000);
+        const composerAfterAi = remountedTextarea.value;
+        const panelOpenAfterAi = api.UI.state.open;
+        await waitUntil(() => !quickSendButton.disabled, 'enabled remounted quick customer send');
+
+        quickSendButton.click();
+        await waitUntil(() => window.__MEMA_FIXTURE__.sendCount === 1, 'quick verified customer send', 10000);
+        await waitUntil(() => api.Store.statuses.conversations?.['fixture-created-thread']?.status === 'sent',
+            'quick customer send ledger', 10000);
+        await waitUntil(() => !api.ComposerQuickActions.actionPromise, 'quick customer send completion', 10000);
+        api.ComposerQuickActions.sync();
+
+        const result = {
+            panelOpenBefore,
+            panelOpenAfterAi,
+            panelOpenAfterSend: api.UI.state.open,
+            initialToolbarCount,
+            initialQuickActionCount,
+            initialRealSendActionCount,
+            remountedToolbarCount,
+            remountedQuickActionCount: remountedToolbar.querySelectorAll('[data-mema-message-action]').length,
+            remountedRealSendActionCount: remountedToolbar.querySelectorAll('[data-real-send-action="1"]').length,
+            finalToolbarCount: document.querySelectorAll('[data-mema-composer-actions]').length,
+            toolbarReplaced: initialToolbar !== remountedToolbar,
+            oldToolbarConnectedAfterRemount: initialToolbar.isConnected,
+            oldTextareaConnectedAfterRemount: initialTextarea.isConnected,
+            staleButtonWasEnabled: !staleSendButton.disabled,
+            staleClick,
+            initialRouteFingerprint,
+            remountedRouteFingerprint,
+            initialConversationIdentity,
+            remountedConversationIdentity,
+            aiRequests: copy(aiRequests),
+            expectedReply,
+            composerAfterAi,
+            quickSendLabel: quickSendButton.textContent.trim(),
+            sendCount: window.__MEMA_FIXTURE__.sendCount,
+            nativeTargetClickCount: window.__MEMA_FIXTURE__.nativeTargetClickCount,
+            formSubmitCount: formSubmitEvents.length,
+            lastSentText: window.__MEMA_FIXTURE__.lastSentText,
+            composerAfterSend: document.getElementById('fixture-message')?.value || '',
+            outgoingCount: document.querySelectorAll('[data-message-direction="outgoing"]').length,
+            conversationStatus: api.Store.statuses.conversations?.['fixture-created-thread']?.status || '',
+        };
+        assertFixture(result.panelOpenBefore === false && result.panelOpenAfterAi === false
+            && result.panelOpenAfterSend === false, 'native quick actions work while the assistant panel stays closed');
+        assertFixture(result.initialToolbarCount === 1 && result.remountedToolbarCount === 1
+            && result.finalToolbarCount === 1, 'native composer exposes one idempotent quick-action toolbar');
+        assertFixture(result.toolbarReplaced && !result.oldToolbarConnectedAfterRemount
+            && !result.oldTextareaConnectedAfterRemount, 'composer remount replaces the stale toolbar binding');
+        assertFixture(result.staleClick.sendCount === 0 && result.staleClick.nativeTargetClickCount === 0
+            && result.staleClick.formSubmitCount === 0 && result.staleClick.aiCallCount === 0
+            && result.staleClick.composerText === '', 'detached quick action cannot affect the remounted composer');
+        assertFixture(result.aiRequests.length === 1 && result.composerAfterAi === expectedReply,
+            'quick AI uses the real reply flow and preserves multiline output in the native composer');
+        assertFixture(result.sendCount === 1 && result.nativeTargetClickCount === 1 && result.formSubmitCount === 1,
+            'quick customer send reaches one guarded Etsy send');
+        assertFixture(result.lastSentText === expectedReply && result.composerAfterSend === ''
+            && result.outgoingCount === 1 && result.conversationStatus === 'sent',
+            'quick customer send preserves, clears, and verifies the exact reply');
+        return { after: result, externalNetworkAttempts: copy(networkAttempts) };
+    }
+
     async function runResponsiveOrdersScenario() {
         api.UI.open('orders');
         await api.UI.refreshCurrent();
@@ -1157,6 +1294,7 @@
         runMessageCenterScenario,
         runInlineTranslationScenario,
         runDirectCustomerSendScenario,
+        runNativeComposerQuickActionsScenario,
         runResponsiveOrdersScenario,
         runResponsiveMessageListScenario,
         get api() { return api; },

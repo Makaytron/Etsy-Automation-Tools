@@ -4,9 +4,9 @@
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
 // @version      1.2.5
-// @description  Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
-// @description:tr Etsy mesajlarını Türkçe görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
-// @description:en Translate Etsy messages and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
+// @description  Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
+// @description:tr Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
+// @description:en Translate Etsy messages into your selected language and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
 // @author       Makaytron (@Makaytron)
 // @license      MIT
 // @antifeature  tracking
@@ -1176,6 +1176,13 @@ zu|Zulu
         ['settings', 'settings', 'Ayarlar'],
     ]);
     const CONTEXT_PAGES = new Set(['messages', 'orders', 'reviews', 'unknown']);
+    const MESSAGE_ACTION_DEFINITIONS = Object.freeze({
+        'ai-polish-reply': Object.freeze({ label: 'AI ile Düzenle', icon: 'edit' }),
+        'free-translate-reply': Object.freeze({ label: 'Sadece Çevir', icon: 'globe' }),
+        'ai-auto-reply': Object.freeze({ label: 'AI Cevap Önersin', icon: 'star' }),
+        'regenerate-reply': Object.freeze({ label: 'Tekrar Hazırla', icon: 'refresh' }),
+        'send-reply': Object.freeze({ label: 'Müşteriye Gönder', icon: 'send', realSend: true }),
+    });
 
     const ICON_SPRITE = `<svg class="ma-sprite" aria-hidden="true"><symbol id="ma-i-message" viewBox="0 0 24 24"><path d="M4 4h16v12H8l-4 4V4Zm3 5h10M7 12h7"/></symbol><symbol id="ma-i-send" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-7-8-3Zm8 3 4-4"/></symbol><symbol id="ma-i-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z"/></symbol><symbol id="ma-i-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Zm8 0v5h5M9 12h6M9 16h6"/></symbol><symbol id="ma-i-history" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6M12 8v5l3 2"/></symbol><symbol id="ma-i-settings" viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm0-5 1.2 2.2 2.5.6 2-1.3 2.1 2.1-1.3 2 .6 2.5 2.2 1.2v3l-2.2 1.2-.6 2.5 1.3 2-2.1 2.1-2-1.3-2.5.6-1.2 2.2h-3l-1.2-2.2-2.5-.6-2 1.3L2.9 19l1.3-2-.6-2.5L1.4 13v-3l2.2-1.2.6-2.5-1.3-2L5 2.2l2 1.3 2.5-.6L10.7.7h2.6Z"/></symbol><symbol id="ma-i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol><symbol id="ma-i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></symbol><symbol id="ma-i-copy" viewBox="0 0 24 24"><path d="M9 9h11v11H9V9ZM4 4h11v3M4 4v11h3"/></symbol><symbol id="ma-i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6.1 8A7 7 0 0 1 18 7l2 5M17.9 16A7 7 0 0 1 6 17l-2-5"/></symbol><symbol id="ma-i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol><symbol id="ma-i-alert" viewBox="0 0 24 24"><path d="M12 3 2.5 20h19L12 3Zm0 6v5M12 17h.01"/></symbol><symbol id="ma-i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol><symbol id="ma-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol><symbol id="ma-i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></symbol><symbol id="ma-i-edit" viewBox="0 0 24 24"><path d="m4 16-1 5 5-1L19 9l-4-4L4 16Zm9-9 4 4"/></symbol><symbol id="ma-i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16"/></symbol></svg>`;
 
@@ -1187,7 +1194,7 @@ zu|Zulu
 
     const PREMIUM_CSS = `:host{--ma-primary:#17213a;--ma-primary-strong:#0d1528;--ma-primary-soft:#edf1f8;--ma-accent:#b58a4a;--ma-accent-soft:#fbf5e9;--ma-ink:#172033;--ma-muted:#606a7b;--ma-line:#e1e6ef;--ma-bg:#f3f5f9;--ma-surface:#fff;--ma-success:#0f6b44;--ma-success-soft:#e7f6ef;--ma-warning:#8a490e;--ma-warning-soft:#fff4df;--ma-danger:#a4313b;--ma-danger-soft:#fff0f1;--ma-info:#47556d;--ma-info-soft:#eef2f7;--ma-shadow:0 30px 90px rgba(12,22,43,.22);--ma-shadow-soft:0 12px 32px rgba(18,31,54,.09);--ma-r1:9px;--ma-r2:13px;--ma-r3:19px}.ma-app{width:min(680px,calc(100vw - 28px));top:14px;right:14px;bottom:14px;border-color:rgba(201,210,225,.9);border-radius:22px;box-shadow:var(--ma-shadow);background:var(--ma-bg)}.ma-app--wide{width:min(1220px,calc(100vw - 28px));grid-template-columns:210px minmax(0,1fr)}.ma-app--fullscreen{inset:8px;border-radius:18px}.ma-header{height:68px;padding:0 18px;border-bottom-color:rgba(221,227,237,.9);background:rgba(255,255,255,.94);backdrop-filter:blur(18px)}.ma-brand__mark{width:48px;height:32px;border:1px solid var(--ma-line);border-radius:10px;background:#fff}.ma-brand__title{font-size:14px;font-weight:820;letter-spacing:-.01em}.ma-brand__version{color:var(--ma-muted);font-size:11.5px}.ma-nav{padding:14px 10px;border-right-color:var(--ma-line);background:#f8f9fc}.ma-nav__group{display:grid;gap:5px}.ma-nav__group--utility{margin-top:16px;padding-top:16px;border-top:1px solid var(--ma-line)}.ma-nav__eyebrow{display:none;padding:0 10px 6px;color:#8791a2;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.ma-app--wide .ma-nav__eyebrow,.ma-app--fullscreen .ma-nav__eyebrow{display:block}.ma-nav__item{min-height:44px;padding:0 11px;border:1px solid transparent;border-radius:12px;color:#536075}.ma-nav__item:hover{border-color:#e2e7f0;background:#fff;color:var(--ma-ink)}.ma-nav__item.is-active{border-color:#17213a;color:#fff;background:linear-gradient(145deg,#1d2946,#111a30);box-shadow:0 8px 20px rgba(23,33,58,.2)}.ma-nav__foot{padding-top:12px}.ma-main{background:radial-gradient(circle at 90% 0,rgba(181,138,74,.08),transparent 28%),var(--ma-bg)}.ma-view{padding:24px}.ma-page-head{margin-bottom:20px;align-items:center}.ma-page-head h2{font-size:23px;letter-spacing:-.025em}.ma-page-head p{max-width:680px;color:var(--ma-muted)}.ma-card,.ma-table-wrap,.ma-message-contact{border-color:var(--ma-line);box-shadow:0 1px 2px rgba(16,29,52,.025)}.ma-card{border-radius:17px}.ma-btn{min-height:42px;border-radius:11px}.ma-btn--primary{border-color:var(--ma-primary);background:linear-gradient(145deg,#233152,#131d34);box-shadow:0 8px 18px rgba(23,33,58,.17)}.ma-btn--primary:hover{transform:translateY(-1px);box-shadow:0 11px 24px rgba(23,33,58,.22)}.ma-btn--small{min-height:36px}.ma-input,.ma-select,.ma-textarea{border-color:#d8deea;border-radius:11px}.ma-input:focus,.ma-select:focus,.ma-textarea:focus{border-color:#66738b;box-shadow:0 0 0 3px rgba(59,76,109,.13)}.ma-pill{padding:5px 9px}.ma-icon-btn:focus-visible,.ma-panel-close:focus-visible,.ma-version-chip:focus-visible,.ma-btn:focus-visible,.ma-nav__item:focus-visible,.ma-tone:focus-visible,.ma-review-card:focus-visible,.ma-check:focus-visible,.ma-select:focus-visible{outline:3px solid rgba(53,79,124,.28);outline-offset:2px}.ma-automation-hero{position:relative;overflow:hidden;margin-bottom:18px;padding:22px;border:1px solid rgba(255,255,255,.12);border-radius:21px;color:#fff;background:linear-gradient(135deg,#101a31 0%,#1c2b4c 68%,#26395f 100%);box-shadow:0 18px 42px rgba(18,29,52,.18)}.ma-automation-hero::after{content:"";position:absolute;right:-70px;bottom:-90px;width:240px;height:240px;border:1px solid rgba(210,178,116,.26);border-radius:50%;box-shadow:0 0 0 34px rgba(210,178,116,.05),0 0 0 70px rgba(210,178,116,.035);pointer-events:none}.ma-automation-hero__top,.ma-automation-hero__footer{position:relative;z-index:1;display:flex;align-items:center;gap:14px;flex-wrap:wrap}.ma-automation-hero__copy{min-width:220px;flex:1}.ma-automation-hero__eyebrow{display:flex;align-items:center;gap:7px;color:#d8c09a;font-size:11px;font-weight:820;letter-spacing:.11em;text-transform:uppercase}.ma-automation-dot{width:8px;height:8px;border-radius:50%;background:#d8c09a;box-shadow:0 0 0 5px rgba(216,192,154,.12)}.ma-automation-dot.is-running{background:#65d69a;box-shadow:0 0 0 5px rgba(101,214,154,.13)}.ma-automation-hero h3{margin:7px 0 4px;font-size:24px;line-height:1.15;letter-spacing:-.025em}.ma-automation-hero p{margin:0;max-width:650px;color:#c6cfdf;font-size:13px}.ma-automation-hero__metrics{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,minmax(82px,1fr));gap:8px;margin:18px 0}.ma-automation-metric{padding:10px 12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.07);backdrop-filter:blur(8px)}.ma-automation-metric strong{display:block;font-size:18px}.ma-automation-metric span{color:#b9c3d5;font-size:10.5px}.ma-progress{position:relative;z-index:1;height:7px;margin:4px 0 16px;overflow:hidden;border-radius:999px;background:rgba(255,255,255,.13)}.ma-progress__bar{height:100%;border-radius:inherit;background:linear-gradient(90deg,#c9a96d,#ead7ac);transition:width .25s ease}.ma-automation-hero .ma-btn{border-color:rgba(255,255,255,.2);color:#fff;background:rgba(255,255,255,.09);box-shadow:none}.ma-automation-hero .ma-btn:hover{background:rgba(255,255,255,.15)}.ma-automation-hero .ma-btn--primary{border-color:#f2dfba;color:#17213a;background:linear-gradient(145deg,#f7e9ca,#d8b879);box-shadow:0 8px 20px rgba(0,0,0,.2)}.ma-automation-options{position:relative;z-index:1;width:100%;margin-top:14px;border-top:1px solid rgba(255,255,255,.12)}.ma-automation-options>summary{min-height:42px;color:#d3d9e5}.ma-automation-options .ma-disclosure__body{padding-top:8px}.ma-automation-options label{color:#d3d9e5}.ma-automation-options .ma-message-box{border-color:rgba(255,255,255,.13);color:#e7ebf2;background:rgba(255,255,255,.07)}.ma-order-toolbar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:13px}.ma-order-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(350px,1fr));gap:12px}.ma-order-card{min-width:0;padding:14px;border:1px solid var(--ma-line);border-radius:16px;background:#fff;box-shadow:0 7px 20px rgba(18,31,54,.045);transition:border-color .16s ease,transform .16s ease,box-shadow .16s ease}.ma-order-card:hover{transform:translateY(-1px);border-color:#cbd3e1;box-shadow:0 11px 25px rgba(18,31,54,.075)}.ma-order-card.is-selected{border-color:#8997af;box-shadow:0 0 0 2px rgba(69,88,124,.09),0 11px 25px rgba(18,31,54,.075)}.ma-order-card__top{display:flex;align-items:flex-start;gap:11px}.ma-order-card__image{width:48px;height:48px;border-radius:12px;object-fit:cover;background:#eef1f5;flex:0 0 auto}.ma-order-card__copy{min-width:0;flex:1}.ma-order-card__name{font-size:14px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ma-order-card__meta{margin-top:2px;color:var(--ma-muted);font-size:11.5px}.ma-order-card__product{margin-top:6px;color:#465166;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ma-order-card__status{display:flex;justify-content:flex-end;gap:5px;flex-wrap:wrap}.ma-order-card__body{display:grid;gap:10px;margin-top:13px;padding-top:12px;border-top:1px solid #edf0f5}.ma-order-card__actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.ma-order-card__actions .ma-field{min-width:180px;flex:1}.ma-order-card__actions .ma-select{min-height:36px;font-size:12px}.ma-empty-inline{padding:38px 20px;border:1px dashed #cfd6e2;border-radius:17px;text-align:center;color:var(--ma-muted);background:rgba(255,255,255,.55)}@container (max-width:720px){.ma-view{padding:16px}.ma-order-grid{grid-template-columns:1fr}.ma-automation-hero{padding:18px}.ma-automation-hero__metrics{grid-template-columns:repeat(3,1fr)}.ma-page-head{align-items:flex-start}.ma-page-head__actions{margin-left:0}}@media (max-width:560px){.ma-app{inset:6px;width:auto;grid-template-columns:54px minmax(0,1fr);border-radius:17px}.ma-header{height:60px;padding:0 10px}.ma-brand__mark{width:40px;height:29px}.ma-brand__title{font-size:12.5px}.ma-version-chip,[data-action="toggle-wide"]{display:none}.ma-view{padding:12px}.ma-automation-hero h3{font-size:20px}.ma-automation-hero__metrics{grid-template-columns:1fr 1fr}.ma-automation-metric:last-child{grid-column:1 / -1}.ma-order-card__status{width:100%;justify-content:flex-start}.ma-order-card__top{flex-wrap:wrap}.ma-order-card__actions>*{width:100%}.ma-panel-close span{display:none}}@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}`;
 
-    const GLOBAL_CSS = `.mema-order-badge{margin-inline-start:8px;padding:3.2px 7.2px;border-radius:999px;display:inline-flex;align-items:center;font:700 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;vertical-align:middle}.mema-order-badge[data-status="draft"]{color:#2467d8;background:#eaf2ff}.mema-order-badge[data-status="inserted"]{color:#c35b12;background:#fff1e7}.mema-order-badge[data-status="sent_pending_verification"]{color:#8a4b08;background:#fff4d6}.mema-order-badge[data-status="sent"]{color:#178847;background:#eaf8ef}.mema-order-badge[data-status="error"]{color:#c23b3b;background:#ffeded}.mema-order-badge[data-status="skipped"]{color:#697386;background:#eeeeee}.mema-notify{position:fixed;top:16px;left:50%;z-index:2147483647;transform:translateX(-50%);width:min(360px,calc(100vw - 32px));display:grid;gap:8px;pointer-events:none;font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mema-note{--mema-note:#343a4a;min-height:44px;padding:10px 10px 10px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;color:#fff;background:var(--mema-note);box-shadow:0 8px 24px rgba(24,28,45,.18);opacity:0;transform:translateY(8px);transition:.18s ease;pointer-events:auto}.mema-note.is-on{opacity:1;transform:none}.mema-note[data-type="success"]{--mema-note:#178847}.mema-note[data-type="error"]{--mema-note:#c23b3b}.mema-note[data-type="warning"]{--mema-note:#a85710}.mema-note__mark{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;font-size:11px}.mema-note__text{min-width:0;flex:1;overflow-wrap:anywhere}.mema-note__close{width:28px;height:28px;border:0;border-radius:7px;display:grid;place-items:center;color:inherit;background:transparent;cursor:pointer;opacity:.72}.mema-note__close:hover{opacity:1;background:rgba(255,255,255,.14)}.mema-copy-buffer{position:fixed!important;inset:auto auto 0 -9999px!important;width:1px!important;height:1px!important;opacity:0!important}.mema-inline-translation{box-sizing:border-box;display:block;max-width:min(680px,calc(100% - 16px));margin:6px 8px 12px;padding:9px 11px;border-left:3px solid #f1641e;border-radius:0 8px 8px 0;background:#fff7f2;color:#3b2c25;font:500 13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:pre-wrap;overflow-wrap:anywhere}.mema-inline-translation__label{margin-bottom:3px;color:#a14313;font-size:11px;font-weight:750;letter-spacing:.02em}.mema-inline-translation[data-state="loading"]{opacity:.68}.mema-inline-translation[data-state="error"]{border-left-color:#b85c35;background:#fff4f0;color:#7d3d25}`;
+    const GLOBAL_CSS = `.mema-order-badge{margin-inline-start:8px;padding:3.2px 7.2px;border-radius:999px;display:inline-flex;align-items:center;font:700 11px/1.2 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;vertical-align:middle}.mema-order-badge[data-status="draft"]{color:#2467d8;background:#eaf2ff}.mema-order-badge[data-status="inserted"]{color:#c35b12;background:#fff1e7}.mema-order-badge[data-status="sent_pending_verification"]{color:#8a4b08;background:#fff4d6}.mema-order-badge[data-status="sent"]{color:#178847;background:#eaf8ef}.mema-order-badge[data-status="error"]{color:#c23b3b;background:#ffeded}.mema-order-badge[data-status="skipped"]{color:#697386;background:#eeeeee}.mema-notify{position:fixed;top:16px;left:50%;z-index:2147483647;transform:translateX(-50%);width:min(360px,calc(100vw - 32px));display:grid;gap:8px;pointer-events:none;font:600 14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mema-note{--mema-note:#343a4a;min-height:44px;padding:10px 10px 10px 13px;border-radius:10px;display:flex;align-items:center;gap:10px;color:#fff;background:var(--mema-note);box-shadow:0 8px 24px rgba(24,28,45,.18);opacity:0;transform:translateY(8px);transition:.18s ease;pointer-events:auto}.mema-note.is-on{opacity:1;transform:none}.mema-note[data-type="success"]{--mema-note:#178847}.mema-note[data-type="error"]{--mema-note:#c23b3b}.mema-note[data-type="warning"]{--mema-note:#a85710}.mema-note__mark{width:20px;height:20px;border:2px solid currentColor;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;font-size:11px}.mema-note__text{min-width:0;flex:1;overflow-wrap:anywhere}.mema-note__close{width:28px;height:28px;border:0;border-radius:7px;display:grid;place-items:center;color:inherit;background:transparent;cursor:pointer;opacity:.72}.mema-note__close:hover{opacity:1;background:rgba(255,255,255,.14)}.mema-copy-buffer{position:fixed!important;inset:auto auto 0 -9999px!important;width:1px!important;height:1px!important;opacity:0!important}.mema-inline-translation{--mema-inline-accent:#61768a;--mema-inline-bg:#f2f5f7;--mema-inline-text:#273540;--mema-inline-label:#42586a;box-sizing:border-box;display:block;max-width:min(680px,calc(100% - 16px));margin:6px auto 12px 8px;padding:9px 11px;border:0;border-inline-start:3px solid var(--mema-inline-accent);border-radius:0 8px 8px 0;background:var(--mema-inline-bg);color:var(--mema-inline-text);font:500 13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-align:start;white-space:pre-wrap;overflow-wrap:anywhere}.mema-inline-translation--seller{--mema-inline-accent:#f1641e;--mema-inline-bg:#fff7f2;--mema-inline-text:#3b2c25;--mema-inline-label:#a14313;margin-inline:auto 8px;border-inline-start:0;border-inline-end:3px solid var(--mema-inline-accent);border-radius:8px 0 0 8px}.mema-inline-translation__label{margin-bottom:3px;color:var(--mema-inline-label);font-size:11px;font-weight:750;letter-spacing:.02em}.mema-inline-translation[data-state="loading"]{opacity:.68}.mema-inline-translation[data-state="error"]{--mema-inline-accent:#b85c35;--mema-inline-bg:#fff4f0;--mema-inline-text:#7d3d25;--mema-inline-label:#8f3d20}.mema-composer-actions{box-sizing:border-box;margin:8px 0 12px;padding:9px 10px;border:1px solid #dedede;border-radius:10px;display:flex;align-items:center;flex-wrap:wrap;gap:7px;background:#fafafa;color:#222;font:600 12px/1.3 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.mema-composer-actions[aria-busy="true"]{opacity:.68}.mema-composer-actions__label{margin-inline-end:auto;color:#5b5b5b;font-size:11px;font-weight:750}.mema-composer-action{min-height:34px;padding:7px 11px;border:1px solid #cfcfcf;border-radius:999px;cursor:pointer;background:#fff;color:#222;font:inherit;font-size:12px;font-weight:700;line-height:1.2}.mema-composer-action:hover{border-color:#9f9f9f;background:#f5f5f5}.mema-composer-action:disabled{opacity:.46;cursor:not-allowed}.mema-composer-action--primary{border-color:#222;background:#222;color:#fff}.mema-composer-action--primary:hover{border-color:#000;background:#000}@media (max-width:640px){.mema-composer-actions__label{width:100%}.mema-composer-action{flex:1 1 auto}}@media (forced-colors:active){.mema-inline-translation,.mema-composer-actions{border-color:CanvasText;background:Canvas;color:CanvasText}.mema-inline-translation__label,.mema-composer-actions__label{color:CanvasText}.mema-composer-action{border-color:ButtonText;color:ButtonText;background:ButtonFace}}`;
 
     const html = (value = '') => String(value)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -4410,6 +4417,7 @@ zu|Zulu
                 ...composerForm?.querySelectorAll?.('button') || [],
             ])];
             const candidates = buttons.filter((button) => {
+                if (button.closest?.('[data-mema-composer-actions]')) return false;
                 if (button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
                 if (button.hidden || button.closest?.('[hidden], [aria-hidden="true"]')) return false;
                 try {
@@ -4435,6 +4443,7 @@ zu|Zulu
         potentialSendButton(element) {
             if (Router.page() !== 'messages' || !Router.conversationId()) return null;
             const button = element?.closest?.('button') || element;
+            if (button?.closest?.('[data-mema-composer-actions]')) return null;
             if (!this.hasExplicitSendLabel(button)) return null;
             if (this.getSendButton() === button) return button;
             const scope = button?.closest?.(this.conversationScopeSelector)
@@ -4770,6 +4779,23 @@ zu|Zulu
         sourceKey(entry) {
             return JSON.stringify([entry?.id || '', entry?.role || '', entry?.text || '']);
         },
+        selectedTarget() {
+            return Translator.normalizedTarget(Store.settings.previewLanguage || 'tr');
+        },
+        policyFingerprint(target = this.selectedTarget()) {
+            const provider = String(Store.settings.translator || 'google').toLowerCase();
+            return JSON.stringify([
+                Translator.effectiveTarget(target),
+                Translator.cachePolicyFingerprint(provider),
+            ]);
+        },
+        sourceMatchesTarget(detectedLanguage, target) {
+            const detected = Translator.normalizedTarget(detectedLanguage || 'und');
+            if (!detected || detected === 'und') return false;
+            const effectiveDetected = Translator.effectiveTarget(detected);
+            const effectiveTarget = Translator.effectiveTarget(target);
+            return effectiveDetected === effectiveTarget || effectiveDetected.startsWith(`${effectiveTarget}-`);
+        },
         mutationIsOwned(mutation) {
             const owned = node => Boolean(node?.nodeType === 1
                 && (node.matches?.('[data-mema-conversation-translation]')
@@ -4815,18 +4841,20 @@ zu|Zulu
             if (!sourceNode || !anchor || !parent) return null;
 
             const node = document.createElement('div');
-            node.className = 'mema-inline-translation';
+            node.className = `mema-inline-translation mema-inline-translation--${entry.role}`;
             node.setAttribute('data-mema-conversation-translation', '1');
+            node.setAttribute('data-mema-message-role', entry.role);
             node.setAttribute('data-state', 'loading');
             node.setAttribute('role', 'note');
-            node.setAttribute('lang', 'tr');
             node.setAttribute('aria-live', 'polite');
             const label = document.createElement('div');
             label.className = 'mema-inline-translation__label';
-            label.textContent = 'Türkçe çeviri';
+            label.textContent = `${entry.role === 'seller' ? 'Sizin mesajınız' : 'Müşteri mesajı'} · ${langName(work.target)} çeviri`;
+            label.setAttribute('lang', 'tr');
             const body = document.createElement('div');
             body.className = 'mema-inline-translation__text';
             body.textContent = 'Çevriliyor…';
+            body.setAttribute('lang', 'tr');
             node.append?.(label, body);
             if (!node.append) {
                 node.appendChild?.(label);
@@ -4839,6 +4867,7 @@ zu|Zulu
             return {
                 sourceNode,
                 sourceKey: this.sourceKey(entry),
+                role: entry.role,
                 text: entry.text,
                 node,
                 body,
@@ -4849,13 +4878,18 @@ zu|Zulu
                 conversationId: work.conversationId,
                 routeFingerprint: work.routeFingerprint,
                 policy: work.policy,
+                target: work.target,
+                effectiveTarget: work.effectiveTarget,
             };
         },
         setRecordState(record, state, text) {
             if (!record?.node) return;
             record.state = state;
             record.node.setAttribute?.('data-state', state);
-            if (record.body) record.body.textContent = text;
+            if (record.body) {
+                record.body.textContent = text;
+                record.body.setAttribute?.('lang', ['translated', 'fallback'].includes(state) ? record.effectiveTarget : 'tr');
+            }
         },
         recordStructureIsCurrent(record, entry) {
             if (!record?.node || !record?.body || !entry) return false;
@@ -4880,7 +4914,7 @@ zu|Zulu
                 && Router.routeFingerprint() === work.routeFingerprint
                 && MessageAdapter.getConversationScope() === work.scope
                 && work.scope?.isConnected !== false
-                && Translator.cachePolicyFingerprint(String(Store.settings.translator || 'google').toLowerCase()) === work.policy);
+                && this.policyFingerprint() === work.policy);
         },
         recordIsCurrent(record, work) {
             if (!record || !this.workIsCurrent(work)) return false;
@@ -4905,12 +4939,17 @@ zu|Zulu
                 return false;
             }
             this.observeScope(scope);
+            const target = this.selectedTarget();
+            const provider = String(Store.settings.translator || 'google').toLowerCase();
             const work = {
                 generation,
                 conversationId: Router.conversationId(),
                 routeFingerprint: Router.routeFingerprint(),
                 scope,
-                policy: Translator.cachePolicyFingerprint(String(Store.settings.translator || 'google').toLowerCase()),
+                target,
+                effectiveTarget: Translator.effectiveTarget(target),
+                provider,
+                policy: this.policyFingerprint(target),
             };
             const entries = MessageAdapter.getMessageEntries(scope)
                 .filter(entry => this.isTranslatableEntry(entry))
@@ -4933,7 +4972,7 @@ zu|Zulu
                 const recordIsReusable = Boolean(record
                     && record.sourceKey === sourceKey
                     && record.policy === work.policy
-                    && (record.state === 'source-tr'
+                    && (record.state === 'source-target'
                         || (['translated', 'fallback', 'error'].includes(record.state) && recordNodeIsMounted)));
                 if (recordIsReusable) {
                     record.generation = generation;
@@ -4954,13 +4993,22 @@ zu|Zulu
                     record.policy = work.policy;
                     this.setRecordState(record, 'loading', 'Çevriliyor…');
                 }
-                const cacheKey = Translator.cacheKey(entry.text, 'tr') || hashExactText(entry.text);
+                const cacheKey = Translator.cacheKey(entry.text, work.target) || hashExactText(entry.text);
                 const group = pendingGroups.get(cacheKey) || { text: entry.text, records: [] };
                 group.records.push(record);
                 pendingGroups.set(cacheKey, group);
             }
 
             const pending = [...pendingGroups.values()];
+            if (work.provider === 'deepl' && !Translator.supportsTarget('deepl', work.target) && !Store.settings.freeFallback) {
+                const message = `DeepL ${langName(work.target)} hedef dilini desteklemiyor. Google yedeğini etkinleştirin veya başka bir dil seçin.`;
+                for (const group of pending) {
+                    for (const record of group.records) {
+                        if (this.recordIsCurrent(record, work)) this.setRecordState(record, 'error', message);
+                    }
+                }
+                return this.workIsCurrent(work);
+            }
             let cursor = 0;
             let translatedCount = 0;
             const worker = async () => {
@@ -4968,32 +5016,30 @@ zu|Zulu
                     const group = pending[cursor++];
                     let result;
                     try {
-                        result = await Translator.translate(group.text, 'tr', { logHistory: false });
+                        result = await Translator.translate(group.text, work.target, { logHistory: false });
                     } catch {
                         for (const record of group.records) {
                             if (this.recordIsCurrent(record, work)) {
-                                this.setRecordState(record, 'error', 'Türkçe çeviri hazırlanamadı. Sayfayı yenileyerek tekrar deneyin.');
+                                this.setRecordState(record, 'error', `${langName(work.target)} çeviri hazırlanamadı. Sayfayı yenileyerek tekrar deneyin.`);
                             }
                         }
                         continue;
                     }
                     for (const record of group.records) {
                         if (!this.recordIsCurrent(record, work)) continue;
-                        const detected = Translator.normalizedTarget(result.detectedLanguage || 'und');
-                        if (detected === 'tr' || detected.startsWith('tr-')) {
+                        if (this.sourceMatchesTarget(result.detectedLanguage, work.target)) {
                             this.removeNode(record.node);
                             record.node = null;
                             record.body = null;
-                            record.state = 'source-tr';
+                            record.state = 'source-target';
                             continue;
                         }
                         const translated = canonicalMessageLayout(result.text || '');
                         if (!translated) {
-                            this.setRecordState(record, 'error', 'Türkçe çeviri hazırlanamadı. Sayfayı yenileyerek tekrar deneyin.');
+                            this.setRecordState(record, 'error', `${langName(work.target)} çeviri hazırlanamadı. Sayfayı yenileyerek tekrar deneyin.`);
                             continue;
                         }
-                        const preferred = String(Store.settings.translator || 'google').toLowerCase();
-                        this.setRecordState(record, preferred === 'deepl' && result.provider !== 'deepl' ? 'fallback' : 'translated', translated);
+                        this.setRecordState(record, work.provider === 'deepl' && result.provider !== 'deepl' ? 'fallback' : 'translated', translated);
                         translatedCount += 1;
                     }
                 }
@@ -5001,6 +5047,177 @@ zu|Zulu
             await Promise.all(Array.from({ length: Math.min(3, pending.length) }, () => worker()));
             if (translatedCount && this.workIsCurrent(work)) void trackTelemetry('message_translation_generated');
             return this.workIsCurrent(work);
+        },
+    };
+
+    const ComposerQuickActions = {
+        root: null,
+        textarea: null,
+        anchor: null,
+        observer: null,
+        refreshTimer: null,
+        actionPromise: null,
+        inputHandler: null,
+        start() {
+            if (!this.observer) {
+                this.observer = new MutationObserver((mutations) => {
+                    const owned = node => Boolean(node?.nodeType === 1
+                        && (node.matches?.('[data-mema-composer-actions]')
+                            || node.closest?.('[data-mema-composer-actions]')));
+                    if (mutations.length && mutations.every(mutation => {
+                        const added = [...mutation.addedNodes || []];
+                        const removed = [...mutation.removedNodes || []];
+                        return added.length > 0 && removed.length === 0 && added.every(owned);
+                    })) return;
+                    this.schedule();
+                });
+                const observed = document.documentElement || document.body;
+                if (observed) this.observer.observe(observed, { childList: true, subtree: true });
+            }
+            return this.sync();
+        },
+        stop() {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = null;
+            this.observer?.disconnect?.();
+            this.observer = null;
+            this.clear();
+        },
+        schedule() {
+            clearTimeout(this.refreshTimer);
+            this.refreshTimer = setTimeout(() => {
+                this.refreshTimer = null;
+                this.sync();
+            }, 100);
+        },
+        clear() {
+            if (this.textarea && this.inputHandler) this.textarea.removeEventListener?.('input', this.inputHandler);
+            this.root?.remove?.();
+            this.root = null;
+            this.textarea = null;
+            this.anchor = null;
+            this.inputHandler = null;
+        },
+        liveBindingIsCurrent() {
+            if (!this.root || this.root.isConnected === false || !this.textarea || this.textarea.isConnected === false) return false;
+            if (Router.page() !== 'messages' || Router.isMessageListPage()) return false;
+            const identity = Router.conversationIdentity();
+            return Boolean(identity
+                && this.root.getAttribute?.('data-mema-conversation-identity') === identity
+                && MessageAdapter.getTextarea() === this.textarea);
+        },
+        insertAfter(node, anchor) {
+            const parent = anchor?.parentNode || anchor?.parentElement || null;
+            if (!node || !anchor || !parent) return false;
+            if (typeof parent.insertBefore === 'function') parent.insertBefore(node, anchor.nextSibling || null);
+            else if (typeof anchor.insertAdjacentElement === 'function') anchor.insertAdjacentElement('afterend', node);
+            else return false;
+            return true;
+        },
+        create(textarea, anchor, identity) {
+            const root = document.createElement('div');
+            root.className = 'mema-composer-actions';
+            root.setAttribute('data-mema-composer-actions', '1');
+            root.setAttribute('data-mema-conversation-identity', identity);
+            root.setAttribute('role', 'toolbar');
+            root.setAttribute('aria-label', 'Makaytron hızlı cevap işlemleri');
+            root.setAttribute('aria-busy', 'false');
+
+            const label = document.createElement('span');
+            label.className = 'mema-composer-actions__label';
+            label.textContent = 'Makaytron hızlı cevap';
+            root.appendChild(label);
+            for (const action of ['ai-auto-reply', 'ai-polish-reply', 'free-translate-reply', 'send-reply']) {
+                const definition = MESSAGE_ACTION_DEFINITIONS[action];
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = `mema-composer-action${definition.realSend ? ' mema-composer-action--primary' : ''}`;
+                button.setAttribute('data-mema-message-action', action);
+                if (definition.realSend) button.setAttribute('data-real-send-action', '1');
+                button.textContent = definition.label;
+                root.appendChild(button);
+            }
+            root.addEventListener('click', event => this.handleClick(event));
+            if (!this.insertAfter(root, anchor)) return null;
+            this.root = root;
+            this.textarea = textarea;
+            this.anchor = anchor;
+            this.inputHandler = () => this.syncState();
+            textarea.addEventListener?.('input', this.inputHandler);
+            this.syncState();
+            return root;
+        },
+        sync() {
+            if (Router.page() !== 'messages' || Router.isMessageListPage() || !Router.conversationId()) {
+                this.clear();
+                return false;
+            }
+            const textarea = MessageAdapter.getTextarea();
+            const identity = Router.conversationIdentity();
+            if (!textarea || !identity) {
+                this.clear();
+                return false;
+            }
+            const anchor = textarea.closest?.('form') || textarea;
+            if (!anchor?.parentNode && !anchor?.parentElement) {
+                this.clear();
+                return false;
+            }
+            if (this.root && this.textarea === textarea && this.anchor === anchor && this.liveBindingIsCurrent()) {
+                this.syncState();
+                return true;
+            }
+            this.clear();
+            return Boolean(this.create(textarea, anchor, identity));
+        },
+        syncState() {
+            if (!this.liveBindingIsCurrent()) return false;
+            const hasText = Boolean(trimmedMessageText(this.textarea.value || ''));
+            const blocked = Boolean(this.actionPromise || UI.state.busy || Campaign.current());
+            this.root.setAttribute('aria-busy', String(Boolean(this.actionPromise || UI.state.busy)));
+            for (const button of this.root.querySelectorAll?.('[data-mema-message-action]') || []) {
+                const action = button.getAttribute('data-mema-message-action') || '';
+                button.disabled = blocked
+                    || (action === 'ai-auto-reply' && hasText)
+                    || (['ai-polish-reply', 'free-translate-reply', 'send-reply'].includes(action) && !hasText);
+            }
+            return true;
+        },
+        handleClick(event) {
+            const button = event.target?.closest?.('[data-mema-message-action]');
+            if (!button || !this.root?.contains?.(button) || this.actionPromise || !this.liveBindingIsCurrent()) return;
+            const action = button.getAttribute('data-mema-message-action') || '';
+            if (!MESSAGE_ACTION_DEFINITIONS[action]) return;
+            this.syncState();
+            if (button.disabled) return;
+            event.preventDefault?.();
+            event.stopPropagation?.();
+            const textarea = this.textarea;
+            const expectedText = String(textarea.value || '');
+            const expectedIdentity = Router.conversationIdentity();
+            const usesDraft = ['ai-polish-reply', 'free-translate-reply'].includes(action);
+            let operation;
+            operation = (async () => {
+                try {
+                    return await UI.runMessageAction(action, {
+                        surface: 'composer',
+                        ...(usesDraft ? { draftText: expectedText } : {}),
+                        insertIntoComposer: action !== 'send-reply',
+                        adoptComposerText: action === 'send-reply',
+                        composerSnapshot: { textarea, text: expectedText, conversationIdentity: expectedIdentity },
+                    });
+                } catch (error) {
+                    UI.reportUiError(error, action);
+                    return false;
+                } finally {
+                    if (this.actionPromise === operation) this.actionPromise = null;
+                    UI.setBusy(false);
+                    if (UI.state.open) UI.render();
+                    this.sync();
+                }
+            })();
+            this.actionPromise = operation;
+            this.syncState();
         },
     };
 
@@ -10915,6 +11132,7 @@ zu|Zulu
             if (this.view) this.view.inert = Boolean(value);
             const nav = this.shadow?.querySelector?.('.ma-nav');
             if (nav) nav.inert = Boolean(value);
+            ComposerQuickActions.syncState();
         },
         async refreshCurrent() {
             if (!this.state.open) return;
@@ -11101,6 +11319,77 @@ zu|Zulu
                     ${items.length ? `<div class="ma-list">${rows}</div>` : '<div class="ma-card ma-empty"><div class="ma-empty__inner"><h3>Konuşma bulunamadı</h3><p>Etsy bu sayfada okunabilir bir konuşma satırı göstermedi. Sayfayı yenileyip tekrar deneyin.</p></div></div>'}
                 </div>`;
         },
+        messageActionDefinition(action) {
+            return MESSAGE_ACTION_DEFINITIONS[action] || null;
+        },
+        renderMessageActionButton(action, {
+            className = 'ma-btn',
+            disabled = false,
+            attributes = '',
+        } = {}) {
+            const definition = this.messageActionDefinition(action);
+            if (!definition) return '';
+            const realSend = definition.realSend ? ' data-real-send-action="1"' : '';
+            return `<button type="button" class="${attr(className)}" data-action="${attr(action)}"${realSend}${attributes ? ` ${attributes}` : ''}${disabled ? ' disabled' : ''}>${icon(definition.icon)}${html(definition.label)}</button>`;
+        },
+        composerSnapshotIsCurrent(snapshot) {
+            if (!snapshot?.textarea || snapshot.textarea.isConnected === false) return false;
+            return Router.page() === 'messages'
+                && !Router.isMessageListPage()
+                && Router.conversationIdentity() === snapshot.conversationIdentity
+                && MessageAdapter.getTextarea() === snapshot.textarea
+                && String(snapshot.textarea.value || '') === String(snapshot.text || '');
+        },
+        replaceComposerWithCurrentReply(snapshot) {
+            if (!this.composerSnapshotIsCurrent(snapshot)
+                || !this.state.reply
+                || !this.replyIsCurrent(this.state.replyBinding)) {
+                throw new Error('AI cevabı hazırlanırken konuşma veya Etsy mesaj alanı değişti. Mevcut metin korunarak üzerine yazılmadı.');
+            }
+            MessageAdapter.insert(this.state.reply, snapshot.textarea);
+            this.toast('Cevap Etsy mesaj alanında hazırlandı. Göndermeden önce kontrol edin.', 'success', 5000);
+            return true;
+        },
+        adoptComposerReply(snapshot) {
+            if (!this.composerSnapshotIsCurrent(snapshot)) {
+                throw new Error('Gönderim hazırlanırken konuşma veya Etsy mesaj alanı değişti. Mesaj gönderilmedi.');
+            }
+            const text = trimmedMessageText(snapshot.text || '');
+            if (!text) throw new Error('Müşteriye gönderilecek mesaj boş olamaz.');
+            if (this.state.reply
+                && this.replyIsCurrent(this.state.replyBinding)
+                && trimmedMessageText(this.state.reply) === text) return this.state.replyBinding;
+            const context = MessageAdapter.context();
+            if (!context.conversationId || context.conversationId !== Router.conversationId()) {
+                throw new Error('Aktif Etsy konuşması güvenli biçimde doğrulanamadı. Mesaj gönderilmedi.');
+            }
+            const binding = this.beginMessageWork(context);
+            this.adoptMessageContext(context);
+            this.state.reply = text;
+            this.state.replyBinding = { ...binding };
+            this.state.replyTr = '';
+            this.state.replyMethod = 'native';
+            this.state.lastReplyMode = 'native';
+            return this.state.replyBinding;
+        },
+        async runMessageAction(action, options = {}) {
+            if (!this.messageActionDefinition(action)) throw new Error('Bilinmeyen mesaj işlemi.');
+            if (Object.prototype.hasOwnProperty.call(options, 'draftText')) {
+                this.state.draftTr = String(options.draftText ?? '');
+            }
+            let result;
+            if (action === 'ai-polish-reply') result = await this.generateReply({ method: 'ai', replyMode: 'polish' });
+            if (action === 'ai-auto-reply') result = await this.generateReply({ method: 'ai', replyMode: 'auto' });
+            if (action === 'free-translate-reply') result = await this.generateReply({ method: 'free', replyMode: 'free' });
+            if (action === 'regenerate-reply') result = await this.regenerateReply();
+            if (action === 'send-reply') {
+                if (options.adoptComposerText) this.adoptComposerReply(options.composerSnapshot);
+                this.setBusy(true);
+                result = await this.sendReplyToCustomer();
+            }
+            if (result && options.insertIntoComposer) this.replaceComposerWithCurrentReply(options.composerSnapshot);
+            return result;
+        },
         renderMessages() {
             if (Router.isMessageListPage()) return this.renderMessageList();
             const context = this.state.context || MessageAdapter.context();
@@ -11170,11 +11459,11 @@ zu|Zulu
             const composerBody = `
                 <div class="ma-field"><label>Müşteriye ne söylemek istiyorsunuz?</label><textarea class="ma-textarea ma-reply-input" data-bind="draftTr" placeholder="Buraya cevabınızı Türkçe yazın...">${html(this.state.draftTr)}</textarea><div class="ma-field__hint">AI seçeneği kararınızı değiştirmez; yazdığınız cevabı daha doğal hale getirip müşterinin diline çevirir.</div></div>
                 <div class="ma-main-actions">
-                    <button class="ma-btn ma-btn--primary" data-action="ai-polish-reply" ${hasDraft ? '' : 'disabled'}>${icon('edit')}AI ile Düzenle</button>
-                    <button class="ma-btn" data-action="free-translate-reply" ${hasDraft ? '' : 'disabled'}>${icon('globe')}Sadece Çevir</button>
+                    ${this.renderMessageActionButton('ai-polish-reply', { className: 'ma-btn ma-btn--primary', disabled: !hasDraft })}
+                    ${this.renderMessageActionButton('free-translate-reply', { disabled: !hasDraft })}
                 </div>
                 <div class="ma-secondary-tools">
-                    <button class="ma-link-btn" data-action="ai-auto-reply">${icon('star')}AI Cevap Önersin</button>
+                    ${this.renderMessageActionButton('ai-auto-reply', { className: 'ma-link-btn' })}
                     <select class="ma-select" data-message-template-select aria-label="Hazır mesaj seç"><option value="">Hazır mesaj ekle…</option>${activeTemplates.map((template) => `<option value="${attr(template.id)}">${html(template.name)}</option>`).join('')}</select>
                     <button class="ma-icon-btn" data-page="templates" title="Şablonları yönet">${icon('settings')}</button>
                 </div>
@@ -11187,7 +11476,7 @@ zu|Zulu
                 ? `<details class="ma-card ma-editor-disclosure"><summary>${icon('edit')}Türkçe cevabımı değiştir</summary><div class="ma-card__body ma-stack">${composerBody}</div></details>`
                 : `<section class="ma-card"><div class="ma-card__head"><h3>Cevabınız</h3><span class="ma-spacer"></span><span class="ma-pill ma-pill--primary">Türkçe yazın</span></div><div class="ma-card__body ma-stack">${composerBody}</div></section>`;
             const directSendAction = !campaign
-                ? `<button class="ma-btn ma-btn--primary" data-action="send-reply" data-real-send-action="1" ${!this.replySendActive && this.replyIsCurrent(this.state.replyBinding) && MessageAdapter.getTextarea() ? '' : 'disabled'}>${icon('send')}Müşteriye Gönder</button>`
+                ? this.renderMessageActionButton('send-reply', { className: 'ma-btn ma-btn--primary', disabled: Boolean(this.replySendActive || !this.replyIsCurrent(this.state.replyBinding) || !MessageAdapter.getTextarea()) })
                 : '';
             const resultCard = reply ? `
                 <section class="ma-card ma-output-card">
@@ -11197,7 +11486,7 @@ zu|Zulu
                         ${this.state.replyTr ? `<details class="ma-disclosure"><summary>Türkçe anlamını göster</summary><div class="ma-disclosure__body"><div class="ma-message-box">${html(this.state.replyTr)}</div></div></details>` : ''}
                     </div>
                     <div class="ma-card__foot ma-output-actions">
-                        <button class="ma-btn" data-action="regenerate-reply">${icon('refresh')}Tekrar Hazırla</button>
+                        ${this.renderMessageActionButton('regenerate-reply')}
                         <button class="ma-btn" data-action="copy" data-copy-source="reply">${icon('copy')}Kopyala</button>
                         ${directSendAction}
                     </div>
@@ -11513,14 +11802,14 @@ zu|Zulu
                         </section>
 
                         <section class="ma-card"><div class="ma-card__head"><h3>Genel</h3></div><div class="ma-card__body ma-stack">
-                            <div>${switchRow('autoTurkishPreview','Otomatik Çeviri Önizlemesi','Açık konuşmadaki müşteri ve satıcı mesajlarının altında Türkçe çeviriyi otomatik gösterir; panel kapalıyken de çalışır.')}${switchRow('replyInCustomerLanguage','Müşteri Diline Otomatik Yanıt','Yanıt hedef dilini müşterinin mesajından belirler.')}${switchRow('preferUsEnglish','US İngilizcesi Öncelikli','İngilizce cevaplarda en-US kullanır.')}${switchRow('showRiskTags','Risk Uyarılarını Göster','İade, hasar veya ciddi memnuniyetsizlik içeren mesajlarda manuel kontrol uyarısı gösterir.')}${switchRow('openOnMessagePage','Mesaj Sayfasında Otomatik Aç','Yalnız doğrulanmış aktif konuşma varsa paneli açar.')}</div>
+                            <div>${switchRow('autoTurkishPreview','Otomatik Çeviri Önizlemesi','Açık konuşmadaki müşteri ve satıcı mesajlarının altında seçili Görüntüleme Dilindeki çeviriyi otomatik gösterir; panel kapalıyken de çalışır.')}${switchRow('replyInCustomerLanguage','Müşteri Diline Otomatik Yanıt','Yanıt hedef dilini müşterinin mesajından belirler.')}${switchRow('preferUsEnglish','US İngilizcesi Öncelikli','İngilizce cevaplarda en-US kullanır.')}${switchRow('showRiskTags','Risk Uyarılarını Göster','İade, hasar veya ciddi memnuniyetsizlik içeren mesajlarda manuel kontrol uyarısı gösterir.')}${switchRow('openOnMessagePage','Mesaj Sayfasında Otomatik Aç','Yalnız doğrulanmış aktif konuşma varsa paneli açar.')}</div>
                             <div class="ma-grid ma-grid--2">
                                 <div class="ma-field"><label>Varsayılan Yanıt Yöntemi</label><select class="ma-select" data-settings-field="defaultReplyMethod">${[['free','Sadece Çeviri'],['ai','AI ile Düzenle'],['template','Hazır Şablon']].map(([id,label]) => `<option value="${id}" ${s.defaultReplyMethod === id ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
                                 <div class="ma-field"><label>Varsayılan Ton</label><select class="ma-select" data-settings-field="defaultTone">${[['friendly','Samimi'],['professional','Profesyonel'],['apologetic','Özür Dileyen'],['short','Kısa'],['detailed','Detaylı'],['formal','Resmî']].map(([id,label]) => `<option value="${id}" ${s.defaultTone === id ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
                             </div>
                         </div></section>
 
-                        <section class="ma-card"><div class="ma-card__head"><h3>Çeviri Ayarları</h3></div><div class="ma-card__body ma-stack">${switchRow('freeFallback','Ücretsiz Çeviri Yedeğini Kullan','DeepL hatasında Google çeviri devreye girer.')}<div class="ma-grid ma-grid--2"><div class="ma-field"><label>Varsayılan Çeviri Motoru</label><select class="ma-select" data-settings-field="translator"><option value="google" ${s.translator === 'google' ? 'selected' : ''}>Google Ücretsiz</option><option value="deepl" ${s.translator === 'deepl' ? 'selected' : ''}>DeepL</option></select></div><div class="ma-field"><label>Önizleme Dili</label><select class="ma-select" data-settings-field="previewLanguage">${Object.entries(GOOGLE_TRANSLATION_LANGUAGE_NAMES).map(([code,name]) => `<option value="${code}" ${Translator.normalizedTarget(s.previewLanguage) === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div></div><div class="ma-field"><label>DeepL API Anahtarı</label><input class="ma-input" type="password" data-settings-field="deeplApiKey" data-secret-preserve="true" autocomplete="new-password" placeholder="${s.deeplApiKey ? 'Kayıtlı anahtarı değiştirmek için yeni değer girin' : 'DeepL API anahtarınızı yapıştırın'}"><button class="ma-btn ma-btn--small" data-action="deepl-key-clear" ${s.deeplApiKey ? '' : 'disabled'}>Kayıtlı Anahtarı Sil</button></div>${switchRow('deeplPro','DeepL Pro','api.deepl.com endpointini kullanır.')}</div></section>
+                        <section class="ma-card"><div class="ma-card__head"><h3>Çeviri Ayarları</h3></div><div class="ma-card__body ma-stack">${switchRow('freeFallback','Ücretsiz Çeviri Yedeğini Kullan','DeepL hatasında Google çeviri devreye girer.')}<div class="ma-grid ma-grid--2"><div class="ma-field"><label>Varsayılan Çeviri Motoru</label><select class="ma-select" data-settings-field="translator"><option value="google" ${s.translator === 'google' ? 'selected' : ''}>Google Ücretsiz</option><option value="deepl" ${s.translator === 'deepl' ? 'selected' : ''}>DeepL</option></select></div><div class="ma-field"><label>Görüntüleme Dili</label><select class="ma-select" data-settings-field="previewLanguage">${Object.entries(GOOGLE_TRANSLATION_LANGUAGE_NAMES).map(([code,name]) => `<option value="${code}" ${Translator.normalizedTarget(s.previewLanguage) === code ? 'selected' : ''}>${html(name)}</option>`).join('')}</select></div></div><div class="ma-field"><label>DeepL API Anahtarı</label><input class="ma-input" type="password" data-settings-field="deeplApiKey" data-secret-preserve="true" autocomplete="new-password" placeholder="${s.deeplApiKey ? 'Kayıtlı anahtarı değiştirmek için yeni değer girin' : 'DeepL API anahtarınızı yapıştırın'}"><button class="ma-btn ma-btn--small" data-action="deepl-key-clear" ${s.deeplApiKey ? '' : 'disabled'}>Kayıtlı Anahtarı Sil</button></div>${switchRow('deeplPro','DeepL Pro','api.deepl.com endpointini kullanır.')}</div></section>
 
                         <section class="ma-card"><div class="ma-card__head"><h3>İmza ve Mağaza</h3></div><div class="ma-card__body ma-stack"><div class="ma-field"><label>Mağaza Adı</label><input class="ma-input" data-settings-field="shopName" value="${attr(s.shopName)}"></div><div class="ma-field"><label>İmza</label><input class="ma-input" data-settings-field="signature" value="${attr(s.signature)}"></div><div class="ma-field"><label>Kalıcı Mağaza Talimatı</label><textarea class="ma-textarea" data-settings-field="storeInstruction">${html(s.storeInstruction)}</textarea></div></div></section>
 
@@ -11708,13 +11997,9 @@ zu|Zulu
                 if (action === 'setup-complete') await this.completeSetup();
                 if (action === 'message-list-translate') await this.translateMessageListPreviews({ auto: false });
                 if (action === 'translate-last') await this.translateLast();
-                if (action === 'ai-polish-reply') await this.generateReply({ method: 'ai', replyMode: 'polish' });
-                if (action === 'ai-auto-reply') await this.generateReply({ method: 'ai', replyMode: 'auto' });
-                if (action === 'free-translate-reply') await this.generateReply({ method: 'free', replyMode: 'free' });
-                if (action === 'regenerate-reply') await this.regenerateReply();
+                if (this.messageActionDefinition(action)) await this.runMessageAction(action, { surface: 'panel' });
                 if (action === 'generate-reply') await this.generateReply();
                 if (action === 'insert-reply') await this.insertReply();
-                if (action === 'send-reply') { this.setBusy(true); await this.sendReplyToCustomer(); }
                 if (action === 'copy') await this.copySource(target.dataset.copySource);
                 if (action === 'orders-scan') await this.refreshOrders();
                 if (action === 'orders-select-all') {
@@ -12449,6 +12734,7 @@ ${result.text || ''}`);
             await ensureTelemetryInstallationIdListener();
             BRAND_LOGO_URL = await GMX.resource('makaytronLogo', RELEASE.logoUrl);
             UI.mount();
+            ComposerQuickActions.start();
             registerTelemetryMenuCommand();
             GMX.menu('Makaytron Mesaj Asistanını Aç', () => UI.open(Router.page()));
             GMX.menu('Makaytron Ayarları', () => UI.open('settings'));
@@ -12473,6 +12759,7 @@ ${result.text || ''}`);
         },
         async onRoute() {
             const fingerprint = Router.routeFingerprint();
+            const routeChanged = fingerprint !== this.routeFingerprint;
             const translationConversationId = Router.page() === 'messages' && !Router.isMessageListPage()
                 ? Router.conversationId()
                 : '';
@@ -12484,8 +12771,9 @@ ${result.text || ''}`);
                 console.error(`[${APP.id}] Compose gönderim kontrolü yeni konuşmaya bağlanamadı.`, error);
             });
             await Verification.refreshNativeSendHold();
-            if (fingerprint !== this.routeFingerprint) {
+            if (routeChanged) {
                 this.routeFingerprint = fingerprint;
+                ComposerQuickActions.clear();
                 UI.invalidateMessageWork();
                 UI.invalidateMessageListWork({ resetStatus: true });
                 UI.invalidateReviewWork();
@@ -12493,6 +12781,8 @@ ${result.text || ''}`);
                     && !Verification.composeTransitionMayContinue(pending));
                 if (CONTEXT_PAGES.has(UI.state.page)) UI.state.page = Router.page();
             }
+            if (routeChanged) ComposerQuickActions.schedule();
+            else ComposerQuickActions.sync();
             const autoOpened = this.maybeAutoOpenVerifiedMessage();
             if (UI.state.open && !autoOpened) await UI.refreshCurrent();
             void ConversationTranslations.refresh().catch(error => {

@@ -9,7 +9,7 @@ Message Assistant; bireysel Etsy konuşmalarında çeviri/taslak hazırlama, tes
 | Etsy bağlamı | Panel sekmesi | Kullanılabilen işlem |
 |---|---|---|
 | `/messages` veya `/messages/all` konuşma listesi | **Mesajlar** | Etsy DOM'undaki güvenli konuşma listesi, ad/önizleme/okunmadı bilgisi, görüntüleme dili ve doğrulanmış **Aç** işlemi; taslak ve aktarım kontrolleri gizlidir. |
-| `/messages/<conversation-id>` ve doğrulanmış tek composer | **Mesajlar** | Müşteri ve satıcı mesajlarının altında Türkçe çeviri; Türkçe taslak, çok paragraflı AI cevabı, şablon, kopyalama ve doğrulanmış **Müşteriye Gönder** işlemi. |
+| `/messages/<conversation-id>` ve doğrulanmış tek composer | **Mesajlar** | Müşteri ve satıcı mesajlarının altında seçili görüntüleme dilinde çeviri; Türkçe taslak, çok paragraflı AI cevabı, şablon, kopyalama ve doğrulanmış **Müşteriye Gönder** işlemi. |
 | `/your/orders/sold/completed` | **Otomasyon** | Delivered kartlarını tara, yorum uygunluğunu işaretle, alıcı seç ve açık onayla tek-tek işleyen Otopilotu başlat. |
 | New, open veya başka bir `/your/orders/sold*` görünümü | **Otomasyon** | Üretim kontrolü yok; **Completed Orders** sayfasına yönlendirme. |
 | `/your/shops/<shop>/dashboard/activity` üzerindeki **Reviews** filtresi | **Yorumlar** | Yeni/güncellenmiş yorumları ve güvenle okunabilen yıldız puanlarını tara; AI ile özel/public cevap taslakları hazırla ve public cevap alanına kontrollü aktar. |
@@ -21,7 +21,7 @@ Script tek ve görünür bir konuşma composer'ı, tamamlanmış sipariş görü
 
 Premium sade panel, **Mesajlar / Otomasyon / Yorumlar** çalışma alanlarını **Şablonlar / Geçmiş / Ayarlar** araçlarından ayırır. Otomasyon ekranında tek ana işlem, kampanya durumu ve ilerlemesi ile responsive alıcı kartları gösterilir. Bu görsel sadeleştirme kimlik, kalıcı durum, doğrulama veya açık yetki sınırlarından hiçbirini kaldırmaz.
 
-Konuşma listesi yalnız Etsy sayfasında o anda görünür olan güvenli bağlantıları okur ve en fazla 50 satır gösterir. **Görüntüleme dili** seçimi kalıcıdır; liste çevirileri yalnız panelde gösterilir ve özgün önizleme **Orijinal mesajı göster** altında korunur. Tekil konuşmada ise müşteri ve satıcının son 40'a kadar mesajının Türkçe çevirisi, kaynak balon değiştirilmeden hemen altında ayrı bir not olarak gösterilir. Türkçe olduğu algılanan kaynak için gereksiz not eklenmez. DeepL seçili dil için destek sunmuyorsa panel bunu açıkça bildirir; yalnız **Ücretsiz fallback** etkinse Google yedeğine geçer.
+Konuşma listesi yalnız Etsy sayfasında o anda görünür olan güvenli bağlantıları okur ve en fazla 50 satır gösterir. **Görüntüleme dili** seçimi kalıcıdır; liste çevirileri yalnız panelde gösterilir ve özgün önizleme **Orijinal mesajı göster** altında korunur. Tekil konuşmada ise müşteri ve satıcının son 40'a kadar mesajının seçili görüntüleme dilindeki çevirisi, kaynak balon değiştirilmeden hemen altında ayrı bir not olarak gösterilir. Kaynağın zaten hedef dilde olduğu algılanırsa gereksiz not eklenmez. DeepL seçili dil için destek sunmuyorsa notta açıkça bildirilir; yalnız **Ücretsiz fallback** etkinse Google yedeğine geçer.
 
 ## Kurulum ve ilk ayar
 
@@ -31,24 +31,24 @@ Konuşma listesi yalnız Etsy sayfasında o anda görünür olan güvenli bağla
 4. Varsayılan çeviri motorunu seçin; kullanacaksanız DeepL veya AI sağlayıcısı, model ve API anahtarını kaydedip test edin.
 5. Gerekirse şablonları, imzayı ve cevap tercihlerini düzenleyin.
 
-> **Gizlilik uyarısı:** Panel mesaj sayfasında varsayılan olarak kapalıdır; ancak Google Translate varsayılan sağlayıcıdır ve **Otomatik Çeviri Önizlemesi** varsayılan olarak açıktır. Bu ayar açıkken tekil bir konuşma sayfasına girmek, panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajını Türkçe çeviri için seçili sağlayıcıya en fazla üç eşzamanlı istekle gönderebilir; aynı metinler ve önbellekteki sonuçlar yeniden kullanılır. Bunu istemiyorsanız konuşmayı açmadan önce Tampermonkey menüsündeki **Makaytron Ayarları**ndan otomatik önizlemeyi kapatın. Konuşma listesinde panel açıldığında görünür önizlemelerden en fazla 50'si çevrilebilir; **Görüntüleme dili**ni değiştirmek veya **Önizlemeleri çevir / Yeniden dene** işlemini kullanmak da bu istekleri başlatır. DeepL hatasında, **Ücretsiz fallback** açıkken çeviri Google'a düşebilir. Yorum talebi dışındaki teslimat şablonları otomatik önizleme kapalı olsa bile hedef dili belirlemek için son mesajı seçili çeviri sağlayıcısına gönderebilir. Özel yorum-talebi şablonu bu dil algılama aktarımını atlar; AI yöntemi seçilirse aşağıda açıklanan bağlam yine AI sağlayıcısına gidebilir.
+> **Gizlilik uyarısı:** Panel mesaj sayfasında varsayılan olarak kapalıdır; ancak Google Translate varsayılan sağlayıcıdır ve **Otomatik Çeviri Önizlemesi** varsayılan olarak açıktır. Bu ayar açıkken tekil bir konuşma sayfasına girmek, panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajını seçili görüntüleme diline çeviri için seçili sağlayıcıya en fazla üç eşzamanlı istekle gönderebilir; aynı metinler ve önbellekteki sonuçlar yeniden kullanılır. Bunu istemiyorsanız konuşmayı açmadan önce Tampermonkey menüsündeki **Makaytron Ayarları**ndan otomatik önizlemeyi kapatın. Konuşma listesinde panel açıldığında görünür önizlemelerden en fazla 50'si çevrilebilir; **Görüntüleme dili**ni değiştirmek açık konuşma notlarını ve liste önizlemelerini yeni hedef için yeniden hazırlayabilir. **Önizlemeleri çevir / Yeniden dene** işlemi de liste isteklerini başlatır. DeepL hatasında, **Ücretsiz fallback** açıkken çeviri Google'a düşebilir. Yorum talebi dışındaki teslimat şablonları otomatik önizleme kapalı olsa bile hedef dili belirlemek için son mesajı seçili çeviri sağlayıcısına gönderebilir. Özel yorum-talebi şablonu bu dil algılama aktarımını atlar; AI yöntemi seçilirse aşağıda açıklanan bağlam yine AI sağlayıcısına gidebilir.
 
 AI taslak/düzenleme isteği; müşteri adı, konuşma ve sipariş kimlikleri, ürün başlığı, mağaza adı/imzası, son 10 mesaja kadar konuşma bağlamı ile taslak, şablon veya talimatı seçtiğiniz AI sağlayıcısına gönderebilir. Sağlayıcının gizlilik ve saklama koşullarını inceleyin.
 
 ## Bireysel müşteri mesajı
 
 1. Etsy'de doğru müşteri konuşmasını açın.
-2. Otomatik çeviri açıksa müşteri ve sizin yazdığınız mesajların hemen altında gösterilen **Türkçe çeviri** notlarını okuyun. Kaynak mesaj balonları değiştirilmez.
-3. Sağ üstteki **Asistan · Aç** kontrolüyle paneli açın. Paneldeki **Müşterinin Mesajı** ve manuel **Türkçe Göster** işlemi son mesaj için yedek inceleme sunar.
-4. Türkçe cevabınızı yazın veya **Hazır mesaj ekle…** listesinden bir şablon seçin.
+2. Otomatik çeviri açıksa müşteri ve sizin yazdığınız mesajların hemen altında gösterilen, seçili **Görüntüleme dili**yle adlandırılan çeviri notlarını okuyun. **Müşteri mesajı / Sizin mesajınız** etiketi, farklı renk ve karşılıklı hizalama iki tarafı ayırır; kaynak mesaj balonları değiştirilmez.
+3. Panel zorunlu değildir. Etsy cevap alanının yanındaki **Makaytron hızlı cevap** çubuğunu kullanabilir veya ayrıntılı seçenekler için sağ üstteki **Asistan · Aç** kontrolüyle paneli açabilirsiniz. Paneldeki **Müşterinin Mesajı** ve seçili görüntüleme dilindeki manuel gösterme işlemi son mesaj için yedek inceleme sunar.
+4. Etsy cevap alanına veya paneldeki taslak alanına Türkçe cevabınızı yazın; şablon kullanmak için panelde **Hazır mesaj ekle…** seçin.
 5. İhtiyacınıza göre bir işlem kullanın:
    - **Sadece Çevir:** Yazdığınız cevabı müşterinin diline çevirir.
    - **AI ile Düzenle:** Mevcut taslağı seçili AI sağlayıcısıyla iyileştirir.
    - **AI Cevap Önersin:** Konuşma bağlamından yeni bir cevap taslağı üretir.
-6. **Gönderilecek Mesaj** metnini okuyun; gerekiyorsa düzenleyin, yeniden hazırlayın veya kopyalayın. AI metni selamlama, kısa gövde paragrafları ve varsa kapanışı ayrı satırlarda hazırlar.
-7. **Müşteriye Gönder** düğmesine basın. Script güncel konuşmayı, değişmemiş taslağı, tek composer alanını, Etsy'nin tek etkin Gönder düğmesini ve diğer gönderim sahiplerini yeniden doğrular; ardından Etsy gönderimini bir kez yapar ve yeni giden mesaj balonunu bekler.
+6. Hızlı çubukta boş Etsy alanı **AI Cevap Önersin** işlemini etkinleştirir; alana yazdığınız metin ise **AI ile Düzenle** ve **Sadece Çevir** işlemlerini etkinleştirir. Sonuç yalnız konuşma ve alan metni işlem boyunca değişmediyse aynı Etsy alanına yazılır. Metni okuyup gerekiyorsa düzenleyin; AI selamlama, kısa gövde paragrafları ve varsa kapanışı ayrı satırlarda hazırlar.
+7. Paneldeki veya hızlı çubuktaki ortak **Müşteriye Gönder** düğmesine basın. Script güncel konuşmayı, Etsy alanındaki tam metni, tek composer alanını, Etsy'nin tek etkin Gönder düğmesini ve diğer gönderim sahiplerini yeniden doğrular; ardından Etsy gönderimini bir kez yapar ve yeni giden mesaj balonunu bekler.
 
-Başarılı doğrulamadan sonra aynı taslak tüketilir ve ikinci kez gönderilemez. Konuşma, metin veya gönderim sahibi değişirse composer'a dokunmadan güvenli biçimde durur. Etsy düğmesi taslak yazıldıktan sonra etkinleşmezse metin composer'da bırakılır ama gönderilmez. Tıklama sonrası sonuç kesin doğrulanamazsa aynı mesajı yeniden göndermeyin; önce Etsy konuşmasındaki son giden balonu kontrol edin.
+Panel ve hızlı çubuk etiketlerini/işlevlerini aynı ortak mesaj eylemi tanımlarından alır; bir işlev değişikliği iki yüzeye birlikte yansır. Başarılı doğrulamadan sonra aynı taslak tüketilir ve ikinci kez gönderilemez. Konuşma, metin veya gönderim sahibi değişirse güvenli biçimde durur. Etsy düğmesi taslak yazıldıktan sonra etkinleşmezse metin composer'da bırakılır ama gönderilmez. Tıklama sonrası sonuç kesin doğrulanamazsa aynı mesajı yeniden göndermeyin; önce Etsy konuşmasındaki son giden balonu kontrol edin.
 
 ## Teslim edilen siparişler için açık Otopilot
 
