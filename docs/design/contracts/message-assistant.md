@@ -1,6 +1,6 @@
 # Behavioral UI Contract — Makaytron Etsy Message Assistant
 
-Baseline version: **1.2.7**
+Baseline version: **1.2.8**
 Source: `scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js`
 
 ## Mount/isolation
@@ -30,7 +30,11 @@ Do not collapse/refactor these layers in the same commit as the first MKUI visua
 - telemetry/storage contracts
 - closed Shadow DOM mode
 - grants/connect/match URLs
+- all existing `data-*` behavioral hooks
+- global Etsy integration surfaces under the `mema-` family
 
 ## Migration target
 
 Adopt Workspace Shell semantics while preserving wide/fullscreen behavior, data-action routing and all global Etsy integration surfaces.
+
+The first guarded transformer is `tools/Apply-Mkui-Message-Pilot.mjs`. It must fail closed if protected metadata, the `data-*` signature, Shadow DOM mount count or the global Etsy CSS layer changes. Focused invariants live in `tools/Test-Mkui-Message-Assistant.mjs`.
