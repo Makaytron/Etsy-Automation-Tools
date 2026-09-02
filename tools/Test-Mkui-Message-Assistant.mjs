@@ -29,7 +29,7 @@ test('Message Assistant keeps protected UI architecture before/after MKUI mappin
   assert.ok(hasTemplateAttribute('data-action', 'toggle-app'), 'launcher toggle-app hook must remain present');
   assert.ok(hasTemplateAttribute('data-action', 'toggle-wide'), 'wide/fullscreen toggle hook must remain present');
   assert.ok(source.includes("['settings', 'settings', 'Ayarlar']"), 'settings navigation definition must remain present');
-  assert.ok(source.includes('data-page=\\"${id}\\"'), 'dynamic data-page navigation binding must remain present');
+  assert.match(source, /data-page=\\?["']\$\{id\}\\?["']/, 'dynamic data-page navigation binding must remain present');
   assert.ok(source.includes('if (target.dataset.page) { this.state.page = target.dataset.page; return this.refreshCurrent(); }'), 'data-page click routing must remain present');
 });
 
