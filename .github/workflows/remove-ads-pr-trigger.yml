@@ -1,0 +1,29 @@
+name: Remove Ads PR Trigger
+
+on:
+  push:
+    branches:
+      - design/ads-keyword-manager-command-center-v1
+    paths:
+      - .github/workflows/remove-ads-pr-trigger.yml
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - shell: bash
+        run: |
+          set -euo pipefail
+          rm -f docs/design/previews/.pr-open-trigger
+          git rm -f --ignore-unmatch .github/workflows/remove-ads-pr-trigger.yml
+          git add -u -- docs/design/previews
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: remove final Ads review trigger'
+          git push origin HEAD:design/ads-keyword-manager-command-center-v1
