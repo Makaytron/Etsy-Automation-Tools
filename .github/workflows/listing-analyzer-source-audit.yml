@@ -1,0 +1,56 @@
+name: Audit Listing Analyzer Source
+
+on:
+  push:
+    branches:
+      - automation/listing-analyzer-mkui-v1.2.3
+    paths:
+      - .github/workflows/listing-analyzer-source-audit.yml
+      - tools/Audit-Listing-Analyzer.mjs
+      - scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: listing-analyzer-source-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Extract guarded source inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out audit branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Validate audit tool
+        run: node --check tools/Audit-Listing-Analyzer.mjs
+
+      - name: Generate source audit
+        run: node tools/Audit-Listing-Analyzer.mjs --write
+
+      - name: Commit source audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- docs/design/previews/listing-analyzer-source-audit.json
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'Listing Analyzer source audit is already current.'
+            exit 0
+          fi
+          git commit -m 'docs: record Listing Analyzer source inventory'
+          git push origin HEAD:automation/listing-analyzer-mkui-v1.2.3
