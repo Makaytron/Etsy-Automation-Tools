@@ -19,9 +19,9 @@ Reference design: `Makaytron/Tamplate-Back-White-01`.
 - [x] Pilot wired into Ads Keyword Manager (`1.0.4`, MKUI source `1.0.0`)
 - [x] Pilot regression gate passed (behavior tests, syntax, metadata/hook invariants, browser/distribution/privacy follow-up)
 - [x] Message Assistant account-specific public placeholder blocker removed and verified (`1.2.8`)
-- [ ] Keyword & Market Analyzer migration
-- [ ] Sale Manager migration
-- [ ] Message Assistant MKUI migration
+- [x] Keyword & Market Analyzer migration
+- [x] Sale Manager migration
+- [ ] Message Assistant MKUI migration — ACTIVE
 - [ ] Listing Analyzer MKUI migration
 - [ ] Cross-script integration QA
 - [ ] MKUI bundle/version drift CI
@@ -32,7 +32,7 @@ Before editing a production UI, record version, match routes, Shadow DOM mode, g
 
 ## Phase 1 — MKUI source foundation
 
-`shared/mkui/` is source-only during the first stage. Nothing references it yet, so adding the directory cannot change installed userscript behavior.
+`shared/mkui/` is the canonical framework-free visual source. Production userscripts receive an inlined/mapped copy; they do not fetch MKUI at runtime.
 
 ## Phase 2 — Ads Keyword Manager pilot — COMPLETE
 
@@ -51,26 +51,27 @@ Result: the public script is `1.0.4` and carries the first MKUI `1.0.0` presenta
 
 The Ads pilot passed the existing behavior suite, JavaScript syntax validation, protected hook/metadata invariants and patch-hygiene checks. The subsequent repository privacy/distribution pass also exposed and removed an unrelated account-specific Message Assistant placeholder before the migration continued. Public `main` then passed the privacy guard, Message Assistant behavior/browser checks and the complete distribution gate.
 
-## Phase 4 — Keyword & Market Analyzer — ACTIVE
+## Phase 4 — Keyword & Market Analyzer — COMPLETE
 
-Preserve open Shadow DOM. Its Etsy-inline metrics/research surfaces remain separate from the panel shell; only their visual tokens are harmonized.
+Open Shadow DOM and Etsy-inline research/metric surfaces were preserved. The migration is presentation-only and keeps protected metadata/data-hook invariants under focused regression coverage.
 
-Additional gate for this phase:
+## Phase 5 — Sale Manager — COMPLETE
 
-- create a deterministic exact-anchor UI transformer on an isolated branch
-- preserve `@match`, `@grant`, `@connect`, `@updateURL` and `@downloadURL`
-- preserve Shadow DOM mode and host id
-- preserve every existing `data-action` / `data-*` hook count used by the UI
-- run updater/distribution checks and add a focused Keyword & Market Analyzer regression test if the repository has no existing dedicated test
-- do not merge until privacy and distribution checks are green
+Sale/campaign write paths remain protected. The MKUI migration is presentation-only and is covered by permanent Sale Manager regression checks so confirmation, busy/disabled state, verification and retry semantics cannot be silently altered by later visual changes.
 
-## Phase 5 — Sale Manager
-
-Treat all sale creation/campaign actions as high-risk write paths. Confirmation, busy/disabled state, verification and retry protections must pass unchanged.
-
-## Phase 6 — Message Assistant
+## Phase 6 — Message Assistant — ACTIVE
 
 Preserve closed Shadow DOM. First migration maps the existing base/launcher/UX/premium layers onto MKUI semantics; CSS cleanup is a later commit after behavior parity.
+
+Active gate:
+
+- `tools/Apply-Mkui-Message-Pilot.mjs` uses exact anchors and fails closed on unexpected source drift
+- preserve `@match`, `@grant`, `@connect`, `@updateURL`, `@downloadURL`, `@resource` and namespace metadata
+- preserve the complete `data-*` hook signature
+- preserve the single closed Shadow DOM mount
+- preserve `GLOBAL_CSS` and all `mema-` Etsy integration surfaces
+- preserve message composer/send verification, provider, automation, orders, history, settings, telemetry and storage behavior
+- run `Test-Message-Assistant.mjs`, browser fixture coverage, `Test-Mkui-Message-Assistant.mjs`, privacy and distribution gates before merge
 
 ## Phase 7 — Listing Analyzer
 
