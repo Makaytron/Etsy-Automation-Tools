@@ -23,8 +23,10 @@ Reference system: `Makaytron/Tamplate-Back-White-01`, the applied ShadcnStore da
 - [x] Sale Manager migration
 - [x] Message Assistant MKUI migration (`1.2.9`, MKUI `1.0.0`)
 - [x] Listing Analyzer MKUI migration (`1.2.3`, MKUI `1.0.0`)
-- [ ] Cross-script integration QA — ACTIVE
-- [ ] MKUI bundle/version drift CI
+- [x] Cross-script integration QA
+- [x] MKUI bundle/version and presentation drift CI
+
+All planned MKUI v1 migration phases are complete. Future presentation changes must pass the permanent per-script, cross-script and drift gates described below.
 
 ## Phase 0 — Freeze behavior contracts
 
@@ -61,7 +63,7 @@ Sale/campaign write paths remain protected. The MKUI migration is presentation-o
 
 ## Phase 6 — Message Assistant — COMPLETE
 
-Preserve closed Shadow DOM. First migration maps the existing base/launcher/UX/premium layers onto MKUI semantics; CSS cleanup is a later commit after behavior parity.
+Preserve closed Shadow DOM. The first migration maps the existing base/launcher/UX/premium layers onto MKUI semantics while retaining the protected integration surfaces and behavior topology.
 
 Completed gate:
 
@@ -77,18 +79,31 @@ Completed gate:
 
 Migrated as the production reference for dashboard shell geometry. The guarded transform preserves navigation state, filter drawer, listing selection, queue/AI/settings views, keyboard shortcuts, open Shadow DOM, every recorded hook/class signature, and publish/deactivate verification. The full Listing Analyzer behavior suite, MKUI invariants, synthetic production-CSS preview, privacy and distribution gates pass before publication.
 
-## Phase 8 — Cross-script QA — ACTIVE
+## Phase 8 — Cross-script QA — COMPLETE
 
-When multiple scripts may run in one Etsy session, verify:
+Permanent source and browser gates now verify the five production scripts together:
 
-- no host/id collisions
-- no launcher collisions
-- no unintended CSS leakage
-- sane z-index stacking
-- modal/toast coexistence
-- no shortcut collisions
-- no scroll-lock conflicts
+- one canonical owner for every audited Etsy route
+- unique host/DOM ids, telemetry ids, CSS prefixes, namespaced events and window globals
+- only the documented Keyword Analyzer → Listing Analyzer research storage protocol may be shared
+- global CSS has no generic host-page selectors
+- real Chrome computed-style comparison proves combined production CSS does not alter native host controls
+- fixed surfaces and z-index values are inventoried and constrained
+- global keyboard shortcuts are inventoried and checked against route-compatible scripts
+- body/document scroll locks must include a restore path
+- every focused behavior/MKUI suite, updater test, privacy guard and distribution gate runs in the same cross-script CI job
 
-## Phase 9 — Drift protection
+The maintained contract and commands are in `docs/design/MKUI-CROSS-SCRIPT-QA.md`.
 
-After all five scripts are migrated, generate `MKUI_VERSION` and bundle hash into each script and fail CI when a production script drifts from the canonical MKUI bundle without an explicit exception.
+## Phase 9 — Drift protection — COMPLETE
+
+`shared/mkui/bundle-manifest.json` records the canonical MKUI source hash and the production presentation fingerprint for every migrated script. The same generated `MKUI_BUNDLE_HASH` is embedded in all five userscripts.
+
+`.github/workflows/mkui-drift-ci.yml` fails closed when:
+
+- the canonical MKUI bundle changes without regenerated evidence
+- a production script has a missing or stale bundle marker
+- `MKUI_VERSION` drifts
+- a production presentation changes without an exact, reviewed and unexpired exception
+
+A presentation exception cannot bypass canonical source drift, marker drift, version drift or an unknown production script. The regeneration and review process is documented in `shared/mkui/README.md` and `docs/design/MKUI-CROSS-SCRIPT-QA.md`.
