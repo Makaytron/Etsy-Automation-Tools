@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.2.7
+// @version      1.2.8
 // @description  Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages into your selected language and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -51,7 +51,7 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.2.7';
+    const APP_VERSION = '1.2.8';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
@@ -11790,7 +11790,7 @@ zu|Zulu
                                 ${switchRow('messageCenterEnabled','Merkezi Mesaj Panelini Etkinleştir','Bu Etsy oturumunu merkezi paneldeki ilgili mağazaya bağlar. Etsy oturum bilgileri panel sunucusuna gönderilmez.')}
                                 <div class="ma-grid ma-grid--2">
                                     <div class="ma-field"><label>Mesaj Merkezi URL</label><input class="ma-input" data-settings-field="messageCenterUrl" value="${attr(s.messageCenterUrl || '')}" placeholder="https://messages.example.com veya http://SUNUCU-IP:4173"><div class="ma-field__hint">URL sonuna / eklemeden sunucu adresini yazın.</div></div>
-                                    <div class="ma-field"><label>Mağaza ID</label><input class="ma-input" data-settings-field="messageCenterStoreId" value="${attr(s.messageCenterStoreId || '')}" placeholder="pakayus"><div class="ma-field__hint">Sunucudaki config.json içindeki store id ile birebir aynı olmalı.</div></div>
+                                    <div class="ma-field"><label>Mağaza ID</label><input class="ma-input" data-settings-field="messageCenterStoreId" value="${attr(s.messageCenterStoreId || '')}" placeholder="example-shop"><div class="ma-field__hint">Sunucudaki config.json içindeki store id ile birebir aynı olmalı.</div></div>
                                     <div class="ma-field"><label>Agent Token</label><input class="ma-input" type="password" data-settings-field="messageCenterAgentToken" data-secret-preserve="true" autocomplete="new-password" placeholder="${s.messageCenterAgentToken ? 'Kayıtlı tokenı değiştirmek için yeni değer girin' : 'İlgili mağazanın agentToken değeri'}"><div class="ma-field__hint">Bu token yalnız bu mağazanın agent API’sinde kullanılır.</div><button class="ma-btn ma-btn--small" data-action="agent-token-clear" ${s.messageCenterAgentToken ? '' : 'disabled'}>Kayıtlı Tokenı Sil</button></div>
                                     <div class="ma-grid ma-grid--2">
                                         <div class="ma-field"><label>Mesaj Senkronu (sn)</label><input class="ma-input" type="number" min="5" max="120" data-settings-field="messageCenterSyncSeconds" value="${attr(s.messageCenterSyncSeconds || 10)}"></div>
