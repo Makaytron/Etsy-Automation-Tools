@@ -10,6 +10,8 @@ on:
       - tools/Finalize-Mkui-Message-Migration.mjs
       - tools/Generate-Mkui-Message-Assistant-Preview.mjs
       - tools/Test-Mkui-Message-Assistant.mjs
+      - tools/Sanitize-Public-Fixtures.ps1
+      - docs/design/previews/message-assistant-mkui-workspace-v1.2.9.audit.json
   workflow_dispatch:
 
 permissions:
@@ -17,7 +19,7 @@ permissions:
 
 concurrency:
   group: mkui-message-assistant-migration-main
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   migrate:
@@ -81,6 +83,8 @@ jobs:
           $outputDirectory = Join-Path $PWD 'assets/screenshots'
           New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
           $png = Join-Path $outputDirectory 'message-assistant-mkui-workspace-v1.2.9.png'
+          $profileDirectory = Join-Path $env:RUNNER_TEMP 'mkui-message-assistant-preview-chrome'
+          New-Item -ItemType Directory -Force -Path $profileDirectory | Out-Null
           $chromeCandidates = @(
               (Join-Path $env:ProgramFiles 'Google/Chrome/Application/chrome.exe'),
               $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} 'Google/Chrome/Application/chrome.exe' }),
@@ -101,11 +105,15 @@ jobs:
               '--force-device-scale-factor=1',
               '--window-size=1440,900',
               '--virtual-time-budget=1800',
+              "--user-data-dir=$profileDirectory",
               "--screenshot=$png",
               $uri
           )
-          & $chrome @arguments
-          if ($LASTEXITCODE -ne 0) { throw "Chrome screenshot failed with exit code $LASTEXITCODE." }
+          $process = Start-Process -FilePath $chrome -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Chrome screenshot failed with exit code $($process.ExitCode)." }
+          for ($attempt = 0; $attempt -lt 20 -and -not (Test-Path $png); $attempt += 1) {
+              Start-Sleep -Milliseconds 250
+          }
           if (-not (Test-Path $png)) { throw 'Preview screenshot was not created.' }
           $size = (Get-Item $png).Length
           if ($size -lt 40000) { throw "Preview screenshot is unexpectedly small: $size bytes." }
