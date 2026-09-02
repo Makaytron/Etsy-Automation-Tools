@@ -2,19 +2,22 @@
 
 Status: **active production migration**
 
-## Visual authority and references
+## Visual authority and mandatory source lock
 
-MKUI is adapted for standalone Etsy userscripts from the following approved sources:
+MKUI is adapted for standalone Etsy userscripts only from the following approved sources:
 
-1. `Makaytron/Tamplate-Back-White-01` — canonical local light-dashboard implementation and primary visual authority.
-2. https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard — applied dashboard composition reference.
-3. https://shadcnstore.com/blocks — component-pattern catalog for application shells, interfaces, data grids, KPI cards, filters, forms, tables, alerts and empty states.
+1. [Makaytron/Tamplate-Back-White-01](https://github.com/Makaytron/Tamplate-Back-White-01) — canonical local light-dashboard implementation and primary visual authority for shell, sidebar, header, cards, forms, tables, spacing, responsiveness and theme structure.
+2. [Makaytron/Toast-01](https://github.com/Makaytron/Toast-01) — mandatory toast/snackbar/transient-notification source for lifecycle, stacking, placement, timing, progress, close behavior, safe-area handling, RTL and accessibility.
+3. [Applied ShadcnStore dashboard](https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard) — complete composition reference for sidebar/header/content hierarchy, collapsed navigation and dense dashboard surfaces.
+4. [ShadcnStore blocks](https://shadcnstore.com/blocks) — approved component-pattern catalog for application shells, interfaces, data grids, KPI cards, filters, forms, tables, alerts, listing/order surfaces and empty states.
 
-The full selection and adaptation policy lives in [`SHADCNSTORE-REFERENCE-CATALOG.md`](./SHADCNSTORE-REFERENCE-CATALOG.md).
+The normative no-invention and source-traceability rules are in [`DESIGN-SOURCE-LOCK.md`](./DESIGN-SOURCE-LOCK.md). The detailed block-selection catalog is in [`SHADCNSTORE-REFERENCE-CATALOG.md`](./SHADCNSTORE-REFERENCE-CATALOG.md).
 
-When references differ, existing userscript safety/behavior contracts win first, followed by the local template, the applied dashboard, and then individual blocks.
+When references differ, existing userscript safety/behavior/privacy/accessibility contracts win first. For page and component presentation, the local template is followed by the applied dashboard and then the selected block. For any toast or transient notification, `Toast-01` is mandatory and is then mapped to MKUI semantic tokens.
 
-Current adoption: All five production userscripts are migrated to MKUI v1. Listing Analyzer `1.2.3` is the canonical Dashboard Shell implementation; cross-script coexistence QA and canonical bundle/hash drift enforcement are the active follow-up gates.
+No new visible component anatomy may be invented from memory. Every substantial surface must name an exact approved source path or block. When no approved source fits, implementation stops until explicit maintainer approval and a documented catalog/policy update exist.
+
+Current adoption: All five production userscripts are migrated to MKUI v1 and protected by per-script, cross-script, CSS-isolation and bundle/presentation-drift gates.
 
 ## Goal
 
