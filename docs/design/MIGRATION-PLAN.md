@@ -16,9 +16,13 @@ Reference design: `Makaytron/Tamplate-Back-White-01`.
 - [x] Initial userscript inventory
 - [x] Behavioral contract files created
 - [x] MKUI source-only foundation created
-- [ ] Pilot wired into Ads Keyword Manager
-- [ ] Pilot regression gate passed
-- [ ] Remaining four migrations
+- [x] Pilot wired into Ads Keyword Manager (`1.0.4`, MKUI source `1.0.0`)
+- [x] Pilot regression gate passed (behavior tests, syntax, metadata/hook invariants, browser/distribution/privacy follow-up)
+- [x] Message Assistant account-specific public placeholder blocker removed and verified (`1.2.8`)
+- [ ] Keyword & Market Analyzer migration
+- [ ] Sale Manager migration
+- [ ] Message Assistant MKUI migration
+- [ ] Listing Analyzer MKUI migration
 - [ ] Cross-script integration QA
 - [ ] MKUI bundle/version drift CI
 
@@ -30,7 +34,7 @@ Before editing a production UI, record version, match routes, Shadow DOM mode, g
 
 `shared/mkui/` is source-only during the first stage. Nothing references it yet, so adding the directory cannot change installed userscript behavior.
 
-## Phase 2 — Ads Keyword Manager pilot
+## Phase 2 — Ads Keyword Manager pilot — COMPLETE
 
 Migration constraints:
 
@@ -41,22 +45,24 @@ Migration constraints:
 - preserve update flow
 - preserve enabled/disabled/busy semantics
 
-Pilot QA must cover launcher/open/collapse/reopen, scan lifecycle, rule editing/apply, error/success state, language, update UI, page mutation/navigation and narrow viewport behavior.
+Result: the public script is `1.0.4` and carries the first MKUI `1.0.0` presentation mapping without changing protected userscript metadata or business behavior.
 
-## Phase 3 — Pilot gate
+## Phase 3 — Pilot gate — COMPLETE
 
-Do not start the other four production migrations until the Ads pilot passes:
+The Ads pilot passed the existing behavior suite, JavaScript syntax validation, protected hook/metadata invariants and patch-hygiene checks. The subsequent repository privacy/distribution pass also exposed and removed an unrelated account-specific Message Assistant placeholder before the migration continued. Public `main` then passed the privacy guard, Message Assistant behavior/browser checks and the complete distribution gate.
 
-- existing functional regression suite
-- synthetic UI fixture/screenshot check
-- Etsy CSS leakage check
-- keyboard/focus check
-- no storage schema change
-- no network/grant change unless separately justified
-
-## Phase 4 — Keyword & Market Analyzer
+## Phase 4 — Keyword & Market Analyzer — ACTIVE
 
 Preserve open Shadow DOM. Its Etsy-inline metrics/research surfaces remain separate from the panel shell; only their visual tokens are harmonized.
+
+Additional gate for this phase:
+
+- create a deterministic exact-anchor UI transformer on an isolated branch
+- preserve `@match`, `@grant`, `@connect`, `@updateURL` and `@downloadURL`
+- preserve Shadow DOM mode and host id
+- preserve every existing `data-action` / `data-*` hook count used by the UI
+- run updater/distribution checks and add a focused Keyword & Market Analyzer regression test if the repository has no existing dedicated test
+- do not merge until privacy and distribution checks are green
 
 ## Phase 5 — Sale Manager
 
