@@ -53,6 +53,7 @@
 
     const APP_VERSION = '1.2.9';
     const MKUI_VERSION = '1.0.0';
+    const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
