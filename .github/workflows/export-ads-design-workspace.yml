@@ -61,6 +61,7 @@ jobs:
           node tools/Apply-Ads-Command-Center-v1.mjs --write
           node tools/Finalize-Ads-Command-Center-v1.mjs --write
           node tools/Generate-Ads-Command-Center-Preview.mjs
+          sed -i 's/[[:blank:]]\+$//' scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
           node --check scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
 
       - name: Install Chromium for deterministic review evidence
@@ -172,9 +173,21 @@ jobs:
           for path in "${publish_paths[@]}"; do
             test -e "$path" || { echo "Missing expected publish path: $path" >&2; exit 1; }
           done
+
+          rm -f \
+            docs/design/previews/.ads-command-center-pr-ready \
+            docs/design/previews/.ads-command-center-pr-ready-2 \
+            docs/design/previews/.do-not-commit \
+            tools/Finalize-Ads-Command-Center-v1.mjs
+          git rm -f --ignore-unmatch \
+            .github/workflows/export-ads-design-workspace.yml \
+            .github/workflows/finalize-ads-command-center-v1.yml \
+            .github/workflows/verify-ads-command-center-v1.yml \
+            .github/workflows/remove-noop-marker.yml
+
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A -- "${publish_paths[@]}" .tmp/ads-command-center-v1-payload .tmp/ads-command-center
+          git add -A
           git diff --cached --check
           if git diff --cached --quiet; then
             echo 'Ads Command Center v1 is already generated and verified.'
