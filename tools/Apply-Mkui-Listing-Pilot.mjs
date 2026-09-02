@@ -63,7 +63,7 @@ function dataSignature(source) {
 }
 
 function meliClassSignature(source) {
-  return countedSignature(source, /\bmeli-[a-z0-9-]+\b/gi, (value) => value.toLowerCase());
+  return countedSignature(source, /(?<![-\w])meli-[a-z0-9-]+\b/gi, (value) => value.toLowerCase());
 }
 
 const original = read(scriptPath);

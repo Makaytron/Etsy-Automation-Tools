@@ -129,7 +129,7 @@ const metadata = metadataBlock(source);
 const protectedMetadataText = protectedMetadata(metadata);
 const templateBlocks = extractTemplateBlocks(source);
 const dataAttributeSignature = countedSignature(source, /\bdata-[a-z0-9-]+\b/gi, (value) => value.toLowerCase());
-const meliClassSignature = countedSignature(source, /\bmeli-[a-z0-9-]+\b/gi, (value) => value.toLowerCase());
+const meliClassSignature = countedSignature(source, /(?<![-\w])meli-[a-z0-9-]+\b/gi, (value) => value.toLowerCase());
 
 const audit = {
   generatedAt: new Date().toISOString(),

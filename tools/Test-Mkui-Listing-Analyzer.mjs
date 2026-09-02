@@ -67,7 +67,7 @@ test('Listing Analyzer protected metadata and behavioral hook signatures match t
     audit.source.dataAttributeSignatureSha256,
   );
   assert.equal(
-    countedSignature(source, /\bmeli-[a-z0-9-]+\b/gi, (value) => value.toLowerCase()),
+    countedSignature(source, /(?<![-\w])meli-[a-z0-9-]+\b/gi, (value) => value.toLowerCase()),
     audit.source.meliClassSignatureSha256,
   );
 });
