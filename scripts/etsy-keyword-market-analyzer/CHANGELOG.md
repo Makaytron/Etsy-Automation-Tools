@@ -2,6 +2,17 @@
 
 All notable changes to Makaytron Etsy Keyword & Market Analyzer are documented here.
 
+## [1.0.4] - 2026-09-02
+
+### Changed
+
+- Applied the first MKUI v1 Compact Shell presentation mapping from `Tamplate-Back-White-01`: canonical neutral tokens, radii, focus rings, launcher/panel surfaces, controls, buttons, status surfaces, and narrowly scoped inline result styling.
+- Preserved the existing 440 px compact information architecture, open Shadow DOM, Etsy-inline result structure, and every existing `data-*` behavior hook.
+
+### Validation
+
+- Added a dedicated Keyword & Market Analyzer regression test and retained updater, privacy, and distribution gates; the migration does not change Marketplace Insights parsing, research envelopes, storage, telemetry, navigation, or update permissions.
+
 ## [1.0.3] - 2026-08-08
 
 ### Changed
