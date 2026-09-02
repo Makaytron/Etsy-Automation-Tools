@@ -7,6 +7,22 @@
 - Affected script or repository area / Etkilenen script veya depo alanı:
 - Related issue / İlgili issue:
 
+## Design-source compliance / Tasarım kaynağı uyumu
+
+<!-- Complete this section for every visible UI change. Görünür UI değişikliklerinde bu bölümü doldurun. -->
+
+- UI changed / UI değişti: `Yes / No`
+- Shell/template source and exact path / Shell-template kaynağı ve kesin yolu:
+- ShadcnStore block URL, family, name and number / ShadcnStore blok URL'si, ailesi, adı ve numarası:
+- Toast-01 mapping, or `N/A` when no transient feedback exists / Toast-01 eşlemesi veya geçici bildirim yoksa `N/A`:
+- Makaytron adaptation summary / Makaytron uyarlama özeti:
+
+- [ ] I used [Tamplate-Back-White-01](https://github.com/Makaytron/Tamplate-Back-White-01) as the primary application template. / Ana uygulama template'i olarak Tamplate-Back-White-01 kullandım.
+- [ ] I selected component anatomy from the [applied dashboard](https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard) or a named [ShadcnStore block](https://shadcnstore.com/blocks). / Bileşen anatomisini uygulanmış dashboard veya adı belirtilmiş ShadcnStore bloğundan seçtim.
+- [ ] Every new or modified toast/snackbar/notification follows [Toast-01](https://github.com/Makaytron/Toast-01), or this is `N/A`. / Yeni veya değiştirilen her toast/snackbar/bildirim Toast-01'i izliyor veya bu değişiklik için `N/A`.
+- [ ] I did not invent an unapproved card, menu, sidebar, modal, table, filter, empty state, toolbar, loader, alert or toast. / Onaysız kart, menü, sidebar, modal, tablo, filtre, boş durum, toolbar, loader, uyarı veya toast üretmedim.
+- [ ] Existing behavior hooks and safety contracts remain intact. / Mevcut davranış hookları ve güvenlik sözleşmeleri korunuyor.
+
 ## Safety and privacy / Güvenlik ve gizlilik
 
 - [ ] I did not include secrets, Etsy session data, buyer messages, order information, real or non-public shop/listing identifiers, private metrics, or authenticated Etsy HTML. / Secret, Etsy oturum verisi, müşteri mesajı, sipariş bilgisi, gerçek veya herkese açık olmayan mağaza/listing kimliği, özel metrik ya da kimliği doğrulanmış Etsy HTML'i eklemedim.

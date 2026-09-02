@@ -22,6 +22,21 @@ Open-source Etsy automation tools and Tampermonkey userscripts for sellers. The 
 
 Listing Analyzer and Keyword & Market Analyzer are independently installable and fully usable on their own. When the user starts the optional market-research action in Listing Analyzer and the companion is missing, the script explains why it is needed and opens the canonical install URL only after the user approves **Open install page**. Tampermonkey and the user always retain final installation control.
 
+## Mandatory design sources
+
+All new pages, panels and visible components in this repository are source-locked. UI work must be adapted from the following approved sources rather than invented ad hoc:
+
+1. [Makaytron/Tamplate-Back-White-01](https://github.com/Makaytron/Tamplate-Back-White-01) — primary application template and canonical source for shell, sidebar, header, cards, forms, tables, spacing and theme structure.
+2. [Makaytron/Toast-01](https://github.com/Makaytron/Toast-01) — mandatory source for toast, snackbar and transient-notification behavior and presentation.
+3. [Applied ShadcnStore dashboard](https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard) — complete sidebar/header/content composition reference.
+4. [ShadcnStore blocks](https://shadcnstore.com/blocks) — approved catalog for application, dashboard, data, form, filter, table, card, alert and empty-state blocks.
+
+Every substantial UI pull request must name the exact repository path or ShadcnStore block used and explain the Makaytron adaptation. Do not invent a new card, sidebar, modal, table, empty state, toolbar, loader, alert or toast when adding a page. If no approved source fits, stop and record a design gap for explicit maintainer approval before implementation.
+
+Userscripts remain framework-free at runtime: approved React/Tailwind patterns are adapted and bundled locally without loading React, Tailwind, Toast-01 or ShadcnStore from the network. Existing behavior, privacy, confirmation and fail-closed contracts always take precedence over visual references.
+
+The normative rules are in [Mandatory Design Source Lock](./docs/design/DESIGN-SOURCE-LOCK.md).
+
 ## Synthetic panel galleries
 
 These images capture only **standalone panel/modal elements** rendered by the real userscript source in a network-blocked synthetic fixture. They contain no Etsy or other site background, browser frame, or real account, shop, customer, or order data.

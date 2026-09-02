@@ -22,6 +22,21 @@ Etsy satıcıları için açık kaynak Etsy automation tools ve Tampermonkey use
 
 Listing Analyzer ve Keyword & Market Analyzer ayrı ayrı kurulup kullanılabilir. Listing Analyzer'daki pazar araştırması özelliği kullanıcı tarafından başlatıldığında companion bulunamazsa neden gerekli olduğunu açıklar; yalnız kullanıcının **Yükleme sayfasını aç** onayından sonra canonical userscript adresini açar. Son kurulum onayı her zaman Tampermonkey'e ve kullanıcıya aittir.
 
+## Zorunlu tasarım kaynakları
+
+Bu depoya eklenecek bütün yeni sayfalar, paneller ve görünür bileşenler kaynak kilidine tabidir. Arayüzler gelişigüzel oluşturulmayacak; aşağıdaki onaylı kaynaklardan doğrudan uyarlanacaktır:
+
+1. [Makaytron/Tamplate-Back-White-01](https://github.com/Makaytron/Tamplate-Back-White-01) — ana uygulama template'i; shell, sol menü, header, kart, form, tablo, spacing ve tema yapısının birincil kaynağıdır.
+2. [Makaytron/Toast-01](https://github.com/Makaytron/Toast-01) — toast, snackbar ve geçici bildirimlerin davranış ve görünümünde zorunlu kaynaktır.
+3. [Uygulanmış ShadcnStore dashboard](https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard) — sidebar/header/content bütünlüğü ve tam dashboard kompozisyonu için referanstır.
+4. [ShadcnStore blocks](https://shadcnstore.com/blocks) — uygulama, dashboard, veri, form, filtre, tablo, kart, uyarı ve boş durum bloklarının onaylı kataloğudur.
+
+Önemli her arayüz değişikliğinde kullanılan repo yolu veya ShadcnStore blok adı/numarası açıkça yazılmalıdır. Sayfa eklerken kafadan kart, menü, modal, tablo, boş durum, toolbar, loader, uyarı ya da toast üretilmeyecektir. Uygun kaynak bulunamazsa geliştirme durdurulur; uygulamadan önce maintainer onaylı bir tasarım boşluğu kaydı açılır.
+
+Userscriptler çalışma anında framework bağımlılığı taşımaz: React/Tailwind tabanlı onaylı örnekler yerel, framework'süz ve scope edilmiş MKUI koduna uyarlanır; React, Tailwind, Toast-01 veya ShadcnStore ağdan yüklenmez. Mevcut davranış, gizlilik, onay ve belirsizlikte durma sözleşmeleri görsel referanslardan önce gelir.
+
+Kesin kurallar [Zorunlu Tasarım Kaynağı Kilidi](./docs/design/DESIGN-SOURCE-LOCK.md) belgesindedir.
+
 ## Sentetik panel galerileri
 
 Bu görseller gerçek userscript kaynağının ağ erişimi kapalı sentetik fixture'da oluşturduğu **bağımsız panel/modal öğelerinden** çekilir. Etsy ya da başka bir site arka planı, tarayıcı çerçevesi ve gerçek hesap/mağaza/müşteri/sipariş verisi içermez.

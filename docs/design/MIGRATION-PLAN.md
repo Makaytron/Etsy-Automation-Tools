@@ -8,7 +8,7 @@
 4. Makaytron Etsy Message Assistant
 5. Makaytron Etsy Listing Analyzer
 
-Reference system: `Makaytron/Tamplate-Back-White-01`, the applied ShadcnStore dashboard, and the approved block catalog in `SHADCNSTORE-REFERENCE-CATALOG.md`.
+Reference system: the mandatory source lock in `DESIGN-SOURCE-LOCK.md`, `Makaytron/Tamplate-Back-White-01`, `Makaytron/Toast-01`, the applied ShadcnStore dashboard, and the approved block catalog in `SHADCNSTORE-REFERENCE-CATALOG.md`.
 
 ## Current status
 

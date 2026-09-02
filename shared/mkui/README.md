@@ -4,6 +4,18 @@ Canonical, framework-free source for the Makaytron Etsy userscript visual system
 
 All five production userscripts carry MKUI as an inlined/mapped presentation layer. They do not fetch this directory or any remote stylesheet at runtime.
 
+## Mandatory design-source lock
+
+MKUI source and every production presentation change must follow [`docs/design/DESIGN-SOURCE-LOCK.md`](../../docs/design/DESIGN-SOURCE-LOCK.md):
+
+- `Makaytron/Tamplate-Back-White-01` is the primary application template.
+- `Makaytron/Toast-01` is mandatory for toast/snackbar/transient-notification behavior.
+- The applied ShadcnStore dashboard defines complete shell composition.
+- `https://shadcnstore.com/blocks` is the approved individual-block catalog.
+- New component anatomy must not be invented. The exact source must be recorded before implementation and in the pull request.
+
+These are design/build inputs only. Production userscripts remain framework-free, locally bundled and Etsy-safe at runtime.
+
 ## Canonical source
 
 - `tokens.css` — canonical light-theme semantic values

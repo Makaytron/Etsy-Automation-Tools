@@ -18,6 +18,17 @@ HTML. Screenshots and logs must be redacted.
 
 ### Prepare a change
 
+#### Mandatory design-source lock
+
+Any pull request that adds or substantially changes visible UI must follow [DESIGN-SOURCE-LOCK.md](../docs/design/DESIGN-SOURCE-LOCK.md):
+
+- Inspect [Tamplate-Back-White-01](https://github.com/Makaytron/Tamplate-Back-White-01) first and use it as the primary application template.
+- Use [Toast-01](https://github.com/Makaytron/Toast-01) for every new or modified toast/snackbar/transient-notification pattern.
+- Select the complete shell relationship from the [applied ShadcnStore dashboard](https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard) and individual components from [ShadcnStore blocks](https://shadcnstore.com/blocks).
+- Record the exact repository path, page URL, block family and block name/number in the pull request.
+- Do not invent new visual component anatomy. When no approved source fits, stop and request explicit maintainer approval before implementation.
+- Preserve existing behavior hooks, selectors, accessibility, privacy, confirmations and fail-closed flows while adapting the approved source.
+
 1. Fork the repository or create a focused branch from the current `main`.
 2. Keep each pull request limited to one clear concern and identify every affected userscript.
 3. Prefer synthetic fixtures and read-only checks. Do not perform destructive, irreversible, or repeated experiments on a live Etsy account.
@@ -68,6 +79,17 @@ mağaza veya listing kimliği, Etsy metriği ya da kimliği doğrulanmış Etsy 
 yayımlamayın. Ekran görüntülerini ve logları redakte edin.
 
 ### Değişikliği hazırlayın
+
+#### Zorunlu tasarım kaynağı kilidi
+
+Görünür arayüz ekleyen veya önemli ölçüde değiştiren her pull request [DESIGN-SOURCE-LOCK.md](../docs/design/DESIGN-SOURCE-LOCK.md) kurallarına uymalıdır:
+
+- Önce [Tamplate-Back-White-01](https://github.com/Makaytron/Tamplate-Back-White-01) incelenmeli ve ana uygulama template'i olarak kullanılmalıdır.
+- Yeni veya değiştirilen her toast/snackbar/geçici bildirim için [Toast-01](https://github.com/Makaytron/Toast-01) kullanılmalıdır.
+- Tam shell ilişkisi [uygulanmış ShadcnStore dashboard](https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard) üzerinden, tekil bileşenler ise [ShadcnStore blocks](https://shadcnstore.com/blocks) içinden seçilmelidir.
+- Kullanılan kesin repo yolu, sayfa URL'si, blok ailesi ve blok adı/numarası pull requestte yazılmalıdır.
+- Yeni görsel bileşen anatomisi kafadan üretilmemelidir. Uygun onaylı kaynak yoksa geliştirme durdurulmalı ve uygulamadan önce açık maintainer onayı alınmalıdır.
+- Onaylı kaynak uyarlanırken mevcut davranış hookları, selectorlar, erişilebilirlik, gizlilik, onay ve belirsizlikte durma akışları korunmalıdır.
 
 1. Depoyu forklayın veya güncel `main` üzerinden odaklı bir dal oluşturun.
 2. Her pull requesti tek bir net konuyla sınırlayın ve etkilenen userscriptleri belirtin.

@@ -4,28 +4,34 @@ This catalog records approved visual references for the Makaytron Etsy userscrip
 
 ## Approved sources
 
-1. Canonical local template
-   - Repository: `Makaytron/Tamplate-Back-White-01`
-   - Role: primary source for light theme tokens, application shell geometry, sidebar behavior, header hierarchy, cards, forms and dashboard spacing.
+1. Primary local application template
+   - Repository: https://github.com/Makaytron/Tamplate-Back-White-01
+   - Role: mandatory first source for light-theme tokens, application shell geometry, sidebar behavior, header hierarchy, cards, forms, tables, dashboard spacing, responsive behavior and theme structure.
 
-2. ShadcnStore block library
-   - URL: https://shadcnstore.com/blocks
-   - Role: optional component-pattern catalog for cards, application shells, data grids, KPI widgets, filters, empty states, forms, alerts, tables and responsive layouts.
+2. Mandatory toast and notification source
+   - Repository: https://github.com/Makaytron/Toast-01
+   - Role: canonical toast lifecycle and presentation source for placement, stacking, severity, close/update/dismiss behavior, timing/progress, focus/hover pause, safe areas, RTL and accessibility.
 
-3. Applied dashboard reference
+3. Applied ShadcnStore dashboard reference
    - URL: https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard
-   - Role: interaction and composition reference for the complete sidebar/header/content relationship, collapsed navigation, page hierarchy and dense dashboard surfaces.
+   - Role: complete interaction and composition reference for sidebar/header/content relationships, collapsed navigation, page hierarchy and dense dashboard surfaces.
 
-## Selection priority
+4. ShadcnStore block library
+   - URL: https://shadcnstore.com/blocks
+   - Role: approved component catalog for cards, application shells, interfaces, data grids, KPI widgets, filters, empty states, forms, alerts, tables, listing/order views and responsive layouts.
+
+## Source-lock priority
 
 When references differ, use this order:
 
-1. Existing userscript behavioral contract and safety constraints
-2. `Tamplate-Back-White-01`
-3. Applied ShadcnStore dashboard page
-4. Individual ShadcnStore blocks
+1. Existing userscript behavioral, safety, privacy and accessibility contracts
+2. `Tamplate-Back-White-01` for application and page structure
+3. `Toast-01` for toast/snackbar/transient-notification behavior
+4. Applied ShadcnStore dashboard for complete shell composition
+5. The explicitly named ShadcnStore block for an individual region
+6. MKUI semantic-token and framework-free adaptation
 
-A block may improve presentation, but it must never replace or weaken a tested userscript workflow.
+A reference may improve presentation, but it must never replace or weaken a tested userscript workflow. A contributor must not invent an alternative component when an approved pattern exists.
 
 ## Approved block families
 
@@ -42,16 +48,21 @@ For userscripts, prefer patterns from:
 
 Marketing-only sections such as hero, testimonial, pricing and newsletter blocks are not application defaults. They may be used only when a real tool surface requires that composition.
 
-## Adaptation rules
+## Mandatory adaptation rules
 
-- Extract layout and visual principles; do not add React or Tailwind runtime dependencies to userscripts.
-- Do not copy generic template navigation labels into production tools.
+- Inspect `Tamplate-Back-White-01` before designing a new page or surface.
+- Use `Toast-01` for every new or changed toast, snackbar and transient notification; do not introduce a parallel toast system.
+- Select and record the exact source before coding: repository path, applied-dashboard region, or ShadcnStore block family plus block name/number.
+- Do not create new visual component anatomy from scratch. If no approved pattern fits, stop and request explicit maintainer approval before implementation.
+- Extract layout, interaction and visual principles; do not add React or Tailwind runtime dependencies to userscripts.
+- Do not copy generic template navigation labels or unrelated demo features into production tools.
 - Preserve each script's existing Shadow DOM mode and scoped CSS strategy.
 - Preserve all `data-*`, IDs, names, ARIA relationships and selectors used by JavaScript.
 - Use the MKUI semantic token layer rather than hard-coding block-specific colors.
 - Keep interfaces white/neutral by default; use success, warning and danger colors only for meaning.
-- Any imported pattern must pass narrow/mobile layouts, keyboard focus, reduced-motion and Etsy CSS-isolation checks.
+- Any adapted pattern must pass narrow/mobile layouts, keyboard focus, reduced-motion and Etsy CSS-isolation checks.
 - External source availability must never affect installed script startup or rendering.
+- Every visible UI pull request must complete the design-source section in `.github/PULL_REQUEST_TEMPLATE.md`.
 
 ## Script mapping
 
