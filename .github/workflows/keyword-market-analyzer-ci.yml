@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - mkui-keyword-pilot
     paths:
       - 'scripts/etsy-keyword-market-analyzer/**'
       - 'tools/Test-Keyword-Market-Analyzer.mjs'
