@@ -14,7 +14,7 @@ The full selection and adaptation policy lives in [`SHADCNSTORE-REFERENCE-CATALO
 
 When references differ, existing userscript safety/behavior contracts win first, followed by the local template, the applied dashboard, and then individual blocks.
 
-Current adoption: Ads Keyword Manager, Keyword & Market Analyzer, Sale Manager and Message Assistant are migrated to MKUI v1. Listing Analyzer remains last.
+Current adoption: All five production userscripts are migrated to MKUI v1. Listing Analyzer `1.2.3` is the canonical Dashboard Shell implementation; cross-script coexistence QA and canonical bundle/hash drift enforcement are the active follow-up gates.
 
 ## Goal
 

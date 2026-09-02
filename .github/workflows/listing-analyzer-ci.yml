@@ -1,0 +1,116 @@
+name: Listing Analyzer CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "etsy-listing-analyzer-v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: listing-analyzer-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Listing Analyzer
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          $files = @(
+              'scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js'
+              'tools/Audit-Listing-Analyzer.mjs'
+              'tools/Apply-Mkui-Listing-Pilot.mjs'
+              'tools/Finalize-Mkui-Listing-Migration.mjs'
+              'tools/Generate-Mkui-Listing-Analyzer-Preview.mjs'
+              'tools/Test-Mkui-Listing-Analyzer.mjs'
+              'tools/Test-Listing-Analyzer.mjs'
+          )
+          foreach ($file in $files) {
+              node --check $file
+              if ($LASTEXITCODE -ne 0) {
+                  throw "JavaScript syntax validation failed: $file"
+              }
+          }
+
+      - name: Check changed lines for whitespace errors
+        shell: pwsh
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_HEAD_SHA: ${{ github.sha }}
+          GH_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          $eventName = $env:GH_EVENT_NAME
+          $headSha = $env:GH_HEAD_SHA
+          if ($eventName -eq 'pull_request') {
+              git diff --check $env:GH_PR_BASE_SHA $headSha
+          }
+          elseif ($eventName -eq 'push' -and $env:GH_PUSH_BEFORE -notmatch '^0+$') {
+              git diff --check $env:GH_PUSH_BEFORE $headSha
+          }
+          else {
+              git show --check --format= $headSha
+          }
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Whitespace validation failed.'
+          }
+
+      - name: Validate guarded MKUI transformer
+        run: node tools/Apply-Mkui-Listing-Pilot.mjs
+
+      - name: Validate migration documentation finalizer
+        run: node tools/Finalize-Mkui-Listing-Migration.mjs
+
+      - name: Regenerate production-CSS preview
+        run: node tools/Generate-Mkui-Listing-Analyzer-Preview.mjs --output=docs/design/previews
+
+      - name: Verify committed preview is current
+        shell: pwsh
+        run: |
+          git diff --exit-code -- docs/design/previews/listing-analyzer-mkui-preview.html
+          if ($LASTEXITCODE -ne 0) {
+              throw 'Listing Analyzer MKUI preview is stale.'
+          }
+
+      - name: Run Listing Analyzer MKUI invariant tests
+        run: node --test tools/Test-Mkui-Listing-Analyzer.mjs
+
+      - name: Run Listing Analyzer behavior and safety tests
+        run: node --test tools/Test-Listing-Analyzer.mjs
+
+      - name: Verify committed screenshot exists
+        shell: pwsh
+        run: |
+          $path = 'assets/screenshots/listing-analyzer-mkui-dashboard-v1.2.3.png'
+          if (-not (Test-Path -LiteralPath $path)) { throw "Missing screenshot: $path" }
+          $size = (Get-Item -LiteralPath $path).Length
+          if ($size -lt 50000) { throw "Listing Analyzer screenshot is unexpectedly small: $size bytes" }
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1

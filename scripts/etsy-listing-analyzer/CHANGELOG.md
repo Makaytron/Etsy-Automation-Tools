@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 - 2026-09-02
+
+- Migrated the existing Listing Analyzer dashboard presentation to MKUI v1 while preserving the open Shadow DOM, every recorded `data-*` hook and `meli-*` class signature, navigation/filter/selection state, keyboard shortcuts, storage and telemetry contracts, and the complete publish/deactivate verification state machines.
+- Mapped the dashboard shell, cards, forms, buttons, pills, semantic statuses, modal surfaces, radii, shadows, and focus rings to the canonical MKUI `1.0.0` token contract without changing Etsy selectors or listing workflows.
+- Added a fail-closed source audit, guarded exact-anchor transformer, permanent MKUI invariant suite, network-isolated production-CSS preview, and dedicated Listing Analyzer CI. The full pre-existing regression suite, privacy guard, distribution gate, syntax checks, and patch-hygiene checks remain mandatory.
+
 ## 1.2.2 - 2026-08-31
 
 - Made safety-critical GM storage reads fail closed and added explicit queue-schema/lifecycle validation, including bounded submitted-action timestamps. Record keys can no longer redirect through a mismatched embedded listing ID, active collection/queue work blocks backup import, and importing records invalidates any older completed collection.

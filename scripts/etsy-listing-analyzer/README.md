@@ -2,15 +2,23 @@
 
 <p><strong>Türkçe</strong> · <a href="./README.en.md">English</a></p>
 
-**Sürüm:** 1.2.2 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.2.3 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
 Etsy Shop Manager listing kartlarındaki görünür performans verilerini ayrı bir API anahtarı veya OAuth bağlantısı istemeden okuyan; Health Engine ile yerel geçmişi değerlendiren ve listing bazında kullanıcı onaylı iyileştirme kuyruğu hazırlayan Tampermonkey userscriptidir.
 
+> **MKUI v1 Dashboard Shell:** `1.2.3`, mevcut bilgi mimarisini ve güvenlik durum makinelerini değiştirmeden kanonik MKUI `1.0.0` token, kart, form, durum, modal ve odak yüzeylerini kullanır.
+
 ## Arayüz galerisi
 
 Aşağıdaki her görsel yalnız userscript öğesinden alınmıştır. Etsy sayfası, yerine konmuş başka bir site veya tarayıcı arka planı içermez.
+
+| MKUI dashboard önizlemesi |
+|---|
+| ![Sentetik Listing Analyzer MKUI dashboard önizlemesi](../../assets/screenshots/listing-analyzer-mkui-dashboard-v1.2.3.png) |
+
+> Production `1.2.3` CSS katmanından ağ erişimi kapalı sentetik fixture ile üretilmiştir. Gerçek mağaza, listing veya Etsy hesabı verisi içermez.
 
 | Genel bakış | Listing analizi |
 |---|---|

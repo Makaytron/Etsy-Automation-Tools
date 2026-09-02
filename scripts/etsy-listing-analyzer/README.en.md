@@ -2,15 +2,23 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.2.2` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
+Version: `1.2.3` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
 A Tampermonkey userscript that reads visible performance data from Etsy Shop Manager listing cards without asking for a separate API key or OAuth connection, evaluates local history with Health Engine, and prepares listing-level, user-approved improvement queues.
 
+> **MKUI v1 Dashboard Shell:** `1.2.3` maps the existing information architecture and safety state machines onto canonical MKUI `1.0.0` tokens, cards, forms, statuses, modals, and focus surfaces without rewriting behavior.
+
 ## Interface gallery
 
 Every image below is an element-level capture of the userscript itself. No Etsy page, substitute website, or browser background is included.
+
+| MKUI dashboard preview |
+|---|
+| ![Synthetic Listing Analyzer MKUI dashboard preview](../../assets/screenshots/listing-analyzer-mkui-dashboard-v1.2.3.png) |
+
+> Generated from the production `1.2.3` CSS layer in a network-isolated synthetic fixture. It contains no real shop, listing, or Etsy account data.
 
 | Overview | Listing analysis |
 |---|---|

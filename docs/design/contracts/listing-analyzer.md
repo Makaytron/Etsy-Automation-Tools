@@ -1,6 +1,9 @@
 # Behavioral UI Contract — Makaytron Etsy Listing Analyzer
 
 Baseline version: **1.2.2**
+Version: `1.2.3`
+Migration status: `MKUI v1 complete`
+MKUI source: `1.0.0`
 Source: `scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js`
 
 ## Mount/isolation
@@ -13,7 +16,7 @@ Source: `scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js`
 
 ## Dashboard reference
 
-Listing Analyzer is the closest existing userscript translation of the `Tamplate-Back-White-01` dashboard model. Its shell informs MKUI Dashboard Shell even though its production migration happens last.
+Listing Analyzer `1.2.3` is the canonical production translation of the `Tamplate-Back-White-01` dashboard model. Its collapsed/expanded navigation, header, workspace, modal, toast, token and primitive mapping define MKUI Dashboard Shell while the original behavioral routing and safety state machines remain intact.
 
 ## Protected domains
 

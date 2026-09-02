@@ -22,8 +22,8 @@ Reference system: `Makaytron/Tamplate-Back-White-01`, the applied ShadcnStore da
 - [x] Keyword & Market Analyzer migration
 - [x] Sale Manager migration
 - [x] Message Assistant MKUI migration (`1.2.9`, MKUI `1.0.0`)
-- [ ] Listing Analyzer MKUI migration — ACTIVE
-- [ ] Cross-script integration QA
+- [x] Listing Analyzer MKUI migration (`1.2.3`, MKUI `1.0.0`)
+- [ ] Cross-script integration QA — ACTIVE
 - [ ] MKUI bundle/version drift CI
 
 ## Phase 0 — Freeze behavior contracts
@@ -73,11 +73,11 @@ Completed gate:
 - preserve message composer/send verification, provider, automation, orders, history, settings, telemetry and storage behavior
 - run `Test-Message-Assistant.mjs`, browser fixture coverage, `Test-Mkui-Message-Assistant.mjs`, privacy and distribution gates before merge
 
-## Phase 7 — Listing Analyzer — ACTIVE
+## Phase 7 — Listing Analyzer — COMPLETE
 
-Migrate last, but use it as the reference for dashboard shell geometry. Preserve navigation state, filter drawer, listing selection, queue/AI/settings views, keyboard shortcuts and publish/deactivate verification.
+Migrated as the production reference for dashboard shell geometry. The guarded transform preserves navigation state, filter drawer, listing selection, queue/AI/settings views, keyboard shortcuts, open Shadow DOM, every recorded hook/class signature, and publish/deactivate verification. The full Listing Analyzer behavior suite, MKUI invariants, synthetic production-CSS preview, privacy and distribution gates pass before publication.
 
-## Phase 8 — Cross-script QA
+## Phase 8 — Cross-script QA — ACTIVE
 
 When multiple scripts may run in one Etsy session, verify:
 
