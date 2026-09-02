@@ -68,7 +68,7 @@ test('presentation fingerprint ignores only the generated bundle marker', () => 
   assert.notEqual(first.hash, changed.hash);
 });
 
-test('valid temporary exceptions require a reason and an unexpired date', () => {
+test('valid temporary exceptions require an exact transition, reason and unexpired date', () => {
   const valid = {
     scriptId: 'ads-keyword-manager',
     expectedPresentationHash: HASH_A,
@@ -83,6 +83,10 @@ test('valid temporary exceptions require a reason and an unexpired date', () => 
   );
   assert.equal(
     validateException({ ...valid, expires: '2026-01-01' }, new Date('2026-09-02T00:00:00Z')),
+    false,
+  );
+  assert.equal(
+    validateException({ ...valid, actualPresentationHash: HASH_A }, new Date('2026-09-02T00:00:00Z')),
     false,
   );
 });
@@ -142,6 +146,23 @@ test('matching unexpired exception permits one exact drift transition', () => {
   assert.equal(result.warnings.length, 1);
 });
 
+test('unused or mismatched drift exceptions fail closed', () => {
+  const committed = manifestFixture(HASH_A);
+  const current = manifestFixture(HASH_A);
+  committed.exceptions.push({
+    scriptId: current.scripts[0].id,
+    expectedPresentationHash: HASH_A,
+    actualPresentationHash: HASH_B,
+    reason: 'This transition is no longer present in the production source.',
+    expires: '2099-12-31',
+  });
+  const result = verifyManifest(committed, current, {
+    today: new Date('2026-09-02T00:00:00Z'),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /unused or mismatched drift exception/);
+});
+
 test('canonical bundle drift cannot be bypassed by a presentation exception', () => {
   const committed = manifestFixture(HASH_A);
   const current = manifestFixture(HASH_A);
@@ -152,6 +173,56 @@ test('canonical bundle drift cannot be bypassed by a presentation exception', ()
   });
   assert.equal(result.ok, false);
   assert.match(result.errors.join('\n'), /canonical MKUI bundle changed/);
+});
+
+test('stale userscript version and marker evidence fail closed', () => {
+  const committed = manifestFixture(HASH_A);
+  const current = manifestFixture(HASH_A);
+  current.scripts[0].scriptVersion = '1.0.1';
+  current.scripts[1].bundleHash = HASH_B;
+  const result = verifyManifest(committed, current, {
+    today: new Date('2026-09-02T00:00:00Z'),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /userscript version drifted/);
+  assert.match(result.errors.join('\n'), /MKUI_BUNDLE_HASH/);
+  assert.match(result.errors.join('\n'), /recorded bundle marker is stale/);
+});
+
+test('unknown, duplicate and missing manifest script entries fail closed', () => {
+  const committed = manifestFixture(HASH_A);
+  const current = manifestFixture(HASH_A);
+  committed.scripts.pop();
+  committed.scripts.push({ ...committed.scripts[0] });
+  committed.scripts.push({
+    ...committed.scripts[0],
+    id: 'unknown-script',
+    path: 'scripts/unknown.user.js',
+  });
+  const result = verifyManifest(committed, current, {
+    today: new Date('2026-09-02T00:00:00Z'),
+  });
+  assert.equal(result.ok, false);
+  const errors = result.errors.join('\n');
+  assert.match(errors, /duplicate script ids/);
+  assert.match(errors, /unknown script ids/);
+  assert.match(errors, /manifest entry is missing/);
+});
+
+test('canonical bundle evidence fields are checked, not only the hash', () => {
+  const committed = manifestFixture(HASH_A);
+  const current = manifestFixture(HASH_A);
+  committed.canonicalBundle.files = ['shared/mkui/wrong.css'];
+  committed.canonicalBundle.bytes = 99;
+  committed.canonicalBundle.lines = 9;
+  const result = verifyManifest(committed, current, {
+    today: new Date('2026-09-02T00:00:00Z'),
+  });
+  assert.equal(result.ok, false);
+  const errors = result.errors.join('\n');
+  assert.match(errors, /file order changed/);
+  assert.match(errors, /byte count is stale/);
+  assert.match(errors, /line count is stale/);
 });
 
 test('live production manifest and script markers are current', async t => {
