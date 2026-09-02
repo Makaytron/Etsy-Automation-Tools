@@ -1,0 +1,87 @@
+name: MKUI Sale Manager Pilot
+
+on:
+  push:
+    branches:
+      - mkui-sale-pilot
+    paths:
+      - '.github/workflows/mkui-sale-pilot.yml'
+      - 'tools/Apply-Mkui-Sale-Pilot.mjs'
+      - 'tools/Test-Sale-Manager.mjs'
+      - 'shared/mkui/**'
+      - 'docs/design/**'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out pilot branch
+        uses: actions/checkout@v4
+        with:
+          ref: mkui-sale-pilot
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply deterministic presentation-only pilot
+        run: node tools/Apply-Mkui-Sale-Pilot.mjs --write
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Apply-Mkui-Sale-Pilot.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Test-Sale-Manager.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Sale Manager behavior and safety regression tests
+        run: node --test tools/Test-Sale-Manager.mjs
+
+      - name: Run shared updater regression tests
+        run: node --test tools/Test-Updaters.mjs
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1
+
+      - name: Patch hygiene
+        run: git diff --check
+
+      - name: Confirm generated change scope
+        shell: pwsh
+        run: |
+          $changed = @(git diff --name-only | Sort-Object)
+          $expected = @(
+            'README.md',
+            'README.tr.md',
+            'scripts/etsy-sale-campaign-batch-runner/CHANGELOG.md',
+            'scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js',
+            'scripts/etsy-sale-campaign-batch-runner/README.en.md',
+            'scripts/etsy-sale-campaign-batch-runner/README.md',
+            'tools/Test-Sale-Manager.mjs'
+          ) | Sort-Object
+          if (($changed -join "`n") -ne ($expected -join "`n")) {
+            throw "Unexpected generated Sale pilot scope: $($changed -join ', ')"
+          }
+
+      - name: Commit verified pilot result
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md README.tr.md scripts/etsy-sale-campaign-batch-runner/CHANGELOG.md scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js scripts/etsy-sale-campaign-batch-runner/README.md scripts/etsy-sale-campaign-batch-runner/README.en.md tools/Test-Sale-Manager.mjs
+          git commit -m "refactor: apply MKUI v1 Sale Manager pilot [skip ci]"
+          git push origin HEAD:mkui-sale-pilot
