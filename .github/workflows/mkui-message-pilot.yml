@@ -1,0 +1,95 @@
+name: MKUI Message Assistant Pilot
+
+on:
+  push:
+    branches:
+      - mkui-message-pilot
+    paths:
+      - '.github/workflows/mkui-message-pilot.yml'
+      - 'tools/Apply-Mkui-Message-Pilot.mjs'
+      - 'shared/mkui/**'
+      - 'docs/design/**'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out pilot branch
+        uses: actions/checkout@v4
+        with:
+          ref: mkui-message-pilot
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Apply deterministic presentation-only Workspace pilot
+        run: node tools/Apply-Mkui-Message-Pilot.mjs --write
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Apply-Mkui-Message-Pilot.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Message Assistant behavior tests
+        run: node --test tools/Test-Message-Assistant.mjs
+
+      - name: Smoke-test browser fixture with Chrome-start retry
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Browser fixture attempt $attempt/$maxAttempts"
+            node --test tools/Test-Message-Assistant-Browser-Fixture.mjs
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -eq $maxAttempts) { exit $LASTEXITCODE }
+            Start-Sleep -Seconds 2
+          }
+
+      - name: Run shared updater regression tests
+        run: node --test tools/Test-Updaters.mjs
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1
+
+      - name: Patch hygiene
+        run: git diff --check
+
+      - name: Confirm generated change scope
+        shell: pwsh
+        run: |
+          $changed = @(git diff --name-only | Sort-Object)
+          $expected = @(
+            'README.md',
+            'README.tr.md',
+            'scripts/etsy-message-assistant/CHANGELOG.md',
+            'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js',
+            'scripts/etsy-message-assistant/README.en.md',
+            'scripts/etsy-message-assistant/README.md'
+          ) | Sort-Object
+          if (($changed -join "`n") -ne ($expected -join "`n")) {
+            throw "Unexpected generated Message pilot scope: $($changed -join ', ')"
+          }
+
+      - name: Commit verified pilot result
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md README.tr.md scripts/etsy-message-assistant/CHANGELOG.md scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js scripts/etsy-message-assistant/README.md scripts/etsy-message-assistant/README.en.md
+          git commit -m "refactor: apply MKUI v1 Message Assistant pilot [skip ci]"
+          git push origin HEAD:mkui-message-pilot
