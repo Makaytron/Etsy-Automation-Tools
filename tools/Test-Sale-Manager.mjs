@@ -872,7 +872,7 @@ test('mismatched unaccounted final submission remains fail-closed', async () => 
     assert.match(blocked.errorReason, /Yanlış güne ait kayıt doğrulanmadı/);
 });
 
-test('v1.0.8 active verification queue survives the v1.0.12 patch migration', async () => {
+test('v1.0.8 active verification queue survives the v1.0.13 UI-only patch migration', async () => {
     const api = await loadManager();
     api.setLocationPath('/your/shops/me/sales-discounts/details-stats');
     const oldJob = {
@@ -904,7 +904,7 @@ test('v1.0.8 active verification queue survives the v1.0.12 patch migration', as
 
     await api.loadState();
     const migrated = await api.getStoredTestJob();
-    assert.equal(migrated.version, '1.0.12');
+    assert.equal(migrated.version, '1.0.13');
     assert.equal(migrated.jobId, oldJob.jobId);
     assert.equal(migrated.generation, oldJob.generation + 1);
     assert.equal(migrated.currentDate, '2026-08-11');
@@ -957,7 +957,7 @@ test('a paused v1.0.10 job at 18 of 20 preserves its date, phase, results, and v
 
     await api.loadState();
     const migrated = await api.getStoredTestJob();
-    assert.equal(migrated.version, '1.0.12');
+    assert.equal(migrated.version, '1.0.13');
     assert.equal(migrated.generation, oldJob.generation + 1);
     assert.equal(migrated.currentDate, '2026-08-30');
     assert.equal(migrated.phase, 'fill_form');
@@ -971,7 +971,7 @@ test('a paused v1.0.10 job at 18 of 20 preserves its date, phase, results, and v
     assert.equal(migrated.legacyReconcileStartDate, undefined);
 });
 
-test('an active v1.0.11 transient-loading step survives the v1.0.12 patch migration', async () => {
+test('an active v1.0.11 transient-loading step survives the v1.0.13 UI-only patch migration', async () => {
     const api = await loadManager();
     const oldJob = {
         schemaVersion: 5, version: '1.0.11', jobId: 'active-v111-transient-loading', generation: 23,
@@ -1008,7 +1008,7 @@ test('an active v1.0.11 transient-loading step survives the v1.0.12 patch migrat
 
     await api.loadState();
     const migrated = await api.getStoredTestJob();
-    assert.equal(migrated.version, '1.0.12');
+    assert.equal(migrated.version, '1.0.13');
     assert.equal(migrated.generation, oldJob.generation + 1);
     assert.equal(migrated.currentDate, oldJob.currentDate);
     assert.equal(migrated.phase, 'select_listings');

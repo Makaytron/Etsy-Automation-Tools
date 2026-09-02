@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Sale Manager
 // @name:tr      Makaytron Etsy Sale Manager
 // @name:en      Makaytron Etsy Sale Manager
-// @version      1.0.12
+// @version      1.0.13
 // @description  Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
 // @description:tr Etsy Sales and Discounts kampanyalarını güvenli toplu seriler hâlinde planlar, doğrular ve raporlar
 // @description:en Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
@@ -37,7 +37,8 @@
 (async function () {
     'use strict';
 
-    const VERSION = '1.0.12';
+    const VERSION = '1.0.13';
+    const MKUI_VERSION = '1.0.0';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
     const TELEMETRY_HEADER_NAME = 'x-makaytron-telemetry';
     const TELEMETRY_HEADER_VALUE = '1';
@@ -841,39 +842,40 @@
 
     addStyle(`
         #${ROOT_ID}{
-            --eda-bg:#fff;--eda-fg:#171717;--eda-card:#fff;--eda-muted:#f7f7f7;--eda-muted-2:#f2f2f2;
-            --eda-muted-fg:#737373;--eda-border:#e7e7e7;--eda-input:#dedede;--eda-primary:#1f1f1f;
-            --eda-primary-fg:#fafafa;--eda-danger:#b91c1c;--eda-warning:#9a6700;--eda-success:#276749;
+            --eda-bg:#fff;--eda-fg:#171717;--eda-card:#fff;--eda-muted:#f2f2f2;--eda-muted-2:#eeeeee;
+            --eda-muted-fg:#595959;--eda-border:#dedede;--eda-input:#cfcfcf;--eda-primary:#1f1f1f;
+            --eda-primary-fg:#fafafa;--eda-danger:#b42318;--eda-danger-soft:#fff1f0;--eda-warning:#8a5a00;--eda-warning-soft:#fff9df;--eda-success:#1f7a4d;--eda-success-soft:#edf8f1;
+            --eda-radius-sm:7px;--eda-radius-md:10px;--eda-radius-lg:14px;--eda-radius-pill:999px;--eda-focus:0 0 0 3px rgba(23,23,23,.14);
             position:fixed;right:18px;top:86px;width:372px;z-index:2147483645;
             font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--eda-fg);
             font-variant-numeric:tabular-nums;
         }
         #${ROOT_ID} *,.eda-modal *,.eda-report *{box-sizing:border-box}
-        #${ROOT_ID} .eda-card{background:var(--eda-card);border:1px solid var(--eda-border);border-radius:11px;box-shadow:0 1px 3px rgba(15,23,42,.08),0 12px 30px rgba(15,23,42,.08);overflow:hidden}
-        #${ROOT_ID}.eda-collapsed{right:0;top:148px;width:44px}
-        #${ROOT_ID}.eda-collapsed .eda-collapsed-tab{width:44px;height:58px;min-height:58px;padding:0;border:1px solid #2b2b2b;border-right:0;border-radius:9px 0 0 9px;background:#1f1f1f;color:#fff;box-shadow:0 8px 22px rgba(0,0,0,.18)}
-        #${ROOT_ID}.eda-collapsed .eda-collapsed-tab:hover{background:#303030}
+        #${ROOT_ID} .eda-card{background:var(--eda-card);border:1px solid var(--eda-border);border-radius:var(--eda-radius-lg);box-shadow:0 1px 3px rgba(0,0,0,.08),0 18px 44px rgba(0,0,0,.14);overflow:hidden}
+        #${ROOT_ID}.eda-collapsed{right:0;top:148px;width:62px}
+        #${ROOT_ID}.eda-collapsed .eda-collapsed-tab{width:62px;height:52px;min-height:52px;padding:0;border:1px solid var(--eda-border);border-right:0;border-radius:14px 0 0 14px;background:#fff;color:#171717;box-shadow:0 12px 30px rgba(0,0,0,.14)}
+        #${ROOT_ID}.eda-collapsed .eda-collapsed-tab:hover{background:var(--eda-muted)}
         #${ROOT_ID}.eda-collapsed .eda-collapsed-tab .eda-svg{width:19px;height:19px}
-        #${ROOT_ID} .eda-head{padding:13px 14px;background:var(--eda-card);border-bottom:1px solid var(--eda-border);display:flex;justify-content:space-between;gap:12px;align-items:center}
+        #${ROOT_ID} .eda-head{padding:14px 16px;background:var(--eda-card);border-bottom:1px solid var(--eda-border);display:flex;justify-content:space-between;gap:12px;align-items:center}
         #${ROOT_ID} .eda-brand{display:flex;align-items:center;gap:10px;min-width:0}
         #${ROOT_ID} .eda-logo-shell,.eda-modal-logo-shell{display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:48px;height:32px;border:0;border-radius:0;background:transparent;overflow:visible;text-decoration:none}
         #${ROOT_ID} .eda-logo,.eda-modal-logo{display:block;width:43px;height:auto;object-fit:contain}
         #${ROOT_ID} .eda-brand-copy{min-width:0}
-        #${ROOT_ID} .eda-title{margin:0;font-size:13.5px;font-weight:700;letter-spacing:-.015em;line-height:1.22;white-space:normal;overflow:visible;text-overflow:clip}
+        #${ROOT_ID} .eda-title{margin:0;font-size:14px;font-weight:760;letter-spacing:-.015em;line-height:1.22;white-space:normal;overflow:visible;text-overflow:clip}
         #${ROOT_ID} .eda-sub{margin-top:3px;font-size:11.5px;color:var(--eda-muted-fg);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         #${ROOT_ID} .eda-head-tools{display:flex;align-items:center;gap:7px;flex:0 0 auto}
         #${ROOT_ID} .eda-head-meta{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:0 0 auto}
-        #${ROOT_ID} .eda-collapse-head{width:30px;min-width:30px;height:30px;min-height:30px;padding:0;border:1px solid var(--eda-border);border-radius:7px;background:#fff;color:#737373}
+        #${ROOT_ID} .eda-collapse-head{width:32px;min-width:32px;height:32px;min-height:32px;padding:0;border:1px solid var(--eda-border);border-radius:var(--eda-radius-sm);background:#fff;color:var(--eda-muted-fg)}
         #${ROOT_ID} .eda-collapse-head:hover{background:var(--eda-muted);color:#171717}
-        #${ROOT_ID} .eda-version{display:inline-flex;align-items:center;height:20px;padding:0 7px;border:1px solid var(--eda-border);border-radius:999px;background:var(--eda-muted);font-size:10.5px;font-weight:650;color:#525252}
-        #${ROOT_ID} .eda-pill{display:inline-flex;align-items:center;gap:5px;height:20px;border-radius:999px;border:1px solid var(--eda-border);padding:0 7px;font-size:10.5px;font-weight:650;white-space:nowrap;background:#fff;color:#525252}
+        #${ROOT_ID} .eda-version{display:inline-flex;align-items:center;height:22px;padding:0 8px;border:1px solid var(--eda-border);border-radius:var(--eda-radius-pill);background:var(--eda-muted);font-size:10.5px;font-weight:700;color:#404040}
+        #${ROOT_ID} .eda-pill{display:inline-flex;align-items:center;gap:5px;height:22px;border-radius:var(--eda-radius-pill);border:1px solid var(--eda-border);padding:0 8px;font-size:10.5px;font-weight:700;white-space:nowrap;background:#fff;color:#404040}
         #${ROOT_ID} .eda-pill::before{content:'';width:6px;height:6px;border-radius:50%;background:#a3a3a3}
         #${ROOT_ID} .eda-pill.run::before{background:#171717;box-shadow:0 0 0 3px rgba(23,23,23,.08)}
         #${ROOT_ID} .eda-pill.pause{border-color:#f1c0c0;background:#fff8f8;color:#991b1b}
         #${ROOT_ID} .eda-pill.pause::before{background:#b91c1c}
-        #${ROOT_ID} .eda-body{padding:14px}
-        #${ROOT_ID} .eda-status-card{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px;padding:10px 11px;border:1px solid var(--eda-border);border-radius:8px;background:var(--eda-muted)}
-        #${ROOT_ID} .eda-status-icon{display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:25px;height:25px;border-radius:7px;background:#fff;border:1px solid var(--eda-border);color:#525252}
+        #${ROOT_ID} .eda-body{padding:16px}
+        #${ROOT_ID} .eda-status-card{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;padding:12px;border:1px solid var(--eda-border);border-radius:var(--eda-radius-md);background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.025)}
+        #${ROOT_ID} .eda-status-icon{display:flex;align-items:center;justify-content:center;flex:0 0 auto;width:28px;height:28px;border-radius:var(--eda-radius-sm);background:var(--eda-muted);border:1px solid var(--eda-border);color:#404040}
         #${ROOT_ID} .eda-status{min-height:34px;font-size:12px;line-height:1.45;color:#525252;white-space:pre-line;overflow-wrap:anywhere}
         #${ROOT_ID} .eda-progress-wrap{margin:0 0 12px}
         #${ROOT_ID} .eda-progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;font-size:11.5px;color:var(--eda-muted-fg)}
@@ -881,7 +883,7 @@
         #${ROOT_ID} .eda-progress-track{height:6px;border-radius:999px;background:var(--eda-muted-2);overflow:hidden}
         #${ROOT_ID} .eda-progress-bar{height:100%;border-radius:999px;background:var(--eda-primary);transition:width .25s ease}
         #${ROOT_ID} .eda-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-        #${ROOT_ID} .eda-chip{border:1px solid var(--eda-border);background:#fff;border-radius:8px;padding:9px 10px;min-width:0;transition:border-color .15s ease,background .15s ease}
+        #${ROOT_ID} .eda-chip{border:1px solid var(--eda-border);background:#fff;border-radius:var(--eda-radius-md);padding:10px 11px;min-width:0;transition:border-color .15s ease,background .15s ease}
         #${ROOT_ID} .eda-chip:hover{border-color:#cfcfcf;background:#fcfcfc}
         #${ROOT_ID} .eda-label{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#8a8a8a;margin-bottom:4px;font-weight:650}
         #${ROOT_ID} .eda-value{font-size:12.5px;font-weight:650;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -889,8 +891,8 @@
         #${ROOT_ID} .eda-actions.three{grid-template-columns:1fr 1fr 1fr}
         #${ROOT_ID} .eda-actions>button{min-width:0;width:100%;overflow:hidden}
         #${ROOT_ID} .eda-actions>button>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis}
-        #${ROOT_ID} button,.eda-modal button,.eda-report button,.eda-button-link{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;border-radius:6px;padding:0 12px;font-family:inherit;font-size:12.5px;font-weight:650;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;text-decoration:none;white-space:nowrap}
-        #${ROOT_ID} button:focus-visible,.eda-modal button:focus-visible,.eda-report button:focus-visible,.eda-button-link:focus-visible{outline:2px solid #525252;outline-offset:2px}
+        #${ROOT_ID} button,.eda-modal button,.eda-report button,.eda-button-link{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:38px;border-radius:var(--eda-radius-sm,7px);padding:0 12px;font-family:inherit;font-size:12.5px;font-weight:650;cursor:pointer;transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;text-decoration:none;white-space:nowrap}
+        #${ROOT_ID} button:focus-visible,.eda-modal button:focus-visible,.eda-report button:focus-visible,.eda-button-link:focus-visible{outline:0;box-shadow:var(--eda-focus,0 0 0 3px rgba(23,23,23,.14))}
         #${ROOT_ID} button:not(:disabled):active,.eda-modal button:not(:disabled):active,.eda-report button:not(:disabled):active{transform:translateY(1px);box-shadow:none}
         #${ROOT_ID} button:disabled,.eda-modal button:disabled,.eda-report button:disabled{opacity:.5;cursor:not-allowed}
         #${ROOT_ID} button[aria-busy="true"]{opacity:1;cursor:progress}
@@ -899,15 +901,15 @@
         @media (prefers-reduced-motion:reduce){#${ROOT_ID} .eda-button-busy-spinner{animation-duration:1.4s}}
         .eda-primary{background:var(--eda-primary,#1f1f1f);border:1px solid var(--eda-primary,#1f1f1f);color:var(--eda-primary-fg,#fafafa);box-shadow:0 1px 2px rgba(0,0,0,.08)}
         .eda-primary:hover{background:#303030;border-color:#303030}
-        .eda-secondary{background:#fff;border:1px solid var(--eda-input,#dedede);color:var(--eda-fg,#171717);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+        .eda-secondary{background:#fff;border:1px solid var(--eda-input,#cfcfcf);color:var(--eda-fg,#171717);box-shadow:0 1px 2px rgba(0,0,0,.04)}
         .eda-secondary:hover{background:var(--eda-muted,#f7f7f7);border-color:#cfcfcf}
-        .eda-ghost{background:transparent;border:1px solid transparent;color:var(--eda-muted-fg,#737373)}
+        .eda-ghost{background:transparent;border:1px solid transparent;color:var(--eda-muted-fg,#595959)}
         .eda-ghost:hover{background:var(--eda-muted,#f7f7f7);color:var(--eda-fg,#171717)}
-        .eda-danger{background:#fff;border:1px solid #efcaca;color:#a61b1b}
+        .eda-danger{background:var(--eda-danger-soft,#fff1f0);border:1px solid #efb4ae;color:var(--eda-danger,#b42318)}
         .eda-danger:hover{background:#fff5f5;border-color:#e6aaaa}
-        .eda-success{background:#fff;border:1px solid #c9dfd1;color:#276749}
+        .eda-success{background:var(--eda-success-soft,#edf8f1);border:1px solid #a9d8be;color:var(--eda-success,#1f7a4d)}
         .eda-success:hover{background:#f4faf6;border-color:#a9ccb5}
-        .eda-warning{background:#fff;border:1px solid #eed69a;color:#8a5a00}
+        .eda-warning{background:var(--eda-warning-soft,#fff9df);border:1px solid #e5c56b;color:var(--eda-warning,#8a5a00)}
         .eda-warning:hover{background:#fffaf0;border-color:#dfc26f}
         .eda-svg{width:15px;height:15px;display:block;flex:0 0 auto;stroke:currentColor}
         #${ROOT_ID} .eda-update-card{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:10px 0;padding:10px 11px;border:1px solid #ead18d;border-radius:8px;background:#fffaf0}
@@ -921,24 +923,24 @@
         #${ROOT_ID} .eda-link-button{appearance:none;border:0;background:transparent;padding:0;min-height:0;color:#737373;font-size:11.5px;font-weight:600;box-shadow:none}
         #${ROOT_ID} .eda-link-button:hover{color:#171717;text-decoration:underline;text-underline-offset:3px;background:transparent}
         #${TOAST_ID}{position:fixed;right:18px;bottom:18px;z-index:2147483647;display:flex;flex-direction:column;gap:8px;max-width:390px;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-        .eda-toast{opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .2s ease;border-radius:8px;padding:11px 13px;color:#fff;box-shadow:0 12px 28px rgba(15,23,42,.2);font-size:12.5px;line-height:1.45;border:1px solid rgba(255,255,255,.13)}
-        .eda-toast.show{opacity:1;transform:translateY(0)}.eda-toast.info{background:#262626}.eda-toast.success{background:#276749}.eda-toast.warning{background:#8a5a00}.eda-toast.error{background:#b91c1c}
+        .eda-toast{opacity:0;transform:translateY(8px);transition:opacity .2s ease,transform .2s ease;border-radius:10px;padding:11px 13px;color:#fff;box-shadow:0 12px 28px rgba(15,23,42,.2);font-size:12.5px;line-height:1.45;border:1px solid rgba(255,255,255,.13)}
+        .eda-toast.show{opacity:1;transform:translateY(0)}.eda-toast.info{background:#262626}.eda-toast.success{background:#1f7a4d}.eda-toast.warning{background:#8a5a00}.eda-toast.error{background:#b42318}
         .eda-modal-backdrop,.eda-report-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.30);display:flex;align-items:flex-start;justify-content:center;z-index:2147483646;padding:6vh 18px 24px;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#171717;overflow-y:auto}
-        .eda-modal,.eda-report{--eda-border:#e7e7e7;--eda-muted:#f7f7f7;--eda-input:#dedede;--eda-fg:#171717;--eda-muted-fg:#737373;--eda-primary:#1f1f1f;--eda-primary-fg:#fafafa;width:min(820px,calc(100vw - 32px));max-height:88vh;overflow:hidden;border-radius:12px;background:#fff;box-shadow:0 25px 50px -12px rgba(0,0,0,.26);border:1px solid var(--eda-border);display:flex;flex-direction:column}
+        .eda-modal,.eda-report{--eda-border:#dedede;--eda-muted:#f2f2f2;--eda-input:#cfcfcf;--eda-fg:#171717;--eda-muted-fg:#595959;--eda-primary:#1f1f1f;--eda-primary-fg:#fafafa;--eda-success:#1f7a4d;--eda-success-soft:#edf8f1;--eda-warning:#8a5a00;--eda-warning-soft:#fff9df;--eda-danger:#b42318;--eda-danger-soft:#fff1f0;--eda-radius-sm:7px;--eda-radius-md:10px;--eda-radius-lg:14px;--eda-focus:0 0 0 3px rgba(23,23,23,.14);width:min(820px,calc(100vw - 32px));max-height:88vh;overflow:hidden;border-radius:var(--eda-radius-lg);background:#fff;box-shadow:0 25px 50px -12px rgba(0,0,0,.26);border:1px solid var(--eda-border);display:flex;flex-direction:column}
         .eda-modal-head,.eda-report-head{min-height:64px;padding:12px 16px;background:#fff;color:#171717;border-bottom:1px solid var(--eda-border);display:flex;justify-content:space-between;gap:12px;align-items:center;flex:0 0 auto}
         .eda-modal-brand{display:flex;align-items:center;gap:10px;min-width:0}
-        .eda-modal-title,.eda-report-title{margin:0;font-size:15px;font-weight:700;letter-spacing:-.015em}
+        .eda-modal-title,.eda-report-title{margin:0;font-size:15px;font-weight:760;letter-spacing:-.015em}
         .eda-modal-subtitle{margin-top:3px;font-size:11.5px;color:#737373;line-height:1.35}
-        .eda-icon-button{width:34px;min-width:34px;height:34px;min-height:34px;padding:0!important;border:1px solid transparent!important;border-radius:7px!important;background:transparent!important;color:#737373!important}
+        .eda-icon-button{width:34px;min-width:34px;height:34px;min-height:34px;padding:0!important;border:1px solid transparent!important;border-radius:var(--eda-radius-sm)!important;background:transparent!important;color:#737373!important}
         .eda-icon-button:hover{background:#f5f5f5!important;color:#171717!important}
         .eda-modal-body,.eda-report-body{padding:18px;overflow:auto;max-height:calc(88vh - 128px);scrollbar-width:thin;scrollbar-color:#d4d4d4 transparent}
         .eda-modal-footer,.eda-report-footer{padding:12px 16px;border-top:1px solid var(--eda-border);display:flex;gap:8px;justify-content:flex-end;align-items:center;background:#fafafa;flex:0 0 auto}
         .eda-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
         .eda-field label{display:block;font-size:12px;font-weight:650;margin-bottom:6px;color:#262626}
-        .eda-field input,.eda-field select{width:100%;height:38px;border:1px solid var(--eda-input);border-radius:6px;padding:0 10px;font:inherit;font-size:13px;background:#fff;color:#171717;transition:border-color .15s ease,box-shadow .15s ease}
-        .eda-field input:focus,.eda-field select:focus{outline:none;border-color:#737373;box-shadow:0 0 0 2px rgba(23,23,23,.08)}
+        .eda-field input,.eda-field select{width:100%;height:40px;border:1px solid var(--eda-input);border-radius:var(--eda-radius-sm);padding:0 10px;font:inherit;font-size:13px;background:#fff;color:#171717;transition:border-color .15s ease,box-shadow .15s ease}
+        .eda-field input:focus,.eda-field select:focus{outline:none;border-color:#525252;box-shadow:var(--eda-focus)}
         .eda-field small{display:block;margin-top:5px;font-size:11px;color:#737373;line-height:1.4}
-        .eda-note{border-radius:8px;background:#f7f7f7;border:1px solid #e7e7e7;padding:11px 12px;font-size:12px;color:#525252;line-height:1.5;margin-bottom:14px}
+        .eda-note{border-radius:var(--eda-radius-md);background:#f7f7f7;border:1px solid var(--eda-border);padding:11px 12px;font-size:12px;color:#525252;line-height:1.5;margin-bottom:14px}
         .eda-section-title{margin:2px 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8a8a8a;font-weight:700}
         .eda-about-card{margin-top:16px;border:1px solid #e7e7e7;border-radius:9px;background:#fff;padding:13px}
         .eda-about-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
