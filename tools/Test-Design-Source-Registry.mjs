@@ -39,47 +39,95 @@ test('source ids are unique and grouped by the four approved source categories',
   assert.ok(sourceIdsByCategory('shadcn-block').length >= 7);
 });
 
-test('required template source ids point to exact Tamplate-Back-White-01 paths', () => {
+test('required template source ids point to exact verified Tamplate-Back-White-01 files', () => {
   const expected = new Map([
-    ['template.shell.base-layout', 'vite-version/src/components/layouts/base-layout.tsx'],
-    ['template.shell.app-sidebar', 'vite-version/src/components/app-sidebar.tsx'],
-    ['template.shell.site-header', 'vite-version/src/components/site-header.tsx'],
-    ['template.navigation.nav-main', 'vite-version/src/components/nav-main.tsx'],
-    ['template.theme.tokens', 'vite-version/src/index.css'],
-    ['template.primitive.sidebar', 'vite-version/src/components/ui/sidebar.tsx'],
-    ['template.primitive.button', 'vite-version/src/components/ui/button.tsx'],
-    ['template.primitive.card', 'vite-version/src/components/ui/card.tsx'],
-    ['template.primitive.dialog', 'vite-version/src/components/ui/dialog.tsx'],
-    ['template.primitive.table', 'vite-version/src/components/ui/table.tsx'],
+    ['template.shell.base-layout', {
+      path: 'vite-version/src/components/layouts/base-layout.tsx',
+      sha: '4d42209f3cc720e070528393deb378d807650112',
+    }],
+    ['template.shell.app-sidebar', {
+      path: 'vite-version/src/components/app-sidebar.tsx',
+      sha: 'edd83d66cbc946d6b03aef93a6bb663898175ac5',
+    }],
+    ['template.shell.site-header', {
+      path: 'vite-version/src/components/site-header.tsx',
+      sha: '07788d552c9fe00cedbeed7512a72848e9603b08',
+    }],
+    ['template.navigation.nav-main', {
+      path: 'vite-version/src/components/nav-main.tsx',
+      sha: 'bed279801a59589dea86ae692e85947d730b211f',
+    }],
+    ['template.theme.tokens', {
+      path: 'vite-version/src/index.css',
+      sha: '077449b894ddf11ba6fbdd916ffe59a07fa06dfc',
+    }],
+    ['template.primitive.sidebar', {
+      path: 'vite-version/src/components/ui/sidebar.tsx',
+      sha: '1711a758efcb44613349ab0902433330a6da57d4',
+    }],
+    ['template.primitive.button', {
+      path: 'vite-version/src/components/ui/button.tsx',
+      sha: 'a2df8dce675fed0712d021fa45245289ecd26c88',
+    }],
+    ['template.primitive.card', {
+      path: 'vite-version/src/components/ui/card.tsx',
+      sha: 'd05bbc6c74cd8dbc699562cef917bb4267865aed',
+    }],
+    ['template.primitive.dialog', {
+      path: 'vite-version/src/components/ui/dialog.tsx',
+      sha: 'd9ccec91d22fab844bd04340c2b07e8677955350',
+    }],
+    ['template.primitive.table', {
+      path: 'vite-version/src/components/ui/table.tsx',
+      sha: '51b74dd52570a0268d78870be270dd460cef41db',
+    }],
   ]);
-  for (const [id, path] of expected) {
+  for (const [id, expectedSource] of expected) {
     const source = sourceById(id);
     assert.ok(source, `Missing ${id}`);
     assert.equal(source.repository, 'Makaytron/Tamplate-Back-White-01');
-    assert.equal(source.path, path);
-    assert.match(source.verifiedBlobSha, /^[0-9a-f]{40}$/);
+    assert.equal(source.path, expectedSource.path);
+    assert.equal(source.verifiedBlobSha, expectedSource.sha);
     assert.equal(
       exactSourceLocator(source),
-      `Makaytron/Tamplate-Back-White-01@main:${path}`,
+      `Makaytron/Tamplate-Back-White-01@main:${expectedSource.path}`,
     );
   }
 });
 
-test('Toast-01 owns the complete transient-feedback source map', () => {
+test('Toast-01 owns the complete verified transient-feedback source map', () => {
   const required = new Map([
-    ['toast.container', 'src/components/ToastContainer.tsx'],
-    ['toast.item', 'src/components/Toast.tsx'],
-    ['toast.progress', 'src/components/ProgressBar.tsx'],
-    ['toast.close-button', 'src/components/CloseButton.tsx'],
-    ['toast.transitions', 'src/components/Transitions.tsx'],
-    ['toast.styles', 'src/style.css'],
+    ['toast.container', {
+      path: 'src/components/ToastContainer.tsx',
+      sha: 'b4984357cca0ab6d8acc1d76da98964f60ac519a',
+    }],
+    ['toast.item', {
+      path: 'src/components/Toast.tsx',
+      sha: 'b2c5b812bcba719f424c1f4deed44e1d0f750c41',
+    }],
+    ['toast.progress', {
+      path: 'src/components/ProgressBar.tsx',
+      sha: 'ccca0c5f4872dfb4c5c4316427a5a6cb0a05fa46',
+    }],
+    ['toast.close-button', {
+      path: 'src/components/CloseButton.tsx',
+      sha: 'e8c8c8feeb311d639048b111175a7bac881b4c07',
+    }],
+    ['toast.transitions', {
+      path: 'src/components/Transitions.tsx',
+      sha: 'b241308728bd49974a0ab1288ef5e65ee9471ccc',
+    }],
+    ['toast.styles', {
+      path: 'src/style.css',
+      sha: '62e47cc4de7d33fbc2f70aff1c3f8156135d65c0',
+    }],
   ]);
-  for (const [id, path] of required) {
+  for (const [id, expectedSource] of required) {
     const source = DESIGN_SOURCES_BY_ID.get(id);
     assert.ok(source, `Missing ${id}`);
     assert.equal(source.repository, 'Makaytron/Toast-01');
-    assert.equal(source.path, path);
-    assert.match(source.verifiedBlobSha, /^[0-9a-f]{40}$/);
+    assert.equal(source.path, expectedSource.path);
+    assert.equal(source.verifiedBlobSha, expectedSource.sha);
   }
 });
 
@@ -110,11 +158,27 @@ test('source-id extraction accepts registered ids without treating prose as ids'
   ]);
 });
 
-test('normative documentation names the registry and forbids unregistered source ids', async () => {
+test('public, contributor and normative documentation all name the registry', async () => {
+  const files = [
+    'README.md',
+    'README.tr.md',
+    '.github/CONTRIBUTING.md',
+    '.github/PULL_REQUEST_TEMPLATE.md',
+    'docs/design/DESIGN-SOURCE-LOCK.md',
+    'docs/design/MKUI-DESIGN-CONTRACT-v1.md',
+    'docs/design/SHADCNSTORE-REFERENCE-CATALOG.md',
+    'shared/mkui/README.md',
+  ];
+  for (const path of files) {
+    assert.match(await text(path), /DESIGN-SOURCE-REGISTRY\.json/, path);
+  }
+});
+
+test('normative documentation forbids unknown source ids and invented anatomy', async () => {
   const policy = await text('docs/design/DESIGN-SOURCE-LOCK.md');
   const mkui = await text('shared/mkui/README.md');
-  assert.match(policy, /DESIGN-SOURCE-REGISTRY\.json/);
   assert.match(policy, /unregistered source id/i);
   assert.match(policy, /source-id/i);
-  assert.match(mkui, /DESIGN-SOURCE-REGISTRY\.json/);
+  assert.match(policy, /Do not design a new visible component from scratch/i);
+  assert.match(mkui, /Unknown ids, approximate names and bare “inspired by” references are rejected by CI/);
 });
