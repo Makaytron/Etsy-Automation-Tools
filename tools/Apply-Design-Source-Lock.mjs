@@ -82,13 +82,17 @@ async function load(path) {
 
 async function main() {
   const sectionSource = await readFile(SECTIONS_PATH, 'utf8');
+  const contractVisual = section(sectionSource, 'CONTRACT_VISUAL').replace(
+    'Current adoption: all five production userscripts are migrated to MKUI v1',
+    'Current adoption: All five production userscripts are migrated to MKUI v1',
+  );
   const sections = Object.freeze({
     readmeEn: section(sectionSource, 'README_EN'),
     readmeTr: section(sectionSource, 'README_TR'),
     contributingEn: section(sectionSource, 'CONTRIBUTING_EN'),
     contributingTr: section(sectionSource, 'CONTRIBUTING_TR'),
     pullRequest: section(sectionSource, 'PR'),
-    contractVisual: section(sectionSource, 'CONTRACT_VISUAL'),
+    contractVisual,
     catalogApproved: section(sectionSource, 'CATALOG_APPROVED'),
     catalogAdaptation: section(sectionSource, 'CATALOG_ADAPTATION'),
     mkuiReadme: section(sectionSource, 'MKUI_README'),
