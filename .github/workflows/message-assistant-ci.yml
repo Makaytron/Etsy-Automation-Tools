@@ -39,6 +39,10 @@ jobs:
         run: |
           $files = @(
               'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+              'tools/Apply-Mkui-Message-Pilot.mjs'
+              'tools/Finalize-Mkui-Message-Migration.mjs'
+              'tools/Generate-Mkui-Message-Assistant-Preview.mjs'
+              'tools/Test-Mkui-Message-Assistant.mjs'
               'tools/Run-Message-Assistant-Browser-Fixture.mjs'
               'tools/Test-Message-Assistant-Browser-Fixture.mjs'
               'tools/fixtures/message-assistant-delivered/fixture.js'
@@ -74,6 +78,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
               throw 'Whitespace validation failed.'
           }
+
+      - name: Validate guarded MKUI transformer
+        run: node tools/Apply-Mkui-Message-Pilot.mjs
+
+      - name: Run Message Assistant MKUI invariant tests
+        run: node --test tools/Test-Mkui-Message-Assistant.mjs
 
       - name: Run Message Assistant behavior tests
         run: node --test tools/Test-Message-Assistant.mjs
