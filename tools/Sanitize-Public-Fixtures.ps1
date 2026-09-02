@@ -10,6 +10,17 @@ $shopIdPattern = 'shopId:\s*[''"](\d{6,})[''"]'
 $messageAssistantPath = 'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
 $messageAssistantDefaultIdentityPattern = '(?m)(^\s*shopName:\s*'''',\r?\n)(\s*)signature:\s*''[^'']*'','
 $messageAssistantNeutralDefaultsPattern = '(?m)^\s*shopName:\s*'''',\r?\n\s*signature:\s*'''','
+$messageAssistantScreenshotPattern = 'assets/screenshots/(message-assistant-[A-Za-z0-9._-]+\.png)'
+$approvedMessageAssistantPreview = [ordered]@{
+    FileName = 'message-assistant-mkui-workspace-v1.2.9.png'
+    Asset = 'assets/screenshots/message-assistant-mkui-workspace-v1.2.9.png'
+    Manifest = 'docs/design/previews/message-assistant-mkui-workspace-v1.2.9.audit.json'
+    Html = 'docs/design/previews/message-assistant-mkui-preview.html'
+    Generator = 'tools/Generate-Mkui-Message-Assistant-Preview.mjs'
+    ProductionScript = $messageAssistantPath
+    ProductionVersion = '1.2.9'
+    MkuiVersion = '1.0.0'
+}
 
 # SHA-256 hashes of account-specific literals that must never re-enter tracked public text.
 # Keep only hashes here so the privacy guard itself does not republish the sensitive values.
@@ -52,6 +63,11 @@ function Test-SyntheticShopName([string]$value) {
 
 function Test-SyntheticShopId([string]$value) {
     return $value -match '^900000\d{2}$'
+}
+
+function Get-MessageAssistantScreenshotNames([string]$text) {
+    if ([string]::IsNullOrEmpty($text)) { return @() }
+    return @([regex]::Matches($text, $messageAssistantScreenshotPattern) | ForEach-Object { $_.Groups[1].Value })
 }
 
 $fixturePath = 'tools/Test-Sale-Manager.mjs'
@@ -99,18 +115,23 @@ if ($Fix) {
     $screenshotRoot = Join-Path $repoRoot 'assets/screenshots'
     if (Test-Path -LiteralPath $screenshotRoot) {
         Get-ChildItem -LiteralPath $screenshotRoot -File -Filter 'message-assistant-*.png' |
+            Where-Object { $_.Name -cne $approvedMessageAssistantPreview.FileName } |
             Remove-Item -Force
     }
 
     foreach ($readme in @('README.md', 'README.tr.md')) {
         $text = Read-RepoText $readme
         if ($null -eq $text) { continue }
+        $references = @(Get-MessageAssistantScreenshotNames $text)
+        $hasUnapprovedReference = @($references | Where-Object { $_ -cne $approvedMessageAssistantPreview.FileName }).Count -gt 0
+        if (-not $hasUnapprovedReference) { continue }
+
         $pattern = '(?ms)^### Makaytron Etsy Message Assistant\r?\n.*?(?=^### Makaytron Etsy Ads Keyword Manager)'
         if ($readme -eq 'README.tr.md') {
             $replacement = @"
 ### Makaytron Etsy Message Assistant
 
-> **Gizlilik:** Message Assistant ekran görüntüleri public repoda tutulmaz. Gerçek hesap, mağaza, müşteri veya sipariş verisinin görsel varlıklara karışmasını önlemek için yalnız tamamen sentetik fixture'lardan yeniden üretilecek görseller kabul edilir.
+> **Gizlilik:** Message Assistant ekran görüntüleri public repoda tutulmaz. Yalnız üretim CSS katmanlarından, ağ erişimi kapalı ve audit manifesti bulunan tamamen sentetik fixture ile yeniden üretilen onaylı önizleme tutulabilir.
 
 "@
         }
@@ -118,7 +139,7 @@ if ($Fix) {
             $replacement = @"
 ### Makaytron Etsy Message Assistant
 
-> **Privacy:** Message Assistant screenshots are not kept in the public repository. To prevent real account, shop, customer, or order data from entering visual assets, only screenshots regenerated from fully synthetic fixtures may be added.
+> **Privacy:** Message Assistant screenshots are not kept in the public repository. The only permitted preview is generated from production CSS in a network-disabled, fully synthetic fixture with an audit manifest.
 
 "@
         }
@@ -179,16 +200,92 @@ foreach ($relativePath in $tracked) {
 
 $screenshotRoot = Join-Path $repoRoot 'assets/screenshots'
 if (Test-Path -LiteralPath $screenshotRoot) {
-    $unsafeScreenshots = @(Get-ChildItem -LiteralPath $screenshotRoot -File -Filter 'message-assistant-*.png')
-    foreach ($file in $unsafeScreenshots) {
-        $problems.Add("assets/screenshots/$($file.Name) is prohibited until it is regenerated from an audited synthetic fixture.")
+    $messageAssistantScreenshots = @(Get-ChildItem -LiteralPath $screenshotRoot -File -Filter 'message-assistant-*.png')
+    foreach ($file in $messageAssistantScreenshots) {
+        if ($file.Name -cne $approvedMessageAssistantPreview.FileName) {
+            $problems.Add("assets/screenshots/$($file.Name) is not an approved audited synthetic preview.")
+            continue
+        }
+
+        if ($file.Length -lt 40000) {
+            $problems.Add("$($approvedMessageAssistantPreview.Asset) is unexpectedly small and may not be a valid rendered preview.")
+        }
+
+        $manifestText = Read-RepoText $approvedMessageAssistantPreview.Manifest
+        if ($null -eq $manifestText) {
+            $problems.Add("$($approvedMessageAssistantPreview.Manifest) is required for the approved preview.")
+            continue
+        }
+
+        try {
+            $audit = $manifestText | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            $problems.Add("$($approvedMessageAssistantPreview.Manifest) is not valid JSON.")
+            continue
+        }
+
+        $requiredAuditValues = [ordered]@{
+            asset = $approvedMessageAssistantPreview.Asset
+            html = $approvedMessageAssistantPreview.Html
+            generator = $approvedMessageAssistantPreview.Generator
+            production_script = $approvedMessageAssistantPreview.ProductionScript
+            production_version = $approvedMessageAssistantPreview.ProductionVersion
+            mkui_version = $approvedMessageAssistantPreview.MkuiVersion
+            data_classification = 'fully_synthetic'
+            network_access = 'disabled'
+        }
+        foreach ($entry in $requiredAuditValues.GetEnumerator()) {
+            if ([string]$audit.($entry.Key) -cne [string]$entry.Value) {
+                $problems.Add("$($approvedMessageAssistantPreview.Manifest) has an invalid $($entry.Key) value.")
+            }
+        }
+        if ([int]$audit.schema_version -ne 1) {
+            $problems.Add("$($approvedMessageAssistantPreview.Manifest) must use schema_version 1.")
+        }
+        if ($audit.PSObject.Properties.Name -notcontains 'contains_real_account_data' -or $audit.contains_real_account_data -ne $false) {
+            $problems.Add("$($approvedMessageAssistantPreview.Manifest) must explicitly declare contains_real_account_data=false.")
+        }
+
+        foreach ($requiredPath in @($approvedMessageAssistantPreview.Html, $approvedMessageAssistantPreview.Generator)) {
+            if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $requiredPath))) {
+                $problems.Add("$requiredPath is required for the approved Message Assistant preview.")
+            }
+        }
+
+        $previewHtml = Read-RepoText $approvedMessageAssistantPreview.Html
+        if ($null -ne $previewHtml -and $previewHtml -notmatch 'Makaytron Etsy Message Assistant · MKUI 1\.0\.0') {
+            $problems.Add("$($approvedMessageAssistantPreview.Html) does not identify the audited MKUI preview.")
+        }
+        $generatorText = Read-RepoText $approvedMessageAssistantPreview.Generator
+        if ($null -ne $generatorText) {
+            if ($generatorText -notmatch 'Makaytron-Etsy-Message-Assistant\.user\.js') {
+                $problems.Add("$($approvedMessageAssistantPreview.Generator) must source production Message Assistant CSS.")
+            }
+            if ($generatorText -match '(?i)\b(?:fetch|xmlhttprequest|https?://)\s*\(') {
+                $problems.Add("$($approvedMessageAssistantPreview.Generator) must remain network-independent.")
+            }
+        }
+
+        if ($null -ne $messageAssistantText) {
+            if ($messageAssistantText -notmatch '(?m)^// @version\s+1\.2\.9$' -or $messageAssistantText -notmatch "const MKUI_VERSION = '1\.0\.0';") {
+                $problems.Add("$messageAssistantPath must match the audited preview production and MKUI versions.")
+            }
+        }
     }
 }
 
 foreach ($readme in @('README.md', 'README.tr.md')) {
     $text = Read-RepoText $readme
-    if ($null -ne $text -and $text -match 'assets/screenshots/message-assistant-[^\s)]+\.png') {
-        $problems.Add("$readme still references a Message Assistant screenshot that is not privacy-audited.")
+    if ($null -eq $text) { continue }
+    foreach ($fileName in @(Get-MessageAssistantScreenshotNames $text)) {
+        if ($fileName -cne $approvedMessageAssistantPreview.FileName) {
+            $problems.Add("$readme references an unapproved Message Assistant screenshot: $fileName")
+            continue
+        }
+        if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $approvedMessageAssistantPreview.Asset))) {
+            $problems.Add("$readme references the approved Message Assistant preview, but the asset is missing.")
+        }
     }
 }
 
