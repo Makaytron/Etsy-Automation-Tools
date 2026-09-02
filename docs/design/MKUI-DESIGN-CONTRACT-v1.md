@@ -2,7 +2,17 @@
 
 Status: **active production migration**
 
-Visual authority: `Makaytron/Tamplate-Back-White-01` (light dashboard system), adapted for standalone Etsy userscripts.
+## Visual authority and references
+
+MKUI is adapted for standalone Etsy userscripts from the following approved sources:
+
+1. `Makaytron/Tamplate-Back-White-01` — canonical local light-dashboard implementation and primary visual authority.
+2. https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard — applied dashboard composition reference.
+3. https://shadcnstore.com/blocks — component-pattern catalog for application shells, interfaces, data grids, KPI cards, filters, forms, tables, alerts and empty states.
+
+The full selection and adaptation policy lives in [`SHADCNSTORE-REFERENCE-CATALOG.md`](./SHADCNSTORE-REFERENCE-CATALOG.md).
+
+When references differ, existing userscript safety/behavior contracts win first, followed by the local template, the applied dashboard, and then individual blocks.
 
 Current adoption: Ads Keyword Manager, Keyword & Market Analyzer and Sale Manager are migrated to MKUI v1. Message Assistant is active; Listing Analyzer remains last.
 
@@ -22,10 +32,11 @@ A visual migration must not require a business-behavior test to be weakened, del
 - Shared MKUI sources are bundled/inlined into each `.user.js` during build or migration.
 - Existing Shadow DOM modes are preserved during v1 migration.
 - Etsy page CSS must not be globally reset by MKUI.
+- ShadcnStore and template URLs are design references only; installed scripts must not fetch them.
 
 ## Canonical visual tokens
 
-MKUI uses semantic tokens rather than script-specific color names: background, surface, foreground, muted, border, input, primary, success, warning, danger, radii, shadows, spacing and focus ring. The light palette follows the monochrome system already used by the template and Listing Analyzer.
+MKUI uses semantic tokens rather than script-specific color names: background, surface, foreground, muted, border, input, primary, success, warning, danger, radii, shadows, spacing and focus ring. The light palette follows the monochrome system used by the local template and Listing Analyzer.
 
 ## Primitive components
 
@@ -44,16 +55,18 @@ The first stable primitive set is:
 - Toast
 - Modal shell
 
+New primitives may be adapted from approved ShadcnStore blocks only after they are mapped to MKUI semantic tokens and pass the owning script's behavior and isolation tests.
+
 ## Shells
 
 ### Compact
 Used by Ads Keyword Manager, Keyword & Market Analyzer and Sale Manager. Compact tools may keep their current panel widths; MKUI standardizes visual language rather than forcing identical geometry.
 
 ### Workspace
-Used by Message Assistant. Keeps its current closed Shadow DOM and wide/fullscreen behavior while adopting MKUI tokens and primitives.
+Used by Message Assistant. Keeps its current closed Shadow DOM and wide/fullscreen behavior while adopting MKUI tokens and primitives. The applied ShadcnStore dashboard informs its header/sidebar/content relationship without importing generic dashboard features.
 
 ### Dashboard
-Used by Listing Analyzer. Its existing collapsed/expanded navigation model is the userscript reference implementation for translating the dashboard template into an Etsy-safe shell.
+Used by Listing Analyzer. Its existing collapsed/expanded navigation model is the userscript reference implementation for translating the local template and applied ShadcnStore dashboard into an Etsy-safe shell.
 
 ## Behavioral DOM contract
 
