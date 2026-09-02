@@ -17,7 +17,7 @@ When references differ, existing userscript safety/behavior/privacy/accessibilit
 
 No new visible component anatomy may be invented from memory. Every substantial surface must name an exact approved source path or block. When no approved source fits, implementation stops until explicit maintainer approval and a documented catalog/policy update exist.
 
-Current adoption: all five production userscripts are migrated to MKUI v1 and protected by per-script, cross-script, CSS-isolation and bundle/presentation-drift gates.
+Current adoption: All five production userscripts are migrated to MKUI v1 and protected by per-script, cross-script, CSS-isolation and bundle/presentation-drift gates.
 
 ## Goal
 
