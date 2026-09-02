@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.13] - 2026-09-02
+
+### Changed
+
+- Applied the MKUI v1 Compact Shell presentation mapping from `Tamplate-Back-White-01`: canonical neutral tokens, radius/focus system, header/status/stat surfaces, launcher, buttons, toasts, modals, and form controls.
+- Kept the existing non-Shadow-DOM mount model, Etsy write-flow markup, selectors, event topology, busy/disabled semantics, telemetry, storage, verification, batching, and fail-closed logic unchanged.
+
+### Validation
+
+- Re-ran the dedicated Sale Manager regression suite, updater checks, privacy guard, and complete distribution gate after the presentation-only migration.
+
 ## [1.0.12] - 2026-08-10
 
 ### Fixed
