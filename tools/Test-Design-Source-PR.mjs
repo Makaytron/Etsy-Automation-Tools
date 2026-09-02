@@ -22,14 +22,18 @@ const VALID_BODY = `
 - [x] Existing behavior hooks and safety contracts remain intact.
 `;
 
-test('UI relevance includes production userscripts and MKUI sources', () => {
+test('UI relevance includes production userscripts and executable MKUI sources', () => {
   assert.equal(isUiRelevantPath('scripts/etsy-message-assistant/example.user.js'), true);
   assert.equal(isUiRelevantPath('shared/mkui/primitives.css'), true);
+  assert.equal(isUiRelevantPath('shared/mkui/constants.js'), true);
+  assert.equal(isUiRelevantPath('shared/mkui/bundle-manifest.json'), true);
+  assert.equal(isUiRelevantPath('shared/mkui/README.md'), false);
   assert.equal(isUiRelevantPath('tools/Apply-Mkui-Message-Pilot.mjs'), true);
   assert.equal(isUiRelevantPath('README.md'), false);
   assert.deepEqual(
     uiRelevantFiles([
       'README.md',
+      'shared/mkui/README.md',
       'scripts/etsy-message-assistant/example.user.js',
       'shared/mkui/tokens.css',
     ]),
@@ -41,7 +45,11 @@ test('UI relevance includes production userscripts and MKUI sources', () => {
 });
 
 test('documentation-only pull requests skip the design-source body gate', () => {
-  const result = validateDesignSourceBody('', ['README.md', 'PRIVACY.md']);
+  const result = validateDesignSourceBody('', [
+    'README.md',
+    'shared/mkui/README.md',
+    'docs/design/DESIGN-SOURCE-LOCK.md',
+  ]);
   assert.equal(result.ok, true);
   assert.equal(result.skipped, true);
 });
