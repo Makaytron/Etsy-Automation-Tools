@@ -234,6 +234,7 @@ export function validateException(exception, today = new Date()) {
   if (!MKUI_PRODUCTION_SCRIPTS.some(script => script.id === exception.scriptId)) return false;
   if (!HASH_PATTERN.test(exception.expectedPresentationHash || '')) return false;
   if (!HASH_PATTERN.test(exception.actualPresentationHash || '')) return false;
+  if (exception.expectedPresentationHash === exception.actualPresentationHash) return false;
   if (typeof exception.reason !== 'string' || exception.reason.trim().length < 12) return false;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(exception.expires || '')) return false;
   const expiry = new Date(`${exception.expires}T23:59:59.999Z`);
@@ -248,12 +249,28 @@ function activeException(manifest, scriptId, expectedHash, actualHash, today = n
     exception.actualPresentationHash === actualHash);
 }
 
+function duplicateValues(values) {
+  const counts = new Map();
+  for (const value of values) counts.set(value, (counts.get(value) || 0) + 1);
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([value]) => value)
+    .sort((left, right) => String(left).localeCompare(String(right)));
+}
+
+function equalJson(left, right) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export function verifyManifest(committed, current, options = {}) {
   const errors = [];
   const warnings = [];
   const today = options.today || new Date();
 
   if (committed.schemaVersion !== 1) errors.push('manifest schemaVersion must be 1');
+  if (committed.generatedBy !== 'tools/Build-Mkui-Bundle-Manifest.mjs') {
+    errors.push('manifest generatedBy marker is invalid');
+  }
   if (committed.mkuiVersion !== MKUI_EXPECTED_VERSION) {
     errors.push(`manifest MKUI version must be ${MKUI_EXPECTED_VERSION}`);
   }
@@ -263,9 +280,36 @@ export function verifyManifest(committed, current, options = {}) {
       `${current.canonicalBundle.hash}`,
     );
   }
+  if (!equalJson(committed.canonicalBundle?.files, current.canonicalBundle.files)) {
+    errors.push('canonical MKUI bundle file order changed');
+  }
+  if (committed.canonicalBundle?.bytes !== current.canonicalBundle.bytes) {
+    errors.push('canonical MKUI bundle byte count is stale');
+  }
+  if (committed.canonicalBundle?.lines !== current.canonicalBundle.lines) {
+    errors.push('canonical MKUI bundle line count is stale');
+  }
 
-  const committedScripts = new Map((committed.scripts || []).map(script => [script.id, script]));
-  for (const script of current.scripts) {
+  const committedRows = Array.isArray(committed.scripts) ? committed.scripts : [];
+  const currentRows = Array.isArray(current.scripts) ? current.scripts : [];
+  const committedIds = committedRows.map(script => script?.id);
+  const currentIds = currentRows.map(script => script.id);
+  const duplicateIds = duplicateValues(committedIds);
+  if (duplicateIds.length) {
+    errors.push(`manifest has duplicate script ids: ${duplicateIds.join(', ')}`);
+  }
+  if (committedRows.length !== currentRows.length) {
+    errors.push(
+      `manifest script count is ${committedRows.length}; expected ${currentRows.length}`,
+    );
+  }
+  const unknownIds = committedIds.filter(id => !currentIds.includes(id));
+  if (unknownIds.length) {
+    errors.push(`manifest has unknown script ids: ${[...new Set(unknownIds)].join(', ')}`);
+  }
+
+  const committedScripts = new Map(committedRows.map(script => [script.id, script]));
+  for (const script of currentRows) {
     const expected = committedScripts.get(script.id);
     if (!expected) {
       errors.push(`manifest entry is missing for ${script.id}`);
@@ -281,6 +325,25 @@ export function verifyManifest(committed, current, options = {}) {
       );
     }
     if (expected.path !== script.path) errors.push(`${script.id} path changed`);
+    if (expected.scriptVersion !== script.scriptVersion) {
+      errors.push(
+        `${script.id} userscript version drifted: ${expected.scriptVersion || 'missing'} -> ` +
+        `${script.scriptVersion || 'missing'}`,
+      );
+    }
+    if (expected.mkuiVersion !== script.mkuiVersion) {
+      errors.push(
+        `${script.id} recorded MKUI version is stale: ${expected.mkuiVersion || 'missing'} -> ` +
+        `${script.mkuiVersion || 'missing'}`,
+      );
+    }
+    if (expected.bundleHash !== script.bundleHash) {
+      errors.push(
+        `${script.id} recorded bundle marker is stale: ${expected.bundleHash || 'missing'} -> ` +
+        `${script.bundleHash || 'missing'}`,
+      );
+    }
+
     if (expected.presentationHash !== script.presentationHash) {
       const exception = activeException(
         committed,
@@ -300,14 +363,42 @@ export function verifyManifest(committed, current, options = {}) {
           `${script.presentationHash}`,
         );
       }
+    } else {
+      for (const field of [
+        'presentationBytes',
+        'presentationFragmentCount',
+        'presentationMarkerLineCount',
+      ]) {
+        if (expected[field] !== script[field]) {
+          errors.push(`${script.id} ${field} evidence is stale`);
+        }
+      }
     }
   }
 
+  const exceptionKeys = [];
   for (const exception of committed.exceptions || []) {
     if (!validateException(exception, today)) {
       errors.push(`invalid or expired drift exception for ${exception?.scriptId || 'unknown script'}`);
+      continue;
     }
+    const expected = committedScripts.get(exception.scriptId);
+    const actual = currentRows.find(script => script.id === exception.scriptId);
+    const active = expected && actual &&
+      expected.presentationHash === exception.expectedPresentationHash &&
+      actual.presentationHash === exception.actualPresentationHash &&
+      expected.presentationHash !== actual.presentationHash;
+    if (!active) {
+      errors.push(`unused or mismatched drift exception for ${exception.scriptId}`);
+    }
+    exceptionKeys.push([
+      exception.scriptId,
+      exception.expectedPresentationHash,
+      exception.actualPresentationHash,
+    ].join('|'));
   }
+  const duplicateExceptions = duplicateValues(exceptionKeys);
+  if (duplicateExceptions.length) errors.push('manifest has duplicate drift exceptions');
 
   return { ok: errors.length === 0, errors, warnings };
 }
