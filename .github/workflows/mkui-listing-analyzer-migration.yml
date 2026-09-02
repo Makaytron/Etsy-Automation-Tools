@@ -1,0 +1,200 @@
+name: Apply Listing Analyzer MKUI v1
+
+on:
+  push:
+    branches:
+      - automation/listing-analyzer-mkui-v1.2.3
+    paths:
+      - .github/workflows/mkui-listing-analyzer-migration.yml
+      - tools/Apply-Mkui-Listing-Pilot.mjs
+      - tools/Finalize-Mkui-Listing-Migration.mjs
+      - tools/Generate-Mkui-Listing-Analyzer-Preview.mjs
+      - tools/Test-Mkui-Listing-Analyzer.mjs
+      - docs/design/previews/listing-analyzer-source-audit.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mkui-listing-analyzer-migration-v1.2.3
+  cancel-in-progress: true
+
+jobs:
+  migrate:
+    name: Transform, verify, preview and publish branch
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Validate migration tools
+        shell: pwsh
+        run: |
+          $files = @(
+              'tools/Audit-Listing-Analyzer.mjs'
+              'tools/Apply-Mkui-Listing-Pilot.mjs'
+              'tools/Finalize-Mkui-Listing-Migration.mjs'
+              'tools/Generate-Mkui-Listing-Analyzer-Preview.mjs'
+              'tools/Test-Mkui-Listing-Analyzer.mjs'
+          )
+          foreach ($file in $files) {
+              node --check $file
+              if ($LASTEXITCODE -ne 0) { throw "Syntax validation failed: $file" }
+          }
+
+      - name: Apply guarded Listing Analyzer MKUI transform
+        run: node tools/Apply-Mkui-Listing-Pilot.mjs --write
+
+      - name: Finalize version and documentation
+        run: node tools/Finalize-Mkui-Listing-Migration.mjs --write
+
+      - name: Verify transformed source syntax
+        run: node --check scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js
+
+      - name: Generate preview from production CSS
+        run: node tools/Generate-Mkui-Listing-Analyzer-Preview.mjs --output=docs/design/previews
+
+      - name: Run Listing Analyzer MKUI invariant tests
+        run: node --test tools/Test-Mkui-Listing-Analyzer.mjs
+
+      - name: Run complete Listing Analyzer behavior and safety suite
+        run: node --test tools/Test-Listing-Analyzer.mjs
+
+      - name: Capture the real MKUI dashboard preview
+        shell: pwsh
+        run: |
+          $html = Resolve-Path 'docs/design/previews/listing-analyzer-mkui-preview.html'
+          $outputDirectory = Join-Path $PWD 'assets/screenshots'
+          New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
+          $png = Join-Path $outputDirectory 'listing-analyzer-mkui-dashboard-v1.2.3.png'
+          $profileDirectory = Join-Path $env:RUNNER_TEMP 'mkui-listing-analyzer-preview-chrome'
+          New-Item -ItemType Directory -Force -Path $profileDirectory | Out-Null
+          $chromeCandidates = @(
+              (Join-Path $env:ProgramFiles 'Google/Chrome/Application/chrome.exe'),
+              $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} 'Google/Chrome/Application/chrome.exe' }),
+              $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Google/Chrome/Application/chrome.exe' })
+          ) | Where-Object { $_ -and (Test-Path $_) }
+          $chrome = $chromeCandidates | Select-Object -First 1
+          if (-not $chrome) { throw 'Google Chrome was not found on the runner.' }
+          $uri = ([System.Uri]$html.Path).AbsoluteUri
+          $arguments = @(
+              '--headless=new',
+              '--disable-background-networking',
+              '--disable-component-update',
+              '--disable-default-apps',
+              '--disable-extensions',
+              '--disable-gpu',
+              '--hide-scrollbars',
+              '--no-first-run',
+              '--force-device-scale-factor=1',
+              '--window-size=1440,900',
+              '--virtual-time-budget=2200',
+              "--user-data-dir=$profileDirectory",
+              "--screenshot=$png",
+              $uri
+          )
+          $process = Start-Process -FilePath $chrome -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Chrome screenshot failed with exit code $($process.ExitCode)." }
+          for ($attempt = 0; $attempt -lt 20 -and -not (Test-Path $png); $attempt += 1) {
+              Start-Sleep -Milliseconds 250
+          }
+          if (-not (Test-Path $png)) { throw 'Preview screenshot was not created.' }
+          $size = (Get-Item $png).Length
+          if ($size -lt 50000) { throw "Preview screenshot is unexpectedly small: $size bytes." }
+          Write-Host "Generated $png ($size bytes)."
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1
+
+      - name: Check patch hygiene
+        run: git diff --check
+
+      - name: Commit verified migration to pull-request branch
+        id: publish
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $publishPaths = @(
+              'scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js'
+              'scripts/etsy-listing-analyzer/README.md'
+              'scripts/etsy-listing-analyzer/README.en.md'
+              'scripts/etsy-listing-analyzer/CHANGELOG.md'
+              'README.md'
+              'README.tr.md'
+              'docs/design/MIGRATION-PLAN.md'
+              'docs/design/MKUI-DESIGN-CONTRACT-v1.md'
+              'docs/design/contracts/listing-analyzer.md'
+              'docs/design/previews/listing-analyzer-mkui-preview.html'
+              'assets/screenshots/listing-analyzer-mkui-dashboard-v1.2.3.png'
+          )
+
+          foreach ($path in $publishPaths) {
+              if (-not (Test-Path -LiteralPath $path)) {
+                  throw "Expected publish path is missing: $path"
+              }
+          }
+
+          git config user.name 'github-actions[bot]'
+          if ($LASTEXITCODE -ne 0) { throw 'git config user.name failed.' }
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if ($LASTEXITCODE -ne 0) { throw 'git config user.email failed.' }
+
+          git add -f -- $publishPaths
+          if ($LASTEXITCODE -ne 0) { throw 'git add failed.' }
+
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Staged patch hygiene failed.' }
+
+          git diff --cached --quiet
+          $diffExit = $LASTEXITCODE
+          if ($diffExit -eq 0) {
+              Write-Host 'Listing Analyzer MKUI migration was already published to the branch.'
+          } elseif ($diffExit -eq 1) {
+              git commit -m 'MKUI v1: migrate Listing Analyzer to dashboard shell'
+              if ($LASTEXITCODE -ne 0) { throw 'git commit failed.' }
+          } else {
+              throw "Unable to inspect staged changes; git diff exited with $diffExit."
+          }
+
+          $local = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $local) { throw 'Unable to resolve local HEAD.' }
+
+          git push origin HEAD:automation/listing-analyzer-mkui-v1.2.3
+          if ($LASTEXITCODE -ne 0) { throw 'git push failed.' }
+
+          git fetch origin automation/listing-analyzer-mkui-v1.2.3
+          if ($LASTEXITCODE -ne 0) { throw 'git fetch after push failed.' }
+          $remote = (git rev-parse origin/automation/listing-analyzer-mkui-v1.2.3).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $remote) { throw 'Unable to resolve remote migration branch.' }
+          if ($local -ne $remote) {
+              throw "Remote branch verification failed: local=$local remote=$remote"
+          }
+
+          Write-Host "Verified remote migration branch at $remote"
+          "commit_sha=$remote" >> $env:GITHUB_OUTPUT
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: listing-analyzer-mkui-v1.2.3-preview
+          path: |
+            docs/design/previews/listing-analyzer-mkui-preview.html
+            assets/screenshots/listing-analyzer-mkui-dashboard-v1.2.3.png
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 14
