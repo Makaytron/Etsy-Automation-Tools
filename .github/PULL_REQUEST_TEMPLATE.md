@@ -15,8 +15,8 @@
 - UI changed / UI değişti: `Yes / No`
 - Approved source IDs / Onaylı kaynak kimlikleri: `template.shell.base-layout, shadcn.dashboard.applied, shadcn.blocks.application-interface`
 - Exact registered repository paths / Kayıtlı kesin repo yolları: `Makaytron/Tamplate-Back-White-01@main:vite-version/src/components/layouts/base-layout.tsx`
-- Applied dashboard region / Uygulanan dashboard bölgesi: `sidebar + header + content shell`
-- ShadcnStore block URL, family, visible name and number / ShadcnStore blok URL'si, ailesi, görünen adı ve numarası:
+- Applied dashboard region / Uygulanan dashboard bölgesi: `https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard — sidebar + header + content shell`
+- ShadcnStore block URL, family, visible name and number / ShadcnStore blok URL'si, ailesi, görünen adı ve numarası: `https://shadcnstore.com/blocks/application/apps — Application Interface Sections — App Dashboard 1`
 - Toast-01 source IDs and exact paths, or `N/A` with explanation / Toast-01 kaynak kimlikleri ve kesin yolları veya açıklamalı `N/A`:
 - Makaytron adaptation summary / Makaytron uyarlama özeti:
 - Behavior-preservation summary / Davranış koruma özeti:
