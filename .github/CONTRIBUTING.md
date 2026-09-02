@@ -26,6 +26,8 @@ Any pull request that adds or substantially changes visible UI must follow [DESI
 - Use [Toast-01](https://github.com/Makaytron/Toast-01) for every new or modified toast/snackbar/transient-notification pattern.
 - Select the complete shell relationship from the [applied ShadcnStore dashboard](https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard) and individual components from [ShadcnStore blocks](https://shadcnstore.com/blocks).
 - Record the exact repository path, page URL, block family and block name/number in the pull request.
+
+- Cite registered source IDs from [DESIGN-SOURCE-REGISTRY.json](../docs/design/DESIGN-SOURCE-REGISTRY.json); bare repository names, generic block-library references and unregistered aliases fail CI.
 - Do not invent new visual component anatomy. When no approved source fits, stop and request explicit maintainer approval before implementation.
 - Preserve existing behavior hooks, selectors, accessibility, privacy, confirmations and fail-closed flows while adapting the approved source.
 
@@ -88,6 +90,8 @@ Görünür arayüz ekleyen veya önemli ölçüde değiştiren her pull request 
 - Yeni veya değiştirilen her toast/snackbar/geçici bildirim için [Toast-01](https://github.com/Makaytron/Toast-01) kullanılmalıdır.
 - Tam shell ilişkisi [uygulanmış ShadcnStore dashboard](https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard) üzerinden, tekil bileşenler ise [ShadcnStore blocks](https://shadcnstore.com/blocks) içinden seçilmelidir.
 - Kullanılan kesin repo yolu, sayfa URL'si, blok ailesi ve blok adı/numarası pull requestte yazılmalıdır.
+
+- [DESIGN-SOURCE-REGISTRY.json](../docs/design/DESIGN-SOURCE-REGISTRY.json) içindeki kayıtlı kaynak kimlikleri belirtilmelidir; yalnız repo adı, genel blok kütüphanesi bağlantısı ve kayıt dışı takma adlar CI tarafından reddedilir.
 - Yeni görsel bileşen anatomisi kafadan üretilmemelidir. Uygun onaylı kaynak yoksa geliştirme durdurulmalı ve uygulamadan önce açık maintainer onayı alınmalıdır.
 - Onaylı kaynak uyarlanırken mevcut davranış hookları, selectorlar, erişilebilirlik, gizlilik, onay ve belirsizlikte durma akışları korunmalıdır.
 

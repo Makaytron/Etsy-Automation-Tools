@@ -13,6 +13,8 @@ MKUI is adapted for standalone Etsy userscripts only from the following approved
 
 The normative no-invention and source-traceability rules are in [`DESIGN-SOURCE-LOCK.md`](./DESIGN-SOURCE-LOCK.md). The detailed block-selection catalog is in [`SHADCNSTORE-REFERENCE-CATALOG.md`](./SHADCNSTORE-REFERENCE-CATALOG.md).
 
+The machine-readable allowlist is [`DESIGN-SOURCE-REGISTRY.json`](./DESIGN-SOURCE-REGISTRY.json). UI work must cite registered `source-id` values and their exact locators; unregistered aliases and generic “inspired by” references are not valid sources.
+
 When references differ, existing userscript safety/behavior/privacy/accessibility contracts win first. For page and component presentation, the local template is followed by the applied dashboard and then the selected block. For any toast or transient notification, `Toast-01` is mandatory and is then mapped to MKUI semantic tokens.
 
 No new visible component anatomy may be invented from memory. Every substantial surface must name an exact approved source path or block. When no approved source fits, implementation stops until explicit maintainer approval and a documented catalog/policy update exist.

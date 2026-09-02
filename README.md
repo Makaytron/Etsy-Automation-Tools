@@ -37,6 +37,8 @@ Userscripts remain framework-free at runtime: approved React/Tailwind patterns a
 
 The normative rules are in [Mandatory Design Source Lock](./docs/design/DESIGN-SOURCE-LOCK.md).
 
+Approved source IDs and exact locators are locked in [DESIGN-SOURCE-REGISTRY.json](./docs/design/DESIGN-SOURCE-REGISTRY.json). Every UI pull request must cite those registered IDs; a bare repository name, generic catalog URL, or “inspired by” description is rejected.
+
 ## Synthetic panel galleries
 
 These images capture only **standalone panel/modal elements** rendered by the real userscript source in a network-blocked synthetic fixture. They contain no Etsy or other site background, browser frame, or real account, shop, customer, or order data.

@@ -20,6 +20,10 @@ This catalog records approved visual references for the Makaytron Etsy userscrip
    - URL: https://shadcnstore.com/blocks
    - Role: approved component catalog for cards, application shells, interfaces, data grids, KPI widgets, filters, empty states, forms, alerts, tables, listing/order views and responsive layouts.
 
+## Registered source IDs
+
+The normative machine-readable allowlist is [`DESIGN-SOURCE-REGISTRY.json`](./DESIGN-SOURCE-REGISTRY.json). Select a registered `template.*`, `shadcn.dashboard.applied`, and exact `shadcn.blocks.*` source before implementation. Toast changes must also cite the applicable `toast.*` ids and exact Toast-01 paths. A general catalog link alone is not a component source.
+
 ## Source-lock priority
 
 When references differ, use this order:

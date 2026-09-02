@@ -37,6 +37,8 @@ Userscriptler çalışma anında framework bağımlılığı taşımaz: React/Ta
 
 Kesin kurallar [Zorunlu Tasarım Kaynağı Kilidi](./docs/design/DESIGN-SOURCE-LOCK.md) belgesindedir.
 
+Onaylı kaynak kimlikleri ve kesin konumları [DESIGN-SOURCE-REGISTRY.json](./docs/design/DESIGN-SOURCE-REGISTRY.json) içinde kilitlidir. Her UI pull request bu kayıtlı kimlikleri belirtmelidir; yalnız repo adı, genel katalog URL'si veya “benzeri” açıklaması kabul edilmez.
+
 ## Sentetik panel galerileri
 
 Bu görseller gerçek userscript kaynağının ağ erişimi kapalı sentetik fixture'da oluşturduğu **bağımsız panel/modal öğelerinden** çekilir. Etsy ya da başka bir site arka planı, tarayıcı çerçevesi ve gerçek hesap/mağaza/müşteri/sipariş verisi içermez.
