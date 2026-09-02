@@ -134,29 +134,65 @@ jobs:
         id: publish
         shell: pwsh
         run: |
-          $changes = git status --porcelain
-          if (-not $changes) {
-              Write-Host 'Message Assistant MKUI migration was already published.'
-              "commit_sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
-              exit 0
+          $ErrorActionPreference = 'Stop'
+          $publishPaths = @(
+              'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+              'scripts/etsy-message-assistant/README.md'
+              'scripts/etsy-message-assistant/README.en.md'
+              'scripts/etsy-message-assistant/CHANGELOG.md'
+              'README.md'
+              'README.tr.md'
+              'docs/design/MIGRATION-PLAN.md'
+              'docs/design/MKUI-DESIGN-CONTRACT-v1.md'
+              'docs/design/contracts/message-assistant.md'
+              'docs/design/previews/message-assistant-mkui-preview.html'
+              'assets/screenshots/message-assistant-mkui-workspace-v1.2.9.png'
+          )
+
+          foreach ($path in $publishPaths) {
+              if (-not (Test-Path -LiteralPath $path)) {
+                  throw "Expected publish path is missing: $path"
+              }
           }
+
           git config user.name 'github-actions[bot]'
+          if ($LASTEXITCODE -ne 0) { throw 'git config user.name failed.' }
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add `
-              scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js `
-              scripts/etsy-message-assistant/README.md `
-              scripts/etsy-message-assistant/README.en.md `
-              scripts/etsy-message-assistant/CHANGELOG.md `
-              README.md `
-              README.tr.md `
-              docs/design/MIGRATION-PLAN.md `
-              docs/design/MKUI-DESIGN-CONTRACT-v1.md `
-              docs/design/contracts/message-assistant.md `
-              docs/design/previews/message-assistant-mkui-preview.html `
-              assets/screenshots/message-assistant-mkui-workspace-v1.2.9.png
-          git commit -m 'MKUI v1: migrate Message Assistant to workspace shell'
+          if ($LASTEXITCODE -ne 0) { throw 'git config user.email failed.' }
+
+          git add -f -- $publishPaths
+          if ($LASTEXITCODE -ne 0) { throw 'git add failed.' }
+
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw 'Staged patch hygiene failed.' }
+
+          git diff --cached --quiet
+          $diffExit = $LASTEXITCODE
+          if ($diffExit -eq 0) {
+              Write-Host 'Message Assistant MKUI migration was already published.'
+          } elseif ($diffExit -eq 1) {
+              git commit -m 'MKUI v1: migrate Message Assistant to workspace shell'
+              if ($LASTEXITCODE -ne 0) { throw 'git commit failed.' }
+          } else {
+              throw "Unable to inspect staged changes; git diff exited with $diffExit."
+          }
+
+          $local = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $local) { throw 'Unable to resolve local HEAD.' }
+
           git push origin HEAD:main
-          "commit_sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+          if ($LASTEXITCODE -ne 0) { throw 'git push failed.' }
+
+          git fetch origin main
+          if ($LASTEXITCODE -ne 0) { throw 'git fetch after push failed.' }
+          $remote = (git rev-parse origin/main).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $remote) { throw 'Unable to resolve origin/main.' }
+          if ($local -ne $remote) {
+              throw "Remote main verification failed: local=$local remote=$remote"
+          }
+
+          Write-Host "Verified remote main at $remote"
+          "commit_sha=$remote" >> $env:GITHUB_OUTPUT
 
       - name: Upload preview artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
