@@ -1,0 +1,350 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "1.1.0",
+  "status": "normative",
+  "policyDocument": "docs/design/DESIGN-SOURCE-LOCK.md",
+  "verifiedAt": "2026-09-02",
+  "rules": {
+    "uiChangesRequireRegisteredSourceIds": true,
+    "everyUiChangeRequiresTemplateSource": true,
+    "everyUiChangeRequiresAppliedDashboardSource": true,
+    "everyUiChangeRequiresNamedShadcnBlockSource": true,
+    "toastChangesRequireToast01Sources": true,
+    "repositorySourcesRequireExactPath": true,
+    "shadcnBlocksRequireExactUrlFamilyNameAndNumber": true,
+    "unregisteredSourcesAllowed": false,
+    "remoteRuntimeDependenciesAllowed": false,
+    "newSourceIdsRequireMaintainerApproval": true
+  },
+  "sources": [
+    {
+      "id": "template.shell.base-layout",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/layouts/base-layout.tsx",
+      "verifiedBlobSha": "d4f3dfcb88150650418f0e8358e162e30c323b28",
+      "roles": ["page-shell", "content-hierarchy", "responsive-layout"]
+    },
+    {
+      "id": "template.shell.app-sidebar",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/app-sidebar.tsx",
+      "verifiedBlobSha": "86c1a159b7d98985689236ab98aa96a4a1dff073",
+      "roles": ["sidebar", "navigation-groups", "brand-area", "collapsed-navigation"]
+    },
+    {
+      "id": "template.shell.site-header",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/site-header.tsx",
+      "verifiedBlobSha": "4332f413785df7db6e6ad835fc4e9d546816990b",
+      "roles": ["header", "sidebar-trigger", "search", "utility-actions"]
+    },
+    {
+      "id": "template.navigation.nav-main",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/nav-main.tsx",
+      "verifiedBlobSha": "bed279801a59589dea86ae692e85947d730b211f",
+      "roles": ["navigation", "active-state", "collapsible-groups", "subnavigation"]
+    },
+    {
+      "id": "template.theme.tokens",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/index.css",
+      "verifiedBlobSha": "077449b894ddf11ba6fbdd916ffe59a07fa06dfc",
+      "roles": ["semantic-colors", "radius", "typography", "theme", "sidebar-tokens"]
+    },
+    {
+      "id": "template.primitive.sidebar",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/sidebar.tsx",
+      "verifiedBlobSha": "1711a758efcb44613349ab0902433330a6da57d4",
+      "roles": ["sidebar-primitive", "desktop-collapse", "mobile-sheet", "keyboard-toggle"]
+    },
+    {
+      "id": "template.primitive.button",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/button.tsx",
+      "verifiedBlobSha": "a2df8dce675fed0712d021fa45245289ecd26c88",
+      "roles": ["button", "button-variants", "icon-button", "focus-state"]
+    },
+    {
+      "id": "template.primitive.card",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/card.tsx",
+      "verifiedBlobSha": "d05bbc6c74cd8dbc699562cef917bb4267865aed",
+      "roles": ["card", "card-header", "card-content", "card-footer"]
+    },
+    {
+      "id": "template.primitive.badge",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/badge.tsx",
+      "verifiedBlobSha": "02054139a9a72f2ce2c4defd14861b4129312950",
+      "roles": ["badge", "status", "severity"]
+    },
+    {
+      "id": "template.primitive.input",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/input.tsx",
+      "verifiedBlobSha": "03295ca6ac617de95b78b09e5e3a6de897a204f0",
+      "roles": ["input", "focus-state", "invalid-state", "disabled-state"]
+    },
+    {
+      "id": "template.primitive.select",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/select.tsx",
+      "verifiedBlobSha": "51f466eccbe6ae81d57e885f3b235bf79e46008d",
+      "roles": ["select", "select-trigger", "select-content", "keyboard-selection"]
+    },
+    {
+      "id": "template.primitive.checkbox",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/checkbox.tsx",
+      "verifiedBlobSha": "fa0e4b59fa859bf5bdf1f3f4d24f1e71926f481f",
+      "roles": ["checkbox", "checked-state", "focus-state"]
+    },
+    {
+      "id": "template.primitive.dialog",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/dialog.tsx",
+      "verifiedBlobSha": "d9ccec91d22fab844bd04340c2b07e8677955350",
+      "roles": ["modal", "dialog", "overlay", "focus-management"]
+    },
+    {
+      "id": "template.primitive.sheet",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/sheet.tsx",
+      "verifiedBlobSha": "6906f5b2b1d6f6e1f4e699e369cb967d9eef9c64",
+      "roles": ["drawer", "side-panel", "mobile-panel", "overlay"]
+    },
+    {
+      "id": "template.primitive.table",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/table.tsx",
+      "verifiedBlobSha": "51b74dd52570a0268d78870be270dd460cef41db",
+      "roles": ["table", "header-row", "data-row", "responsive-table"]
+    },
+    {
+      "id": "template.primitive.tabs",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/tabs.tsx",
+      "verifiedBlobSha": "3d6f3acf86c02a55b073439c0cd44b6bab7f062d",
+      "roles": ["tabs", "tab-list", "tab-panel", "selected-state"]
+    },
+    {
+      "id": "template.primitive.progress",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/progress.tsx",
+      "verifiedBlobSha": "10af7e63408f4fd5722e748bbb3a711a2dd0523e",
+      "roles": ["progress", "determinate-progress"]
+    },
+    {
+      "id": "template.primitive.skeleton",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/skeleton.tsx",
+      "verifiedBlobSha": "32ea0ef7fb4d4f7cb0affa7a3b329533b5f2af23",
+      "roles": ["skeleton", "loading-placeholder"]
+    },
+    {
+      "id": "template.primitive.loading-spinner",
+      "kind": "repository-file",
+      "category": "template",
+      "repository": "Makaytron/Tamplate-Back-White-01",
+      "ref": "main",
+      "path": "vite-version/src/components/ui/loading-spinner.tsx",
+      "verifiedBlobSha": "af7c99a2252ebf568c7c1e0268d5ec721a1637cc",
+      "roles": ["loading-spinner", "busy-state"]
+    },
+    {
+      "id": "toast.container",
+      "kind": "repository-file",
+      "category": "toast",
+      "repository": "Makaytron/Toast-01",
+      "ref": "main",
+      "path": "src/components/ToastContainer.tsx",
+      "verifiedBlobSha": "b4984357cca0ab6d8acc1d76da98964f60ac519a",
+      "roles": ["toast-container", "placement", "stacking", "focus-hotkey", "aria-live"]
+    },
+    {
+      "id": "toast.item",
+      "kind": "repository-file",
+      "category": "toast",
+      "repository": "Makaytron/Toast-01",
+      "ref": "main",
+      "path": "src/components/Toast.tsx",
+      "verifiedBlobSha": "b2c5b812bcba719f424c1f4deed44e1d0f750c41",
+      "roles": ["toast-item", "severity", "dismiss", "interaction"]
+    },
+    {
+      "id": "toast.progress",
+      "kind": "repository-file",
+      "category": "toast",
+      "repository": "Makaytron/Toast-01",
+      "ref": "main",
+      "path": "src/components/ProgressBar.tsx",
+      "verifiedBlobSha": "ccca0c5f4872dfb4c5c4316427a5a6cb0a05fa46",
+      "roles": ["auto-close-progress", "pause-resume", "controlled-progress"]
+    },
+    {
+      "id": "toast.close-button",
+      "kind": "repository-file",
+      "category": "toast",
+      "repository": "Makaytron/Toast-01",
+      "ref": "main",
+      "path": "src/components/CloseButton.tsx",
+      "verifiedBlobSha": "e8c8c8feeb311d639048b111175a7bac881b4c07",
+      "roles": ["dismiss-control", "accessible-label"]
+    },
+    {
+      "id": "toast.transitions",
+      "kind": "repository-file",
+      "category": "toast",
+      "repository": "Makaytron/Toast-01",
+      "ref": "main",
+      "path": "src/components/Transitions.tsx",
+      "verifiedBlobSha": "b241308728bd49974a0ab1288ef5e65ee9471ccc",
+      "roles": ["motion", "entry", "exit", "collapse"]
+    },
+    {
+      "id": "toast.styles",
+      "kind": "repository-file",
+      "category": "toast",
+      "repository": "Makaytron/Toast-01",
+      "ref": "main",
+      "path": "src/style.css",
+      "verifiedBlobSha": "eb9d7a173b980705183528738182870cd18b920a",
+      "roles": ["visual-style", "positions", "safe-area", "responsive", "rtl", "stacked-layout"]
+    },
+    {
+      "id": "shadcn.dashboard.applied",
+      "kind": "reference-page",
+      "category": "shadcn-dashboard",
+      "url": "https://shadcnstore.com/templates/dashboard/shadcn-dashboard-landing-template/dashboard",
+      "roles": ["applied-shell", "sidebar-header-content-composition", "responsive-dashboard"]
+    },
+    {
+      "id": "shadcn.blocks.application-shell",
+      "kind": "block-family",
+      "category": "shadcn-block",
+      "url": "https://shadcnstore.com/blocks/application/app-shells",
+      "family": "Application Shell Sections",
+      "requiresVariantNameAndNumber": true,
+      "roles": ["application-frame", "navigation", "content-region", "responsive-shell"]
+    },
+    {
+      "id": "shadcn.blocks.application-interface",
+      "kind": "block-family",
+      "category": "shadcn-block",
+      "url": "https://shadcnstore.com/blocks/application/apps",
+      "family": "Application Interface Sections",
+      "requiresVariantNameAndNumber": true,
+      "roles": ["dashboard-page", "task-workspace", "application-layout"]
+    },
+    {
+      "id": "shadcn.blocks.datatable",
+      "kind": "block-family",
+      "category": "shadcn-block",
+      "url": "https://shadcnstore.com/blocks/application/datatables",
+      "family": "Data Grid & Datatable Components",
+      "requiresVariantNameAndNumber": true,
+      "roles": ["data-grid", "table-actions", "filters", "pagination", "bulk-actions"]
+    },
+    {
+      "id": "shadcn.blocks.kpi-widgets",
+      "kind": "block-family",
+      "category": "shadcn-block",
+      "url": "https://shadcnstore.com/blocks/application/widgets",
+      "family": "KPI Cards & Dashboard Widgets",
+      "requiresVariantNameAndNumber": true,
+      "roles": ["kpi", "stat-card", "dashboard-summary"]
+    },
+    {
+      "id": "shadcn.blocks.charts",
+      "kind": "block-family",
+      "category": "shadcn-block",
+      "url": "https://shadcnstore.com/blocks/application/charts",
+      "family": "Chart Sections",
+      "requiresVariantNameAndNumber": true,
+      "roles": ["chart", "gauge", "dashboard-visualization"]
+    },
+    {
+      "id": "shadcn.blocks.category-filters",
+      "kind": "block-family",
+      "category": "shadcn-block",
+      "url": "https://shadcnstore.com/blocks/e-commerce/category-filters",
+      "family": "Product Filter Bars, Sidebars & Mobile Filters",
+      "requiresVariantNameAndNumber": true,
+      "roles": ["filter-toolbar", "filter-sidebar", "mobile-filter", "active-filters"]
+    },
+    {
+      "id": "shadcn.blocks.order-history",
+      "kind": "block-family",
+      "category": "shadcn-block",
+      "url": "https://shadcnstore.com/blocks/e-commerce/order-history",
+      "family": "Order History & Orders Table Components",
+      "requiresVariantNameAndNumber": true,
+      "roles": ["order-list", "order-table", "status", "pagination"]
+    },
+    {
+      "id": "shadcn.blocks.listing-cards",
+      "kind": "block-family",
+      "category": "shadcn-block",
+      "url": "https://shadcnstore.com/blocks/marketing/listings",
+      "family": "Listing Card Sections",
+      "requiresVariantNameAndNumber": true,
+      "roles": ["listing-card", "metadata", "actions", "responsive-grid"]
+    }
+  ]
+}
