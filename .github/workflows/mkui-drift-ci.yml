@@ -1,0 +1,96 @@
+name: MKUI Bundle and Presentation Drift CI
+
+on:
+  push:
+    branches:
+      - main
+      - automation/mkui-cross-script-qa-v1
+    paths:
+      - .github/workflows/mkui-drift-ci.yml
+      - tools/Mkui-Production-Registry.mjs
+      - tools/Build-Mkui-Bundle-Manifest.mjs
+      - tools/Test-Mkui-Drift.mjs
+      - tools/Audit-Mkui-Cross-Script-Coexistence.mjs
+      - shared/mkui/**
+      - docs/design/previews/mkui-cross-script-coexistence-audit.json
+      - scripts/**/*.user.js
+  pull_request:
+    paths:
+      - .github/workflows/mkui-drift-ci.yml
+      - tools/Mkui-Production-Registry.mjs
+      - tools/Build-Mkui-Bundle-Manifest.mjs
+      - tools/Test-Mkui-Drift.mjs
+      - tools/Audit-Mkui-Cross-Script-Coexistence.mjs
+      - shared/mkui/**
+      - docs/design/previews/mkui-cross-script-coexistence-audit.json
+      - scripts/**/*.user.js
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mkui-drift-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Reject unreviewed MKUI bundle or presentation drift
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          $files = @(
+              'tools/Mkui-Production-Registry.mjs'
+              'tools/Build-Mkui-Bundle-Manifest.mjs'
+              'tools/Test-Mkui-Drift.mjs'
+              'tools/Audit-Mkui-Cross-Script-Coexistence.mjs'
+          )
+          foreach ($file in $files) {
+              node --check $file
+              if ($LASTEXITCODE -ne 0) {
+                  throw "JavaScript syntax validation failed: $file"
+              }
+          }
+
+      - name: Check changed lines for whitespace errors
+        shell: pwsh
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_HEAD_SHA: ${{ github.sha }}
+          GH_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if ($env:GH_EVENT_NAME -eq 'pull_request') {
+              git diff --check $env:GH_PR_BASE_SHA $env:GH_HEAD_SHA
+          }
+          elseif ($env:GH_EVENT_NAME -eq 'push' -and $env:GH_PUSH_BEFORE -notmatch '^0+$') {
+              git diff --check $env:GH_PUSH_BEFORE $env:GH_HEAD_SHA
+          }
+          else {
+              git show --check --format= $env:GH_HEAD_SHA
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
+
+      - name: Verify canonical bundle markers and presentation fingerprints
+        run: node tools/Build-Mkui-Bundle-Manifest.mjs --check
+
+      - name: Run fail-closed drift tests
+        run: node --test tools/Test-Mkui-Drift.mjs
+
+      - name: Verify coexistence audit remains current
+        run: node tools/Audit-Mkui-Cross-Script-Coexistence.mjs --check
