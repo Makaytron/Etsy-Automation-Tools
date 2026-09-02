@@ -10,7 +10,9 @@ Etsy mesajlarını seçtiğiniz görüntüleme dilinde önizlemek, Türkçe ceva
 
 Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulması gerekmez.
 
-**Sürüm:** 1.2.8 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+1.2.9 sürümü MKUI 1.0.0 Workspace Shell tasarımına geçer: beyaz/nötr uygulama kabuğu, 60 px başlık, 184 px geniş menü, kartlar, kontroller ve odak durumları Tamplate-Back-White-01 ile onaylı ShadcnStore dashboard referanslarına uyarlanmıştır. Mesaj, sağlayıcı, Otopilot, depolama ve doğrulama davranışları değiştirilmemiştir.
+
+**Sürüm:** 1.2.9 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 

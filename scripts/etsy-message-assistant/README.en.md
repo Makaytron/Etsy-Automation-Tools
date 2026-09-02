@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.2.8`
+Version: `1.2.9`
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
@@ -15,6 +15,8 @@ Review outreach uses a persistent per-order eligibility decision and purpose-bas
 When Etsy adds a numeric conversation permalink to a delivered-order drawer after sending, the generic composer scope remains fail-closed. Verification can complete only from the pre-send captured order scope when one informational history link, one canonical numeric permalink, and a new matching outgoing bubble are all present. A manually confirmed sent result also records the conversation ledger and one idempotent verification-history event.
 
 The script is standalone and does not require another Etsy Automation Tools package.
+
+Version 1.2.9 adopts the MKUI 1.0.0 Workspace Shell: the white/neutral application frame, 60 px header, 184 px expanded navigation, cards, controls and focus states now follow the approved Tamplate-Back-White-01 and ShadcnStore dashboard references without changing message, provider, Otopilot, storage or verification behavior.
 
 ## Install
 
