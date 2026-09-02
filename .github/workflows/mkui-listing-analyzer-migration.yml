@@ -1,3 +1,4 @@
+# Class-hook signatures intentionally exclude --meli-* CSS custom properties.
 name: Apply Listing Analyzer MKUI v1
 
 on:
