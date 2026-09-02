@@ -45,6 +45,20 @@ const DEFINITIONS = [
   },
 ];
 
+const CANONICAL_ROUTES = [
+  { owner: 'ads-keyword-manager', url: 'https://www.etsy.com/your/shops/me/advertising/listings/1234567890' },
+  { owner: 'keyword-market-analyzer', url: 'https://www.etsy.com/your/shops/example-shop/marketplace-insights?ref=dashboard' },
+  { owner: 'sale-manager', url: 'https://www.etsy.com/your/shops/me/sales-discounts?ref=seller-platform' },
+  { owner: 'sale-manager', url: 'https://etsy.com/your/shops/me/sales-discounts' },
+  { owner: 'message-assistant', url: 'https://www.etsy.com/messages' },
+  { owner: 'message-assistant', url: 'https://www.etsy.com/messages/123456789' },
+  { owner: 'message-assistant', url: 'https://www.etsy.com/conversations/123456789' },
+  { owner: 'message-assistant', url: 'https://www.etsy.com/your/orders/sold?ref=seller-platform' },
+  { owner: 'message-assistant', url: 'https://www.etsy.com/your/shops/example-shop/dashboard' },
+  { owner: 'listing-analyzer', url: 'https://www.etsy.com/your/shops/example-shop/tools/listings?ref=seller-platform' },
+  { owner: 'listing-analyzer', url: 'https://www.etsy.com/your/shops/example-shop/listing-editor/edit/1234567890' },
+];
+
 function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
@@ -124,9 +138,9 @@ function extractDomIds(source) {
 
 function extractWindowGlobals(source) {
   return unique([
-    ...matches(source, /\bwindow\.([A-Za-z_$][\w$]*)\s*=/g, 1),
-    ...matches(source, /\bwindow\[['"]([^'"]+)['"]\]\s*=/g, 1),
-    ...matches(source, /\bglobalThis\.([A-Za-z_$][\w$]*)\s*=/g, 1),
+    ...matches(source, /\bwindow\.([A-Za-z_$][\w$]*)\s*=(?!=)/g, 1),
+    ...matches(source, /\bwindow\[['"]([^'"]+)['"]\]\s*=(?!=)/g, 1),
+    ...matches(source, /\bglobalThis\.([A-Za-z_$][\w$]*)\s*=(?!=)/g, 1),
   ]);
 }
 
@@ -235,7 +249,7 @@ const sources = await Promise.all(DEFINITIONS.map(async (definition) => ({
 })));
 const scripts = sources.map(({ definition, source }) => analyze(definition, source));
 
-const routeOverlap = [];
+const routeGlobOverlap = [];
 for (let left = 0; left < scripts.length; left += 1) {
   for (let right = left + 1; right < scripts.length; right += 1) {
     const overlaps = [];
@@ -244,9 +258,16 @@ for (let left = 0; left < scripts.length; left += 1) {
         if (patternsOverlap(leftPattern, rightPattern)) overlaps.push({ leftPattern, rightPattern });
       }
     }
-    routeOverlap.push({ left: scripts[left].id, right: scripts[right].id, overlaps });
+    routeGlobOverlap.push({ left: scripts[left].id, right: scripts[right].id, overlaps });
   }
 }
+
+const routeOwnership = CANONICAL_ROUTES.map((fixture) => ({
+  ...fixture,
+  matchedScripts: scripts
+    .filter((script) => script.matches.some((pattern) => wildcardToRegex(pattern).test(fixture.url)))
+    .map((script) => script.id),
+}));
 
 const telemetryCollisions = collisions(scripts.map((script) => ({ id: script.id, values: script.telemetryScriptId ? [script.telemetryScriptId] : [] })), 'values');
 const domIdCollisions = collisions(scripts, 'domIds');
@@ -259,7 +280,7 @@ const assertions = {
   allMkuiVersionsAre100: scripts.every((script) => script.mkuiVersion === '1.0.0'),
   telemetryIdsPresentAndUnique: scripts.every((script) => script.telemetryScriptId) && telemetryCollisions.length === 0,
   expectedShadowModesMatch: scripts.every((script) => JSON.stringify(script.shadowModes) === JSON.stringify(script.expectedShadowModes)),
-  routeMatchesArePairwiseExclusive: routeOverlap.every((pair) => pair.overlaps.length === 0),
+  canonicalRoutesHaveSingleOwner: routeOwnership.every((fixture) => fixture.matchedScripts.length === 1 && fixture.matchedScripts[0] === fixture.owner),
   noWindowGlobalCollisions: windowGlobalCollisions.length === 0,
 };
 
@@ -270,7 +291,8 @@ const audit = {
   generatedAt: new Date().toISOString(),
   scripts,
   matrices: {
-    routeOverlap,
+    routeGlobOverlap,
+    routeOwnership,
     domIdCollisions,
     windowGlobalCollisions,
     customEventCollisions,

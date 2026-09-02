@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-02T05:21:37.550Z",
+  "generatedAt": "2026-09-02T05:24:05.026Z",
   "scripts": [
     {
       "id": "ads-keyword-manager",
@@ -117,9 +117,7 @@
         "maw-warning",
         "maw-wide"
       ],
-      "windowGlobals": [
-        "doNotTrack"
-      ],
+      "windowGlobals": [],
       "customEvents": [],
       "telemetryScriptId": "etsy-ads-keyword-manager",
       "storageLiterals": [
@@ -512,9 +510,7 @@
         "ekma-tab"
       ],
       "windowGlobals": [
-        "__EKMA_TEST__",
-        "__EKMA_TEST_NAVIGATE__",
-        "doNotTrack"
+        "__EKMA_TEST__"
       ],
       "customEvents": [],
       "telemetryScriptId": "etsy-keyword-market-analyzer",
@@ -932,9 +928,7 @@
         "eda-report-footer",
         "eda-report-head"
       ],
-      "windowGlobals": [
-        "doNotTrack"
-      ],
+      "windowGlobals": [],
       "customEvents": [
         "blur",
         "change",
@@ -1495,8 +1489,7 @@
         "mema-setting-"
       ],
       "windowGlobals": [
-        "__MAKAYTRON_ETSY_MESSAGE_ASSISTANT__",
-        "doNotTrack"
+        "__MAKAYTRON_ETSY_MESSAGE_ASSISTANT__"
       ],
       "customEvents": [
         "change",
@@ -2254,11 +2247,7 @@
         "meli-health-trigger"
       ],
       "windowGlobals": [
-        "__MAKAYTRON_LISTING_NAVIGATE__",
-        "__MAKAYTRON_LISTING_PAGE_NAVIGATE__",
-        "__MAKAYTRON_LISTING_TEST__",
-        "__MELI_TEST__",
-        "doNotTrack"
+        "__MELI_TEST__"
       ],
       "customEvents": [
         "blur",
@@ -2801,7 +2790,7 @@
     }
   ],
   "matrices": {
-    "routeOverlap": [
+    "routeGlobOverlap": [
       {
         "left": "ads-keyword-manager",
         "right": "keyword-market-analyzer",
@@ -2872,19 +2861,87 @@
         ]
       }
     ],
-    "domIdCollisions": [],
-    "windowGlobalCollisions": [
+    "routeOwnership": [
       {
-        "value": "doNotTrack",
-        "scripts": [
-          "ads-keyword-manager",
-          "keyword-market-analyzer",
-          "listing-analyzer",
-          "message-assistant",
+        "owner": "ads-keyword-manager",
+        "url": "https://www.etsy.com/your/shops/me/advertising/listings/1234567890",
+        "matchedScripts": [
+          "ads-keyword-manager"
+        ]
+      },
+      {
+        "owner": "keyword-market-analyzer",
+        "url": "https://www.etsy.com/your/shops/example-shop/marketplace-insights?ref=dashboard",
+        "matchedScripts": [
+          "keyword-market-analyzer"
+        ]
+      },
+      {
+        "owner": "sale-manager",
+        "url": "https://www.etsy.com/your/shops/me/sales-discounts?ref=seller-platform",
+        "matchedScripts": [
           "sale-manager"
+        ]
+      },
+      {
+        "owner": "sale-manager",
+        "url": "https://etsy.com/your/shops/me/sales-discounts",
+        "matchedScripts": [
+          "sale-manager"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/messages",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/messages/123456789",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/conversations/123456789",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/your/orders/sold?ref=seller-platform",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/your/shops/example-shop/dashboard",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "listing-analyzer",
+        "url": "https://www.etsy.com/your/shops/example-shop/tools/listings?ref=seller-platform",
+        "matchedScripts": [
+          "listing-analyzer"
+        ]
+      },
+      {
+        "owner": "listing-analyzer",
+        "url": "https://www.etsy.com/your/shops/example-shop/listing-editor/edit/1234567890",
+        "matchedScripts": [
+          "listing-analyzer"
         ]
       }
     ],
+    "domIdCollisions": [],
+    "windowGlobalCollisions": [],
     "customEventCollisions": [
       {
         "value": "blur",
@@ -2977,7 +3034,7 @@
     "allMkuiVersionsAre100": true,
     "telemetryIdsPresentAndUnique": true,
     "expectedShadowModesMatch": true,
-    "routeMatchesArePairwiseExclusive": false,
-    "noWindowGlobalCollisions": false
+    "canonicalRoutesHaveSingleOwner": true,
+    "noWindowGlobalCollisions": true
   }
 }
