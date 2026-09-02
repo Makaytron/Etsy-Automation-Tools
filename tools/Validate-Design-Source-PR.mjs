@@ -3,6 +3,12 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import process from 'node:process';
+import {
+  DESIGN_SOURCES_BY_ID,
+  exactSourceLocator,
+  extractRegisteredSourceIds,
+  sourceById,
+} from './Design-Source-Registry.mjs';
 
 export const UI_FILE_PATTERNS = Object.freeze([
   /^scripts\/.*\.user\.js$/,
@@ -13,11 +19,18 @@ export const UI_FILE_PATTERNS = Object.freeze([
 ]);
 
 const REQUIRED_CHECKBOXES = Object.freeze([
+  'Every source id above exists in [`DESIGN-SOURCE-REGISTRY.json`]',
   'I used [Tamplate-Back-White-01]',
-  'I selected component anatomy from the [applied dashboard]',
+  'I used the [applied dashboard]',
   'Every new or modified toast/snackbar/notification follows [Toast-01]',
   'I did not invent an unapproved card, menu, sidebar, modal, table, filter, empty state, toolbar, loader, alert or toast',
   'Existing behavior hooks and safety contracts remain intact',
+]);
+
+const REQUIRED_TOAST_IDS = Object.freeze([
+  'toast.container',
+  'toast.item',
+  'toast.styles',
 ]);
 
 function normalize(value) {
@@ -31,12 +44,38 @@ function field(body, englishLabel) {
 }
 
 function placeholder(value) {
-  return !value || /^(?:yes\s*\/\s*no|evet\s*\/\s*hayır|tbd|todo|fill|-)$/i.test(value);
+  return !value || /^(?:yes\s*\/\s*no|evet\s*\/\s*hayır|tbd|todo|fill|none|-)$/i.test(value);
 }
 
 function checked(body, text) {
   const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`^- \\[x\\] ${escaped}`, 'mi').test(body);
+}
+
+function containsCaseInsensitive(haystack, needle) {
+  return normalize(haystack).toLowerCase().includes(normalize(needle).toLowerCase());
+}
+
+function categoryIds(ids, category) {
+  return ids.filter(id => sourceById(id)?.category === category);
+}
+
+function exactLocators(ids) {
+  return ids
+    .map(id => sourceById(id))
+    .filter(Boolean)
+    .map(exactSourceLocator);
+}
+
+function hasNamedNumberedVariant(value) {
+  const text = normalize(value);
+  if (!text) return false;
+  return /\b(?:application\s+shell|application\s+interface|app\s+dashboard|data(?:\s+grid|table)|datatable|kpi(?:\s+card)?|dashboard\s+widget|chart|filter(?:\s+bar|\s+sidebar)?|order(?:\s+history|\s+management\s+table)?|listing(?:\s+card)?|block|section|layout|card|table|widget)\s*#?\s*\d+\b/i.test(text);
+}
+
+function isExplainedNoToast(value) {
+  const text = normalize(value);
+  return /^n\/a\b/i.test(text) && text.replace(/^n\/a\b\s*[—–:-]?\s*/i, '').length >= 12;
 }
 
 export function isUiRelevantPath(path) {
@@ -50,7 +89,13 @@ export function uiRelevantFiles(paths) {
 export function validateDesignSourceBody(body, changedFiles) {
   const relevant = uiRelevantFiles(changedFiles);
   if (!relevant.length) {
-    return { ok: true, skipped: true, relevantFiles: [], errors: [] };
+    return {
+      ok: true,
+      skipped: true,
+      relevantFiles: [],
+      sourceIds: [],
+      errors: [],
+    };
   }
 
   const normalizedBody = normalize(body);
@@ -64,35 +109,111 @@ export function validateDesignSourceBody(body, changedFiles) {
     errors.push('Set “UI changed / UI değişti” to Yes or Evet.');
   }
 
-  const shellSource = field(
+  const sourceIdField = field(
     normalizedBody,
-    'Shell/template source and exact path / Shell-template kaynağı ve kesin yolu',
+    'Approved source IDs / Onaylı kaynak kimlikleri',
   );
-  if (placeholder(shellSource) || /^(?:n\/a|yok)$/i.test(shellSource)) {
-    errors.push('Provide the exact Tamplate-Back-White-01 path or applied-dashboard region.');
+  const sourceIds = extractRegisteredSourceIds(sourceIdField);
+  if (placeholder(sourceIdField) || sourceIds.length === 0) {
+    errors.push('List the approved source ids from docs/design/DESIGN-SOURCE-REGISTRY.json.');
   }
-  if (shellSource && !/(?:Tamplate-Back-White-01|shadcnstore\.com\/templates\/dashboard)/i.test(shellSource)) {
-    errors.push('The shell source must identify Tamplate-Back-White-01 or the approved applied dashboard.');
+
+  const unknownTokens = normalize(sourceIdField)
+    .split(/[\s,;]+/)
+    .map(token => token.replace(/^[`'"([{]+|[`'"\])}.:]+$/g, ''))
+    .filter(token => /^(?:template|toast|shadcn)\./.test(token))
+    .filter(token => !DESIGN_SOURCES_BY_ID.has(token));
+  for (const id of [...new Set(unknownTokens)]) {
+    errors.push(`Unknown or unregistered design source id: ${id}.`);
+  }
+
+  const templateIds = categoryIds(sourceIds, 'template');
+  const dashboardIds = categoryIds(sourceIds, 'shadcn-dashboard');
+  const blockIds = categoryIds(sourceIds, 'shadcn-block');
+  const toastIds = categoryIds(sourceIds, 'toast');
+
+  if (templateIds.length === 0) {
+    errors.push('Every UI change must cite at least one registered template.* source id.');
+  }
+  if (!dashboardIds.includes('shadcn.dashboard.applied')) {
+    errors.push('Every UI change must cite shadcn.dashboard.applied for page composition.');
+  }
+  if (blockIds.length === 0) {
+    errors.push('Every UI change must cite at least one exact shadcn.blocks.* source id.');
+  }
+
+  const exactPaths = field(
+    normalizedBody,
+    'Exact registered repository paths / Kayıtlı kesin repo yolları',
+  );
+  if (placeholder(exactPaths)) {
+    errors.push('Provide the exact registered repository locators used by this UI change.');
+  }
+  for (const locator of exactLocators([...templateIds, ...toastIds])) {
+    if (!containsCaseInsensitive(exactPaths, locator)) {
+      errors.push(`Exact registered repository locator is missing: ${locator}.`);
+    }
+  }
+
+  const dashboardRegion = field(
+    normalizedBody,
+    'Applied dashboard region / Uygulanan dashboard bölgesi',
+  );
+  const dashboardSource = sourceById('shadcn.dashboard.applied');
+  if (
+    placeholder(dashboardRegion) ||
+    dashboardRegion.length < 20 ||
+    !containsCaseInsensitive(dashboardRegion, dashboardSource?.url || '')
+  ) {
+    errors.push(
+      'Record the exact applied-dashboard URL and the concrete region/composition used.',
+    );
   }
 
   const blockSource = field(
     normalizedBody,
-    'ShadcnStore block URL, family, name and number / ShadcnStore blok URL',
+    'ShadcnStore block URL, family, visible name and number / ShadcnStore blok URL',
   );
-  if (placeholder(blockSource) || !/shadcnstore\.com\/blocks/i.test(blockSource)) {
-    errors.push('Provide an exact ShadcnStore blocks URL plus the block family and block name/number.');
+  if (placeholder(blockSource)) {
+    errors.push('Provide the exact ShadcnStore block URL, family, visible name and number.');
+  }
+  for (const id of blockIds) {
+    const source = sourceById(id);
+    if (!containsCaseInsensitive(blockSource, source.url)) {
+      errors.push(`${id} requires its exact registered URL in the block mapping.`);
+    }
+    if (!containsCaseInsensitive(blockSource, source.family)) {
+      errors.push(`${id} requires the registered family name: ${source.family}.`);
+    }
+  }
+  if (!hasNamedNumberedVariant(blockSource)) {
+    errors.push(
+      'The ShadcnStore mapping must name the visible block variant and number, for example “Application Shell 2”.',
+    );
   }
 
   const toastSource = field(
     normalizedBody,
-    'Toast-01 mapping, or `N/A` when no transient feedback exists / Toast-01 eşlemesi veya geçici bildirim yoksa `N/A`',
+    'Toast-01 source IDs and exact paths, or `N/A` with explanation / Toast-01 kaynak kimlikleri ve kesin yolları veya açıklamalı `N/A`',
   );
+  const noToast = isExplainedNoToast(toastSource);
   if (placeholder(toastSource)) {
     errors.push('Describe the Toast-01 mapping or write N/A with a concrete no-toast explanation.');
-  } else if (!/Toast-01/i.test(toastSource)) {
-    const noToastExplanation = /^n\/a\b.{8,}$/i.test(toastSource);
-    if (!noToastExplanation) {
-      errors.push('Toast mapping must identify Toast-01 or use N/A with an explanation.');
+  } else if (noToast) {
+    if (toastIds.length > 0) {
+      errors.push('Do not cite toast.* ids while declaring the change N/A for transient feedback.');
+    }
+  } else {
+    for (const id of REQUIRED_TOAST_IDS) {
+      if (!toastIds.includes(id)) {
+        errors.push(`Toast changes must cite the required source id: ${id}.`);
+      }
+    }
+    for (const id of toastIds) {
+      const source = sourceById(id);
+      if (!containsCaseInsensitive(toastSource, source.path)) {
+        errors.push(`${id} requires its exact Toast-01 path in the toast mapping.`);
+      }
     }
   }
 
@@ -102,6 +223,14 @@ export function validateDesignSourceBody(body, changedFiles) {
   );
   if (placeholder(adaptation) || adaptation.length < 20) {
     errors.push('Provide a meaningful Makaytron adaptation summary of at least 20 characters.');
+  }
+
+  const preservation = field(
+    normalizedBody,
+    'Behavior-preservation summary / Davranış koruma özeti',
+  );
+  if (placeholder(preservation) || preservation.length < 20) {
+    errors.push('Provide a meaningful behavior-preservation summary of at least 20 characters.');
   }
 
   for (const checkbox of REQUIRED_CHECKBOXES) {
@@ -114,6 +243,7 @@ export function validateDesignSourceBody(body, changedFiles) {
     ok: errors.length === 0,
     skipped: false,
     relevantFiles: relevant,
+    sourceIds,
     errors,
   };
 }
@@ -132,7 +262,13 @@ function changedFiles(baseSha, headSha) {
 
 export async function validatePullRequestEvent(event, options = {}) {
   if (!event?.pull_request) {
-    return { ok: true, skipped: true, relevantFiles: [], errors: [] };
+    return {
+      ok: true,
+      skipped: true,
+      relevantFiles: [],
+      sourceIds: [],
+      errors: [],
+    };
   }
   const baseSha = event.pull_request.base?.sha;
   const headSha = event.pull_request.head?.sha;
@@ -156,11 +292,16 @@ async function main() {
     process.stdout.write('No UI-relevant files changed; design-source PR mapping is not required.\n');
     return;
   }
-  process.stdout.write(`UI-relevant files:\n${result.relevantFiles.map(path => `- ${path}`).join('\n')}\n`);
+  process.stdout.write(
+    `UI-relevant files:\n${result.relevantFiles.map(path => `- ${path}`).join('\n')}\n`,
+  );
+  process.stdout.write(
+    `Registered sources:\n${result.sourceIds.map(id => `- ${id}`).join('\n')}\n`,
+  );
   if (!result.ok) {
     throw new Error(`Design-source PR validation failed:\n- ${result.errors.join('\n- ')}`);
   }
-  process.stdout.write('Design-source PR mapping is complete.\n');
+  process.stdout.write('Registered design-source mapping is complete.\n');
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';
