@@ -6,6 +6,10 @@ on:
       - main
     paths:
       - .github/workflows/mkui-message-assistant-migration.yml
+      - tools/Apply-Mkui-Message-Pilot.mjs
+      - tools/Finalize-Mkui-Message-Migration.mjs
+      - tools/Generate-Mkui-Message-Assistant-Preview.mjs
+      - tools/Test-Mkui-Message-Assistant.mjs
   workflow_dispatch:
 
 permissions:
