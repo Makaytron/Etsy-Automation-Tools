@@ -129,7 +129,7 @@ assert(output.script.includes('// @version      1.0.13'), 'Target Sale Manager u
 assert(output.script.includes("const VERSION = '1.0.13';"), 'Target Sale Manager runtime version missing.');
 assert(output.script.includes("const MKUI_VERSION = '1.0.0';"), 'MKUI version marker missing.');
 assert(output.script.includes('--eda-radius-lg:14px'), 'MKUI Sale token mapping missing.');
-assert(output.script.includes('button[aria-busy=\\"true\\"]'), 'Busy-state contract missing.');
+assert(count(output.script, 'aria-busy') === count(original.script, 'aria-busy') && count(original.script, 'aria-busy') > 0, 'Busy-state contract changed.');
 
 if (write) {
   let changed = 0;
