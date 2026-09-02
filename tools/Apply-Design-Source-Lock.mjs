@@ -137,28 +137,34 @@ async function main() {
     FILES.pullRequestTemplate,
   ));
 
-  next.set(FILES.contract, replaceRange(
-    next.get(FILES.contract),
-    '## Visual authority and references',
-    '## Goal',
-    sections.contractVisual,
-    FILES.contract,
-  ));
+  if (!next.get(FILES.contract).includes('## Visual authority and mandatory source lock')) {
+    next.set(FILES.contract, replaceRange(
+      next.get(FILES.contract),
+      '## Visual authority and references',
+      '## Goal',
+      sections.contractVisual,
+      FILES.contract,
+    ));
+  }
 
-  next.set(FILES.catalog, replaceRange(
-    next.get(FILES.catalog),
-    '## Approved sources',
-    '## Approved block families',
-    sections.catalogApproved,
-    FILES.catalog,
-  ));
-  next.set(FILES.catalog, replaceRange(
-    next.get(FILES.catalog),
-    '## Adaptation rules',
-    '## Script mapping',
-    sections.catalogAdaptation,
-    FILES.catalog,
-  ));
+  if (!next.get(FILES.catalog).includes('## Source-lock priority')) {
+    next.set(FILES.catalog, replaceRange(
+      next.get(FILES.catalog),
+      '## Approved sources',
+      '## Approved block families',
+      sections.catalogApproved,
+      FILES.catalog,
+    ));
+  }
+  if (!next.get(FILES.catalog).includes('## Mandatory adaptation rules')) {
+    next.set(FILES.catalog, replaceRange(
+      next.get(FILES.catalog),
+      '## Adaptation rules',
+      '## Script mapping',
+      sections.catalogAdaptation,
+      FILES.catalog,
+    ));
+  }
 
   next.set(FILES.mkuiReadme, insertBefore(
     next.get(FILES.mkuiReadme),
