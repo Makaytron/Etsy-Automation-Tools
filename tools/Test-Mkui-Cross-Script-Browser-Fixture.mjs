@@ -6,6 +6,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import {
+  extractCssSelectors,
   extractGlobalCssBodies,
 } from './Audit-Mkui-Cross-Script-Coexistence.mjs';
 import {
@@ -78,10 +79,14 @@ async function collectProductionGlobalCss() {
     const source = await readFile(path.resolve(MKUI_ROOT, definition.path), 'utf8');
     for (const body of extractGlobalCssBodies(source)) {
       if (body.kind !== 'global') continue;
+      const css = sanitizeCss(body.css);
+      const selectors = extractCssSelectors(css);
+      if (!selectors.length) continue;
       blocks.push({
         script: definition.id,
         label: body.label,
-        css: sanitizeCss(body.css),
+        css,
+        selectorCount: selectors.length,
       });
     }
   }
@@ -118,20 +123,19 @@ function fixtureHtml(blocks) {
   </main>
   <script>
   (() => {
-    const properties = ${properties};
-    const names = ['button', 'input', 'select', 'div'];
-    const snapshot = name => {
-      const node = document.querySelector('[data-probe="' + name + '"]');
-      const style = getComputedStyle(node);
-      return Object.fromEntries(properties.map(property => [property, style[property]]));
-    };
-    const baseline = Object.fromEntries(names.map(name => [name, snapshot(name)]));
-    const style = document.createElement('style');
-    style.setAttribute('data-mkui-production-css', '');
-    style.textContent = ${cssLiteral};
-    document.head.appendChild(style);
-
-    requestAnimationFrame(() => requestAnimationFrame(() => {
+    try {
+      const properties = ${properties};
+      const names = ['button', 'input', 'select', 'div'];
+      const snapshot = name => {
+        const node = document.querySelector('[data-probe="' + name + '"]');
+        const style = getComputedStyle(node);
+        return Object.fromEntries(properties.map(property => [property, style[property]]));
+      };
+      const baseline = Object.fromEntries(names.map(name => [name, snapshot(name)]));
+      const style = document.createElement('style');
+      style.setAttribute('data-mkui-production-css', '');
+      style.textContent = ${cssLiteral};
+      document.head.appendChild(style);
       const actual = Object.fromEntries(names.map(name => [name, snapshot(name)]));
       const diffs = [];
       for (const name of names) {
@@ -150,13 +154,19 @@ function fixtureHtml(blocks) {
         pass: diffs.length === 0,
         styleSheetCount: document.styleSheets.length,
         cssBlockCount: ${blocks.length},
+        selectorCount: ${blocks.reduce((total, block) => total + block.selectorCount, 0)},
         diffs,
       };
       document.documentElement.setAttribute(
         'data-mkui-result',
         encodeURIComponent(JSON.stringify(result)),
       );
-    }));
+    } catch (error) {
+      document.documentElement.setAttribute(
+        'data-mkui-error',
+        encodeURIComponent(String(error && (error.stack || error.message) || error)),
+      );
+    }
   })();
   </script>
 </body>
@@ -179,7 +189,7 @@ function runChrome(executable, fileUrl) {
       '--no-default-browser-check',
       '--no-sandbox',
       '--allow-file-access-from-files',
-      '--virtual-time-budget=2000',
+      '--virtual-time-budget=1000',
       '--dump-dom',
       fileUrl,
     ], {
@@ -210,6 +220,12 @@ test('production global CSS leaves native Etsy host controls unchanged', async (
   try {
     await writeFile(fixturePath, fixtureHtml(blocks), 'utf8');
     const dom = await runChrome(chrome, pathToFileURL(fixturePath).href);
+    const encodedError = dom.match(/data-mkui-error="([^"]+)"/)?.[1];
+    assert.equal(
+      encodedError,
+      undefined,
+      encodedError ? decodeURIComponent(encodedError.replaceAll('&amp;', '&')) : '',
+    );
     const encoded = dom.match(/data-mkui-result="([^"]+)"/)?.[1];
     assert.ok(
       encoded,
@@ -222,6 +238,7 @@ test('production global CSS leaves native Etsy host controls unchanged', async (
       `Global MKUI CSS changed host controls:\n${JSON.stringify(result.diffs, null, 2)}`,
     );
     assert.equal(result.cssBlockCount, blocks.length);
+    assert.ok(result.selectorCount > 0);
     assert.ok(result.styleSheetCount >= 1);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
