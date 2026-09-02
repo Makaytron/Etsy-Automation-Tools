@@ -50,7 +50,7 @@ function sha256(value) {
 }
 
 function unique(values) {
-  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  return [...new Set(values)].sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
 }
 
 function matches(text, regex, group = 0) {
