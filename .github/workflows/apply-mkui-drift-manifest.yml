@@ -74,21 +74,29 @@ jobs:
       - name: Commit generated markers and manifests
         shell: pwsh
         run: |
+          $paths = @(
+              'shared/mkui/bundle-manifest.json'
+              'docs/design/previews/mkui-cross-script-coexistence-audit.json'
+              'scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js'
+              'scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js'
+              'scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js'
+              'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
+              'scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js'
+          )
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- \
-            shared/mkui/bundle-manifest.json \
-            docs/design/previews/mkui-cross-script-coexistence-audit.json \
-            scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js \
-            scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js \
-            scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js \
-            scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js \
-            scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js
+          git add -- $paths
+          if ($LASTEXITCODE -ne 0) { throw 'Generated files could not be staged.' }
           git diff --cached --check
           if ($LASTEXITCODE -ne 0) { throw 'Generated patch contains whitespace errors.' }
-          if (git diff --cached --quiet) {
+          git diff --cached --quiet
+          $diffExit = $LASTEXITCODE
+          if ($diffExit -eq 0) {
               Write-Host 'MKUI bundle manifest and production markers are already current.'
               exit 0
           }
+          if ($diffExit -ne 1) { throw "Unable to inspect generated patch: exit $diffExit" }
           git commit -m 'build: stamp MKUI bundle hash across production scripts'
+          if ($LASTEXITCODE -ne 0) { throw 'Generated MKUI files could not be committed.' }
           git push origin HEAD:automation/mkui-cross-script-qa-v1
+          if ($LASTEXITCODE -ne 0) { throw 'Generated MKUI commit could not be pushed.' }
