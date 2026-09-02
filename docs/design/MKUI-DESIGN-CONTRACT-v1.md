@@ -1,8 +1,10 @@
 # MKUI Design Contract v1
 
-Status: **foundation / not yet wired into production userscripts**
+Status: **active production migration**
 
 Visual authority: `Makaytron/Tamplate-Back-White-01` (light dashboard system), adapted for standalone Etsy userscripts.
+
+Current adoption: Ads Keyword Manager, Keyword & Market Analyzer and Sale Manager are migrated to MKUI v1. Message Assistant is active; Listing Analyzer remains last.
 
 ## Goal
 
@@ -92,7 +94,7 @@ Text/icon/state must communicate status without depending on color alone.
 
 ## Versioning
 
-Shared source version starts at `1.0.0`. Production scripts will receive `MKUI_VERSION` and a generated bundle hash only after the first pilot passes behavior parity.
+Shared source version is `1.0.0`. Migrated production scripts carry an explicit `MKUI_VERSION` marker. Once all five scripts are migrated, CI will additionally enforce a canonical bundle/hash drift check across production scripts.
 
 ## Out of scope for v1
 
