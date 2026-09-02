@@ -1,0 +1,66 @@
+name: Sale Manager CI
+
+on:
+  push:
+    branches:
+      - main
+      - mkui-sale-pilot
+    paths:
+      - 'scripts/etsy-sale-campaign-batch-runner/**'
+      - 'tools/Test-Sale-Manager.mjs'
+      - 'tools/Test-Updaters.mjs'
+      - 'tools/Test-Distribution.ps1'
+      - 'tools/Sanitize-Public-Fixtures.ps1'
+      - 'shared/mkui/**'
+      - 'README.md'
+      - 'README.tr.md'
+      - '.github/workflows/sale-manager-ci.yml'
+  pull_request:
+    paths:
+      - 'scripts/etsy-sale-campaign-batch-runner/**'
+      - 'tools/Test-Sale-Manager.mjs'
+      - 'tools/Test-Updaters.mjs'
+      - 'tools/Test-Distribution.ps1'
+      - 'tools/Sanitize-Public-Fixtures.ps1'
+      - 'shared/mkui/**'
+      - 'README.md'
+      - 'README.tr.md'
+      - '.github/workflows/sale-manager-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Test-Sale-Manager.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Sale Manager behavior and safety regression tests
+        run: node --test tools/Test-Sale-Manager.mjs
+
+      - name: Run shared updater regression tests
+        run: node --test tools/Test-Updaters.mjs
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1
