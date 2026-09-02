@@ -12,9 +12,15 @@ on:
       - README.md
       - README.tr.md
       - docs/design/**
+      - scripts/**/*.user.js
       - shared/mkui/**
       - tools/Apply-Design-Source-Lock.mjs
       - tools/Test-Design-Source-Lock.mjs
+      - tools/Validate-Design-Source-PR.mjs
+      - tools/Test-Design-Source-PR.mjs
+      - tools/Apply-Mkui-*.mjs
+      - tools/Finalize-Mkui-*.mjs
+      - tools/Generate-Mkui-*-Preview.mjs
   pull_request:
     paths:
       - .github/CONTRIBUTING.md
@@ -23,9 +29,15 @@ on:
       - README.md
       - README.tr.md
       - docs/design/**
+      - scripts/**/*.user.js
       - shared/mkui/**
       - tools/Apply-Design-Source-Lock.mjs
       - tools/Test-Design-Source-Lock.mjs
+      - tools/Validate-Design-Source-PR.mjs
+      - tools/Test-Design-Source-PR.mjs
+      - tools/Apply-Mkui-*.mjs
+      - tools/Finalize-Mkui-*.mjs
+      - tools/Generate-Mkui-*-Preview.mjs
   workflow_dispatch:
 
 permissions:
@@ -57,6 +69,8 @@ jobs:
         run: |
           node --check tools/Apply-Design-Source-Lock.mjs
           node --check tools/Test-Design-Source-Lock.mjs
+          node --check tools/Validate-Design-Source-PR.mjs
+          node --check tools/Test-Design-Source-PR.mjs
 
       - name: Verify policy is fully applied and idempotent
         run: |
@@ -64,8 +78,13 @@ jobs:
           printf '%s\n' "$output"
           printf '%s' "$output" | grep -F 'Design source lock is already applied.'
 
-      - name: Run mandatory design-source tests
-        run: node --test tools/Test-Design-Source-Lock.mjs
+      - name: Run mandatory policy and PR-gate tests
+        run: |
+          node --test tools/Test-Design-Source-Lock.mjs
+          node --test tools/Test-Design-Source-PR.mjs
+
+      - name: Require completed source mapping for UI pull requests
+        run: node tools/Validate-Design-Source-PR.mjs
 
       - name: Check patch hygiene
         run: git diff --check
