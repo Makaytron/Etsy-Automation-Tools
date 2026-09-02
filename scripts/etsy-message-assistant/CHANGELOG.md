@@ -11,7 +11,7 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Security
 
-- Merkezi Mesaj Paneli ayarlarındaki mağaza kimliği placeholder'ı artık gerçek bir mağaza adını örnek olarak göstermiyor; public dağıtım yalnız sentetik xample-shop örneğini kullanıyor.
+- Merkezi Mesaj Paneli ayarlarındaki mağaza kimliği placeholder'ı artık gerçek bir mağaza adını örnek olarak göstermiyor; public dağıtım yalnız sentetik `example-shop` örneğini kullanıyor.
 - Userscript sürümü 1.2.8 yapılarak gizlilik düzeltmesinin mevcut kurulumlara normal update akışıyla ulaşması sağlandı.
 
 
