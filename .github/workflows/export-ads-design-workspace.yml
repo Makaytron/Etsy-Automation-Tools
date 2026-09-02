@@ -35,6 +35,8 @@ jobs:
             scripts/etsy-ads-keyword-manager/**
             tools/Test-Ads-Keyword-Manager.mjs
             tools/Apply-Mkui-Ads-Pilot.mjs
+            tools/Generate-Mkui-Listing-Analyzer-Preview.mjs
+            tools/Generate-Mkui-Message-Assistant-Preview.mjs
             tools/Build-Mkui-Bundle-Manifest.mjs
             tools/Test-Mkui-Drift.mjs
             tools/Test-Mkui-Cross-Script-Coexistence.mjs
