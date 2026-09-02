@@ -4,7 +4,7 @@
 
 **Short name:** Etsy Keyword & Market Analyzer
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
