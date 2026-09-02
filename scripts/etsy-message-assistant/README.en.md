@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.2.8`
+Version: `1.2.9`
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 

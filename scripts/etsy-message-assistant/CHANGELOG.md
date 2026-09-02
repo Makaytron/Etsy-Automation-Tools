@@ -7,6 +7,17 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.2.9] - 2026-09-02
+
+### Changed
+
+- `Tamplate-Back-White-01` referans alınarak MKUI v1 Workspace görünüm katmanı eklendi; lacivert/altın premium yüzeyler ortak nötr Makaytron tokenlarına, 60/184 px navigation ritmine, ortak radius/focus sistemine ve siyah-beyaz primary aksiyon diline uyarlandı.
+- Otopilot hero, metrik kartları, progress, sipariş kartları, form kontrolleri ve aktif navigation görsel olarak ortak MKUI ailesine getirildi. Mevcut `CSS`, `LAUNCHER_CSS`, `UX_CSS`, `PREMIUM_CSS` ve Etsy'ye enjekte edilen `GLOBAL_CSS` katmanları değiştirilmeden korunup yalnız en sona presentation override eklendi.
+
+### Validation
+
+- Closed Shadow DOM, uygulama kimliği, tüm `data-*` davranış hook'ları, userscript izin/update metadata'sı ve global Etsy integration CSS'i invariant olarak kilitlendi. 259 davranış testi, gerçek Chrome fixture'ı, privacy guard ve tam distribution gate migration sonrasında çalıştırılır.
+
 ## [1.2.8] - 2026-09-02
 
 ### Security
