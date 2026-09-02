@@ -209,8 +209,12 @@ test('opportunity scoring remains bounded and demand-sensitive', () => {
 
 test('research envelope validation remains fail-closed for malformed input', () => {
     const api = loadAnalyzer();
-    assert.deepEqual(api.Contract.validateEnvelope({}), { ok: false, code: 'INVALID_ENVELOPE_KEYS' });
-    assert.deepEqual(api.Contract.validateResearchRequest({}), { ok: false, code: 'INVALID_REQUEST_KEYS' });
+    const envelope = api.Contract.validateEnvelope({});
+    const request = api.Contract.validateResearchRequest({});
+    assert.equal(envelope.ok, false);
+    assert.equal(envelope.code, 'INVALID_ENVELOPE_KEYS');
+    assert.equal(request.ok, false);
+    assert.equal(request.code, 'INVALID_REQUEST_KEYS');
 });
 
 test('canonical Marketplace Insights navigation stays on the same shop route', () => {
