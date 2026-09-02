@@ -60,8 +60,8 @@ jobs:
           set -euo pipefail
           node tools/Apply-Ads-Command-Center-v1.mjs --write
           node tools/Finalize-Ads-Command-Center-v1.mjs --write
-          node tools/Generate-Ads-Command-Center-Preview.mjs
           sed -i 's/[[:blank:]]\+$//' scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
+          node tools/Generate-Ads-Command-Center-Preview.mjs
           node --check scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
 
       - name: Install Chromium for deterministic review evidence
