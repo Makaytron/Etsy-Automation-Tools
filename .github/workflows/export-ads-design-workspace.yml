@@ -43,5 +43,6 @@ jobs:
             tools/Audit-Mkui-Cross-Script-Coexistence.mjs
             shared/mkui/**
             docs/design/**
+            assets/makaytron-logo.png
             assets/screenshots/ads-keywords-*.png
             .github/PULL_REQUEST_TEMPLATE.md
