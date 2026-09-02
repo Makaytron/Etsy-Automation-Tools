@@ -1,0 +1,45 @@
+name: Export Ads Design Workspace
+
+on:
+  push:
+    branches:
+      - design/ads-keyword-manager-command-center-v1
+    paths:
+      - .github/workflows/export-ads-design-workspace.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: export-ads-design-workspace
+  cancel-in-progress: true
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out design branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Upload design workspace
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ads-design-workspace
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            scripts/etsy-ads-keyword-manager/**
+            tools/Test-Ads-Keyword-Manager.mjs
+            tools/Apply-Mkui-Ads-Pilot.mjs
+            tools/Build-Mkui-Bundle-Manifest.mjs
+            tools/Test-Mkui-Drift.mjs
+            tools/Test-Mkui-Cross-Script-Coexistence.mjs
+            tools/Audit-Mkui-Cross-Script-Coexistence.mjs
+            shared/mkui/**
+            docs/design/**
+            assets/screenshots/ads-keywords-*.png
+            .github/PULL_REQUEST_TEMPLATE.md
