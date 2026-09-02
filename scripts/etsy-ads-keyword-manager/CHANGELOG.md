@@ -20,6 +20,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak 
 ### Validation
 
 - Production userscriptten oluşturulan sentetik panel ve editör fixtureları, davranış testleri, source-lock kontrolleri, MKUI drift/coexistence denetimleri ve tam dağıtım kapısı çalıştırıldı.
+- Son production commit’inde userscript/önizleme SHA bağı, trailing-whitespace denetimi ve doğrulanmış commit/push zinciri de başarıyla tamamlandı.
 
 ## [1.0.4] - 2026-09-02
 
@@ -62,6 +63,8 @@ Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak 
 - Panel sürüm rozeti ve Tampermonkey menüsü üzerinden elle çalıştırılabilen script sürüm denetimi eklendi.
 - GitHub kurulumlarında en fazla 24 saatte bir çalışan, yalnız uzak `@version` metadata değerini ayrıştıran otomatik denetim eklendi.
 - Yeni sürüm için kullanıcı onaylı canonical `.user.js` kurulum sayfası akışı ve erişilebilir panel durumu eklendi.
+- Gömülü ilk kurulum listesi canonical kural dosyasıyla eşitlendi ve görünür logo ağ isteğini önlemek için script içine gömüldü.
+- Form açıkken liste değişikliği/canlı işlem yarışı engellendi; `Ctrl + Space` için onay eklendi ve başarısız satırda toplu işlem durduruldu.
 
 ### Security
 
