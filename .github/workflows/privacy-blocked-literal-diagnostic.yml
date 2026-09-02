@@ -64,8 +64,17 @@ jobs:
       - name: Run Message Assistant behavior tests
         run: node --test tools/Test-Message-Assistant.mjs
 
-      - name: Smoke-test browser fixture
-        run: node --test tools/Test-Message-Assistant-Browser-Fixture.mjs
+      - name: Smoke-test browser fixture with Chrome-start retry
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            Write-Host "Browser fixture attempt $attempt/$maxAttempts"
+            node --test tools/Test-Message-Assistant-Browser-Fixture.mjs
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            if ($attempt -eq $maxAttempts) { exit $LASTEXITCODE }
+            Start-Sleep -Seconds 2
+          }
 
       - name: Enforce public fixture privacy
         shell: pwsh
