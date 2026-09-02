@@ -264,7 +264,6 @@ const assertions = {
 };
 
 const failed = Object.entries(assertions).filter(([, passed]) => !passed).map(([name]) => name);
-if (failed.length) throw new Error(`Cross-script source audit failed: ${failed.join(', ')}`);
 
 const audit = {
   schemaVersion: 1,
@@ -289,3 +288,5 @@ if (WRITE) {
 } else {
   process.stdout.write(json);
 }
+
+if (failed.length) throw new Error(`Cross-script source audit failed: ${failed.join(', ')}`);
