@@ -12,6 +12,13 @@ function count(needle) {
   return source.split(needle).length - 1;
 }
 
+function hasTemplateAttribute(attribute, value) {
+  return source.includes(`${attribute}="${value}"`)
+    || source.includes(String.raw`${attribute}=\"${value}\"`)
+    || source.includes(`${attribute}='${value}'`)
+    || source.includes(String.raw`${attribute}=\'${value}\'`);
+}
+
 test('Message Assistant keeps protected UI architecture before/after MKUI mapping', () => {
   assert.equal(count("attachShadow({ mode: 'closed' })"), 1, 'closed Shadow DOM mount must remain singular');
   assert.equal(count('const PREMIUM_CSS = `'), 1, 'PREMIUM_CSS layer must remain present during first migration');
@@ -19,9 +26,10 @@ test('Message Assistant keeps protected UI architecture before/after MKUI mappin
   assert.match(source, /const CSS = `:host\{/);
   assert.match(source, /const LAUNCHER_CSS = `/);
   assert.match(source, /const UX_CSS = `/);
-  assert.match(source, /data-action=\\?"toggle-app\\?"/);
-  assert.match(source, /data-action=\\?"toggle-wide\\?"/);
-  assert.match(source, /data-action=\\?"settings\\?"/);
+  assert.ok(hasTemplateAttribute('data-action', 'toggle-app'), 'launcher toggle-app hook must remain present');
+  assert.ok(hasTemplateAttribute('data-action', 'toggle-wide'), 'wide/fullscreen toggle hook must remain present');
+  assert.ok(source.includes("['settings', 'settings', 'Ayarlar']"), 'settings navigation definition must remain present');
+  assert.ok(source.includes('data-page='), 'data-page navigation routing must remain present');
 });
 
 test('Message Assistant protected userscript metadata remains intact', () => {
