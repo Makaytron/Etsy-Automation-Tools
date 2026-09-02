@@ -8,7 +8,7 @@
 4. Makaytron Etsy Message Assistant
 5. Makaytron Etsy Listing Analyzer
 
-Reference design: `Makaytron/Tamplate-Back-White-01`.
+Reference system: `Makaytron/Tamplate-Back-White-01`, the applied ShadcnStore dashboard, and the approved block catalog in `SHADCNSTORE-REFERENCE-CATALOG.md`.
 
 ## Current status
 
@@ -21,8 +21,8 @@ Reference design: `Makaytron/Tamplate-Back-White-01`.
 - [x] Message Assistant account-specific public placeholder blocker removed and verified (`1.2.8`)
 - [x] Keyword & Market Analyzer migration
 - [x] Sale Manager migration
-- [ ] Message Assistant MKUI migration — ACTIVE
-- [ ] Listing Analyzer MKUI migration
+- [x] Message Assistant MKUI migration (`1.2.9`, MKUI `1.0.0`)
+- [ ] Listing Analyzer MKUI migration — ACTIVE
 - [ ] Cross-script integration QA
 - [ ] MKUI bundle/version drift CI
 
@@ -59,11 +59,11 @@ Open Shadow DOM and Etsy-inline research/metric surfaces were preserved. The mig
 
 Sale/campaign write paths remain protected. The MKUI migration is presentation-only and is covered by permanent Sale Manager regression checks so confirmation, busy/disabled state, verification and retry semantics cannot be silently altered by later visual changes.
 
-## Phase 6 — Message Assistant — ACTIVE
+## Phase 6 — Message Assistant — COMPLETE
 
 Preserve closed Shadow DOM. First migration maps the existing base/launcher/UX/premium layers onto MKUI semantics; CSS cleanup is a later commit after behavior parity.
 
-Active gate:
+Completed gate:
 
 - `tools/Apply-Mkui-Message-Pilot.mjs` uses exact anchors and fails closed on unexpected source drift
 - preserve `@match`, `@grant`, `@connect`, `@updateURL`, `@downloadURL`, `@resource` and namespace metadata
@@ -73,7 +73,7 @@ Active gate:
 - preserve message composer/send verification, provider, automation, orders, history, settings, telemetry and storage behavior
 - run `Test-Message-Assistant.mjs`, browser fixture coverage, `Test-Mkui-Message-Assistant.mjs`, privacy and distribution gates before merge
 
-## Phase 7 — Listing Analyzer
+## Phase 7 — Listing Analyzer — ACTIVE
 
 Migrate last, but use it as the reference for dashboard shell geometry. Preserve navigation state, filter drawer, listing selection, queue/AI/settings views, keyboard shortcuts and publish/deactivate verification.
 

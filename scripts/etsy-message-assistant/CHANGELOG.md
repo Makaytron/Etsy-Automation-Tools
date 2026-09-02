@@ -7,6 +7,19 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.2.9] - 2026-09-02
+
+### Changed
+
+- Message Assistant, MKUI 1.0.0 Workspace Shell görünümüne geçirildi. Beyaz/nötr panel, 60 px başlık, 184 px geniş navigation, sade aktif menü, standardize kart/form/buton yüzeyleri ve görünür odak halkaları Tamplate-Back-White-01 ile onaylı ShadcnStore dashboard/application block referanslarına uyarlandı.
+- Değişiklik yalnız presentation katmanındadır; mevcut closed Shadow DOM, tüm data hook'ları, global mema-* Etsy yüzeyleri, mesaj/composer/gönderim doğrulaması, sağlayıcılar, Otopilot, storage ve telemetry sözleşmeleri korunmuştur.
+- Tamamen sentetik fixture'dan, doğrudan production 1.2.9 CSS katmanlarıyla yeniden üretilebilen MKUI workspace preview eklendi.
+
+### Tests
+
+- Exact-anchor transformer metadata, data-* imzası, closed Shadow DOM sayısı ve GLOBAL_CSS katmanında drift olursa fail-closed durur.
+- MKUI invariant testi, mevcut Message Assistant behavior suite'i, izole Chrome fixture'ı, privacy guard ve tam distribution gate birlikte çalıştırılır.
+
 ## [1.2.8] - 2026-09-02
 
 ### Security
