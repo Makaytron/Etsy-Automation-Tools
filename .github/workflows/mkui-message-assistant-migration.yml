@@ -1,0 +1,158 @@
+name: Apply Message Assistant MKUI v1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/mkui-message-assistant-migration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mkui-message-assistant-migration-main
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: Transform, verify, preview and publish
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Validate migration tools
+        shell: pwsh
+        run: |
+          $files = @(
+              'tools/Apply-Mkui-Message-Pilot.mjs'
+              'tools/Finalize-Mkui-Message-Migration.mjs'
+              'tools/Generate-Mkui-Message-Assistant-Preview.mjs'
+              'tools/Test-Mkui-Message-Assistant.mjs'
+          )
+          foreach ($file in $files) {
+              node --check $file
+              if ($LASTEXITCODE -ne 0) { throw "Syntax validation failed: $file" }
+          }
+
+      - name: Apply guarded Message Assistant MKUI transform
+        run: node tools/Apply-Mkui-Message-Pilot.mjs --write
+
+      - name: Finalize version and documentation
+        run: node tools/Finalize-Mkui-Message-Migration.mjs --write
+
+      - name: Verify transformed source syntax
+        run: node --check scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js
+
+      - name: Run MKUI invariant tests
+        run: node --test tools/Test-Mkui-Message-Assistant.mjs
+
+      - name: Run Message Assistant behavior tests
+        run: node --test tools/Test-Message-Assistant.mjs
+
+      - name: Run isolated Chrome fixture
+        run: node --test tools/Test-Message-Assistant-Browser-Fixture.mjs
+
+      - name: Generate preview from production CSS
+        shell: pwsh
+        run: |
+          node tools/Generate-Mkui-Message-Assistant-Preview.mjs --output=docs/design/previews
+          if ($LASTEXITCODE -ne 0) { throw 'Preview HTML generation failed.' }
+
+      - name: Capture the real MKUI preview
+        shell: pwsh
+        run: |
+          $html = Resolve-Path 'docs/design/previews/message-assistant-mkui-preview.html'
+          $outputDirectory = Join-Path $PWD 'assets/screenshots'
+          New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
+          $png = Join-Path $outputDirectory 'message-assistant-mkui-workspace-v1.2.9.png'
+          $chromeCandidates = @(
+              (Join-Path $env:ProgramFiles 'Google/Chrome/Application/chrome.exe'),
+              $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} 'Google/Chrome/Application/chrome.exe' }),
+              $(if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'Google/Chrome/Application/chrome.exe' })
+          ) | Where-Object { $_ -and (Test-Path $_) }
+          $chrome = $chromeCandidates | Select-Object -First 1
+          if (-not $chrome) { throw 'Google Chrome was not found on the runner.' }
+          $uri = ([System.Uri]$html.Path).AbsoluteUri
+          $arguments = @(
+              '--headless=new',
+              '--disable-background-networking',
+              '--disable-component-update',
+              '--disable-default-apps',
+              '--disable-extensions',
+              '--disable-gpu',
+              '--hide-scrollbars',
+              '--no-first-run',
+              '--force-device-scale-factor=1',
+              '--window-size=1440,900',
+              '--virtual-time-budget=1800',
+              "--screenshot=$png",
+              $uri
+          )
+          & $chrome @arguments
+          if ($LASTEXITCODE -ne 0) { throw "Chrome screenshot failed with exit code $LASTEXITCODE." }
+          if (-not (Test-Path $png)) { throw 'Preview screenshot was not created.' }
+          $size = (Get-Item $png).Length
+          if ($size -lt 40000) { throw "Preview screenshot is unexpectedly small: $size bytes." }
+          Write-Host "Generated $png ($size bytes)."
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1
+
+      - name: Check patch hygiene
+        run: git diff --check
+
+      - name: Commit verified migration and synthetic preview
+        id: publish
+        shell: pwsh
+        run: |
+          $changes = git status --porcelain
+          if (-not $changes) {
+              Write-Host 'Message Assistant MKUI migration was already published.'
+              "commit_sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+              exit 0
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add `
+              scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js `
+              scripts/etsy-message-assistant/README.md `
+              scripts/etsy-message-assistant/README.en.md `
+              scripts/etsy-message-assistant/CHANGELOG.md `
+              README.md `
+              README.tr.md `
+              docs/design/MIGRATION-PLAN.md `
+              docs/design/MKUI-DESIGN-CONTRACT-v1.md `
+              docs/design/contracts/message-assistant.md `
+              docs/design/previews/message-assistant-mkui-preview.html `
+              assets/screenshots/message-assistant-mkui-workspace-v1.2.9.png
+          git commit -m 'MKUI v1: migrate Message Assistant to workspace shell'
+          git push origin HEAD:main
+          "commit_sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: message-assistant-mkui-v1.2.9-preview
+          path: |
+            docs/design/previews/message-assistant-mkui-preview.html
+            assets/screenshots/message-assistant-mkui-workspace-v1.2.9.png
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 14
