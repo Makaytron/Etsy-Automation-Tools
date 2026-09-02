@@ -1,4 +1,4 @@
-name: Export Ads Design Workspace
+name: Apply Ads Command Center v1
 
 on:
   push:
@@ -9,26 +9,179 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: export-ads-design-workspace
+  group: apply-ads-command-center-v1
   cancel-in-progress: true
 
 jobs:
-  export:
+  apply-and-validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
+
     steps:
       - name: Check out design branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          persist-credentials: false
+          fetch-depth: 0
 
-      - name: Upload complete repository workspace
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Finalize guarded transform and permanent test bridge
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const patcherPath = 'tools/Apply-Ads-Command-Center-v1.mjs';
+          let patcher = fs.readFileSync(patcherPath, 'utf8');
+          patcher = patcher
+            .replace('  .maw-panel [data-variant="primary"],\n', '')
+            .replace('  .maw-panel [data-variant="danger"],\n', '');
+          fs.writeFileSync(patcherPath, patcher);
+
+          const bridgePath = 'tools/Test-Ads-Keyword-Manager.mjs';
+          let bridge = fs.readFileSync(bridgePath, 'utf8');
+          const bridgeMarker = '/* Ads Command Center v1 presentation contract. */';
+          if (!bridge.includes(bridgeMarker)) {
+            bridge += `\n\n${bridgeMarker}\nawait import('./Test-Ads-Command-Center-v1.mjs');\n`;
+            fs.writeFileSync(bridgePath, bridge);
+          }
+
+          function appendOnce(path, marker, addition) {
+            let text = fs.readFileSync(path, 'utf8');
+            if (text.includes(marker)) return;
+            text = `${text.trimEnd()}\n\n${addition.trim()}\n`;
+            fs.writeFileSync(path, text);
+          }
+
+          appendOnce(
+            'scripts/etsy-ads-keyword-manager/README.md',
+            '## Komut merkezi düzeni',
+            `## Komut merkezi düzeni\n\nPanel, uzun Türkçe eylemleri kesmeyen geniş ve responsive bir komut merkezi olarak düzenlenmiştir. Görünür sayfa taraması birincil işlem olarak öne çıkar; seçili kayıt işlemleri ikincil grupta, bütün sayfaları etkileyen tehlikeli toplu işlem ise ayrı bir uyarı bölgesinde tutulur. Dar ekranlarda kontrol grupları tek sütuna iner. Bu değişiklik Etsy selectorlarını, onayları, doğrulamayı veya işlem mantığını değiştirmez.`,
+          );
+
+          appendOnce(
+            'scripts/etsy-ads-keyword-manager/README.en.md',
+            '## Command-center layout',
+            `## Command-center layout\n\nThe panel is presented as a wider responsive command center so long actions remain readable. Scanning the visible page is the primary action; selected-item operations form the secondary group, while the dangerous all-pages operation stays in a separate warning region. Controls collapse to one column on narrow screens. Etsy selectors, confirmations, verification, and business behavior are unchanged.`,
+          );
+
+          appendOnce(
+            'docs/design/contracts/ads-keyword-manager.md',
+            '## Command Center v1 source map',
+            `## Command Center v1 source map\n\n- Surface: Ads Keyword Manager main panel and responsive command hierarchy\n- Template source ids: \`template.shell.base-layout\`, \`template.shell.site-header\`, \`template.theme.tokens\`, \`template.primitive.card\`, \`template.primitive.button\`, \`template.primitive.input\`, \`template.primitive.table\`\n- Applied composition: \`shadcn.dashboard.applied\` — sidebar/header/content hierarchy translated to the standalone Compact shell\n- Block sources: \`shadcn.blocks.application-interface\` — Application Interface 2; \`shadcn.blocks.datatable\` — Data Table 2\n- Toast source: N/A — no transient feedback is added or changed\n- Makaytron adaptation: 680 px responsive command surface, sticky command header, three-tier action hierarchy, readable Turkish labels, isolated all-pages danger region, responsive single-column controls, and reduced-motion fallback\n- Preserved behavior: existing ids, data hooks, Etsy selectors, storage keys, confirmation boundaries, pagination, request sequencing, verification, retry, and fail-closed behavior\n- Evidence: \`docs/design/previews/ads-keyword-manager-command-center-v1.html\`, \`assets/screenshots/ads-keywords-panel-ready.png\`, focused behavior tests, MKUI drift checks, and cross-script coexistence audit`,
+          );
+          NODE
+
+      - name: Apply command center and generate synthetic preview
+        shell: bash
+        run: |
+          node --check tools/Apply-Ads-Command-Center-v1.mjs
+          node --check tools/Test-Ads-Command-Center-v1.mjs
+          node --check tools/Generate-Ads-Command-Center-Preview.mjs
+          node tools/Apply-Ads-Command-Center-v1.mjs --write
+          node tools/Generate-Ads-Command-Center-Preview.mjs
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const preview = fs.readFileSync('docs/design/previews/ads-keyword-manager-command-center-v1.html');
+          const source = fs.readFileSync('scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js');
+          const audit = {
+            schemaVersion: 1,
+            generatedAt: '2026-09-02',
+            dataClassification: 'fully_synthetic',
+            networkDependency: false,
+            liveEtsyWrite: false,
+            sourceIds: [
+              'template.shell.base-layout',
+              'template.shell.site-header',
+              'template.theme.tokens',
+              'template.primitive.card',
+              'template.primitive.button',
+              'template.primitive.input',
+              'template.primitive.table',
+              'shadcn.dashboard.applied',
+              'shadcn.blocks.application-interface',
+              'shadcn.blocks.datatable',
+            ],
+            toastMapping: 'N/A — no transient feedback changed',
+            previewSha256: crypto.createHash('sha256').update(preview).digest('hex'),
+            productionSourceSha256: crypto.createHash('sha256').update(source).digest('hex'),
+          };
+          fs.writeFileSync(
+            'docs/design/previews/ads-keyword-manager-command-center-v1.audit.json',
+            `${JSON.stringify(audit, null, 2)}\n`,
+          );
+          NODE
+
+      - name: Render deterministic desktop screenshot
+        shell: bash
+        run: |
+          npx --yes playwright@1.55.0 install --with-deps chromium
+          npx --yes playwright@1.55.0 screenshot \
+            --browser=chromium \
+            --viewport-size="1440,960" \
+            --full-page \
+            "file://${GITHUB_WORKSPACE}/docs/design/previews/ads-keyword-manager-command-center-v1.html" \
+            assets/screenshots/ads-keywords-panel-ready.png
+
+      - name: Regenerate MKUI evidence
+        shell: bash
+        run: |
+          node tools/Build-Mkui-Bundle-Manifest.mjs --apply --write
+          node tools/Audit-Mkui-Cross-Script-Coexistence.mjs --write
+
+      - name: Run focused and repository gates
+        shell: bash
+        run: |
+          node --test tools/Test-Ads-Keyword-Manager.mjs
+          node tools/Build-Mkui-Bundle-Manifest.mjs --check
+          node --test tools/Test-Mkui-Drift.mjs
+          node --test tools/Test-Mkui-Cross-Script-Coexistence.mjs
+          node --test tools/Test-Design-Source-Registry.mjs tools/Test-Design-Source-Lock.mjs tools/Test-Design-Source-PR.mjs
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tools/Test-Distribution.ps1
+          git diff --check
+
+      - name: Commit reviewed production presentation and evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js \
+            scripts/etsy-ads-keyword-manager/README.md \
+            scripts/etsy-ads-keyword-manager/README.en.md \
+            tools/Apply-Ads-Command-Center-v1.mjs \
+            tools/Test-Ads-Command-Center-v1.mjs \
+            tools/Test-Ads-Keyword-Manager.mjs \
+            tools/Generate-Ads-Command-Center-Preview.mjs \
+            docs/design/contracts/ads-keyword-manager.md \
+            docs/design/previews/ads-keyword-manager-command-center-v1.html \
+            docs/design/previews/ads-keyword-manager-command-center-v1.audit.json \
+            docs/design/previews/mkui-cross-script-coexistence-audit.json \
+            shared/mkui/bundle-manifest.json \
+            assets/screenshots/ads-keywords-panel-ready.png
+          if git diff --cached --quiet; then
+            echo 'Ads command center is already committed.'
+            exit 0
+          fi
+          git commit -m 'design: rebuild Ads Keyword Manager as a responsive command center'
+          git push origin HEAD:design/ads-keyword-manager-command-center-v1
+
+      - name: Upload review evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ads-design-workspace
+          name: ads-command-center-v1-review
           if-no-files-found: error
-          retention-days: 1
-          path: .
+          retention-days: 3
+          path: |
+            docs/design/previews/ads-keyword-manager-command-center-v1.html
+            docs/design/previews/ads-keyword-manager-command-center-v1.audit.json
+            assets/screenshots/ads-keywords-panel-ready.png
+            scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
