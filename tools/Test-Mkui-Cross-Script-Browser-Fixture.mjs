@@ -61,13 +61,15 @@ async function findChrome() {
       // Continue through the standard installation paths.
     }
   }
-  throw new Error('Google Chrome was not found. Set CHROME_PATH to run the MKUI CSS isolation fixture.');
+  throw new Error(
+    'Google Chrome was not found. Set CHROME_PATH to run the MKUI CSS isolation fixture.',
+  );
 }
 
 function sanitizeCss(css) {
   return String(css)
-    .replace(/<\/style/gi, '<\\/style')
-    .replace(/\$\{[^}]+\}/g, 'mkui-fixture');
+    .replace(/\$\{[^}]+\}/g, 'mkui-fixture')
+    .replace(/<\/script/gi, '<\\/script');
 }
 
 async function collectProductionGlobalCss() {
@@ -86,18 +88,26 @@ async function collectProductionGlobalCss() {
   return blocks;
 }
 
+function safeJavascriptString(value) {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 function fixtureHtml(blocks) {
   const css = blocks
     .map(block => `/* ${block.script}:${block.label} */\n${block.css}`)
     .join('\n\n');
   const properties = JSON.stringify(PROPERTIES);
+  const cssLiteral = safeJavascriptString(css);
+
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MKUI cross-script CSS isolation fixture</title>
-<style>${css}</style>
 </head>
 <body>
   <main id="test-root">
@@ -106,31 +116,32 @@ function fixtureHtml(blocks) {
     <select data-probe="select"><option>Host select</option></select>
     <div data-probe="div">Host div</div>
   </main>
-  <iframe id="control" srcdoc="<!doctype html><html><body><main><button data-probe='button' type='button'>Host button</button><input data-probe='input' value='Host input'><select data-probe='select'><option>Host select</option></select><div data-probe='div'>Host div</div></main></body></html>"></iframe>
   <script>
   (() => {
     const properties = ${properties};
-    const snapshot = (documentRef, name) => {
-      const node = documentRef.querySelector('[data-probe="' + name + '"]');
-      const style = documentRef.defaultView.getComputedStyle(node);
+    const names = ['button', 'input', 'select', 'div'];
+    const snapshot = name => {
+      const node = document.querySelector('[data-probe="' + name + '"]');
+      const style = getComputedStyle(node);
       return Object.fromEntries(properties.map(property => [property, style[property]]));
     };
-    const finish = () => {
-      const control = document.getElementById('control').contentDocument;
-      const names = ['button', 'input', 'select', 'div'];
+    const baseline = Object.fromEntries(names.map(name => [name, snapshot(name)]));
+    const style = document.createElement('style');
+    style.setAttribute('data-mkui-production-css', '');
+    style.textContent = ${cssLiteral};
+    document.head.appendChild(style);
+
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const actual = Object.fromEntries(names.map(name => [name, snapshot(name)]));
       const diffs = [];
-      const test = {};
-      const baseline = {};
       for (const name of names) {
-        test[name] = snapshot(document, name);
-        baseline[name] = snapshot(control, name);
         for (const property of properties) {
-          if (test[name][property] !== baseline[name][property]) {
+          if (actual[name][property] !== baseline[name][property]) {
             diffs.push({
               probe: name,
               property,
               expected: baseline[name][property],
-              actual: test[name][property],
+              actual: actual[name][property],
             });
           }
         }
@@ -145,10 +156,7 @@ function fixtureHtml(blocks) {
         'data-mkui-result',
         encodeURIComponent(JSON.stringify(result)),
       );
-    };
-    const frame = document.getElementById('control');
-    if (frame.contentDocument?.readyState === 'complete') finish();
-    else frame.addEventListener('load', finish, { once: true });
+    }));
   })();
   </script>
 </body>
@@ -203,7 +211,10 @@ test('production global CSS leaves native Etsy host controls unchanged', async (
     await writeFile(fixturePath, fixtureHtml(blocks), 'utf8');
     const dom = await runChrome(chrome, pathToFileURL(fixturePath).href);
     const encoded = dom.match(/data-mkui-result="([^"]+)"/)?.[1];
-    assert.ok(encoded, 'Browser fixture did not publish a CSS-isolation result.');
+    assert.ok(
+      encoded,
+      `Browser fixture did not publish a CSS-isolation result. DOM tail:\n${dom.slice(-1600)}`,
+    );
     const result = JSON.parse(decodeURIComponent(encoded.replaceAll('&amp;', '&')));
     assert.equal(
       result.pass,
@@ -211,6 +222,7 @@ test('production global CSS leaves native Etsy host controls unchanged', async (
       `Global MKUI CSS changed host controls:\n${JSON.stringify(result.diffs, null, 2)}`,
     );
     assert.equal(result.cssBlockCount, blocks.length);
+    assert.ok(result.styleSheetCount >= 1);
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
