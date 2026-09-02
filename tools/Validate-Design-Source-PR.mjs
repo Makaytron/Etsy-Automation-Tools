@@ -6,7 +6,7 @@ import process from 'node:process';
 
 export const UI_FILE_PATTERNS = Object.freeze([
   /^scripts\/.*\.user\.js$/,
-  /^shared\/mkui\//,
+  /^shared\/mkui\/.*\.(?:css|js|json)$/i,
   /^tools\/(?:Apply|Finalize)-Mkui-.*\.mjs$/i,
   /^tools\/Generate-Mkui-.*-Preview\.mjs$/i,
   /^docs\/design\/previews\/.*\.html$/i,
