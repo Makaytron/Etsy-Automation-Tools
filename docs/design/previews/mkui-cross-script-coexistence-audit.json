@@ -1,0 +1,1403 @@
+{
+  "schemaVersion": 2,
+  "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
+  "sourceDigest": "sha256:0967d901524656d7b788dfc03d7cb8d8b5f58ede1e830a945a00271086bd5082",
+  "status": "pass",
+  "summary": {
+    "scriptCount": 5,
+    "routeFixtureCount": 11,
+    "coexistencePairCount": 0,
+    "fixedSurfaceCount": 16,
+    "globalShortcutCount": 8,
+    "globalCssBodyCount": 14,
+    "failedAssertions": []
+  },
+  "assertions": {
+    "scriptCountIsFive": true,
+    "allMkuiVersionsMatch": true,
+    "telemetryIdsPresentAndExpected": true,
+    "telemetryIdsUnique": true,
+    "expectedShadowModesMatch": true,
+    "canonicalRoutesHaveSingleOwner": true,
+    "domIdsAreUnique": true,
+    "windowGlobalsAreUnique": true,
+    "namespacedCustomEventsAreUnique": true,
+    "cssPrefixesAreUnique": true,
+    "storageKeysOnlyShareIntentionalProtocols": true,
+    "globalCssHasNoGenericLeakage": true,
+    "zIndexesStayWithinBrowserLimit": true,
+    "coexistingFixedSurfacesDoNotShareAnchors": true,
+    "coexistingScriptsDoNotShareGlobalShortcuts": true,
+    "scrollLocksAreBalanced": true
+  },
+  "scripts": [
+    {
+      "id": "ads-keyword-manager",
+      "label": "Ads Keyword Manager",
+      "path": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
+      "bytes": 180365,
+      "lines": 3119,
+      "sha256": "1405363d15282da31cab73a39fa72d5a97ec81f52fa404c156f2073d602c8b0f",
+      "version": "1.0.4",
+      "mkuiVersion": "1.0.0",
+      "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "matches": [
+        "https://www.etsy.com/your/shops/me/advertising/listings/*"
+      ],
+      "runAt": "document-idle",
+      "grants": [
+        "GM.getValue",
+        "GM.setValue",
+        "GM.deleteValue",
+        "GM.addValueChangeListener",
+        "GM_info",
+        "GM_registerMenuCommand",
+        "GM_unregisterMenuCommand",
+        "GM_addElement",
+        "GM_xmlhttpRequest"
+      ],
+      "cssPrefixes": [
+        "maw-"
+      ],
+      "shadowModes": [],
+      "expectedShadowModes": [],
+      "domIds": [
+        "adWordlistPanelCollapsed",
+        "etsy-ads-keyword-manager",
+        "makaytron-ad-wordlist",
+        "makaytron-ad-wordlist-editor",
+        "makaytron-ad-wordlist-toasts",
+        "maw-editor-title",
+        "maw-rule-feedback"
+      ],
+      "classTokenCount": 79,
+      "classTokenSample": [
+        "maw-actions",
+        "maw-body",
+        "maw-brand",
+        "maw-brand-copy",
+        "maw-cancel-edit",
+        "maw-card",
+        "maw-chip",
+        "maw-collapsed-logo",
+        "maw-collapsed-tab",
+        "maw-editor-title",
+        "maw-field",
+        "maw-field-label",
+        "maw-footer",
+        "maw-footer-tools",
+        "maw-form-feedback",
+        "maw-form-grid",
+        "maw-grid",
+        "maw-head",
+        "maw-head-meta",
+        "maw-head-tools",
+        "maw-help",
+        "maw-icon-btn",
+        "maw-key",
+        "maw-label",
+        "maw-lang-btn",
+        "maw-logo",
+        "maw-logo-shell",
+        "maw-match-help",
+        "maw-modal",
+        "maw-modal-backdrop",
+        "maw-modal-body",
+        "maw-modal-brand",
+        "maw-modal-footer",
+        "maw-modal-head",
+        "maw-modal-logo",
+        "maw-modal-logo-shell",
+        "maw-modal-note",
+        "maw-modal-status",
+        "maw-modal-subtitle",
+        "maw-modal-title",
+        "maw-pill",
+        "maw-primary",
+        "maw-row-btn",
+        "maw-rule-actions",
+        "maw-rule-badge",
+        "maw-rule-empty",
+        "maw-rule-feedback",
+        "maw-rule-form",
+        "maw-rule-form-card",
+        "maw-rule-form-meta",
+        "maw-rule-input",
+        "maw-rule-list",
+        "maw-rule-list-card",
+        "maw-rule-row",
+        "maw-rule-search",
+        "maw-rule-search-wrap",
+        "maw-rule-select",
+        "maw-rule-submit",
+        "maw-rule-value",
+        "maw-secondary",
+        "maw-section-count",
+        "maw-section-head",
+        "maw-section-title",
+        "maw-status-card",
+        "maw-status-copy",
+        "maw-status-icon",
+        "maw-status-text",
+        "maw-status-title",
+        "maw-sub",
+        "maw-svg",
+        "maw-title",
+        "maw-toast",
+        "maw-update-banner",
+        "maw-update-install",
+        "maw-update-message",
+        "maw-value",
+        "maw-version",
+        "maw-warning",
+        "maw-wide"
+      ],
+      "windowGlobals": [],
+      "customEvents": {
+        "all": [],
+        "namespaced": [],
+        "standard": []
+      },
+      "telemetryScriptId": "etsy-ads-keyword-manager",
+      "storageKeys": [
+        "adKeywordManagerScriptUpdateState",
+        "adWordlist",
+        "etsy-ads-keyword-manager"
+      ],
+      "zIndexes": [
+        2,
+        2147483645,
+        2147483646,
+        2147483647
+      ],
+      "fixedSurfaces": [
+        {
+          "source": "direct-style-call",
+          "line": 1358,
+          "selector": "#makaytron-ad-wordlist",
+          "top": "86px",
+          "right": "18px",
+          "bottom": null,
+          "left": null,
+          "width": "372px",
+          "height": null,
+          "zIndex": 2147483645
+        },
+        {
+          "source": "direct-style-call",
+          "line": 1430,
+          "selector": "#makaytron-ad-wordlist-toasts",
+          "top": null,
+          "right": "18px",
+          "bottom": "18px",
+          "left": null,
+          "width": "390px",
+          "height": null,
+          "zIndex": 2147483647
+        },
+        {
+          "source": "direct-style-call",
+          "line": 1433,
+          "selector": ".maw-modal-backdrop",
+          "top": null,
+          "right": null,
+          "bottom": null,
+          "left": null,
+          "width": null,
+          "height": null,
+          "zIndex": 2147483646
+        }
+      ],
+      "globalShortcuts": [
+        {
+          "target": "document",
+          "line": 3064,
+          "key": "KeyK",
+          "modifiers": [
+            "Alt",
+            "Ctrl",
+            "Meta",
+            "Shift"
+          ],
+          "signature": "Alt+Ctrl+Meta+Shift+KeyK"
+        },
+        {
+          "target": "document",
+          "line": 3064,
+          "key": "Space",
+          "modifiers": [
+            "Alt",
+            "Ctrl",
+            "Meta",
+            "Shift"
+          ],
+          "signature": "Alt+Ctrl+Meta+Shift+Space"
+        }
+      ],
+      "scrollLockWrites": [],
+      "scrollLockBalance": {
+        "locks": 0,
+        "restores": 0,
+        "balanced": true
+      },
+      "cssIsolation": {
+        "bodies": [
+          {
+            "label": "direct-style-call",
+            "kind": "global",
+            "line": 1358,
+            "bytes": 18975,
+            "selectorCount": 144,
+            "unsafeSelectors": []
+          }
+        ],
+        "unsafeSelectors": []
+      }
+    },
+    {
+      "id": "keyword-market-analyzer",
+      "label": "Keyword & Market Analyzer",
+      "path": "scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js",
+      "bytes": 160918,
+      "lines": 3029,
+      "sha256": "8c648e6cb8338be46dfabc1cdf4eb1ec1bb8b5567b73b9dda1e911d54bebcb24",
+      "version": "1.0.4",
+      "mkuiVersion": "1.0.0",
+      "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "matches": [
+        "https://www.etsy.com/your/shops/*/marketplace-insights*"
+      ],
+      "runAt": "document-idle",
+      "grants": [
+        "GM.getValue",
+        "GM.setValue",
+        "GM.deleteValue",
+        "GM.addValueChangeListener",
+        "GM.xmlHttpRequest",
+        "GM.openInTab",
+        "GM.info",
+        "GM_registerMenuCommand"
+      ],
+      "cssPrefixes": [
+        "ekma-",
+        "ekma-inline"
+      ],
+      "shadowModes": [
+        "open"
+      ],
+      "expectedShadowModes": [
+        "open"
+      ],
+      "domIds": [
+        "ekma-inline-styles",
+        "ekma-research-json-help",
+        "etsy-keyword-market-analyzer",
+        "makaytron-etsy-keyword-market-analyzer"
+      ],
+      "classTokenCount": 14,
+      "classTokenSample": [
+        "ekma-deleted",
+        "ekma-inline",
+        "ekma-inline__brand",
+        "ekma-inline__grid",
+        "ekma-inline__metric",
+        "ekma-inline__metric--",
+        "ekma-inline__metric--opportunity",
+        "ekma-inline__metric--trend",
+        "ekma-inline__note",
+        "ekma-inline-styles",
+        "ekma-page",
+        "ekma-probe",
+        "ekma-research-json-help",
+        "ekma-tab"
+      ],
+      "windowGlobals": [
+        "__EKMA_TEST__"
+      ],
+      "customEvents": {
+        "all": [],
+        "namespaced": [],
+        "standard": []
+      },
+      "telemetryScriptId": "etsy-keyword-market-analyzer",
+      "storageKeys": [
+        "etsy-keyword-market-analyzer",
+        "makaytron-listing-research-request/v1",
+        "makaytron-listing-research-result/v1"
+      ],
+      "zIndexes": [
+        2,
+        2147483000,
+        2147483647
+      ],
+      "fixedSurfaces": [
+        {
+          "source": "innerHTML<style>",
+          "line": 2756,
+          "selector": ".launcher",
+          "top": "148px",
+          "right": "0",
+          "bottom": null,
+          "left": null,
+          "width": "62px",
+          "height": "52px",
+          "zIndex": 2147483000
+        },
+        {
+          "source": "innerHTML<style>",
+          "line": 2757,
+          "selector": ".panel",
+          "top": "12px",
+          "right": "12px",
+          "bottom": "12px",
+          "left": null,
+          "width": "min(440px,calc(100vw - 24px))",
+          "height": null,
+          "zIndex": 2147483000
+        }
+      ],
+      "globalShortcuts": [],
+      "scrollLockWrites": [],
+      "scrollLockBalance": {
+        "locks": 0,
+        "restores": 0,
+        "balanced": true
+      },
+      "cssIsolation": {
+        "bodies": [
+          {
+            "label": "style.textContent",
+            "kind": "global",
+            "line": 1702,
+            "bytes": 58,
+            "selectorCount": 2,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "style.textContent",
+            "kind": "global",
+            "line": 2010,
+            "bytes": 2402,
+            "selectorCount": 19,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "style.textContent",
+            "kind": "global",
+            "line": 2105,
+            "bytes": 97,
+            "selectorCount": 2,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "style.textContent",
+            "kind": "global",
+            "line": 2914,
+            "bytes": 33,
+            "selectorCount": 2,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "innerHTML<style>",
+            "kind": "shadow-or-local",
+            "line": 2755,
+            "bytes": 5826,
+            "selectorCount": 48,
+            "unsafeSelectors": []
+          }
+        ],
+        "unsafeSelectors": []
+      }
+    },
+    {
+      "id": "sale-manager",
+      "label": "Sale Manager",
+      "path": "scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js",
+      "bytes": 445896,
+      "lines": 7679,
+      "sha256": "1b7208f3aeb0a509556c088fddb07c1edc3ebff214700725abf19525a6d5c0f8",
+      "version": "1.0.13",
+      "mkuiVersion": "1.0.0",
+      "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "matches": [
+        "https://www.etsy.com/your/shops/me/sales-discounts*",
+        "https://etsy.com/your/shops/me/sales-discounts*"
+      ],
+      "runAt": "document-idle",
+      "grants": [
+        "GM.addStyle",
+        "GM.getValue",
+        "GM.setValue",
+        "GM.deleteValue",
+        "GM.addValueChangeListener",
+        "GM_addValueChangeListener",
+        "GM.registerMenuCommand",
+        "GM.xmlHttpRequest",
+        "GM.getResourceURL",
+        "GM.info"
+      ],
+      "cssPrefixes": [
+        "eda-"
+      ],
+      "shadowModes": [],
+      "expectedShadowModes": [],
+      "domIds": [
+        "eda-auto-resume",
+        "eda-batch-root",
+        "eda-batch-toast-root",
+        "eda-check-update",
+        "eda-collapse-panel",
+        "eda-config-start-date",
+        "eda-country",
+        "eda-discount",
+        "eda-duration",
+        "eda-end",
+        "eda-expand-panel",
+        "eda-install-update",
+        "eda-open-sale",
+        "eda-prefix",
+        "eda-report",
+        "eda-retry",
+        "eda-sale-campaign-panel-collapsed-v1",
+        "eda-settings",
+        "eda-skip",
+        "eda-start",
+        "eda-status-text",
+        "eda-stop",
+        "etsy-sale-manager",
+        "success-overlay",
+        "wt-modal-container",
+        "WtButton"
+      ],
+      "classTokenCount": 113,
+      "classTokenSample": [
+        "eda-about-actions",
+        "eda-about-card",
+        "eda-about-grid",
+        "eda-about-item",
+        "eda-actions",
+        "eda-auto-resume",
+        "eda-batch-config-v3",
+        "eda-batch-config-v4",
+        "eda-batch-job-v3",
+        "eda-batch-job-v4",
+        "eda-batch-lease-handoff-v4",
+        "eda-batch-lease-v4",
+        "eda-batch-mutex-v4",
+        "eda-batch-report-history-v4",
+        "eda-batch-report-v3",
+        "eda-batch-report-v4",
+        "eda-batch-root",
+        "eda-batch-tab-id-v4",
+        "eda-batch-toast-root",
+        "eda-batch-update-state-v1",
+        "eda-body",
+        "eda-brand",
+        "eda-brand-copy",
+        "eda-button-busy-spinner",
+        "eda-button-link",
+        "eda-button-spin",
+        "eda-card",
+        "eda-check-update",
+        "eda-chip",
+        "eda-collapse-head",
+        "eda-collapse-panel",
+        "eda-collapsed",
+        "eda-collapsed-tab",
+        "eda-config-start-date",
+        "eda-country",
+        "eda-danger",
+        "eda-discount",
+        "eda-duration",
+        "eda-end",
+        "eda-expand-panel",
+        "eda-field",
+        "eda-footer",
+        "eda-footer-link",
+        "eda-form-grid",
+        "eda-ghost",
+        "eda-grid",
+        "eda-head",
+        "eda-head-meta",
+        "eda-head-tools",
+        "eda-icon-button",
+        "eda-inline-link",
+        "eda-install-update",
+        "eda-label",
+        "eda-link-button",
+        "eda-logo",
+        "eda-logo-shell",
+        "eda-modal",
+        "eda-modal-backdrop",
+        "eda-modal-body",
+        "eda-modal-brand",
+        "eda-modal-footer",
+        "eda-modal-head",
+        "eda-modal-logo",
+        "eda-modal-logo-shell",
+        "eda-modal-subtitle",
+        "eda-modal-title",
+        "eda-note",
+        "eda-open-sale",
+        "eda-pill",
+        "eda-prefix",
+        "eda-primary",
+        "eda-progress-bar",
+        "eda-progress-head",
+        "eda-progress-track",
+        "eda-progress-wrap",
+        "eda-report",
+        "eda-report-backdrop",
+        "eda-report-body",
+        "eda-report-footer",
+        "eda-report-head",
+        "eda-report-title",
+        "eda-retry",
+        "eda-sale-batch-state-v4",
+        "eda-sale-batch-v4",
+        "eda-sale-campaign-panel-collapsed-v1",
+        "eda-secondary",
+        "eda-section-title",
+        "eda-settings",
+        "eda-skip",
+        "eda-start",
+        "eda-status",
+        "eda-status-",
+        "eda-status-card",
+        "eda-status-error",
+        "eda-status-icon",
+        "eda-status-stopped",
+        "eda-status-success",
+        "eda-status-text",
+        "eda-stop",
+        "eda-sub"
+      ],
+      "windowGlobals": [],
+      "customEvents": {
+        "all": [
+          "blur",
+          "change",
+          "input"
+        ],
+        "namespaced": [],
+        "standard": [
+          "blur",
+          "change",
+          "input"
+        ]
+      },
+      "telemetryScriptId": "etsy-sale-manager",
+      "storageKeys": [
+        "eda-batch-config-v3",
+        "eda-batch-config-v4",
+        "eda-batch-report-history-v4",
+        "eda-batch-update-state-v1",
+        "eda-sale-batch-state-v4",
+        "etsy-sale-manager"
+      ],
+      "zIndexes": [
+        1,
+        2147483645,
+        2147483646,
+        2147483647
+      ],
+      "fixedSurfaces": [
+        {
+          "source": "direct-style-call",
+          "line": 844,
+          "selector": "#eda-batch-root",
+          "top": "86px",
+          "right": "18px",
+          "bottom": null,
+          "left": null,
+          "width": "372px",
+          "height": null,
+          "zIndex": 2147483645
+        },
+        {
+          "source": "direct-style-call",
+          "line": 925,
+          "selector": "#eda-batch-toast-root",
+          "top": null,
+          "right": "18px",
+          "bottom": "18px",
+          "left": null,
+          "width": "390px",
+          "height": null,
+          "zIndex": 2147483647
+        },
+        {
+          "source": "direct-style-call",
+          "line": 928,
+          "selector": ".eda-modal-backdrop,.eda-report-backdrop",
+          "top": null,
+          "right": null,
+          "bottom": null,
+          "left": null,
+          "width": null,
+          "height": null,
+          "zIndex": 2147483646
+        }
+      ],
+      "globalShortcuts": [
+        {
+          "target": "document",
+          "line": 7592,
+          "key": "e",
+          "modifiers": [
+            "Alt",
+            "Shift"
+          ],
+          "signature": "Alt+Shift+e"
+        },
+        {
+          "target": "document",
+          "line": 7592,
+          "key": "r",
+          "modifiers": [
+            "Alt",
+            "Shift"
+          ],
+          "signature": "Alt+Shift+r"
+        },
+        {
+          "target": "document",
+          "line": 7592,
+          "key": "u",
+          "modifiers": [
+            "Alt",
+            "Shift"
+          ],
+          "signature": "Alt+Shift+u"
+        }
+      ],
+      "scrollLockWrites": [],
+      "scrollLockBalance": {
+        "locks": 0,
+        "restores": 0,
+        "balanced": true
+      },
+      "cssIsolation": {
+        "bodies": [
+          {
+            "label": "direct-style-call",
+            "kind": "global",
+            "line": 844,
+            "bytes": 16807,
+            "selectorCount": 136,
+            "unsafeSelectors": []
+          }
+        ],
+        "unsafeSelectors": []
+      }
+    },
+    {
+      "id": "message-assistant",
+      "label": "Message Assistant",
+      "path": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
+      "bytes": 831381,
+      "lines": 12821,
+      "sha256": "513ea9c1b834bf53a241271933d9162031407d9f01aada807a3eb6d7cc1c910b",
+      "version": "1.2.9",
+      "mkuiVersion": "1.0.0",
+      "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "matches": [
+        "https://www.etsy.com/messages*",
+        "https://www.etsy.com/messages/*",
+        "https://www.etsy.com/conversations*",
+        "https://www.etsy.com/conversations/*",
+        "https://www.etsy.com/your/orders/sold*",
+        "https://www.etsy.com/your/shops/*/dashboard*"
+      ],
+      "runAt": "document-end",
+      "grants": [
+        "GM.getValue",
+        "GM.setValue",
+        "GM.deleteValue",
+        "GM.addValueChangeListener",
+        "GM.registerMenuCommand",
+        "GM.xmlHttpRequest",
+        "GM.addStyle",
+        "GM.getResourceURL",
+        "GM.openInTab",
+        "GM.info",
+        "GM_addValueChangeListener"
+      ],
+      "cssPrefixes": [
+        "ma-",
+        "mema-",
+        "mkui-"
+      ],
+      "shadowModes": [
+        "closed"
+      ],
+      "expectedShadowModes": [
+        "closed"
+      ],
+      "domIds": [
+        "etsy-message-assistant",
+        "ma-i-alert",
+        "ma-i-check",
+        "ma-i-close",
+        "ma-i-copy",
+        "ma-i-download",
+        "ma-i-edit",
+        "ma-i-expand",
+        "ma-i-file",
+        "ma-i-globe",
+        "ma-i-history",
+        "ma-i-message",
+        "ma-i-plus",
+        "ma-i-refresh",
+        "ma-i-send",
+        "ma-i-settings",
+        "ma-i-star",
+        "ma-i-trash",
+        "ma-message-list-language",
+        "ma-orders-method",
+        "ma-orders-template",
+        "ma-provider-models",
+        "mema-app-panel"
+      ],
+      "classTokenCount": 221,
+      "classTokenSample": [
+        "ma-actions",
+        "ma-actions--end",
+        "ma-app",
+        "ma-app--fullscreen",
+        "ma-app--message",
+        "ma-app--wide",
+        "ma-automation-dot",
+        "ma-automation-hero",
+        "ma-automation-hero__copy",
+        "ma-automation-hero__eyebrow",
+        "ma-automation-hero__footer",
+        "ma-automation-hero__metrics",
+        "ma-automation-hero__top",
+        "ma-automation-metric",
+        "ma-automation-options",
+        "ma-avatar",
+        "ma-brand",
+        "ma-brand__logo",
+        "ma-brand__mark",
+        "ma-brand__text",
+        "ma-brand__title",
+        "ma-brand__version",
+        "ma-btn",
+        "ma-btn--block",
+        "ma-btn--danger",
+        "ma-btn--primary",
+        "ma-btn--small",
+        "ma-busy",
+        "ma-busy-status",
+        "ma-card",
+        "ma-card__body",
+        "ma-card__foot",
+        "ma-card__head",
+        "ma-check",
+        "ma-code",
+        "ma-config-actions",
+        "ma-customer",
+        "ma-disclosure",
+        "ma-disclosure__body",
+        "ma-editor-disclosure",
+        "ma-empty",
+        "ma-empty__inner",
+        "ma-empty-inline",
+        "ma-field",
+        "ma-field__hint",
+        "ma-grid",
+        "ma-grid--2",
+        "ma-grid--3",
+        "ma-header",
+        "ma-header__spacer",
+        "ma-hidden",
+        "ma-i-",
+        "ma-i-alert",
+        "ma-i-check",
+        "ma-i-close",
+        "ma-i-copy",
+        "ma-i-download",
+        "ma-i-edit",
+        "ma-i-expand",
+        "ma-i-file",
+        "ma-i-globe",
+        "ma-i-history",
+        "ma-i-message",
+        "ma-i-plus",
+        "ma-i-refresh",
+        "ma-i-send",
+        "ma-i-settings",
+        "ma-i-star",
+        "ma-i-trash",
+        "ma-icon",
+        "ma-icon--sm",
+        "ma-icon-btn",
+        "ma-inline-code",
+        "ma-input",
+        "ma-insight-row",
+        "ma-insight-row__summary",
+        "ma-kv",
+        "ma-kv__label",
+        "ma-kv__value",
+        "ma-label-row",
+        "ma-launcher",
+        "ma-launcher__action",
+        "ma-launcher__copy",
+        "ma-launcher__mark",
+        "ma-launcher__state",
+        "ma-launcher__title",
+        "ma-link-btn",
+        "ma-list",
+        "ma-list-item",
+        "ma-list-item__body",
+        "ma-list-item__desc",
+        "ma-list-item__title",
+        "ma-logo-img",
+        "ma-main",
+        "ma-main-actions",
+        "ma-message-box",
+        "ma-message-box--accent",
+        "ma-message-contact",
+        "ma-message-contact__copy",
+        "ma-message-contact__meta"
+      ],
+      "windowGlobals": [
+        "__MAKAYTRON_ETSY_MESSAGE_ASSISTANT__"
+      ],
+      "customEvents": {
+        "all": [
+          "change",
+          "mema:route"
+        ],
+        "namespaced": [
+          "mema:route"
+        ],
+        "standard": [
+          "change"
+        ]
+      },
+      "telemetryScriptId": "etsy-message-assistant",
+      "storageKeys": [
+        "etsy-message-assistant",
+        "Merhaba {{firstName}}! 🌿\\n\\n{{itemTitle}} siparişinizin size güvenle ulaştığını ve keyifle kullandığınızı umuyorum. Yeni ve küçük bir işletme olarak, vaktiniz olduğunda deneyiminizi anlatan dürüst bir Etsy yorumu paylaşmanız benim için çok değerli. Geri bildiriminiz mağazamın gelişmesine ve diğer müşterilerin daha güvenle karar vermesine yardımcı olur; elbette hiçbir zorunluluk yok.\\n\\nÜrünle ilgili herhangi bir sorun veya sorunuz varsa buradan bana yazabilirsiniz; memnuniyetle yardımcı olurum.\\n\\n{{signature}}",
+        "unavailable"
+      ],
+      "zIndexes": [
+        1,
+        4,
+        2147483646,
+        2147483647
+      ],
+      "fixedSurfaces": [
+        {
+          "source": "GLOBAL_CSS",
+          "line": 1199,
+          "selector": ".mema-notify",
+          "top": "16px",
+          "right": null,
+          "bottom": null,
+          "left": "50%",
+          "width": "min(360px,calc(100vw - 32px))",
+          "height": null,
+          "zIndex": 2147483647
+        },
+        {
+          "source": "GLOBAL_CSS",
+          "line": 1199,
+          "selector": ".mema-copy-buffer",
+          "top": null,
+          "right": null,
+          "bottom": null,
+          "left": null,
+          "width": "1px!important",
+          "height": "1px!important",
+          "zIndex": null
+        },
+        {
+          "source": "innerHTML<style>",
+          "line": 10948,
+          "selector": ".ma-launcher",
+          "top": null,
+          "right": "var(--ma-s5)",
+          "bottom": "var(--ma-s5)",
+          "left": null,
+          "width": "62px",
+          "height": "52px",
+          "zIndex": 2147483646
+        },
+        {
+          "source": "innerHTML<style>",
+          "line": 10948,
+          "selector": ".ma-app",
+          "top": "var(--ma-s3)",
+          "right": "var(--ma-s3)",
+          "bottom": "var(--ma-s3)",
+          "left": null,
+          "width": "min(620px,calc(100vw - 24px))",
+          "height": null,
+          "zIndex": 2147483647
+        }
+      ],
+      "globalShortcuts": [],
+      "scrollLockWrites": [],
+      "scrollLockBalance": {
+        "locks": 0,
+        "restores": 0,
+        "balanced": true
+      },
+      "cssIsolation": {
+        "bodies": [
+          {
+            "label": "GLOBAL_CSS",
+            "kind": "global",
+            "line": 1199,
+            "bytes": 4451,
+            "selectorCount": 31,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "style.textContent",
+            "kind": "global",
+            "line": 4854,
+            "bytes": 106,
+            "selectorCount": 2,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "style.textContent",
+            "kind": "global",
+            "line": 11249,
+            "bytes": 41,
+            "selectorCount": 1,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "innerHTML<style>",
+            "kind": "shadow-or-local",
+            "line": 10948,
+            "bytes": 30464,
+            "selectorCount": 292,
+            "unsafeSelectors": []
+          }
+        ],
+        "unsafeSelectors": []
+      }
+    },
+    {
+      "id": "listing-analyzer",
+      "label": "Listing Analyzer",
+      "path": "scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js",
+      "bytes": 822268,
+      "lines": 10517,
+      "sha256": "cf6c8e4b884a6a76d59b0f12e2857978ebfea1713de595f0be49363f588ee9f0",
+      "version": "1.2.3",
+      "mkuiVersion": "1.0.0",
+      "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "matches": [
+        "https://www.etsy.com/your/shops/*/tools/listings*",
+        "https://www.etsy.com/your/shops/*/listing-editor/edit/*"
+      ],
+      "runAt": "document-idle",
+      "grants": [
+        "GM.getValue",
+        "GM.setValue",
+        "GM.deleteValue",
+        "GM.addValueChangeListener",
+        "GM.xmlHttpRequest",
+        "GM.openInTab",
+        "GM_info",
+        "GM_registerMenuCommand",
+        "GM_unregisterMenuCommand"
+      ],
+      "cssPrefixes": [
+        "meli-"
+      ],
+      "shadowModes": [
+        "open"
+      ],
+      "expectedShadowModes": [
+        "open"
+      ],
+      "domIds": [
+        "etsy-listing-analyzer",
+        "field-materials",
+        "field-tags",
+        "listing-description-textarea",
+        "listing-quantity-input",
+        "listing-sku-input",
+        "listing-title-input",
+        "makaytron-etsy-listing-analyzer",
+        "meli-ai-feedback",
+        "meli-ai-format-help",
+        "meli-ai-json",
+        "WtAnnouncement",
+        "WtBadge"
+      ],
+      "classTokenCount": 172,
+      "classTokenSample": [
+        "meli-actions",
+        "meli-ai-comparisons",
+        "meli-ai-feedback",
+        "meli-ai-format-help",
+        "meli-ai-json",
+        "meli-ai-layout",
+        "meli-analysis-card",
+        "meli-analysis-controls",
+        "meli-analysis-gate",
+        "meli-analysis-gate-icon",
+        "meli-analysis-gate-inner",
+        "meli-analysis-gate-progress",
+        "meli-analysis-gate-shortcut",
+        "meli-analysis-search",
+        "meli-backup-preview",
+        "meli-badge",
+        "meli-brand",
+        "meli-brand-logo",
+        "meli-btn",
+        "meli-bulk-bar",
+        "meli-calibration",
+        "meli-card",
+        "meli-card-action",
+        "meli-card-body",
+        "meli-card-confidence",
+        "meli-card-head",
+        "meli-card-health",
+        "meli-card-identity",
+        "meli-card-insight",
+        "meli-card-meta",
+        "meli-card-select",
+        "meli-card-status",
+        "meli-card-thumb",
+        "meli-chart",
+        "meli-chart-empty",
+        "meli-chart-grid",
+        "meli-chart-gridline",
+        "meli-chart-head",
+        "meli-chart-line",
+        "meli-chart-point",
+        "meli-chart-quality",
+        "meli-check",
+        "meli-collection-card",
+        "meli-collection-head",
+        "meli-collection-meta",
+        "meli-collection-track",
+        "meli-confidence-list",
+        "meli-confidence-row",
+        "meli-confidence-track",
+        "meli-conflict-warning",
+        "meli-detail-card",
+        "meli-diff-card",
+        "meli-diff-columns",
+        "meli-diff-field",
+        "meli-diff-fields",
+        "meli-diff-head",
+        "meli-diff-value",
+        "meli-empty",
+        "meli-evidence",
+        "meli-experiment-dot",
+        "meli-experiment-event",
+        "meli-experiment-timeline",
+        "meli-feedback",
+        "meli-feedback-form",
+        "meli-field",
+        "meli-field-head",
+        "meli-field-toggle",
+        "meli-filter-drawer",
+        "meli-filter-toggle",
+        "meli-form-card",
+        "meli-form-grid",
+        "meli-grid",
+        "meli-head",
+        "meli-head-actions",
+        "meli-health-cap",
+        "meli-health-context",
+        "meli-health-detail",
+        "meli-health-diagnosis",
+        "meli-health-summary",
+        "meli-health-trigger",
+        "meli-hidden-selected",
+        "meli-history",
+        "meli-history-item",
+        "meli-history-metrics",
+        "meli-icon",
+        "meli-import-zone",
+        "meli-input",
+        "meli-insight-icon",
+        "meli-install-url",
+        "meli-lang",
+        "meli-launcher",
+        "meli-launcher-logo",
+        "meli-listing-card",
+        "meli-listing-card-foot",
+        "meli-listing-card-head",
+        "meli-listing-list",
+        "meli-load-more",
+        "meli-logo",
+        "meli-logo-link",
+        "meli-main"
+      ],
+      "windowGlobals": [
+        "__MELI_TEST__"
+      ],
+      "customEvents": {
+        "all": [
+          "blur",
+          "change",
+          "input"
+        ],
+        "namespaced": [],
+        "standard": [
+          "blur",
+          "change",
+          "input"
+        ]
+      },
+      "telemetryScriptId": "etsy-listing-analyzer",
+      "storageKeys": [
+        "etsy-listing-analyzer",
+        "makaytron-listing-analyzer:storage-mutation",
+        "makaytron-listing-research-request/v1",
+        "makaytron-listing-research-result/v1"
+      ],
+      "zIndexes": [
+        1,
+        2,
+        2147483645,
+        2147483646,
+        2147483647
+      ],
+      "fixedSurfaces": [
+        {
+          "source": "innerHTML<style>",
+          "line": 7681,
+          "selector": ".meli-launcher",
+          "top": "148px",
+          "right": "0",
+          "bottom": null,
+          "left": null,
+          "width": "62px",
+          "height": "52px",
+          "zIndex": 2147483645
+        },
+        {
+          "source": "innerHTML<style>",
+          "line": 7682,
+          "selector": ".meli-panel",
+          "top": "12px",
+          "right": "12px",
+          "bottom": "12px",
+          "left": null,
+          "width": "min(620px,calc(100vw - 24px))",
+          "height": "1.45",
+          "zIndex": 2147483645
+        },
+        {
+          "source": "innerHTML<style>",
+          "line": 7695,
+          "selector": ".meli-overlay",
+          "top": null,
+          "right": null,
+          "bottom": null,
+          "left": null,
+          "width": null,
+          "height": null,
+          "zIndex": 2147483646
+        },
+        {
+          "source": "innerHTML<style>",
+          "line": 7696,
+          "selector": ".meli-toast-root",
+          "top": "16px",
+          "right": null,
+          "bottom": null,
+          "left": "50%",
+          "width": "min(360px,calc(100vw - 32px))",
+          "height": null,
+          "zIndex": 2147483647
+        }
+      ],
+      "globalShortcuts": [
+        {
+          "target": "document",
+          "line": 10350,
+          "key": "Escape",
+          "modifiers": [
+            "Alt",
+            "Ctrl",
+            "Meta",
+            "Shift"
+          ],
+          "signature": "Alt+Ctrl+Meta+Shift+Escape"
+        },
+        {
+          "target": "document",
+          "line": 10350,
+          "key": "KeyA",
+          "modifiers": [
+            "Alt",
+            "Ctrl",
+            "Meta",
+            "Shift"
+          ],
+          "signature": "Alt+Ctrl+Meta+Shift+KeyA"
+        },
+        {
+          "target": "document",
+          "line": 10350,
+          "key": "KeyL",
+          "modifiers": [
+            "Alt",
+            "Ctrl",
+            "Meta",
+            "Shift"
+          ],
+          "signature": "Alt+Ctrl+Meta+Shift+KeyL"
+        }
+      ],
+      "scrollLockWrites": [],
+      "scrollLockBalance": {
+        "locks": 0,
+        "restores": 0,
+        "balanced": true
+      },
+      "cssIsolation": {
+        "bodies": [
+          {
+            "label": "style.textContent",
+            "kind": "global",
+            "line": 8050,
+            "bytes": 52,
+            "selectorCount": 2,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "style.textContent",
+            "kind": "global",
+            "line": 9159,
+            "bytes": 76,
+            "selectorCount": 3,
+            "unsafeSelectors": []
+          },
+          {
+            "label": "innerHTML<style>",
+            "kind": "shadow-or-local",
+            "line": 7679,
+            "bytes": 49073,
+            "selectorCount": 418,
+            "unsafeSelectors": []
+          }
+        ],
+        "unsafeSelectors": []
+      }
+    }
+  ],
+  "matrices": {
+    "routeOwnership": [
+      {
+        "owner": "ads-keyword-manager",
+        "url": "https://www.etsy.com/your/shops/me/advertising/listings/1234567890",
+        "matchedScripts": [
+          "ads-keyword-manager"
+        ]
+      },
+      {
+        "owner": "keyword-market-analyzer",
+        "url": "https://www.etsy.com/your/shops/example-shop/marketplace-insights?ref=dashboard",
+        "matchedScripts": [
+          "keyword-market-analyzer"
+        ]
+      },
+      {
+        "owner": "sale-manager",
+        "url": "https://www.etsy.com/your/shops/me/sales-discounts?ref=seller-platform",
+        "matchedScripts": [
+          "sale-manager"
+        ]
+      },
+      {
+        "owner": "sale-manager",
+        "url": "https://etsy.com/your/shops/me/sales-discounts",
+        "matchedScripts": [
+          "sale-manager"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/messages",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/messages/123456789",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/conversations/123456789",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/your/orders/sold?ref=seller-platform",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "message-assistant",
+        "url": "https://www.etsy.com/your/shops/example-shop/dashboard",
+        "matchedScripts": [
+          "message-assistant"
+        ]
+      },
+      {
+        "owner": "listing-analyzer",
+        "url": "https://www.etsy.com/your/shops/example-shop/tools/listings?ref=seller-platform",
+        "matchedScripts": [
+          "listing-analyzer"
+        ]
+      },
+      {
+        "owner": "listing-analyzer",
+        "url": "https://www.etsy.com/your/shops/example-shop/listing-editor/edit/1234567890",
+        "matchedScripts": [
+          "listing-analyzer"
+        ]
+      }
+    ],
+    "coexistencePairs": [],
+    "domIdCollisions": [],
+    "windowGlobalCollisions": [],
+    "namespacedCustomEventCollisions": [],
+    "cssPrefixCollisions": [],
+    "storageKeyCollisions": [
+      {
+        "value": "makaytron-listing-research-request/v1",
+        "scripts": [
+          "keyword-market-analyzer",
+          "listing-analyzer"
+        ]
+      },
+      {
+        "value": "makaytron-listing-research-result/v1",
+        "scripts": [
+          "keyword-market-analyzer",
+          "listing-analyzer"
+        ]
+      }
+    ],
+    "unexpectedStorageCollisions": [],
+    "telemetryCollisions": [],
+    "fixedSurfaceCollisions": [],
+    "globalShortcutCollisions": [],
+    "unsafeGlobalCssSelectors": [],
+    "unbalancedScrollLocks": []
+  }
+}

@@ -1,0 +1,124 @@
+name: MKUI Cross-script Integration CI
+
+on:
+  push:
+    branches:
+      - main
+      - automation/mkui-cross-script-qa-v1
+    paths:
+      - .github/workflows/mkui-cross-script-ci.yml
+      - tools/Mkui-Production-Registry.mjs
+      - tools/Audit-Mkui-Cross-Script-Coexistence.mjs
+      - tools/Test-Mkui-Cross-Script-Coexistence.mjs
+      - tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs
+      - docs/design/previews/mkui-cross-script-coexistence-audit.json
+      - shared/mkui/**
+      - scripts/**/*.user.js
+  pull_request:
+    paths:
+      - .github/workflows/mkui-cross-script-ci.yml
+      - tools/Mkui-Production-Registry.mjs
+      - tools/Audit-Mkui-Cross-Script-Coexistence.mjs
+      - tools/Test-Mkui-Cross-Script-Coexistence.mjs
+      - tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs
+      - docs/design/previews/mkui-cross-script-coexistence-audit.json
+      - shared/mkui/**
+      - scripts/**/*.user.js
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mkui-cross-script-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate all MKUI production surfaces together
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          $files = @(
+              'tools/Mkui-Production-Registry.mjs'
+              'tools/Audit-Mkui-Cross-Script-Coexistence.mjs'
+              'tools/Test-Mkui-Cross-Script-Coexistence.mjs'
+              'tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs'
+          )
+          foreach ($file in $files) {
+              node --check $file
+              if ($LASTEXITCODE -ne 0) {
+                  throw "JavaScript syntax validation failed: $file"
+              }
+          }
+
+      - name: Check changed lines for whitespace errors
+        shell: pwsh
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_HEAD_SHA: ${{ github.sha }}
+          GH_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if ($env:GH_EVENT_NAME -eq 'pull_request') {
+              git diff --check $env:GH_PR_BASE_SHA $env:GH_HEAD_SHA
+          }
+          elseif ($env:GH_EVENT_NAME -eq 'push' -and $env:GH_PUSH_BEFORE -notmatch '^0+$') {
+              git diff --check $env:GH_PUSH_BEFORE $env:GH_HEAD_SHA
+          }
+          else {
+              git show --check --format= $env:GH_HEAD_SHA
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Whitespace validation failed.' }
+
+      - name: Verify committed coexistence audit is current
+        run: node tools/Audit-Mkui-Cross-Script-Coexistence.mjs --check
+
+      - name: Run permanent cross-script coexistence tests
+        run: node --test tools/Test-Mkui-Cross-Script-Coexistence.mjs
+
+      - name: Verify host-page CSS isolation in real Chrome
+        run: node --test tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs
+
+      - name: Run all focused behavior and MKUI invariant suites
+        shell: pwsh
+        run: |
+          $tests = @(
+              'tools/Test-Ads-Keyword-Manager.mjs'
+              'tools/Test-Keyword-Market-Analyzer.mjs'
+              'tools/Test-Sale-Manager.mjs'
+              'tools/Test-Mkui-Message-Assistant.mjs'
+              'tools/Test-Message-Assistant.mjs'
+              'tools/Test-Mkui-Listing-Analyzer.mjs'
+              'tools/Test-Listing-Analyzer.mjs'
+              'tools/Test-Updaters.mjs'
+          )
+          foreach ($test in $tests) {
+              node --test $test
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Regression suite failed: $test"
+              }
+          }
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1

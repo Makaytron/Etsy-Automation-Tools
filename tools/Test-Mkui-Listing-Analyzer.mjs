@@ -143,6 +143,7 @@ test('Listing Analyzer documentation and migration status are synchronized', () 
   const plan = read('docs/design/MIGRATION-PLAN.md');
   const designContract = read('docs/design/MKUI-DESIGN-CONTRACT-v1.md');
   const scriptContract = read('docs/design/contracts/listing-analyzer.md');
+  const crossScriptContract = read('docs/design/MKUI-CROSS-SCRIPT-QA.md');
 
   assert.match(readmeTr, /\*\*Sürüm:\*\* 1\.2\.3/);
   assert.match(readmeEn, /Version: `1\.2\.3`/);
@@ -154,7 +155,14 @@ test('Listing Analyzer documentation and migration status are synchronized', () 
   assert.match(rootTr, /Listing Analyzer `v1\.2\.3`/);
   assert.match(changelog, /## 1\.2\.3 - 2026-09-02/);
   assert.match(plan, /\[x\] Listing Analyzer MKUI migration \(`1\.2\.3`, MKUI `1\.0\.0`\)/);
-  assert.match(plan, /\[ \] Cross-script integration QA — ACTIVE/);
+  assert.match(plan, /\[x\] Cross-script integration QA/);
+  assert.match(plan, /\[x\] MKUI bundle\/version and presentation drift CI/);
+  assert.match(plan, /## Phase 8 — Cross-script QA — COMPLETE/);
+  assert.match(plan, /## Phase 9 — Drift protection — COMPLETE/);
+  assert.match(crossScriptContract, /Status: \*\*complete\*\*/);
+  assert.match(crossScriptContract, /Listing Analyzer/);
+  assert.match(crossScriptContract, /\.github\/workflows\/mkui-cross-script-ci\.yml/);
+  assert.match(crossScriptContract, /\.github\/workflows\/mkui-drift-ci\.yml/);
   assert.match(designContract, /All five production userscripts are migrated to MKUI v1/);
   assert.match(scriptContract, /Version: `1\.2\.3`/);
   assert.match(scriptContract, /Migration status: `MKUI v1 complete`/);

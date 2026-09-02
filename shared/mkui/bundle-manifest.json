@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "tools/Build-Mkui-Bundle-Manifest.mjs",
+  "mkuiVersion": "1.0.0",
+  "canonicalBundle": {
+    "files": [
+      "shared/mkui/constants.js",
+      "shared/mkui/tokens.css",
+      "shared/mkui/primitives.css",
+      "shared/mkui/shells.css"
+    ],
+    "hash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+    "bytes": 8532,
+    "lines": 130
+  },
+  "scripts": [
+    {
+      "id": "ads-keyword-manager",
+      "path": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
+      "scriptVersion": "1.0.4",
+      "mkuiVersion": "1.0.0",
+      "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "presentationHash": "sha256:ef3e965d6b3dc21a2377a026866716712abad568d4822fc81572a9ce993e6cbd",
+      "presentationBytes": 25217,
+      "presentationFragmentCount": 1,
+      "presentationMarkerLineCount": 177
+    },
+    {
+      "id": "keyword-market-analyzer",
+      "path": "scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js",
+      "scriptVersion": "1.0.4",
+      "mkuiVersion": "1.0.0",
+      "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "presentationHash": "sha256:eee30ae08d92937916969ff8a997fee64766dc2468ab135a76f1ac3249eeece0",
+      "presentationBytes": 14887,
+      "presentationFragmentCount": 2,
+      "presentationMarkerLineCount": 43
+    },
+    {
+      "id": "sale-manager",
+      "path": "scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js",
+      "scriptVersion": "1.0.13",
+      "mkuiVersion": "1.0.0",
+      "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "presentationHash": "sha256:5523e67e7e5f8cd5c9fabe4c7165abaf0c65c18d445864f5e2ff2e74de5472e2",
+      "presentationBytes": 26509,
+      "presentationFragmentCount": 1,
+      "presentationMarkerLineCount": 187
+    },
+    {
+      "id": "message-assistant",
+      "path": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
+      "scriptVersion": "1.2.9",
+      "mkuiVersion": "1.0.0",
+      "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "presentationHash": "sha256:4cab14847e07535ba3ea2c3e899723615d04b2548789a9c81e1890adc255449f",
+      "presentationBytes": 104998,
+      "presentationFragmentCount": 6,
+      "presentationMarkerLineCount": 217
+    },
+    {
+      "id": "listing-analyzer",
+      "path": "scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js",
+      "scriptVersion": "1.2.3",
+      "mkuiVersion": "1.0.0",
+      "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
+      "presentationHash": "sha256:e56d4c2e3cf84d42f922b05a792f634174a23aa1a3b4ed806597c4353cff1bd2",
+      "presentationBytes": 98303,
+      "presentationFragmentCount": 2,
+      "presentationMarkerLineCount": 202
+    }
+  ],
+  "exceptions": []
+}
