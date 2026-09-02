@@ -1,0 +1,74 @@
+name: Apply Design Source Lock
+
+on:
+  push:
+    branches:
+      - docs/design-source-lock-v1
+    paths:
+      - .github/workflows/apply-design-source-lock.yml
+      - tools/Apply-Design-Source-Lock.mjs
+      - tools/Test-Design-Source-Lock.mjs
+      - docs/design/DESIGN-SOURCE-LOCK.md
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-design-source-lock-v1
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    name: Apply and verify normative design rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out policy branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Validate guarded patcher
+        run: node --check tools/Apply-Design-Source-Lock.mjs
+
+      - name: Apply design-source lock
+        run: node tools/Apply-Design-Source-Lock.mjs --write
+
+      - name: Verify source lock and idempotency
+        run: |
+          node --test tools/Test-Design-Source-Lock.mjs
+          output="$(node tools/Apply-Design-Source-Lock.mjs)"
+          printf '%s\n' "$output"
+          printf '%s' "$output" | grep -F 'Design source lock is already applied.'
+          git diff --check
+
+      - name: Commit updated documentation and review rules
+        run: |
+          set -euo pipefail
+          paths=(
+            README.md
+            README.tr.md
+            .github/CONTRIBUTING.md
+            .github/PULL_REQUEST_TEMPLATE.md
+            docs/design/MKUI-DESIGN-CONTRACT-v1.md
+            docs/design/SHADCNSTORE-REFERENCE-CATALOG.md
+            docs/design/MIGRATION-PLAN.md
+            shared/mkui/README.md
+          )
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- "${paths[@]}"
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo 'Design source lock is already committed.'
+            exit 0
+          fi
+          git commit -m 'docs: lock UI work to approved design sources'
+          git push origin HEAD:docs/design-source-lock-v1
