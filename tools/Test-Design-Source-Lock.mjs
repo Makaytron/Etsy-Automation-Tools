@@ -18,6 +18,7 @@ const PUBLIC_AND_NORMATIVE_FILES = Object.freeze([
   '.github/CONTRIBUTING.md',
   '.github/PULL_REQUEST_TEMPLATE.md',
   'docs/design/DESIGN-SOURCE-LOCK.md',
+  'docs/design/MKUI-STRICT-DESIGN-SOURCE-RULES.md',
   'docs/design/MKUI-DESIGN-CONTRACT-v1.md',
   'docs/design/SHADCNSTORE-REFERENCE-CATALOG.md',
 ]);
@@ -46,6 +47,18 @@ test('the normative policy forbids invented anatomy and requires registered trac
   assert.match(policy, /All toast, snackbar and transient-notification work must be based on `Toast-01`/i);
 });
 
+test('the strict review rules defer to the complete policy and registry', async () => {
+  const strict = await text('docs/design/MKUI-STRICT-DESIGN-SOURCE-RULES.md');
+  assert.match(strict, /DESIGN-SOURCE-LOCK\.md/);
+  assert.match(strict, /DESIGN-SOURCE-REGISTRY\.json/);
+  assert.match(strict, /machine-readable allowlist/i);
+  assert.match(strict, /at least one registered `template\.\*` id/i);
+  assert.match(strict, /cite `shadcn\.dashboard\.applied`/i);
+  assert.match(strict, /cite at least one exact registered `shadcn\.blocks\.\*` family id/i);
+  assert.match(strict, /toast\.container/);
+  assert.match(strict, /Unknown ids, mismatched paths, generic ShadcnStore references/i);
+});
+
 test('the pull request template makes registered source mapping reviewable', async () => {
   const template = await text('.github/PULL_REQUEST_TEMPLATE.md');
   assert.match(template, /## Design-source compliance \/ Tasarım kaynağı uyumu/);
@@ -69,8 +82,10 @@ test('MKUI rules make Toast-01 mandatory without adding a userscript runtime dep
 
 test('the registry is linked from the normative policy and MKUI documentation', async () => {
   const policy = await text('docs/design/DESIGN-SOURCE-LOCK.md');
+  const strict = await text('docs/design/MKUI-STRICT-DESIGN-SOURCE-RULES.md');
   const mkuiReadme = await text('shared/mkui/README.md');
   assert.match(policy, /DESIGN-SOURCE-REGISTRY\.json/);
+  assert.match(strict, /DESIGN-SOURCE-REGISTRY\.json/);
   assert.match(mkuiReadme, /DESIGN-SOURCE-REGISTRY\.json/);
   await readFile(resolve(ROOT, 'docs/design/DESIGN-SOURCE-REGISTRY.json'), 'utf8');
   await readFile(resolve(ROOT, 'tools/Design-Source-Registry.mjs'), 'utf8');
@@ -82,6 +97,8 @@ test('English and Turkish READMEs expose the source lock before screenshot galle
   const turkish = await text('README.tr.md');
   assert.ok(english.indexOf('## Mandatory design sources') < english.indexOf('## Synthetic panel galleries'));
   assert.ok(turkish.indexOf('## Zorunlu tasarım kaynakları') < turkish.indexOf('## Sentetik panel galerileri'));
+  assert.match(english, /DESIGN-SOURCE-REGISTRY\.json/);
+  assert.match(turkish, /DESIGN-SOURCE-REGISTRY\.json/);
 });
 
 test('the guarded patcher remains idempotent after the source lock is applied', async () => {
