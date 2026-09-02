@@ -1,0 +1,65 @@
+name: Keyword Market Analyzer CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/etsy-keyword-market-analyzer/**'
+      - 'tools/Test-Keyword-Market-Analyzer.mjs'
+      - 'tools/Test-Updaters.mjs'
+      - 'tools/Test-Distribution.ps1'
+      - 'tools/Sanitize-Public-Fixtures.ps1'
+      - 'shared/mkui/**'
+      - 'README.md'
+      - 'README.tr.md'
+      - '.github/workflows/keyword-market-analyzer-ci.yml'
+  pull_request:
+    paths:
+      - 'scripts/etsy-keyword-market-analyzer/**'
+      - 'tools/Test-Keyword-Market-Analyzer.mjs'
+      - 'tools/Test-Updaters.mjs'
+      - 'tools/Test-Distribution.ps1'
+      - 'tools/Sanitize-Public-Fixtures.ps1'
+      - 'shared/mkui/**'
+      - 'README.md'
+      - 'README.tr.md'
+      - '.github/workflows/keyword-market-analyzer-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Test-Keyword-Market-Analyzer.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run focused Keyword Market Analyzer regression tests
+        run: node --test tools/Test-Keyword-Market-Analyzer.mjs
+
+      - name: Run shared updater regression tests
+        run: node --test tools/Test-Updaters.mjs
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1

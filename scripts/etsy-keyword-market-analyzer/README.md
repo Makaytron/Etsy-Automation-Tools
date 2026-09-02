@@ -4,7 +4,7 @@
 
 **Kısa ad:** Etsy Keyword & Market Analyzer
 
-**Sürüm:** 1.0.3
+**Sürüm:** 1.0.4
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 
