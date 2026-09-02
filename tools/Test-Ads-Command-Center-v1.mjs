@@ -1,80 +1,103 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import {
   MARKER,
+  SCRIPT_PATH,
+  TARGET_VERSION,
   applyAdsCommandCenter,
-  commandCenterCss,
 } from './Apply-Ads-Command-Center-v1.mjs';
+import {
+  AUDIT_PATH,
+  PREVIEW_PATH,
+} from './Generate-Ads-Command-Center-Preview.mjs';
 
-const ROOT = resolve(import.meta.dirname, '..');
-const SCRIPT_PATH = resolve(
-  ROOT,
-  'scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js',
-);
-
-function metadata(source) {
-  return source.match(/\/\/ ==UserScript==[\s\S]*?\/\/ ==\/UserScript==/)?.[0] || '';
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
 }
 
-function dataHookSignature(source) {
-  return [...new Set(
-    [...source.matchAll(/\bdata-([a-z0-9_-]+)\s*=\s*["']/gi)].map(match => match[1]),
-  )].sort();
+function metadataValues(source, key) {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return [...source.matchAll(new RegExp(`^\\/\\/ @${escaped}\\s+(.+)$`, 'gm'))]
+    .map(match => match[1].trim());
 }
 
-test('guarded transform adds one registered-source command-center layer', async () => {
-  const production = await readFile(SCRIPT_PATH, 'utf8');
-  const fixture = production.includes(MARKER)
-    ? "const CSS = `:host{--maw-radius-lg:14px}.maw-panel{width:372px}`;"
-    : production;
-  const output = applyAdsCommandCenter(fixture);
-  assert.equal(output.split(MARKER).length - 1, 1);
-  assert.match(output, /template\.shell\.base-layout/);
-  assert.match(output, /template\.shell\.site-header/);
-  assert.match(output, /template\.primitive\.card/);
-  assert.match(output, /template\.primitive\.button/);
-  assert.match(output, /template\.primitive\.table/);
-  assert.match(output, /shadcn\.dashboard\.applied/);
-  assert.match(output, /shadcn\.blocks\.application-interface/);
-  assert.match(output, /Application Interface 2/);
-  assert.match(output, /shadcn\.blocks\.datatable/);
-  assert.match(output, /Data Table 2/);
-});
-
-test('command center fixes the narrow panel and preserves responsive hierarchy', async () => {
-  const production = await readFile(SCRIPT_PATH, 'utf8');
-  const css = commandCenterCss(production);
-  assert.match(css, /width:min\(680px,calc\(100vw - 24px\)\)!important/);
-  assert.match(css, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(css, /@container \(min-width:600px\)/);
-  assert.match(css, /@media\(max-width:720px\)/);
-  assert.match(css, /@media\(prefers-reduced-motion:reduce\)/);
-  assert.match(css, /white-space:normal!important/);
-  assert.match(css, /data-action\*="disable-all"/);
-  assert.match(css, /position:sticky/);
-});
-
-test('production script contains the applied layer exactly once and remains idempotent', async () => {
+test('production Ads script contains one source-registered command center layer', async () => {
   const source = await readFile(SCRIPT_PATH, 'utf8');
   assert.equal(source.split(MARKER).length - 1, 1);
+  assert.equal(metadataValues(source, 'version')[0], TARGET_VERSION);
+  assert.match(source, new RegExp(`const APP_VERSION = '${TARGET_VERSION}'`));
+  assert.match(source, /template\.shell\.base-layout/);
+  assert.match(source, /template\.shell\.site-header/);
+  assert.match(source, /template\.primitive\.card/);
+  assert.match(source, /template\.primitive\.button/);
+  assert.match(source, /template\.primitive\.input/);
+  assert.match(source, /template\.primitive\.table/);
+  assert.match(source, /shadcn\.dashboard\.applied/);
+  assert.match(source, /shadcn\.blocks\.application-interface — Application Interface 2/);
+  assert.match(source, /shadcn\.blocks\.datatable — Data Table 2/);
+  assert.match(source, /Toast mapping: N\/A/);
+});
+
+test('command hierarchy is built on the real production action hooks', async () => {
+  const source = await readFile(SCRIPT_PATH, 'utf8');
+  assert.match(source, /class="maw-command-stack"/);
+  assert.match(source, /data-command-scope="current-page"/);
+  assert.match(source, /data-command-scope="all-pages" data-tone="warning"/);
+  assert.match(source, /data-command-scope="wordlist"/);
+  for (const action of ['close-page', 'open-page', 'close-all', 'edit', 'update']) {
+    assert.equal(
+      [...source.matchAll(new RegExp(`<button[^>]+data-action=\"${action}\"`, 'g'))].length,
+      1,
+      `${action} must remain a single production action button`,
+    );
+  }
+  assert.match(source, /data-current-page-label hidden/);
+  assert.match(source, /data-all-pages-label hidden/);
+});
+
+test('responsive panel and two-column rule editor use scoped production selectors', async () => {
+  const source = await readFile(SCRIPT_PATH, 'utf8');
+  assert.match(source, /#\$\{PANEL_ROOT_ID\}\{right:16px;top:80px;width:min\(464px,calc\(100vw - 24px\)\)/);
+  assert.match(source, /\.maw-command-actions\{margin-top:9px;display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(source, /\.maw-modal\{width:min\(960px,calc\(100vw - 40px\)\)/);
+  assert.match(source, /\.maw-modal-body\{display:grid;grid-template-columns:minmax\(300px,356px\) minmax\(0,1fr\)/);
+  assert.match(source, /@media\(max-width:860px\)/);
+  assert.match(source, /@media\(max-width:440px\)/);
+  assert.match(source, /@media\(prefers-reduced-motion:reduce\)/);
+  assert.doesNotMatch(source, /:has\(/);
+});
+
+test('presentation transform is idempotent after publication', async () => {
+  const source = await readFile(SCRIPT_PATH, 'utf8');
   assert.equal(applyAdsCommandCenter(source), source);
 });
 
-test('presentation transform does not alter userscript metadata or existing HTML data hooks', async () => {
-  const source = await readFile(SCRIPT_PATH, 'utf8');
-  const cleanFixture = "// ==UserScript==\n// @name fixture\n// ==/UserScript==\nconst view = '<button data-action=\"scan\" data-state=\"ready\">Run</button>';\nconst CSS = `:host{--maw-radius-lg:14px}.maw-panel{width:372px}`;";
-  const output = applyAdsCommandCenter(cleanFixture);
-  assert.equal(metadata(output), metadata(cleanFixture));
-  assert.deepEqual(dataHookSignature(output), dataHookSignature(cleanFixture));
-});
-
-test('transient feedback remains explicitly out of scope for this presentation pass', async () => {
-  const source = await readFile(SCRIPT_PATH, 'utf8');
-  const markerOffset = source.indexOf(MARKER);
-  assert.ok(markerOffset >= 0);
-  const excerpt = source.slice(markerOffset, markerOffset + 1800);
-  assert.match(excerpt, /Toast mapping: N\/A/);
-  assert.doesNotMatch(excerpt, /toast\.(?:container|item|styles)/);
+test('production-generated preview is self-contained, synthetic and source-bound', async () => {
+  const [source, preview, auditText] = await Promise.all([
+    readFile(SCRIPT_PATH, 'utf8'),
+    readFile(PREVIEW_PATH, 'utf8'),
+    readFile(AUDIT_PATH, 'utf8'),
+  ]);
+  const audit = JSON.parse(auditText);
+  assert.equal(audit.schemaVersion, 2);
+  assert.equal(audit.dataClassification, 'fully_synthetic');
+  assert.equal(audit.networkDependency, false);
+  assert.equal(audit.liveEtsyWrite, false);
+  assert.equal(audit.productionDomUsed, true);
+  assert.equal(audit.productionSourceSha256, sha256(source));
+  assert.equal(audit.previewSha256, sha256(preview));
+  assert.deepEqual(audit.expectedPanelStats, {
+    page: '2 / 7',
+    rows: 42,
+    matches: 9,
+    highRatio: 3,
+  });
+  assert.match(preview, /\(0, eval\)\(/);
+  assert.match(preview, /data-fixture-ready/);
+  assert.match(preview, /Ağ erişimi kapalı · tamamen sentetik önizleme/);
+  assert.match(preview, /data-action=\\?"edit\\?"/);
+  assert.doesNotMatch(preview, /class="maw-panel"/);
 });

@@ -4,6 +4,23 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.0.5] - 2026-09-02
+
+### Changed
+
+- Ads paneli, `Tamplate-Back-White-01`, uygulanmış ShadcnStore dashboard ve kayıtlı `Application Interface 2` / `Data Table 2` kaynakları kullanılarak gerçek production DOM üzerinde responsive bir komut merkezine dönüştürüldü.
+- Mevcut sayfa, bütün sayfalar ve kelime listesi işlemleri ayrı komut kartlarına ayrıldı; uzun Türkçe eylem adları kesilmeden gösteriliyor ve kritik tüm-sayfalar işlemi belirgin uyarı sınırında kalıyor.
+- Kelime listesi editörü 960 px responsive iki sütunlu çalışma alanına geçirildi; dar ekranlarda tek sütuna düşüyor.
+
+### Safety
+
+- `close-page`, `open-page`, `close-all`, `edit` ve `update` eylem hookları; Etsy selectorları, storage anahtarları, açık onaylar, pagination, doğrulama, retry ve fail-closed davranışları korunmuştur.
+- Toast sistemi bu sürümde değiştirilmedi; mevcut geçici bildirim davranışı ayrı Toast-01 migration kapsamına bırakıldı.
+
+### Validation
+
+- Production userscriptten oluşturulan sentetik panel ve editör fixtureları, davranış testleri, source-lock kontrolleri, MKUI drift/coexistence denetimleri ve tam dağıtım kapısı çalıştırıldı.
+
 ## [1.0.4] - 2026-09-02
 
 ### Changed

@@ -1,162 +1,240 @@
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import process from 'node:process';
-import { MARKER } from './Apply-Ads-Command-Center-v1.mjs';
+import {
+  MARKER,
+  SCRIPT_PATH,
+  TARGET_VERSION,
+} from './Apply-Ads-Command-Center-v1.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const SCRIPT_PATH = resolve(
-  ROOT,
-  'scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js',
-);
-const LOGO_PATH = resolve(ROOT, 'assets/makaytron-logo.png');
-const OUTPUT_PATH = resolve(
+export const PREVIEW_PATH = resolve(
   ROOT,
   'docs/design/previews/ads-keyword-manager-command-center-v1.html',
 );
+export const AUDIT_PATH = resolve(
+  ROOT,
+  'docs/design/previews/ads-keyword-manager-command-center-v1.audit.json',
+);
 
-function findTemplateLiteralBounds(source, offset) {
-  let start = -1;
-  for (let index = offset; index >= 0; index -= 1) {
-    if (source[index] !== '`') continue;
-    let slashCount = 0;
-    for (let cursor = index - 1; cursor >= 0 && source[cursor] === '\\'; cursor -= 1) {
-      slashCount += 1;
-    }
-    if (slashCount % 2 === 0) {
-      start = index;
-      break;
-    }
-  }
-  if (start < 0) throw new Error('Unable to locate production CSS template start.');
-  for (let index = offset; index < source.length; index += 1) {
-    if (source[index] !== '`') continue;
-    let slashCount = 0;
-    for (let cursor = index - 1; cursor > start && source[cursor] === '\\'; cursor -= 1) {
-      slashCount += 1;
-    }
-    if (slashCount % 2 === 0) return { start, end: index };
-  }
-  throw new Error('Unable to locate production CSS template end.');
+const SOURCE_IDS = Object.freeze([
+  'template.shell.base-layout',
+  'template.shell.site-header',
+  'template.theme.tokens',
+  'template.primitive.card',
+  'template.primitive.button',
+  'template.primitive.input',
+  'template.primitive.table',
+  'shadcn.dashboard.applied',
+  'shadcn.blocks.application-interface',
+  'shadcn.blocks.datatable',
+]);
+
+const MATCHING_KEYWORDS = Object.freeze([
+  'svg teacher bundle',
+  'png school mascot',
+  'digital class shirt',
+  'editable template tee',
+  'instant download',
+  'mockup bundle',
+  'retro svg design',
+  'digital png file',
+  'teacher template',
+]);
+const OTHER_KEYWORDS = Object.freeze(
+  Array.from({ length: 33 }, (_, index) =>
+    `synthetic keyword ${String(index + 1).padStart(2, '0')}`),
+);
+const KEYWORDS = Object.freeze([...MATCHING_KEYWORDS, ...OTHER_KEYWORDS]);
+const SYNTHETIC_WORDLIST = [
+  'svg',
+  'png',
+  'digital',
+  'template',
+  '=instant download',
+  '/mockup|bundle/',
+].join('\n');
+
+function sha256(value) {
+  return createHash('sha256').update(value).digest('hex');
 }
 
-function escapeStyleText(value) {
-  return value.replace(/<\/style/gi, '<\\/style');
+function safeScriptString(value) {
+  return JSON.stringify(String(value))
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
 }
 
-function previewDocument(css, logoDataUrl) {
+function syntheticRow(keyword, index) {
+  const clicks = index === 0 ? 52 : index === 1 ? 30 : index === 2 ? 80 : 3 + (index % 12);
+  const orders = index === 0 ? 1 : index === 1 ? 0 : index === 2 ? 2 : Math.max(1, Math.floor(clicks / 10));
+  return `<tr class="wt-table__row">
+    <th class="wt-table__row__cell" scope="row"><p>${keyword}</p></th>
+    <td><span class="wt-table--responsive__title">Clicks</span><p>${clicks}</p></td>
+    <td><span class="wt-table--responsive__title">Orders</span><p>${orders}</p></td>
+    <td><label><input type="checkbox" ${index % 3 ? 'checked' : ''}><span>Enabled</span></label></td>
+  </tr>`;
+}
+
+function previewDocument(source) {
+  const now = Date.now();
+  const canonicalSource =
+    'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/' +
+    'scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
+
   return `<!doctype html>
 <html lang="tr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Makaytron Etsy Ads Keyword Manager — Command Center v1</title>
+<title>Makaytron Etsy Ads Keyword Manager — production command center</title>
 <style>
-html,body{margin:0;min-height:100%;background:#e9e9e9;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#171717}
-body{display:grid;place-items:center;padding:28px;box-sizing:border-box}
-body:before{content:"NETWORK-ISOLATED SYNTHETIC PREVIEW";position:fixed;left:20px;bottom:16px;color:#686868;font:750 10px/1.2 system-ui,sans-serif;letter-spacing:.08em}
-.preview-stage{width:min(1180px,100%);min-height:760px;display:grid;place-items:center;border:1px solid #d6d6d6;border-radius:22px;background:linear-gradient(145deg,#f4f4f4,#dedede);box-shadow:0 24px 80px rgba(0,0,0,.12)}
-.preview-note{position:fixed;right:20px;bottom:16px;color:#686868;font:650 10px/1.2 system-ui,sans-serif}
+  html,body{margin:0;min-height:100%;background:#ededed;color:#171717;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  body{overflow:hidden}
+  .fixture-watermark{position:fixed;left:18px;bottom:13px;color:#707070;font:750 9px/1.2 ui-sans-serif,system-ui;letter-spacing:.08em;text-transform:uppercase;z-index:2}
+  #listing-detail-targeted-keywords-accordion{position:absolute;left:-12000px;top:0;width:1100px;background:#fff}
+  #makaytron-ad-wordlist{top:24px!important;right:12px!important}
 </style>
+<script>
+(() => {
+  const store = new Map([
+    ['adWordlist', ${JSON.stringify(SYNTHETIC_WORDLIST)}],
+    ['adWordlistLanguage', 'tr'],
+    ['adWordlistPanelCollapsed', false],
+    ['adKeywordManagerScriptUpdateState', { lastCheckedAt: ${now}, lastStatus: 'current', latestVersion: '${TARGET_VERSION}' }],
+    ['makaytron-telemetry:etsy-ads-keyword-manager:v1:enabled', false],
+    ['makaytron-telemetry:etsy-ads-keyword-manager:v1:enable-pending', false]
+  ]);
+  let menuId = 0;
+  globalThis.GM = {
+    getValue: async (key, fallback) => store.has(key) ? store.get(key) : fallback,
+    setValue: async (key, value) => { store.set(key, value); },
+    deleteValue: async key => { store.delete(key); },
+    addValueChangeListener: () => 1,
+    registerMenuCommand: () => ++menuId
+  };
+  globalThis.GM_info = { script: {
+    version: '${TARGET_VERSION}',
+    downloadURL: '${canonicalSource}',
+    updateURL: '${canonicalSource}'
+  }};
+  globalThis.GM_registerMenuCommand = () => ++menuId;
+  globalThis.GM_unregisterMenuCommand = () => {};
+  globalThis.GM_addElement = (tag, attributes = {}) => {
+    const element = document.createElement(tag);
+    for (const [key, value] of Object.entries(attributes)) {
+      if (key === 'textContent') element.textContent = value;
+      else element.setAttribute(key, String(value));
+    }
+    (document.head || document.documentElement).appendChild(element);
+    return element;
+  };
+  globalThis.GM_xmlhttpRequest = options => {
+    setTimeout(() => options.onload?.({
+      status: 200,
+      responseText: '// ==UserScript==\\n// @version ${TARGET_VERSION}\\n// ==/UserScript=='
+    }), 0);
+    return { abort() {} };
+  };
+  globalThis.GM_getValue = (key, fallback) => store.has(key) ? store.get(key) : fallback;
+  globalThis.GM_setValue = (key, value) => store.set(key, value);
+  globalThis.GM_deleteValue = key => store.delete(key);
+  window.confirm = () => false;
+  window.open = () => null;
+
+  const view = new URL(location.href).searchParams.get('view') || 'panel';
+  const settle = () => {
+    const panel = document.getElementById('makaytron-ad-wordlist');
+    if (!panel) return false;
+    const state = panel.querySelector('[data-panel-state]')?.dataset.state;
+    if (!['ready', 'warning', 'success'].includes(state)) return false;
+    document.getElementById('makaytron-ad-wordlist-toasts')?.remove();
+    if (view === 'modal' && !document.getElementById('makaytron-ad-wordlist-editor')) {
+      panel.querySelector('[data-action="edit"]')?.click();
+      return false;
+    }
+    if (view === 'modal' && !document.getElementById('makaytron-ad-wordlist-editor')) return false;
+    document.documentElement.setAttribute('data-fixture-ready', view);
+    return true;
+  };
+  const readyTimer = setInterval(() => {
+    if (settle()) clearInterval(readyTimer);
+  }, 40);
+  setTimeout(settle, 0);
+})();
+</script>
 </head>
 <body>
-<div class="preview-stage">
-  <div class="maw-panel" role="application" aria-label="Etsy Ads anahtar kelime komut merkezi">
-    <header class="maw-header">
-      <img src="${logoDataUrl}" width="42" height="42" alt="Makaytron" style="object-fit:contain">
-      <div>
-        <h1>Etsy Ads Anahtar Kelime Yöneticisi</h1>
-        <small>Görünür ilanları tara, eşleşmeleri incele ve kontrollü şekilde uygula.</small>
-      </div>
-      <div style="display:flex;gap:7px;align-items:center">
-        <span class="maw-badge" style="padding:5px 8px;border:1px solid #dedede;background:#fafafa">Hazır</span>
-        <button class="maw-btn" aria-label="Paneli kapat">×</button>
-      </div>
-    </header>
-    <main class="maw-body">
-      <section class="maw-card">
-        <div class="maw-card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-          <div>
-            <strong>Çalışma özeti</strong>
-            <div style="margin-top:3px;color:#737373;font-size:11px">Mevcut Etsy Ads sayfasındaki görünür veriler</div>
-          </div>
-          <span class="maw-pill" style="padding:5px 9px;border:1px solid #c9dfd1;background:#edf8f1;color:#1f7a4d">Son tarama: şimdi</span>
-        </div>
-        <div class="maw-card-body" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px">
-          <div style="padding:12px;border:1px solid #dedede;border-radius:11px;background:#fff"><span style="display:block;color:#737373;font-size:10px;font-weight:750;text-transform:uppercase;letter-spacing:.05em">Görünür ilan</span><strong style="display:block;margin-top:5px;font-size:20px">24</strong></div>
-          <div style="padding:12px;border:1px solid #dedede;border-radius:11px;background:#fff"><span style="display:block;color:#737373;font-size:10px;font-weight:750;text-transform:uppercase;letter-spacing:.05em">Eşleşen</span><strong style="display:block;margin-top:5px;font-size:20px">8</strong></div>
-          <div style="padding:12px;border:1px solid #dedede;border-radius:11px;background:#fff"><span style="display:block;color:#737373;font-size:10px;font-weight:750;text-transform:uppercase;letter-spacing:.05em">Bekleyen işlem</span><strong style="display:block;margin-top:5px;font-size:20px">3</strong></div>
-        </div>
-      </section>
-
-      <section class="maw-card">
-        <div class="maw-card-header">
-          <strong>Bu sayfada çalış</strong>
-          <div style="margin-top:3px;color:#737373;font-size:11px">Önce tara; sonra yalnız seçtiğin eşleşmeleri değiştir.</div>
-        </div>
-        <div class="maw-card-body">
-          <div class="maw-actions" data-actions>
-            <button class="maw-btn primary" data-action="scan-visible">Görünür ilanları tara</button>
-            <button class="maw-btn" data-action="enable-selected">Seçilenleri etkinleştir</button>
-            <button class="maw-btn" data-action="disable-selected">Seçilenleri devre dışı bırak</button>
-          </div>
-        </div>
-      </section>
-
-      <section class="maw-card">
-        <div class="maw-toolbar" data-actions>
-          <input type="search" aria-label="Anahtar kelime ara" placeholder="Anahtar kelime veya ilan ara…">
-          <select aria-label="Duruma göre filtrele"><option>Tüm durumlar</option><option>Etkin</option><option>Devre dışı</option></select>
-          <button class="maw-btn" data-action="clear-filters">Filtreleri temizle</button>
-        </div>
-        <div style="overflow:auto;max-height:260px">
-          <table aria-label="Anahtar kelime eşleşmeleri">
-            <thead><tr><th><input type="checkbox" aria-label="Tümünü seç"></th><th>Anahtar kelime</th><th>İlan</th><th>Durum</th><th style="text-align:right">İşlem</th></tr></thead>
-            <tbody>
-              <tr class="maw-row"><td><input type="checkbox" checked></td><td><strong>custom teacher shirt</strong><div style="color:#737373;font-size:10px">tam eşleşme</div></td><td>Teacher Team Tee</td><td><span class="maw-pill" style="padding:4px 8px;border:1px solid #c9dfd1;background:#edf8f1;color:#1f7a4d">Etkin</span></td><td style="text-align:right"><button class="maw-btn">Kapat</button></td></tr>
-              <tr class="maw-row"><td><input type="checkbox" checked></td><td><strong>school spirit tee</strong><div style="color:#737373;font-size:10px">ifade eşleşmesi</div></td><td>School Colors Shirt</td><td><span class="maw-pill" style="padding:4px 8px;border:1px solid #eed69a;background:#fff9df;color:#8a5a00">İncele</span></td><td style="text-align:right"><button class="maw-btn">Kapat</button></td></tr>
-              <tr class="maw-row"><td><input type="checkbox"></td><td><strong>personalized mascot</strong><div style="color:#737373;font-size:10px">geniş eşleşme</div></td><td>Custom Mascot Tee</td><td><span class="maw-pill" style="padding:4px 8px;border:1px solid #dedede;background:#fafafa;color:#525252">Kapalı</span></td><td style="text-align:right"><button class="maw-btn">Aç</button></td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="maw-card" style="border-color:#efc3bf!important">
-        <div class="maw-card-header">
-          <strong style="color:#a32318">Tüm sayfalarda toplu işlem</strong>
-          <div style="margin-top:3px;color:#7a332d;font-size:11px">Bu işlem yalnız açık onaydan sonra çalışır ve her sayfayı doğrular.</div>
-        </div>
-        <div class="maw-card-body">
-          <div class="maw-actions" data-actions>
-            <button class="maw-btn danger" data-action="disable-all-matches">Tüm sayfalardaki eşleşmeleri devre dışı bırak</button>
-            <button class="maw-btn" data-action="open-rule-editor">Anahtar kelime kurallarını düzenle</button>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-</div>
-<div class="preview-note">Tamamen sentetik veri · canlı Etsy işlemi yok</div>
-<style>${escapeStyleText(css)}</style>
+  <div class="fixture-watermark">Ağ erişimi kapalı · tamamen sentetik önizleme</div>
+  <section id="listing-detail-targeted-keywords-accordion">
+    <table>
+      <thead><tr><th>Keyword</th><th>Clicks</th><th>Orders</th><th>Status</th></tr></thead>
+      <tbody>${KEYWORDS.map(syntheticRow).join('\n')}</tbody>
+    </table>
+    <nav aria-label="Pagination">
+      <button type="button">1 / 7</button>
+      <button type="button" aria-current="true">2 / 7</button>
+      <button type="button">3 / 7</button>
+    </nav>
+  </section>
+  <script>
+    (0, eval)(${safeScriptString(source)});
+  </script>
 </body>
 </html>`;
 }
 
 export async function generateAdsCommandCenterPreview() {
   const source = await readFile(SCRIPT_PATH, 'utf8');
-  const markerIndex = source.indexOf(MARKER);
-  if (markerIndex < 0) throw new Error('Ads command-center marker is missing from production source.');
-  const bounds = findTemplateLiteralBounds(source, markerIndex);
-  const css = source.slice(bounds.start + 1, bounds.end);
-  const logo = await readFile(LOGO_PATH);
-  const html = previewDocument(css, `data:image/png;base64,${logo.toString('base64')}`);
-  await mkdir(dirname(OUTPUT_PATH), { recursive: true });
-  await writeFile(OUTPUT_PATH, html);
-  return OUTPUT_PATH;
+  if (!source.includes(MARKER)) {
+    throw new Error('Ads command-center marker is missing from the production userscript.');
+  }
+  if (!source.includes(`// @version      ${TARGET_VERSION}`)) {
+    throw new Error(`Production Ads userscript is not version ${TARGET_VERSION}.`);
+  }
+  const html = previewDocument(source);
+  const audit = {
+    schemaVersion: 2,
+    generatedAt: '2026-09-02',
+    generatedBy: 'tools/Generate-Ads-Command-Center-Preview.mjs',
+    dataClassification: 'fully_synthetic',
+    networkDependency: false,
+    liveEtsyWrite: false,
+    productionDomUsed: true,
+    sourceIds: SOURCE_IDS,
+    blockVariants: [
+      'Application Interface 2',
+      'Data Table 2',
+    ],
+    toastMapping: 'N/A — this redesign does not add or modify transient feedback.',
+    expectedPanelStats: {
+      page: '2 / 7',
+      rows: 42,
+      matches: 9,
+      highRatio: 3,
+    },
+    views: {
+      panel: '?view=panel',
+      modal: '?view=modal',
+    },
+    productionSourceSha256: sha256(source),
+    previewSha256: sha256(html),
+  };
+  await mkdir(dirname(PREVIEW_PATH), { recursive: true });
+  await writeFile(PREVIEW_PATH, html, 'utf8');
+  await writeFile(AUDIT_PATH, `${JSON.stringify(audit, null, 2)}\n`, 'utf8');
+  return { previewPath: PREVIEW_PATH, auditPath: AUDIT_PATH, audit };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {
+const invoked = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';
+if (import.meta.url === invoked) {
   generateAdsCommandCenterPreview()
-    .then(path => process.stdout.write(`${path}\n`))
+    .then(result => {
+      process.stdout.write(`${result.previewPath}\n${result.auditPath}\n`);
+    })
     .catch(error => {
       console.error(error.stack || error.message);
       process.exitCode = 1;

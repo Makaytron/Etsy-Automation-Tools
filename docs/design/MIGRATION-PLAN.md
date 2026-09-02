@@ -16,7 +16,7 @@ Reference system: the mandatory source lock in `DESIGN-SOURCE-LOCK.md`, `Makaytr
 - [x] Initial userscript inventory
 - [x] Behavioral contract files created
 - [x] MKUI source-only foundation created
-- [x] Pilot wired into Ads Keyword Manager (`1.0.4`, MKUI source `1.0.0`)
+- [x] Pilot wired into Ads Keyword Manager (`1.0.5`, MKUI source `1.0.0`)
 - [x] Pilot regression gate passed (behavior tests, syntax, metadata/hook invariants, browser/distribution/privacy follow-up)
 - [x] Message Assistant account-specific public placeholder blocker removed and verified (`1.2.8`)
 - [x] Keyword & Market Analyzer migration

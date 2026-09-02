@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-02",
+  "generatedBy": "tools/Generate-Ads-Command-Center-Preview.mjs",
+  "dataClassification": "fully_synthetic",
+  "networkDependency": false,
+  "liveEtsyWrite": false,
+  "productionDomUsed": true,
+  "sourceIds": [
+    "template.shell.base-layout",
+    "template.shell.site-header",
+    "template.theme.tokens",
+    "template.primitive.card",
+    "template.primitive.button",
+    "template.primitive.input",
+    "template.primitive.table",
+    "shadcn.dashboard.applied",
+    "shadcn.blocks.application-interface",
+    "shadcn.blocks.datatable"
+  ],
+  "blockVariants": [
+    "Application Interface 2",
+    "Data Table 2"
+  ],
+  "toastMapping": "N/A — this redesign does not add or modify transient feedback.",
+  "expectedPanelStats": {
+    "page": "2 / 7",
+    "rows": 42,
+    "matches": 9,
+    "highRatio": 3
+  },
+  "views": {
+    "panel": "?view=panel",
+    "modal": "?view=modal"
+  },
+  "productionSourceSha256": "3f568c59d5f5a889ff82e92d00a4f2c434c018eebd0998783f8167333b42a673",
+  "previewSha256": "f5e169f52e118f87756bb44962cab31818da5e2b3f1a8a7f40490ac78cb90b75",
+  "screenshots": {
+    "panel": {
+      "path": "assets/screenshots/ads-keywords-panel-ready.png",
+      "width": 500,
+      "height": 820,
+      "bytes": 60269,
+      "sha256": "3af2d12a3f7b0e9e692bf96d6015da5db1de01491706202d9c3f89c81a02a8f2"
+    },
+    "editor": {
+      "path": "assets/screenshots/ads-keywords-rule-editor.png",
+      "width": 1180,
+      "height": 844,
+      "bytes": 100868,
+      "sha256": "3b2b8d8a54b1ae53fb945e428d1e115d86f8f3ad55901651feecfdaa9cdd20d1"
+    }
+  }
+}

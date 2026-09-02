@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Ads Keyword Manager
 // @name:tr      Makaytron Etsy Ads Keyword Manager
 // @name:en      Makaytron Etsy Ads Keyword Manager
-// @version      1.0.4
+// @version      1.0.5
 // @description  Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:tr Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:en Manage Etsy Ads keyword matches from a form-based control panel.
@@ -38,7 +38,7 @@
 
     const SCRIPT_SOURCE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
     const WORD_LIST_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/keyword-rules.txt';
-    const APP_VERSION = '1.0.4';
+    const APP_VERSION = '1.0.5';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -1029,6 +1029,14 @@ oversized
             closeAllPages: 'Tüm sayfalardaki eşleşmeleri kapat',
             editWordlist: 'Kelime listesi',
             updateWordlist: 'Listeyi güncelle',
+            commandCurrentPageTitle: 'Bu sayfa',
+            commandCurrentPageDescription: 'Yalnızca şu anda açık olan sayfadaki eşleşmeleri yönetir.',
+            commandAllPagesTitle: 'Tüm sayfalar',
+            commandAllPagesDescription: 'Eşleşen anahtar kelimeleri sayfalar arasında kontrollü olarak kapatır.',
+            commandWordlistTitle: 'Kelime listesi',
+            commandWordlistDescription: 'Filtreleri düzenleyin veya güvenli varsayılan listeyi yeniden alın.',
+            editRuleList: 'Listeyi düzenle',
+            refreshDefaultList: 'Varsayılanı güncelle',
             checkScriptUpdate: 'Sürümü denetle',
             scriptUpdateChecking: 'Yeni script sürümü denetleniyor…',
             scriptUpdateCurrent: 'Etsy Ads Keyword Manager güncel · v{version}',
@@ -1183,6 +1191,14 @@ oversized
             closeAllPages: 'Disable matches on all pages',
             editWordlist: 'Keyword list',
             updateWordlist: 'Update list',
+            commandCurrentPageTitle: 'This page',
+            commandCurrentPageDescription: 'Manage matches only on the page that is currently open.',
+            commandAllPagesTitle: 'All pages',
+            commandAllPagesDescription: 'Disable matching keywords across pages in a controlled sequence.',
+            commandWordlistTitle: 'Keyword list',
+            commandWordlistDescription: 'Edit filters or retrieve the safe default list again.',
+            editRuleList: 'Edit list',
+            refreshDefaultList: 'Update defaults',
             checkScriptUpdate: 'Check version',
             scriptUpdateChecking: 'Checking for a newer script version…',
             scriptUpdateCurrent: 'Etsy Ads Keyword Manager is current · v{version}',
@@ -1459,7 +1475,106 @@ oversized
         .maw-modal-status{margin-right:auto;color:#737373;font-size:11.5px}.maw-modal-status.is-dirty{color:#8a5a00}.maw-modal-status.is-saved{color:#276749}
         .maw-modal .maw-primary{border:1px solid #1f1f1f;background:#1f1f1f;color:#fafafa}.maw-modal .maw-primary:hover{background:#303030;border-color:#303030}
         @media(max-width:760px){#${PANEL_ROOT_ID}{top:auto;right:12px;bottom:12px;left:12px;width:auto}#${PANEL_ROOT_ID}.is-collapsed{top:auto;right:0;bottom:88px;left:auto;width:62px}#${PANEL_ROOT_ID} .maw-card{max-height:calc(100dvh - 24px)}#${PANEL_ROOT_ID} .maw-head{position:sticky;top:0;z-index:2}#${PANEL_ROOT_ID} .maw-grid,#${PANEL_ROOT_ID} .maw-actions{grid-template-columns:1fr}#${PANEL_ROOT_ID} .maw-actions .maw-wide{grid-column:auto}#${TOAST_ROOT_ID}{right:12px;bottom:12px;left:auto;width:min(320px,calc(100vw - 24px));max-width:none}#${TOAST_ROOT_ID} .maw-toast{width:100%}#${TOAST_ROOT_ID} .maw-toast:nth-last-child(n+3){display:none}.maw-modal-backdrop{padding:10px}.maw-modal{width:100%;max-height:calc(100dvh - 20px)}.maw-modal-body{padding:12px}.maw-form-grid{grid-template-columns:1fr}.maw-rule-input,.maw-rule-select,.maw-rule-search{height:44px;font-size:16px}.maw-rule-submit{width:100%;height:44px;min-height:44px!important}.maw-rule-form-meta{align-items:flex-start;flex-wrap:wrap}.maw-cancel-edit{margin-left:auto}.maw-section-head{align-items:flex-start;flex-wrap:wrap}.maw-rule-search-wrap{width:100%}.maw-rule-list{max-height:42vh}.maw-rule-row{grid-template-columns:1fr auto;gap:7px}.maw-rule-badge{grid-column:1;justify-self:start}.maw-rule-value{grid-column:1}.maw-rule-actions{grid-column:2;grid-row:1/3}.maw-row-btn{width:38px!important;min-width:38px!important;height:38px!important;min-height:38px!important}.maw-modal-footer{flex-wrap:wrap}.maw-modal-footer>button{flex:1}.maw-modal-status{width:100%;margin:0 0 4px}}
-    `);
+
+
+        /* MKUI Ads Command Center v1 — registered-source adaptation. */
+        /*
+         * Registered design sources:
+         * - template.shell.base-layout
+         * - template.shell.site-header
+         * - template.theme.tokens
+         * - template.primitive.card
+         * - template.primitive.button
+         * - template.primitive.input
+         * - template.primitive.table
+         * - shadcn.dashboard.applied
+         * - shadcn.blocks.application-interface — Application Interface 2
+         * - shadcn.blocks.datatable — Data Table 2
+         * Toast mapping: N/A — this pass does not add or change transient feedback.
+         */
+        #${PANEL_ROOT_ID}{right:16px;top:80px;width:min(464px,calc(100vw - 24px));max-width:calc(100vw - 24px)}
+        #${PANEL_ROOT_ID} .maw-card{max-height:calc(100dvh - 96px);border-radius:16px;background:#f7f7f7;box-shadow:0 1px 2px rgba(0,0,0,.04),0 18px 48px rgba(0,0,0,.16)}
+        #${PANEL_ROOT_ID} .maw-head{min-height:76px;padding:12px 14px;position:sticky;top:0;z-index:5;background:rgba(255,255,255,.96);backdrop-filter:blur(14px)}
+        #${PANEL_ROOT_ID} .maw-logo-shell{width:38px;height:38px}
+        #${PANEL_ROOT_ID} .maw-logo{width:38px}
+        #${PANEL_ROOT_ID} .maw-title{font-size:14px;line-height:1.2}
+        #${PANEL_ROOT_ID} .maw-sub{max-width:205px;margin-top:2px;font-size:11px}
+        #${PANEL_ROOT_ID} .maw-head-tools{gap:8px}
+        #${PANEL_ROOT_ID} .maw-head-meta{gap:4px}
+        #${PANEL_ROOT_ID} .maw-version,#${PANEL_ROOT_ID} .maw-pill{height:21px;padding:0 8px;font-size:10px}
+        #${PANEL_ROOT_ID} .maw-body{padding:14px;background:#f7f7f7}
+        #${PANEL_ROOT_ID} .maw-status-card{margin-bottom:10px;padding:11px 12px;border-radius:12px}
+        #${PANEL_ROOT_ID} .maw-status-icon{width:30px;height:30px;border-radius:8px}
+        #${PANEL_ROOT_ID} .maw-status-title{font-size:12.5px}
+        #${PANEL_ROOT_ID} .maw-status-text{font-size:11.5px}
+        #${PANEL_ROOT_ID} .maw-grid{margin-bottom:10px;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+        #${PANEL_ROOT_ID} .maw-chip{min-height:66px;padding:10px 11px;border-radius:11px}
+        #${PANEL_ROOT_ID} .maw-label{font-size:9.5px}
+        #${PANEL_ROOT_ID} .maw-value{font-size:15px}
+        #${PANEL_ROOT_ID} .maw-command-stack{display:grid;gap:9px}
+        #${PANEL_ROOT_ID} .maw-command-card{padding:10px;border:1px solid var(--maw-border);border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.025)}
+        #${PANEL_ROOT_ID} .maw-command-card[data-tone='warning']{border-color:#eed69a;background:#fffaf0}
+        #${PANEL_ROOT_ID} .maw-command-head{display:grid;grid-template-columns:30px minmax(0,1fr) auto;align-items:start;gap:9px}
+        #${PANEL_ROOT_ID} .maw-command-card-no-key .maw-command-head{grid-template-columns:30px minmax(0,1fr)}
+        #${PANEL_ROOT_ID} .maw-command-icon{width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--maw-border);border-radius:8px;background:var(--maw-muted);color:#262626}
+        #${PANEL_ROOT_ID} .maw-command-card[data-tone='warning'] .maw-command-icon{border-color:#eed69a;background:#fff4cf;color:#8a5a00}
+        #${PANEL_ROOT_ID} .maw-command-copy{min-width:0;padding-top:1px}
+        #${PANEL_ROOT_ID} .maw-command-title{color:#262626;font-size:12.5px;font-weight:750;line-height:1.25}
+        #${PANEL_ROOT_ID} .maw-command-description{margin-top:2px;color:#737373;font-size:10.8px;line-height:1.35}
+        #${PANEL_ROOT_ID} .maw-command-key{align-self:center;padding:4px 7px;border:1px solid #d7d7d7;border-bottom-width:2px;border-radius:6px;background:#fff;color:#525252;font:650 10px/1.1 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
+        #${PANEL_ROOT_ID} .maw-command-actions{margin-top:9px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+        #${PANEL_ROOT_ID} .maw-command-actions-single{grid-template-columns:1fr}
+        #${PANEL_ROOT_ID} .maw-command-actions>button{width:100%;min-width:0;min-height:39px;height:auto;padding:8px 10px;line-height:1.25;white-space:normal}
+        #${PANEL_ROOT_ID} .maw-command-actions>button>span{min-width:0;overflow-wrap:anywhere}
+        #${PANEL_ROOT_ID} .maw-warning{background:#fff;color:#8a5a00}
+        #${PANEL_ROOT_ID} .maw-command-card[data-tone='warning'] .maw-warning{border-color:#e5bd58;background:#fffdf8}
+        #${PANEL_ROOT_ID} .maw-footer{margin-top:11px;padding-top:10px}
+        #${PANEL_ROOT_ID} button:hover:not(:disabled){transform:translateY(-1px)}
+        #${PANEL_ROOT_ID} button{transition:background-color .14s ease,border-color .14s ease,color .14s ease,box-shadow .14s ease,transform .14s ease}
+
+        .maw-modal{width:min(960px,calc(100vw - 40px));max-height:calc(100dvh - 48px);border-radius:16px;box-shadow:0 30px 80px rgba(0,0,0,.28)}
+        .maw-modal-head{min-height:64px;padding:12px 16px}
+        .maw-modal-body{display:grid;grid-template-columns:minmax(300px,356px) minmax(0,1fr);align-items:start;gap:12px;padding:16px}
+        .maw-modal-note{grid-column:1/-1;margin-bottom:0;border-radius:9px}
+        .maw-rule-form-card,.maw-rule-list-card{min-width:0;border-radius:10px}
+        .maw-rule-list-card{margin-top:0}
+        .maw-form-grid{grid-template-columns:1fr;gap:10px}
+        .maw-rule-submit{width:100%}
+        .maw-rule-form-meta{align-items:flex-start;flex-wrap:wrap}
+        .maw-cancel-edit{margin-left:auto}
+        .maw-rule-list{max-height:min(430px,calc(100dvh - 292px))}
+        .maw-modal-footer{min-height:64px;padding:12px 16px}
+
+        @media(max-width:860px){
+            #${PANEL_ROOT_ID}{top:auto;right:12px;bottom:12px;left:12px;width:auto;max-width:none}
+            #${PANEL_ROOT_ID}.is-collapsed{top:auto;right:0;bottom:88px;left:auto;width:62px}
+            #${PANEL_ROOT_ID} .maw-card{max-height:calc(100dvh - 24px)}
+            .maw-modal-backdrop{padding:10px}
+            .maw-modal{width:100%;max-height:calc(100dvh - 20px)}
+            .maw-modal-body{grid-template-columns:1fr;padding:12px}
+            .maw-modal-note{grid-column:auto}
+            .maw-rule-list-card{margin-top:0}
+            .maw-rule-list{max-height:40vh}
+        }
+        @media(max-width:440px){
+            #${PANEL_ROOT_ID} .maw-head{padding:10px 11px}
+            #${PANEL_ROOT_ID} .maw-logo-shell,#${PANEL_ROOT_ID} .maw-logo{width:34px}
+            #${PANEL_ROOT_ID} .maw-sub{max-width:145px}
+            #${PANEL_ROOT_ID} .maw-body{padding:10px}
+            #${PANEL_ROOT_ID} .maw-command-head{grid-template-columns:28px minmax(0,1fr)}
+            #${PANEL_ROOT_ID} .maw-command-key{grid-column:2;justify-self:start;margin-top:2px}
+            #${PANEL_ROOT_ID} .maw-command-actions{grid-template-columns:1fr}
+            #${PANEL_ROOT_ID} .maw-footer{align-items:flex-start}
+            #${PANEL_ROOT_ID} .maw-footer-tools{flex-wrap:wrap}
+            .maw-modal-footer{flex-wrap:wrap}
+            .maw-modal-status{width:100%;margin:0 0 4px}
+            .maw-modal-footer>button{flex:1}
+        }
+        @media(prefers-reduced-motion:reduce){
+            #${PANEL_ROOT_ID},#${PANEL_ROOT_ID} *,.maw-modal,.maw-modal *{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}
+            #${PANEL_ROOT_ID} button:hover:not(:disabled){transform:none}
+        }
+`);
 
     const ICON_PATHS = {
         shield: '<path d="M12 3l7 3v5c0 4.6-2.9 8-7 10-4.1-2-7-5.4-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/>',
@@ -1751,11 +1866,17 @@ oversized
         setText('[data-stat-label="rows"]', t('statRows'));
         setText('[data-stat-label="matches"]', t('statMatches'));
         setText('[data-stat-label="high"]', t('statHighRatio'));
+        setText('[data-command-title="current-page"]', t('commandCurrentPageTitle'));
+        setText('[data-command-description="current-page"]', t('commandCurrentPageDescription'));
+        setText('[data-command-title="all-pages"]', t('commandAllPagesTitle'));
+        setText('[data-command-description="all-pages"]', t('commandAllPagesDescription'));
+        setText('[data-command-title="wordlist"]', t('commandWordlistTitle'));
+        setText('[data-command-description="wordlist"]', t('commandWordlistDescription'));
         setText('[data-action-label="close-page"]', t('closeCurrentPage'));
         setText('[data-action-label="open-page"]', t('openCurrentPage'));
         setText('[data-action-label="close-all"]', t('closeAllPages'));
-        setText('[data-action-label="edit"]', t('editWordlist'));
-        setText('[data-action-label="update"]', t('updateWordlist'));
+        setText('[data-action-label="edit"]', t('editRuleList'));
+        setText('[data-action-label="update"]', t('refreshDefaultList'));
         setText('[data-current-page-label]', t('currentPage'));
         setText('[data-all-pages-label]', t('allPages'));
         setText('[data-safe-mode]', t('safeMatchMode'));
@@ -1908,14 +2029,39 @@ oversized
                         <div class="maw-chip"><div class="maw-label" data-stat-label="matches">${t('statMatches')}</div><div class="maw-value" data-stat="matches">0</div></div>
                         <div class="maw-chip"><div class="maw-label" data-stat-label="high">${t('statHighRatio')}</div><div class="maw-value" data-stat="high">0</div></div>
                     </div>
-                    <div class="maw-actions">
-                        <button type="button" class="maw-primary" data-action="close-page" data-busy-action>${uiIcon('power')}<span data-action-label="close-page">${t('closeCurrentPage')}</span></button>
-                        <button type="button" class="maw-secondary" data-action="open-page" data-busy-action>${uiIcon('check')}<span data-action-label="open-page">${t('openCurrentPage')}</span></button>
-                        <button type="button" class="maw-warning maw-wide" data-action="close-all" data-busy-action>${uiIcon('layers')}<span data-action-label="close-all">${t('closeAllPages')}</span></button>
-                        <button type="button" class="maw-secondary" data-action="edit" data-busy-action>${uiIcon('edit')}<span data-action-label="edit">${t('editWordlist')}</span></button>
-                        <button type="button" class="maw-secondary" data-action="update" data-busy-action>${uiIcon('refresh')}<span data-action-label="update">${t('updateWordlist')}</span></button>
+                    <div class="maw-command-stack">
+                        <section class="maw-command-card" data-command-scope="current-page">
+                            <div class="maw-command-head">
+                                <div class="maw-command-icon">${uiIcon('power')}</div>
+                                <div class="maw-command-copy"><div class="maw-command-title" data-command-title="current-page">${t('commandCurrentPageTitle')}</div><div class="maw-command-description" data-command-description="current-page">${t('commandCurrentPageDescription')}</div></div>
+                                <kbd class="maw-command-key">Ctrl Space</kbd><span data-current-page-label hidden>${t('currentPage')}</span>
+                            </div>
+                            <div class="maw-command-actions">
+                                <button type="button" class="maw-primary" data-action="close-page" data-busy-action>${uiIcon('power')}<span data-action-label="close-page">${t('closeCurrentPage')}</span></button>
+                                <button type="button" class="maw-secondary" data-action="open-page" data-busy-action>${uiIcon('check')}<span data-action-label="open-page">${t('openCurrentPage')}</span></button>
+                            </div>
+                        </section>
+                        <section class="maw-command-card" data-command-scope="all-pages" data-tone="warning">
+                            <div class="maw-command-head">
+                                <div class="maw-command-icon">${uiIcon('layers')}</div>
+                                <div class="maw-command-copy"><div class="maw-command-title" data-command-title="all-pages">${t('commandAllPagesTitle')}</div><div class="maw-command-description" data-command-description="all-pages">${t('commandAllPagesDescription')}</div></div>
+                                <kbd class="maw-command-key">Ctrl Alt K</kbd><span data-all-pages-label hidden>${t('allPages')}</span>
+                            </div>
+                            <div class="maw-command-actions maw-command-actions-single">
+                                <button type="button" class="maw-warning" data-action="close-all" data-busy-action>${uiIcon('layers')}<span data-action-label="close-all">${t('closeAllPages')}</span></button>
+                            </div>
+                        </section>
+                        <section class="maw-command-card maw-command-card-no-key" data-command-scope="wordlist">
+                            <div class="maw-command-head">
+                                <div class="maw-command-icon">${uiIcon('edit')}</div>
+                                <div class="maw-command-copy"><div class="maw-command-title" data-command-title="wordlist">${t('commandWordlistTitle')}</div><div class="maw-command-description" data-command-description="wordlist">${t('commandWordlistDescription')}</div></div>
+                            </div>
+                            <div class="maw-command-actions">
+                                <button type="button" class="maw-secondary" data-action="edit" data-busy-action>${uiIcon('edit')}<span data-action-label="edit">${t('editRuleList')}</span></button>
+                                <button type="button" class="maw-secondary" data-action="update" data-busy-action>${uiIcon('refresh')}<span data-action-label="update">${t('refreshDefaultList')}</span></button>
+                            </div>
+                        </section>
                     </div>
-                    <div class="maw-help"><span class="maw-key">Ctrl Space</span> <span data-current-page-label>${t('currentPage')}</span> · <span class="maw-key">Ctrl Alt K</span> <span data-all-pages-label>${t('allPages')}</span></div>
                     <footer class="maw-footer"><a href="${MAKAYTRON_WEBSITE_URL}" target="_blank" rel="noopener noreferrer">Makaytron</a><div class="maw-footer-tools"><button type="button" class="maw-lang-btn" data-language-toggle data-busy-action aria-label="${t('switchLanguage')}" title="${t('switchLanguage')}">${currentLanguage === 'tr' ? 'EN' : 'TR'}</button><span data-safe-mode>${t('safeMatchMode')}</span></div></footer>
                 </div>
             </div>

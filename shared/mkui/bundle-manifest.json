@@ -17,13 +17,13 @@
     {
       "id": "ads-keyword-manager",
       "path": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
-      "scriptVersion": "1.0.4",
+      "scriptVersion": "1.0.5",
       "mkuiVersion": "1.0.0",
       "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
-      "presentationHash": "sha256:ef3e965d6b3dc21a2377a026866716712abad568d4822fc81572a9ce993e6cbd",
-      "presentationBytes": 25217,
+      "presentationHash": "sha256:a8040d545291f882112d516d267bad6614b55571bb48a43788c1410c70f9d6bb",
+      "presentationBytes": 31925,
       "presentationFragmentCount": 1,
-      "presentationMarkerLineCount": 177
+      "presentationMarkerLineCount": 261
     },
     {
       "id": "keyword-market-analyzer",
