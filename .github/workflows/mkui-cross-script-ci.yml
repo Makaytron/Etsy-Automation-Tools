@@ -10,6 +10,7 @@ on:
       - tools/Mkui-Production-Registry.mjs
       - tools/Audit-Mkui-Cross-Script-Coexistence.mjs
       - tools/Test-Mkui-Cross-Script-Coexistence.mjs
+      - tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs
       - docs/design/previews/mkui-cross-script-coexistence-audit.json
       - shared/mkui/**
       - scripts/**/*.user.js
@@ -19,6 +20,7 @@ on:
       - tools/Mkui-Production-Registry.mjs
       - tools/Audit-Mkui-Cross-Script-Coexistence.mjs
       - tools/Test-Mkui-Cross-Script-Coexistence.mjs
+      - tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs
       - docs/design/previews/mkui-cross-script-coexistence-audit.json
       - shared/mkui/**
       - scripts/**/*.user.js
@@ -56,6 +58,7 @@ jobs:
               'tools/Mkui-Production-Registry.mjs'
               'tools/Audit-Mkui-Cross-Script-Coexistence.mjs'
               'tools/Test-Mkui-Cross-Script-Coexistence.mjs'
+              'tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs'
           )
           foreach ($file in $files) {
               node --check $file
@@ -88,6 +91,9 @@ jobs:
 
       - name: Run permanent cross-script coexistence tests
         run: node --test tools/Test-Mkui-Cross-Script-Coexistence.mjs
+
+      - name: Verify host-page CSS isolation in real Chrome
+        run: node --test tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs
 
       - name: Run all focused behavior and MKUI invariant suites
         shell: pwsh
