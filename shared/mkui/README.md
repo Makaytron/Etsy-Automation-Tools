@@ -6,15 +6,29 @@ All five production userscripts carry MKUI as an inlined/mapped presentation lay
 
 ## Mandatory design-source lock
 
-MKUI source and every production presentation change must follow [`docs/design/DESIGN-SOURCE-LOCK.md`](../../docs/design/DESIGN-SOURCE-LOCK.md):
+MKUI source and every production presentation change must follow [`docs/design/DESIGN-SOURCE-LOCK.md`](../../docs/design/DESIGN-SOURCE-LOCK.md) and the machine-readable [`docs/design/DESIGN-SOURCE-REGISTRY.json`](../../docs/design/DESIGN-SOURCE-REGISTRY.json):
 
 - `Makaytron/Tamplate-Back-White-01` is the primary application template.
 - `Makaytron/Toast-01` is mandatory for toast/snackbar/transient-notification behavior.
 - The applied ShadcnStore dashboard defines complete shell composition.
 - `https://shadcnstore.com/blocks` is the approved individual-block catalog.
 - New component anatomy must not be invented. The exact source must be recorded before implementation and in the pull request.
+- UI pull requests must cite registered `source-id` values and the exact repository paths or ShadcnStore URLs associated with them.
+- Unknown ids, approximate names and bare “inspired by” references are rejected by CI.
 
 These are design/build inputs only. Production userscripts remain framework-free, locally bundled and Etsy-safe at runtime.
+
+## Registered source workflow
+
+Before changing a page, panel or visible component:
+
+1. Select the relevant `template.*` id for its shell or primitive.
+2. Include `shadcn.dashboard.applied` for page composition.
+3. Select the exact `shadcn.blocks.*` family and record its visible block name/number in the PR.
+4. For transient feedback, include the applicable `toast.*` ids; `toast.container`, `toast.item` and `toast.styles` are the minimum system mapping.
+5. Use the exact locator stored in `DESIGN-SOURCE-REGISTRY.json`.
+
+Do not create a local alias for an unregistered source. When no registered pattern fits, stop the UI implementation and request approval for a registry addition.
 
 ## Canonical source
 

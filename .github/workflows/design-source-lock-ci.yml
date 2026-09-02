@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - docs/design-source-lock-v1
+      - docs/design-source-registry-v1
     paths:
       - .github/CONTRIBUTING.md
       - .github/PULL_REQUEST_TEMPLATE.md
@@ -15,6 +16,8 @@ on:
       - scripts/**/*.user.js
       - shared/mkui/**
       - tools/Apply-Design-Source-Lock.mjs
+      - tools/Design-Source-Registry.mjs
+      - tools/Test-Design-Source-Registry.mjs
       - tools/Test-Design-Source-Lock.mjs
       - tools/Validate-Design-Source-PR.mjs
       - tools/Test-Design-Source-PR.mjs
@@ -32,6 +35,8 @@ on:
       - scripts/**/*.user.js
       - shared/mkui/**
       - tools/Apply-Design-Source-Lock.mjs
+      - tools/Design-Source-Registry.mjs
+      - tools/Test-Design-Source-Registry.mjs
       - tools/Test-Design-Source-Lock.mjs
       - tools/Validate-Design-Source-PR.mjs
       - tools/Test-Design-Source-PR.mjs
@@ -49,7 +54,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate mandatory design-source policy
+    name: Validate mandatory registered design-source policy
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -68,6 +73,8 @@ jobs:
       - name: Validate policy tools
         run: |
           node --check tools/Apply-Design-Source-Lock.mjs
+          node --check tools/Design-Source-Registry.mjs
+          node --check tools/Test-Design-Source-Registry.mjs
           node --check tools/Test-Design-Source-Lock.mjs
           node --check tools/Validate-Design-Source-PR.mjs
           node --check tools/Test-Design-Source-PR.mjs
@@ -78,12 +85,15 @@ jobs:
           printf '%s\n' "$output"
           printf '%s' "$output" | grep -F 'Design source lock is already applied.'
 
+      - name: Validate the machine-readable source registry
+        run: node --test tools/Test-Design-Source-Registry.mjs
+
       - name: Run mandatory policy and PR-gate tests
         run: |
           node --test tools/Test-Design-Source-Lock.mjs
           node --test tools/Test-Design-Source-PR.mjs
 
-      - name: Require completed source mapping for UI pull requests
+      - name: Require completed registered source mapping for UI pull requests
         run: node tools/Validate-Design-Source-PR.mjs
 
       - name: Check patch hygiene
