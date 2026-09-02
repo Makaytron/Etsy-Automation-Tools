@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "asset": "assets/screenshots/message-assistant-mkui-workspace-v1.2.9.png",
+  "html": "docs/design/previews/message-assistant-mkui-preview.html",
+  "generator": "tools/Generate-Mkui-Message-Assistant-Preview.mjs",
+  "production_script": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
+  "production_version": "1.2.9",
+  "mkui_version": "1.0.0",
+  "data_classification": "fully_synthetic",
+  "network_access": "disabled",
+  "contains_real_account_data": false,
+  "approved_purpose": "Public visual preview of the Message Assistant MKUI workspace shell"
+}
