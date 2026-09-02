@@ -30,6 +30,24 @@ jobs:
         with:
           node-version: 22
 
+      - name: Strengthen transformer busy-state invariant
+        shell: pwsh
+        run: |
+          $path = 'tools/Apply-Mkui-Sale-Pilot.mjs'
+          $lines = @(Get-Content -LiteralPath $path)
+          $matches = @()
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -like '*Busy-state contract missing.*') { $matches += $i }
+          }
+          if ($matches.Count -eq 1) {
+            $lines[$matches[0]] = "assert(count(output.script, 'aria-busy') === count(original.script, 'aria-busy') && count(original.script, 'aria-busy') > 0, 'Busy-state contract changed.');"
+            Set-Content -LiteralPath $path -Value $lines -Encoding utf8
+          } elseif ($matches.Count -eq 0 -and (Get-Content -Raw -LiteralPath $path) -match 'Busy-state contract changed') {
+            Write-Host 'Transformer invariant is already normalized.'
+          } else {
+            throw "Unexpected busy-state invariant anchor count: $($matches.Count)"
+          }
+
       - name: Apply deterministic presentation-only pilot
         run: node tools/Apply-Mkui-Sale-Pilot.mjs --write
 
@@ -71,6 +89,7 @@ jobs:
             'scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js',
             'scripts/etsy-sale-campaign-batch-runner/README.en.md',
             'scripts/etsy-sale-campaign-batch-runner/README.md',
+            'tools/Apply-Mkui-Sale-Pilot.mjs',
             'tools/Test-Sale-Manager.mjs'
           ) | Sort-Object
           if (($changed -join "`n") -ne ($expected -join "`n")) {
@@ -82,6 +101,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md README.tr.md scripts/etsy-sale-campaign-batch-runner/CHANGELOG.md scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js scripts/etsy-sale-campaign-batch-runner/README.md scripts/etsy-sale-campaign-batch-runner/README.en.md tools/Test-Sale-Manager.mjs
+          git add README.md README.tr.md scripts/etsy-sale-campaign-batch-runner/CHANGELOG.md scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js scripts/etsy-sale-campaign-batch-runner/README.md scripts/etsy-sale-campaign-batch-runner/README.en.md tools/Apply-Mkui-Sale-Pilot.mjs tools/Test-Sale-Manager.mjs
           git commit -m "refactor: apply MKUI v1 Sale Manager pilot [skip ci]"
           git push origin HEAD:mkui-sale-pilot
