@@ -1,0 +1,54 @@
+name: Fix Listing MKUI Signatures
+
+on:
+  push:
+    branches:
+      - automation/listing-analyzer-mkui-v1.2.3
+    paths:
+      - .github/workflows/fix-listing-mkui-signatures.yml
+      - tools/Fix-Listing-Mkui-Signatures.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    name: Separate class hooks from CSS variables
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Correct class-signature extraction
+        run: node tools/Fix-Listing-Mkui-Signatures.mjs
+
+      - name: Refresh immutable baseline audit
+        run: node tools/Audit-Listing-Analyzer.mjs --write
+
+      - name: Verify corrected transformer dry-run
+        run: node tools/Apply-Mkui-Listing-Pilot.mjs
+
+      - name: Commit corrected signatures
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            tools/Audit-Listing-Analyzer.mjs \
+            tools/Apply-Mkui-Listing-Pilot.mjs \
+            tools/Test-Mkui-Listing-Analyzer.mjs \
+            docs/design/previews/listing-analyzer-source-audit.json
+          git diff --cached --check
+          git commit -m 'fix: separate Listing classes from MKUI token variables'
+          git push origin HEAD:automation/listing-analyzer-mkui-v1.2.3
