@@ -41,6 +41,8 @@ Every production package uses `tools/New-Standalone-ReleaseAssets.ps1` to build 
 
 Suite release tags must use the exact form `v<VERSION>`, must be annotated rather than lightweight, must resolve to the exact reviewed commit being released, must have `docs/releases/v<VERSION>.md` present, and must have both tag and release-commit signatures verified before publication. Suite Release CI runs `node tools/Validate-Suite-Tag.mjs`. Complete release assets and hosted-channel parity remain mandatory under `DISTRIBUTION.md`.
 
+Suite assets are built only by `tools/New-Suite-ReleaseAssets.ps1`: one deterministic `Etsy-Automation-Tools-v<VERSION>.zip` created from the reviewed Git tree, the five registry-listed byte-identical userscripts, and one `SHA256SUMS.txt` covering the ZIP plus all five scripts. `tools/Test-Suite-Release-Assets.ps1` must prove repeated builds from the same commit are byte-identical. Suite Release CI exercises this regression on reviewed changes and uploads a suite release-candidate artifact only on the signed `v<VERSION>` tag run; a non-tag build is a packaging regression check, not an authoritative release artifact.
+
 ## Historical migration tools
 
 `tools/Apply-Mkui-*.mjs` and `tools/Finalize-Mkui-*.mjs` are deterministic migration records for the versions named in those transformations. Do not treat their historical source/target version numbers as the current production version, and do not use a one-time migration transformer as a normal current-version CI assertion after the migration is complete.
@@ -83,4 +85,4 @@ Run the repository distribution gate on a PowerShell-capable environment:
 
 If an MKUI check reports a generated artifact is stale, use the documented regeneration command for that artifact, review the resulting diff, and rerun the checks. Do not hand-edit generated fingerprints to make a check pass.
 
-The GitHub Actions workflow `.github/workflows/userscript-auto-update-contract.yml` enforces the core userscript release contract on pull requests and pushes to `main`. Additional repository-contract, MKUI, product, and distribution workflows enforce derived artifacts, package inventory, hosted mappings, and behavior.
+The GitHub Actions workflow `.github/workflows/userscript-auto-update-contract.yml` enforces the core userscript release contract on pull requests and pushes to `main`. Additional repository-contract, MKUI, product, suite-release, and distribution workflows enforce derived artifacts, package inventory, hosted mappings, packaging determinism, and behavior.
