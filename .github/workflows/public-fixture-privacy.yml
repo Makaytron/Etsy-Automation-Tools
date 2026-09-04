@@ -35,7 +35,11 @@ jobs:
         shell: pwsh
         run: |
           node --check tools/Test-Sale-Manager.mjs
-          node --test tools/Test-Sale-Manager.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Run-Sale-Manager-Tests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node tools/Run-Sale-Manager-Tests.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Commit automatic privacy scrub
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
