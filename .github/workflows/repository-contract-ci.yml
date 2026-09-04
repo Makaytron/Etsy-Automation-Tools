@@ -18,6 +18,8 @@ on:
       - 'tools/Validate-Workflow-ReadOnly.mjs'
       - 'tools/Validate-Active-Policy-Docs.mjs'
       - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Suite-Release-Note-Contract.mjs'
+      - 'tools/Test-Suite-Release-Note-Contract.mjs'
       - 'tools/Test-Release-Tag-Contracts.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
@@ -37,6 +39,8 @@ on:
       - 'tools/Validate-Workflow-ReadOnly.mjs'
       - 'tools/Validate-Active-Policy-Docs.mjs'
       - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Suite-Release-Note-Contract.mjs'
+      - 'tools/Test-Suite-Release-Note-Contract.mjs'
       - 'tools/Test-Release-Tag-Contracts.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
@@ -73,6 +77,8 @@ jobs:
           node --check tools/Validate-Workflow-ReadOnly.mjs
           node --check tools/Validate-Active-Policy-Docs.mjs
           node --check tools/Release-Tag-Verification.mjs
+          node --check tools/Suite-Release-Note-Contract.mjs
+          node --check tools/Test-Suite-Release-Note-Contract.mjs
           node --check tools/Test-Release-Tag-Contracts.mjs
           node --check tools/Validate-Standalone-Tag.mjs
           node --check tools/Validate-Suite-Tag.mjs
@@ -86,7 +92,7 @@ jobs:
       - name: Enforce active policy consistency
         run: node tools/Validate-Active-Policy-Docs.mjs
 
-      - name: Run release tag contract regressions
+      - name: Run release contract regressions
         run: node --test tools/Test-Release-Tag-Contracts.mjs
 
       - name: Check changed lines for whitespace errors
