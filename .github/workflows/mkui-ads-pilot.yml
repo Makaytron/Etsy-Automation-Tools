@@ -1,9 +1,12 @@
 name: MKUI Ads Pilot Historical Audit
 
-# The Ads MKUI pilot is fully merged into main. Keep this workflow only for
-# manual reproduction/audit of the historical pilot branch; it must never
-# mutate the branch or act as a production updater.
+# The Ads MKUI pilot is fully merged into main. In steady state this workflow
+# is manual-only; a pull request that changes this workflow also runs the audit
+# once so the historical reproduction path is tested before merge.
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/mkui-ads-pilot.yml'
   workflow_dispatch:
 
 permissions:
