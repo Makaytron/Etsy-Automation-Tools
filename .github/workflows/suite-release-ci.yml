@@ -9,22 +9,28 @@ on:
     paths:
       - 'VERSION'
       - 'DISTRIBUTION.md'
+      - 'config/production-packages.json'
       - 'docs/releases/v*.md'
       - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
       - 'tools/Test-Release-Tag-Contracts.mjs'
+      - 'tools/New-Suite-ReleaseAssets.ps1'
+      - 'tools/Test-Suite-Release-Assets.ps1'
       - 'tools/Test-Distribution.ps1'
       - '.github/workflows/suite-release-ci.yml'
   pull_request:
     paths:
       - 'VERSION'
       - 'DISTRIBUTION.md'
+      - 'config/production-packages.json'
       - 'docs/releases/v*.md'
       - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
       - 'tools/Test-Release-Tag-Contracts.mjs'
+      - 'tools/New-Suite-ReleaseAssets.ps1'
+      - 'tools/Test-Suite-Release-Assets.ps1'
       - 'tools/Test-Distribution.ps1'
       - '.github/workflows/suite-release-ci.yml'
   workflow_dispatch:
@@ -76,6 +82,38 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: node tools/Validate-Suite-Tag.mjs
 
+      - name: Run suite release asset determinism regression
+        shell: pwsh
+        run: ./tools/Test-Suite-Release-Assets.ps1
+
       - name: Run complete distribution gate
         shell: pwsh
         run: ./tools/Test-Distribution.ps1
+
+      - name: Build suite release candidate
+        if: github.ref_type == 'tag'
+        id: package
+        shell: pwsh
+        env:
+          GH_REF_NAME: ${{ github.ref_name }}
+        run: |
+          $tagName = $env:GH_REF_NAME
+          if (-not $tagName.StartsWith('v', [System.StringComparison]::Ordinal)) {
+              throw "Unexpected suite release tag: $tagName"
+          }
+          $expectedVersion = $tagName.Substring(1)
+          $outputDirectory = Join-Path $env:RUNNER_TEMP 'etsy-automation-tools-suite-release'
+          ./tools/New-Suite-ReleaseAssets.ps1 `
+              -ExpectedVersion $expectedVersion `
+              -OutputDirectory $outputDirectory
+          "artifact_path=$outputDirectory" >> $env:GITHUB_OUTPUT
+
+      - name: Upload suite release candidate
+        if: github.ref_type == 'tag'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: etsy-automation-tools-suite-release-candidate
+          path: ${{ steps.package.outputs.artifact_path }}
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 14
