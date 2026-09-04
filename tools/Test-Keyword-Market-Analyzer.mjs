@@ -10,6 +10,14 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const scriptPath = path.join(repoRoot, 'scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js');
 const source = fs.readFileSync(scriptPath, 'utf8');
 
+function currentVersions() {
+    const metadata = source.match(/^\/\/ @version\s+(\d+\.\d+\.\d+)\s*$/m)?.[1];
+    const runtime = source.match(/^\s*const APP_VERSION\s*=\s*['"](\d+\.\d+\.\d+)['"]\s*;\s*$/m)?.[1];
+    assert.ok(metadata, 'Keyword analyzer @version is missing or not strict SemVer');
+    assert.ok(runtime, 'Keyword analyzer APP_VERSION is missing or not strict SemVer');
+    return { metadata, runtime };
+}
+
 class FakeElement {
     constructor() {
         this.lang = 'en';
@@ -149,9 +157,9 @@ function sortedActions(text) {
     return [...new Set([...text.matchAll(/data-action=\\?"([^"\\]+)\\?"/g)].map((match) => match[1]))].sort();
 }
 
-test('MKUI migration preserves standalone userscript identity and open Shadow DOM contract', () => {
-    assert.match(source, /^\/\/ @version\s+1\.0\.4$/m);
-    assert.match(source, /const APP_VERSION = '1\.0\.4';/);
+test('MKUI production state preserves standalone userscript identity and open Shadow DOM contract', () => {
+    const { metadata, runtime } = currentVersions();
+    assert.equal(runtime, metadata, 'APP_VERSION must equal userscript @version');
     assert.match(source, /const MKUI_VERSION = '1\.0\.0';/);
     assert.match(source, /host\.id = 'makaytron-etsy-keyword-market-analyzer';/);
     assert.equal((source.match(/attachShadow\(\{ mode: 'open' \}\)/g) || []).length, 1);
