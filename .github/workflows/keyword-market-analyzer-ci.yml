@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'etsy-keyword-market-analyzer-v*'
     paths:
       - 'scripts/etsy-keyword-market-analyzer/**'
       - 'tools/Test-Keyword-Market-Analyzer.mjs'
@@ -25,9 +27,14 @@ on:
       - 'README.md'
       - 'README.tr.md'
       - '.github/workflows/keyword-market-analyzer-ci.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: keyword-market-analyzer-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -37,6 +44,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js
