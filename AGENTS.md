@@ -31,6 +31,8 @@ New production userscripts must follow the same update URL, SemVer, documentatio
 
 Standalone release tags must use the exact form `<package-slug>-v<current-@version>`, must be annotated rather than lightweight, and must resolve to the exact reviewed commit being released. Run `node tools/Validate-Standalone-Tag.mjs --package-slug <package-slug>` in the package CI; never publish from a tag that fails this contract. Cryptographic signature and hosted-release parity remain mandatory under `DISTRIBUTION.md` and are not replaced by this local tag check.
 
+Suite release tags must use the exact form `v<VERSION>`, must be annotated rather than lightweight, must resolve to the exact reviewed commit being released, and must have `docs/releases/v<VERSION>.md` present. Run `node tools/Validate-Suite-Tag.mjs` in Suite Release CI. Cryptographic signature, complete release assets, and hosted-channel parity remain mandatory under `DISTRIBUTION.md`.
+
 ## Historical migration tools
 
 `tools/Apply-Mkui-*.mjs` and `tools/Finalize-Mkui-*.mjs` are deterministic migration records for the versions named in those transformations. Do not treat their historical source/target version numbers as the current production version, and do not use a one-time migration transformer as a normal current-version CI assertion after the migration is complete.
