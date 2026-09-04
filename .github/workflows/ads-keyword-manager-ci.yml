@@ -1,15 +1,14 @@
-name: Sale Manager CI
+name: Ads Keyword Manager CI
 
 on:
   push:
     branches:
       - main
     tags:
-      - 'etsy-sale-campaign-batch-runner-v*'
+      - 'etsy-ads-keyword-manager-v*'
     paths:
-      - 'scripts/etsy-sale-campaign-batch-runner/**'
-      - 'tools/Test-Sale-Manager.mjs'
-      - 'tools/Run-Sale-Manager-Tests.mjs'
+      - 'scripts/etsy-ads-keyword-manager/**'
+      - 'tools/Test-Ads-Keyword-Manager.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Test-Updaters.mjs'
       - 'tools/Test-Distribution.ps1'
@@ -17,12 +16,11 @@ on:
       - 'shared/mkui/**'
       - 'README.md'
       - 'README.tr.md'
-      - '.github/workflows/sale-manager-ci.yml'
+      - '.github/workflows/ads-keyword-manager-ci.yml'
   pull_request:
     paths:
-      - 'scripts/etsy-sale-campaign-batch-runner/**'
-      - 'tools/Test-Sale-Manager.mjs'
-      - 'tools/Run-Sale-Manager-Tests.mjs'
+      - 'scripts/etsy-ads-keyword-manager/**'
+      - 'tools/Test-Ads-Keyword-Manager.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Test-Updaters.mjs'
       - 'tools/Test-Distribution.ps1'
@@ -30,22 +28,24 @@ on:
       - 'shared/mkui/**'
       - 'README.md'
       - 'README.tr.md'
-      - '.github/workflows/sale-manager-ci.yml'
+      - '.github/workflows/ads-keyword-manager-ci.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: sale-manager-ci-${{ github.workflow }}-${{ github.ref }}
+  group: ads-keyword-manager-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   verify:
+    name: Validate Ads Keyword Manager
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 30
+
     steps:
-      - name: Check out repository
+      - name: Check out the reviewed revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -59,20 +59,18 @@ jobs:
       - name: Check JavaScript syntax
         shell: pwsh
         run: |
-          node --check scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js
+          node --check scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check tools/Test-Sale-Manager.mjs
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node --check tools/Run-Sale-Manager-Tests.mjs
+          node --check tools/Test-Ads-Keyword-Manager.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check tools/Validate-Standalone-Tag.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate standalone package tag contract
-        run: node tools/Validate-Standalone-Tag.mjs --package-slug etsy-sale-campaign-batch-runner
+        run: node tools/Validate-Standalone-Tag.mjs --package-slug etsy-ads-keyword-manager
 
-      - name: Run Sale Manager behavior and safety regression tests
-        run: node tools/Run-Sale-Manager-Tests.mjs
+      - name: Run Ads Keyword Manager behavior regression tests
+        run: node --test tools/Test-Ads-Keyword-Manager.mjs
 
       - name: Run shared updater regression tests
         run: node --test tools/Test-Updaters.mjs

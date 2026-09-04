@@ -1,34 +1,46 @@
-name: Apply Message Assistant MKUI v1
+name: Message Assistant MKUI v1 Historical Audit
 
 # Historical one-time migration workflow. The MKUI v1 migration is complete.
-# Keep this workflow manually dispatchable for audit/reproduction only; normal
-# production pushes are validated by message-assistant-ci.yml and MKUI drift CI.
+# In steady state this workflow is manual-only; a pull request that changes
+# this workflow also runs the audit once so the historical path is tested.
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/mkui-message-assistant-migration.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: mkui-message-assistant-migration-manual
+  group: mkui-message-assistant-migration-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  migrate:
+  audit:
     name: Reproduce historical transform, verify and preview
     runs-on: windows-latest
     timeout-minutes: 35
 
     steps:
-      - name: Check out current main
+      - name: Check out released Message Assistant MKUI snapshot
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: 7899811d1705507fbaf684f3852a102116e5d99f
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
+
+      - name: Verify historical snapshot identity
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '7899811d1705507fbaf684f3852a102116e5d99f'
+          if ($actual -ne $expected) { throw "Historical snapshot mismatch: $actual" }
 
       - name: Validate migration tools
         shell: pwsh
@@ -44,10 +56,10 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Syntax validation failed: $file" }
           }
 
-      - name: Apply guarded Message Assistant MKUI transform
+      - name: Reproduce guarded Message Assistant MKUI transform
         run: node tools/Apply-Mkui-Message-Pilot.mjs --write
 
-      - name: Finalize historical version and documentation
+      - name: Reproduce historical version and documentation finalization
         run: node tools/Finalize-Mkui-Message-Migration.mjs --write
 
       - name: Verify transformed source syntax
@@ -121,78 +133,6 @@ jobs:
 
       - name: Check patch hygiene
         run: git diff --check
-
-      - name: Commit verified historical migration to pull-request branch
-        id: publish
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $publishBranch = 'automation/message-assistant-mkui-v1.2.9'
-          $publishPaths = @(
-              'scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js'
-              'scripts/etsy-message-assistant/README.md'
-              'scripts/etsy-message-assistant/README.en.md'
-              'scripts/etsy-message-assistant/CHANGELOG.md'
-              'README.md'
-              'README.tr.md'
-              'docs/design/MIGRATION-PLAN.md'
-              'docs/design/MKUI-DESIGN-CONTRACT-v1.md'
-              'docs/design/contracts/message-assistant.md'
-              'docs/design/previews/message-assistant-mkui-preview.html'
-              'assets/screenshots/message-assistant-mkui-workspace-v1.2.9.png'
-          )
-
-          foreach ($path in $publishPaths) {
-              if (-not (Test-Path -LiteralPath $path)) {
-                  throw "Expected publish path is missing: $path"
-              }
-          }
-
-          git config user.name 'github-actions[bot]'
-          if ($LASTEXITCODE -ne 0) { throw 'git config user.name failed.' }
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          if ($LASTEXITCODE -ne 0) { throw 'git config user.email failed.' }
-
-          git add -f -- $publishPaths
-          if ($LASTEXITCODE -ne 0) { throw 'git add failed.' }
-
-          git diff --cached --check
-          if ($LASTEXITCODE -ne 0) { throw 'Staged patch hygiene failed.' }
-
-          git diff --cached --quiet
-          $diffExit = $LASTEXITCODE
-          if ($diffExit -eq 0) {
-              $current = (git rev-parse HEAD).Trim()
-              if ($LASTEXITCODE -ne 0 -or -not $current) { throw 'Unable to resolve current HEAD.' }
-              Write-Host 'Message Assistant MKUI migration was already published.'
-              "changed=false" >> $env:GITHUB_OUTPUT
-              "commit_sha=$current" >> $env:GITHUB_OUTPUT
-              exit 0
-          } elseif ($diffExit -ne 1) {
-              throw "Unable to inspect staged changes; git diff exited with $diffExit."
-          }
-
-          git commit -m 'MKUI v1: reproduce Message Assistant workspace migration'
-          if ($LASTEXITCODE -ne 0) { throw 'git commit failed.' }
-
-          $local = (git rev-parse HEAD).Trim()
-          if ($LASTEXITCODE -ne 0 -or -not $local) { throw 'Unable to resolve local HEAD.' }
-
-          git push origin "HEAD:refs/heads/$publishBranch"
-          if ($LASTEXITCODE -ne 0) { throw "git push to $publishBranch failed." }
-
-          git fetch origin $publishBranch
-          if ($LASTEXITCODE -ne 0) { throw 'git fetch after branch push failed.' }
-          $remote = (git rev-parse "origin/$publishBranch").Trim()
-          if ($LASTEXITCODE -ne 0 -or -not $remote) { throw "Unable to resolve origin/$publishBranch." }
-          if ($local -ne $remote) {
-              throw "Remote branch verification failed: local=$local remote=$remote"
-          }
-
-          Write-Host "Verified $publishBranch at $remote"
-          "changed=true" >> $env:GITHUB_OUTPUT
-          "commit_sha=$remote" >> $env:GITHUB_OUTPUT
-          "publish_branch=$publishBranch" >> $env:GITHUB_OUTPUT
 
       - name: Upload historical preview artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

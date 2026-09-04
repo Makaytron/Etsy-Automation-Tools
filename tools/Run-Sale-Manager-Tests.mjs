@@ -30,6 +30,12 @@ if (historicalTargets.size !== 1) {
   fail(`Sale Manager migration assertions disagree on their historical target: ${[...historicalTargets].join(', ')}`);
 }
 
+const transitionFixturePattern = /waitForStepActionTransition\('review', \{\}, 180, \(\) => \(\{/g;
+const transitionFixtureMatches = [...original.matchAll(transitionFixturePattern)];
+if (transitionFixtureMatches.length !== 1) {
+  fail(`Expected exactly one Sale transition timing fixture, found ${transitionFixtureMatches.length}.`);
+}
+
 let transformed = original.replace(
   /assert\.equal\(migrated\.version, ['"]\d+\.\d+\.\d+['"]\);/g,
   `assert.equal(migrated.version, '${currentVersion}');`,
@@ -37,6 +43,10 @@ let transformed = original.replace(
 transformed = transformed.replace(
   /v\d+\.\d+\.\d+ UI-only patch migration/g,
   `v${currentVersion} UI-only patch migration`,
+);
+transformed = transformed.replace(
+  transitionFixturePattern,
+  "waitForStepActionTransition('review', {}, 800, () => ({",
 );
 
 try {

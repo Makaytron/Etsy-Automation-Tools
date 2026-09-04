@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - automation/mkui-cross-script-qa-v1
     paths:
       - .github/workflows/mkui-cross-script-ci.yml
       - tools/Mkui-Production-Registry.mjs

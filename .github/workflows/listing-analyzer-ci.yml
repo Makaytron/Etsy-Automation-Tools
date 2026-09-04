@@ -46,6 +46,7 @@ jobs:
               'tools/Generate-Current-Mkui-Listing-Analyzer-Preview.mjs'
               'tools/Test-Mkui-Listing-Analyzer.mjs'
               'tools/Test-Listing-Analyzer.mjs'
+              'tools/Validate-Standalone-Tag.mjs'
           )
           foreach ($file in $files) {
               node --check $file
@@ -53,6 +54,9 @@ jobs:
                   throw "JavaScript syntax validation failed: $file"
               }
           }
+
+      - name: Validate standalone package tag contract
+        run: node tools/Validate-Standalone-Tag.mjs --package-slug etsy-listing-analyzer
 
       - name: Check changed lines for whitespace errors
         shell: pwsh
