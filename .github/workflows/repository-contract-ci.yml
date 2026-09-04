@@ -1,0 +1,83 @@
+name: Repository Contract CI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/**'
+      - 'AGENTS.md'
+      - 'DISTRIBUTION.md'
+      - 'PRIVACY.md'
+      - 'PRIVACY.en.md'
+      - 'SECURITY.md'
+      - 'SECURITY.en.md'
+      - 'tools/Validate-Workflow-ReadOnly.mjs'
+      - 'tools/Validate-Active-Policy-Docs.mjs'
+      - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Test-Release-Tag-Contracts.mjs'
+      - 'tools/Validate-Standalone-Tag.mjs'
+      - 'tools/Validate-Suite-Tag.mjs'
+      - 'tools/Test-Distribution.ps1'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'AGENTS.md'
+      - 'DISTRIBUTION.md'
+      - 'PRIVACY.md'
+      - 'PRIVACY.en.md'
+      - 'SECURITY.md'
+      - 'SECURITY.en.md'
+      - 'tools/Validate-Workflow-ReadOnly.mjs'
+      - 'tools/Validate-Active-Policy-Docs.mjs'
+      - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Test-Release-Tag-Contracts.mjs'
+      - 'tools/Validate-Standalone-Tag.mjs'
+      - 'tools/Validate-Suite-Tag.mjs'
+      - 'tools/Test-Distribution.ps1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-contract-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate repository contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Check repository contract tool syntax
+        run: |
+          node --check tools/Validate-Workflow-ReadOnly.mjs
+          node --check tools/Validate-Active-Policy-Docs.mjs
+          node --check tools/Release-Tag-Verification.mjs
+          node --check tools/Test-Release-Tag-Contracts.mjs
+          node --check tools/Validate-Standalone-Tag.mjs
+          node --check tools/Validate-Suite-Tag.mjs
+
+      - name: Enforce workflow read-only contract
+        run: node tools/Validate-Workflow-ReadOnly.mjs
+
+      - name: Enforce active policy consistency
+        run: node tools/Validate-Active-Policy-Docs.mjs
+
+      - name: Run release tag contract regressions
+        run: node --test tools/Test-Release-Tag-Contracts.mjs
+
+      - name: Check changed lines for whitespace errors
+        run: git diff --check
