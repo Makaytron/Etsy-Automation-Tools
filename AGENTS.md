@@ -35,6 +35,16 @@ New production userscripts must follow the same update URL, SemVer, documentatio
 
 Current production CI should validate behavior, invariants, metadata/runtime synchronization, generated manifests, and drift without requiring the production script to remain forever on the migration's historical target version.
 
+## Merge discipline
+
+GitHub branch protection may not require every repository workflow as a server-side status check. Repository agents must therefore enforce the stricter rule themselves:
+
+1. Never merge a pull request while any workflow triggered for that PR is queued or in progress.
+2. Never merge when any triggered workflow has failed, timed out, or been cancelled unless the failing workflow is proven unrelated and the repository owner explicitly accepts that exception.
+3. For userscript, distribution, MKUI, fixture/privacy, or release changes, wait for every triggered product CI and shared gate to report `success` before merging.
+4. Re-check the PR head SHA immediately before merge and merge only the reviewed/tested head.
+5. Do not bypass this rule merely because GitHub reports the pull request as mergeable.
+
 ## Required validation
 
 Before completing a userscript change, run:
