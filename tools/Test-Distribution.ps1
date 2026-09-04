@@ -271,6 +271,21 @@ Assert-True ($supportSource.Contains($qAndAUrl) -and $supportEnSource.Contains($
 Assert-True ($supportSource.Contains($issueChooserUrl) -and $supportEnSource.Contains($issueChooserUrl)) 'Both support guides must route reproducible bugs to the issue chooser.'
 Write-Host 'PASS community health files=3'
 
+$activePolicyValidatorPath = Join-Path $repoRoot 'tools/Validate-Active-Policy-Docs.mjs'
+Assert-True (Test-Path -LiteralPath $activePolicyValidatorPath -PathType Leaf) 'Active policy validator is missing.'
+& node $activePolicyValidatorPath
+Assert-True ($LASTEXITCODE -eq 0) 'Active policy validation failed.'
+
+$workflowValidatorPath = Join-Path $repoRoot 'tools/Validate-Workflow-ReadOnly.mjs'
+Assert-True (Test-Path -LiteralPath $workflowValidatorPath -PathType Leaf) 'Workflow read-only validator is missing.'
+& node $workflowValidatorPath
+Assert-True ($LASTEXITCODE -eq 0) 'Workflow read-only validation failed.'
+
+$releaseTagContractTestPath = Join-Path $repoRoot 'tools/Test-Release-Tag-Contracts.mjs'
+Assert-True (Test-Path -LiteralPath $releaseTagContractTestPath -PathType Leaf) 'Release tag contract regression test is missing.'
+& node --test $releaseTagContractTestPath
+Assert-True ($LASTEXITCODE -eq 0) 'Release tag contract regression tests failed.'
+
 $updaterTestPath = Join-Path $repoRoot 'tools/Test-Updaters.mjs'
 Assert-True (Test-Path -LiteralPath $updaterTestPath -PathType Leaf) 'Updater behavior test is missing.'
 & node --test $updaterTestPath

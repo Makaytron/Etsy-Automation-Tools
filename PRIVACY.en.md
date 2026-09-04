@@ -2,7 +2,7 @@
 
 # Privacy and Data Processing
 
-Last updated: 2026-08-27
+Last updated: 2026-09-04
 
 Etsy Automation Tools consists of Tampermonkey userscripts that run in the browser. All five scripts enable limited, pseudonymous product-usage telemetry by default, show a visible first-use notice, and provide a one-click off switch in Settings. Telemetry does not collect Etsy content or account data. The Message Assistant panel is closed by default and ships with **Automatic Translation Preview** enabled. Visiting an individual conversation may therefore send up to the latest 40 customer and seller messages to the selected translation provider even while the panel is closed; opening the panel on a conversation list may send up to 50 visible previews. To prevent this transfer, open Makaytron settings from the Tampermonkey menu and disable automatic translation preview before opening a conversation or the panel.
 
@@ -54,7 +54,7 @@ The first-use notice explains that telemetry is on by default and can be disable
 - Google Translate is the default translation provider. Automatic translation preview is enabled by default and may send up to the latest 40 customer and seller messages to `translate.googleapis.com` when the user visits an individual conversation, even while the panel is closed; opening the panel on a conversation list may send up to 50 visible previews. Changing the quick display language resends visible list previews for the new target; manual free translation sends selected text to the same recipient.
 - DeepL sends text and the user's API key to the DeepL API.
 - AI features send relevant message context and instructions to the user-selected OpenAI, Anthropic, Google Gemini, DeepSeek, or OpenRouter API.
-- Listing Analyzer `v1.2.2` makes no network request to an AI provider and stores no AI API key. The user can export or copy an anonymizable request JSON/prompt, then import proposal JSON from an external tool after validation. The user controls what is sent to that external tool.
+- Listing Analyzer makes no network request to an AI provider and stores no AI API key. The user can export or copy an anonymizable request JSON/prompt, then import proposal JSON from an external tool after validation. The user controls what is sent to that external tool.
 - Listing Analyzer checks the canonical `main` commit identity through `api.github.com`, then reads userscript metadata only from that immutable commit on `raw.githubusercontent.com`, at most once every 24 hours with anonymous, cookie-free requests. Installation is never automatic; only the verified commit URL is opened in Tampermonkey's confirmation screen.
 - Keyword & Market Analyzer also verifies the canonical `main` commit identity through `api.github.com` and reads metadata only from that immutable commit's userscript on `raw.githubusercontent.com`. Etsy Sale Manager, Message Assistant, and Ads Keyword Manager may read their own canonical public Raw userscript sources at most once every 24 hours. A non-GitHub installation source does not have the private GitHub flow forced over its distributor.
 - While telemetry is enabled, all five scripts may send limited daily open, successful-use, and categorized-error signals to the Makaytron telemetry collector. None of the raw errors, content, or account data excluded above is sent to that recipient.
