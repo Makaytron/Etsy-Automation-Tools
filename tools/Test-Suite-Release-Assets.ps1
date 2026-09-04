@@ -48,7 +48,8 @@ try {
     $manifest = [System.IO.File]::ReadAllText((Join-Path $first 'SHA256SUMS.txt'), [System.Text.Encoding]::UTF8)
     $manifestLines = @($manifest -split "`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     Assert-True ($manifestLines.Count -eq 6) "Suite SHA256SUMS.txt must contain exactly six entries; found $($manifestLines.Count)."
-    Assert-True ($manifestLines | Where-Object { $_ -match "  Etsy-Automation-Tools-v$([regex]::Escape($version))\.zip$" }) 'Suite checksum manifest is missing the suite ZIP.'
+    $zipManifestMatches = @($manifestLines | Where-Object { $_ -match "  Etsy-Automation-Tools-v$([regex]::Escape($version))\.zip$" })
+    Assert-True ($zipManifestMatches.Count -eq 1) "Suite checksum manifest must contain the suite ZIP exactly once; found $($zipManifestMatches.Count)."
 
     Write-Host "PASS suite release asset determinism: version=$version assets=7 manifestEntries=6"
 }
