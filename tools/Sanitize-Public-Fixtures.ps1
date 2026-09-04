@@ -268,8 +268,24 @@ if (Test-Path -LiteralPath $screenshotRoot) {
         }
 
         if ($null -ne $messageAssistantText) {
-            if ($messageAssistantText -notmatch '(?m)^// @version\s+1\.2\.9$' -or $messageAssistantText -notmatch "const MKUI_VERSION = '1\.0\.0';") {
-                $problems.Add("$messageAssistantPath must match the audited preview production and MKUI versions.")
+            $currentVersionMatch = [regex]::Match($messageAssistantText, '(?m)^// @version\s+(\d+\.\d+\.\d+)\s*$')
+            if (-not $currentVersionMatch.Success) {
+                $problems.Add("$messageAssistantPath must contain one strict SemVer @version.")
+            }
+            else {
+                try {
+                    $currentProductionVersion = [version]$currentVersionMatch.Groups[1].Value
+                    $previewProductionVersion = [version]$approvedMessageAssistantPreview.ProductionVersion
+                    if ($currentProductionVersion -lt $previewProductionVersion) {
+                        $problems.Add("$messageAssistantPath cannot predate the approved audited preview production version $($approvedMessageAssistantPreview.ProductionVersion).")
+                    }
+                }
+                catch {
+                    $problems.Add("$messageAssistantPath or approved preview has an invalid production version.")
+                }
+            }
+            if ($messageAssistantText -notmatch "const MKUI_VERSION = '$($approvedMessageAssistantPreview.MkuiVersion)';") {
+                $problems.Add("$messageAssistantPath must retain the MKUI version used by the approved audited preview.")
             }
         }
     }
