@@ -8,6 +8,7 @@ on:
       - 'etsy-sale-campaign-batch-runner-v*'
     paths:
       - 'scripts/etsy-sale-campaign-batch-runner/**'
+      - 'config/production-packages.json'
       - 'tools/Test-Sale-Manager.mjs'
       - 'tools/Run-Sale-Manager-Tests.mjs'
       - 'tools/Release-Tag-Verification.mjs'
@@ -24,6 +25,7 @@ on:
   pull_request:
     paths:
       - 'scripts/etsy-sale-campaign-batch-runner/**'
+      - 'config/production-packages.json'
       - 'tools/Test-Sale-Manager.mjs'
       - 'tools/Run-Sale-Manager-Tests.mjs'
       - 'tools/Release-Tag-Verification.mjs'
