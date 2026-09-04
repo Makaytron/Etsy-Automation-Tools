@@ -10,6 +10,7 @@ on:
       - 'scripts/etsy-sale-campaign-batch-runner/**'
       - 'tools/Test-Sale-Manager.mjs'
       - 'tools/Run-Sale-Manager-Tests.mjs'
+      - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Test-Updaters.mjs'
       - 'tools/Test-Distribution.ps1'
       - 'tools/Sanitize-Public-Fixtures.ps1'
@@ -22,6 +23,7 @@ on:
       - 'scripts/etsy-sale-campaign-batch-runner/**'
       - 'tools/Test-Sale-Manager.mjs'
       - 'tools/Run-Sale-Manager-Tests.mjs'
+      - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Test-Updaters.mjs'
       - 'tools/Test-Distribution.ps1'
       - 'tools/Sanitize-Public-Fixtures.ps1'
@@ -63,6 +65,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check tools/Run-Sale-Manager-Tests.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Validate-Standalone-Tag.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate standalone package tag contract
+        run: node tools/Validate-Standalone-Tag.mjs --package-slug etsy-sale-campaign-batch-runner
 
       - name: Run Sale Manager behavior and safety regression tests
         run: node tools/Run-Sale-Manager-Tests.mjs
