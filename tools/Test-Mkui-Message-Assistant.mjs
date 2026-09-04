@@ -12,6 +12,14 @@ function count(needle) {
   return source.split(needle).length - 1;
 }
 
+function currentVersions() {
+  const metadata = source.match(/^\/\/ @version\s+(\d+\.\d+\.\d+)\s*$/m)?.[1];
+  const runtime = source.match(/^\s*const APP_VERSION\s*=\s*['"](\d+\.\d+\.\d+)['"]\s*;\s*$/m)?.[1];
+  assert.ok(metadata, 'Message Assistant @version is missing or not strict SemVer');
+  assert.ok(runtime, 'Message Assistant APP_VERSION is missing or not strict SemVer');
+  return { metadata, runtime };
+}
+
 function hasTemplateAttribute(attribute, value) {
   return source.includes(`${attribute}="${value}"`)
     || source.includes(String.raw`${attribute}=\"${value}\"`)
@@ -19,9 +27,9 @@ function hasTemplateAttribute(attribute, value) {
     || source.includes(String.raw`${attribute}=\'${value}\'`);
 }
 
-test('Message Assistant keeps protected UI architecture before/after MKUI mapping', () => {
+test('Message Assistant keeps protected UI architecture after MKUI migration', () => {
   assert.equal(count("attachShadow({ mode: 'closed' })"), 1, 'closed Shadow DOM mount must remain singular');
-  assert.equal(count('const PREMIUM_CSS = `'), 1, 'PREMIUM_CSS layer must remain present during first migration');
+  assert.equal(count('const PREMIUM_CSS = `'), 1, 'PREMIUM_CSS layer must remain present');
   assert.equal(count('const GLOBAL_CSS = `'), 1, 'GLOBAL_CSS Etsy integration layer must remain present');
   assert.match(source, /const CSS = `:host\{/);
   assert.match(source, /const LAUNCHER_CSS = `/);
@@ -49,16 +57,11 @@ test('Message Assistant protected userscript metadata remains intact', () => {
   ]) assert.ok(source.includes(line), `missing protected metadata: ${line}`);
 });
 
-test('Message Assistant MKUI migration is versioned explicitly when applied', () => {
-  const applied = source.includes("const MKUI_VERSION = '1.0.0';");
-  if (applied) {
-    assert.ok(source.includes('// @version      1.2.9'));
-    assert.ok(source.includes("const APP_VERSION = '1.2.9';"));
-    assert.ok(source.includes('--ma-accent:#525252'));
-    assert.ok(source.includes('--ma-line:#dedede'));
-    assert.ok(source.includes('--ma-bg:#f5f5f5'));
-  } else {
-    assert.ok(source.includes('// @version      1.2.8'));
-    assert.ok(source.includes("const APP_VERSION = '1.2.8';"));
-  }
+test('Message Assistant current production version stays synchronized with MKUI invariants', () => {
+  const { metadata, runtime } = currentVersions();
+  assert.equal(runtime, metadata, 'APP_VERSION must equal userscript @version');
+  assert.ok(source.includes("const MKUI_VERSION = '1.0.0';"), 'MKUI production marker is missing');
+  assert.ok(source.includes('--ma-accent:#525252'));
+  assert.ok(source.includes('--ma-line:#dedede'));
+  assert.ok(source.includes('--ma-bg:#f5f5f5'));
 });
