@@ -55,9 +55,10 @@ jobs:
           git diff --check
           if ($LASTEXITCODE -ne 0) { throw 'Patch hygiene failed.' }
 
-      - name: Commit the verified repair
+      - name: Commit and publish the verified repair
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add tools/Test-Distribution.ps1
@@ -65,5 +66,10 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw 'Expected Test-Distribution.ps1 to change.' }
           git commit -m 'ci: use release-aware Sale tests in distribution gate'
           if ($LASTEXITCODE -ne 0) { throw 'git commit failed.' }
+
+          git fetch origin main
+          if ($LASTEXITCODE -ne 0) { throw 'git fetch origin main failed.' }
+          git rebase origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'git rebase onto current main failed.' }
           git push origin HEAD:main
           if ($LASTEXITCODE -ne 0) { throw 'git push failed.' }
