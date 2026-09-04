@@ -12,6 +12,9 @@ on:
       - 'PRIVACY.en.md'
       - 'SECURITY.md'
       - 'SECURITY.en.md'
+      - 'config/production-packages.json'
+      - 'tools/Mkui-Production-Registry.mjs'
+      - 'tools/Validate-Production-Package-Registry.mjs'
       - 'tools/Validate-Workflow-ReadOnly.mjs'
       - 'tools/Validate-Active-Policy-Docs.mjs'
       - 'tools/Release-Tag-Verification.mjs'
@@ -28,6 +31,9 @@ on:
       - 'PRIVACY.en.md'
       - 'SECURITY.md'
       - 'SECURITY.en.md'
+      - 'config/production-packages.json'
+      - 'tools/Mkui-Production-Registry.mjs'
+      - 'tools/Validate-Production-Package-Registry.mjs'
       - 'tools/Validate-Workflow-ReadOnly.mjs'
       - 'tools/Validate-Active-Policy-Docs.mjs'
       - 'tools/Release-Tag-Verification.mjs'
@@ -63,12 +69,16 @@ jobs:
 
       - name: Check repository contract tool syntax
         run: |
+          node --check tools/Validate-Production-Package-Registry.mjs
           node --check tools/Validate-Workflow-ReadOnly.mjs
           node --check tools/Validate-Active-Policy-Docs.mjs
           node --check tools/Release-Tag-Verification.mjs
           node --check tools/Test-Release-Tag-Contracts.mjs
           node --check tools/Validate-Standalone-Tag.mjs
           node --check tools/Validate-Suite-Tag.mjs
+
+      - name: Enforce production package registry
+        run: node tools/Validate-Production-Package-Registry.mjs
 
       - name: Enforce workflow read-only contract
         run: node tools/Validate-Workflow-ReadOnly.mjs

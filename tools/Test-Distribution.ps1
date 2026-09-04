@@ -148,8 +148,23 @@ Assert-True (Test-Path -LiteralPath $versionPath -PathType Leaf) 'VERSION is mis
 $version = (Get-Content -LiteralPath $versionPath -Raw -Encoding UTF8).Trim()
 Assert-True ($version -match '^\d+\.\d+\.\d+$') "VERSION is not strict SemVer: $version"
 
-$scripts = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'scripts') -Filter '*.user.js' -File -Recurse | Sort-Object FullName)
-Assert-True ($scripts.Count -eq 5) "Expected exactly five standalone userscripts; found $($scripts.Count)."
+$productionRegistryPath = Join-Path $repoRoot 'config/production-packages.json'
+Assert-True (Test-Path -LiteralPath $productionRegistryPath -PathType Leaf) 'Production package registry is missing.'
+$productionPackages = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($productionRegistryPath, [System.Text.Encoding]::UTF8)))
+Assert-True ($productionPackages.Count -eq 5) "Expected exactly five registered production packages; found $($productionPackages.Count)."
+$productionPackagesBySlug = @{}
+$scripts = @(
+    foreach ($package in $productionPackages) {
+        $slug = [string]$package.packageSlug
+        Assert-True (-not [string]::IsNullOrWhiteSpace($slug)) 'Production registry contains an empty packageSlug.'
+        Assert-True (-not $productionPackagesBySlug.ContainsKey($slug)) "Duplicate packageSlug in production registry: $slug"
+        $productionPackagesBySlug[$slug] = $package
+        $registeredPath = Join-Path $repoRoot ([string]$package.scriptPath).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+        Assert-True (Test-Path -LiteralPath $registeredPath -PathType Leaf) "Registered userscript is missing: $($package.scriptPath)"
+        Get-Item -LiteralPath $registeredPath
+    }
+)
+$scripts = @($scripts | Sort-Object FullName)
 
 $onlineUrls = [System.Collections.Generic.List[string]]::new()
 $onlineUrls.Add($canonicalRepo)
@@ -270,6 +285,11 @@ Assert-True (-not $issueConfigSource.Contains("$canonicalRepo/blob/main/SUPPORT.
 Assert-True ($supportSource.Contains($qAndAUrl) -and $supportEnSource.Contains($qAndAUrl)) 'Both support guides must route general usage questions to Q&A Discussions.'
 Assert-True ($supportSource.Contains($issueChooserUrl) -and $supportEnSource.Contains($issueChooserUrl)) 'Both support guides must route reproducible bugs to the issue chooser.'
 Write-Host 'PASS community health files=3'
+
+$productionRegistryValidatorPath = Join-Path $repoRoot 'tools/Validate-Production-Package-Registry.mjs'
+Assert-True (Test-Path -LiteralPath $productionRegistryValidatorPath -PathType Leaf) 'Production package registry validator is missing.'
+& node $productionRegistryValidatorPath
+Assert-True ($LASTEXITCODE -eq 0) 'Production package registry validation failed.'
 
 $activePolicyValidatorPath = Join-Path $repoRoot 'tools/Validate-Active-Policy-Docs.mjs'
 Assert-True (Test-Path -LiteralPath $activePolicyValidatorPath -PathType Leaf) 'Active policy validator is missing.'
@@ -479,11 +499,12 @@ if ($HostedChannels) {
         Write-Host "HOSTED MATCH GitHub Release $releaseTag assets=$($expectedReleaseAssetNames.Count) commit=$releaseCommitSha"
 
         $greasyForkListings = @(
-            [pscustomobject]@{ Id = 589843; Slug = 'etsy-sale-campaign-batch-runner' },
-            [pscustomobject]@{ Id = 589844; Slug = 'etsy-message-assistant' },
-            [pscustomobject]@{ Id = 589845; Slug = 'etsy-ads-keyword-manager' },
-            [pscustomobject]@{ Id = 589846; Slug = 'etsy-listing-analyzer' },
-            [pscustomobject]@{ Id = 589847; Slug = 'etsy-keyword-market-analyzer' }
+            foreach ($package in $productionPackages) {
+                [pscustomobject]@{
+                    Id = [int]$package.greasyForkId
+                    Slug = [string]$package.packageSlug
+                }
+            }
         )
         foreach ($listing in $greasyForkListings) {
             Assert-True ($scriptFilesBySlug.ContainsKey($listing.Slug)) "Greasy Fork mapping references an unknown package: $($listing.Slug)"

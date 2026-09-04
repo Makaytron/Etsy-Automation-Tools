@@ -8,6 +8,7 @@ on:
       - 'etsy-ads-keyword-manager-v*'
     paths:
       - 'scripts/etsy-ads-keyword-manager/**'
+      - 'config/production-packages.json'
       - 'tools/Test-Ads-Keyword-Manager.mjs'
       - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
@@ -23,6 +24,7 @@ on:
   pull_request:
     paths:
       - 'scripts/etsy-ads-keyword-manager/**'
+      - 'config/production-packages.json'
       - 'tools/Test-Ads-Keyword-Manager.mjs'
       - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
