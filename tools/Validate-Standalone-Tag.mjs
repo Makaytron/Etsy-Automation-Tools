@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { verifySignedReleaseTag } from './Release-Tag-Verification.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
@@ -61,16 +62,7 @@ if (refName !== expectedTag) {
   fail(`${packageSlug}: release tag must be ${expectedTag}, got ${refName || 'missing'}.`);
 }
 
-const ref = `refs/tags/${refName}`;
-const refTypeObject = git(['cat-file', '-t', ref]);
-if (refTypeObject !== 'tag') {
-  fail(`${refName}: standalone release tag must be annotated; found ${refTypeObject}.`);
-}
-
-const taggedCommit = git(['rev-list', '-n', '1', ref]);
 const headCommit = git(['rev-parse', 'HEAD']);
-if (taggedCommit !== headCommit) {
-  fail(`${refName}: tag target ${taggedCommit} does not match checked-out HEAD ${headCommit}.`);
-}
+await verifySignedReleaseTag({ repoRoot, tagName: refName, headCommit });
 
-console.log(`PASS standalone tag contract: ${refName} -> ${headCommit}.`);
+console.log(`PASS signed standalone tag contract: ${refName} -> ${headCommit}.`);

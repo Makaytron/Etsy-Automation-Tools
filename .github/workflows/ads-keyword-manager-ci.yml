@@ -9,7 +9,9 @@ on:
     paths:
       - 'scripts/etsy-ads-keyword-manager/**'
       - 'tools/Test-Ads-Keyword-Manager.mjs'
+      - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
+      - 'tools/Test-Release-Tag-Contracts.mjs'
       - 'tools/Test-Updaters.mjs'
       - 'tools/Test-Distribution.ps1'
       - 'tools/Sanitize-Public-Fixtures.ps1'
@@ -21,7 +23,9 @@ on:
     paths:
       - 'scripts/etsy-ads-keyword-manager/**'
       - 'tools/Test-Ads-Keyword-Manager.mjs'
+      - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
+      - 'tools/Test-Release-Tag-Contracts.mjs'
       - 'tools/Test-Updaters.mjs'
       - 'tools/Test-Distribution.ps1'
       - 'tools/Sanitize-Public-Fixtures.ps1'
@@ -63,11 +67,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check tools/Test-Ads-Keyword-Manager.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Release-Tag-Verification.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check tools/Validate-Standalone-Tag.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate standalone package tag contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node tools/Validate-Standalone-Tag.mjs --package-slug etsy-ads-keyword-manager
+
+      - name: Run release tag contract tests
+        run: node --test tools/Test-Release-Tag-Contracts.mjs
 
       - name: Run Ads Keyword Manager behavior regression tests
         run: node --test tools/Test-Ads-Keyword-Manager.mjs

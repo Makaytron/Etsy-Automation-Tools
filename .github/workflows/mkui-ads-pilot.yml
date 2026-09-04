@@ -19,10 +19,10 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Check out historical pilot branch
+      - name: Check out immutable historical pilot snapshot
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: mkui-ads-pilot
+          ref: 1297615c52e2c5e5c211021b795e70df2dfa832b
           fetch-depth: 0
           persist-credentials: false
 
@@ -31,9 +31,10 @@ jobs:
         with:
           node-version: 22
 
-      - name: Require pilot history to remain merged into main
+      - name: Verify historical snapshot identity and ancestry
         shell: bash
         run: |
+          test "$(git rev-parse HEAD)" = "1297615c52e2c5e5c211021b795e70df2dfa832b"
           git fetch origin main
           git merge-base --is-ancestor HEAD origin/main
 

@@ -46,7 +46,9 @@ jobs:
               'tools/Run-Message-Assistant-Browser-Fixture.mjs'
               'tools/Test-Message-Assistant-Browser-Fixture.mjs'
               'tools/fixtures/message-assistant-delivered/fixture.js'
+              'tools/Release-Tag-Verification.mjs'
               'tools/Validate-Standalone-Tag.mjs'
+              'tools/Test-Release-Tag-Contracts.mjs'
           )
           foreach ($file in $files) {
               node --check $file
@@ -56,7 +58,12 @@ jobs:
           }
 
       - name: Validate standalone package tag contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node tools/Validate-Standalone-Tag.mjs --package-slug etsy-message-assistant
+
+      - name: Run release tag contract tests
+        run: node --test tools/Test-Release-Tag-Contracts.mjs
 
       - name: Check changed lines for whitespace errors
         shell: pwsh
