@@ -12,9 +12,11 @@ on:
       - 'config/production-packages.json'
       - 'docs/releases/v*.md'
       - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Suite-Release-Note-Contract.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
       - 'tools/Test-Release-Tag-Contracts.mjs'
+      - 'tools/Test-Suite-Release-Note-Contract.mjs'
       - 'tools/New-Suite-ReleaseAssets.ps1'
       - 'tools/Test-Suite-Release-Assets.ps1'
       - 'tools/Test-Distribution.ps1'
@@ -26,9 +28,11 @@ on:
       - 'config/production-packages.json'
       - 'docs/releases/v*.md'
       - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Suite-Release-Note-Contract.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
       - 'tools/Test-Release-Tag-Contracts.mjs'
+      - 'tools/Test-Suite-Release-Note-Contract.mjs'
       - 'tools/New-Suite-ReleaseAssets.ps1'
       - 'tools/Test-Suite-Release-Assets.ps1'
       - 'tools/Test-Distribution.ps1'
@@ -60,21 +64,23 @@ jobs:
         with:
           node-version: 22
 
-      - name: Check release tag validator syntax
+      - name: Check release contract syntax
         shell: pwsh
         run: |
           $files = @(
               'tools/Release-Tag-Verification.mjs'
+              'tools/Suite-Release-Note-Contract.mjs'
               'tools/Validate-Standalone-Tag.mjs'
               'tools/Validate-Suite-Tag.mjs'
               'tools/Test-Release-Tag-Contracts.mjs'
+              'tools/Test-Suite-Release-Note-Contract.mjs'
           )
           foreach ($file in $files) {
               node --check $file
               if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax validation failed: $file" }
           }
 
-      - name: Run release tag contract tests
+      - name: Run release contract tests
         run: node --test tools/Test-Release-Tag-Contracts.mjs
 
       - name: Validate suite release tag contract
