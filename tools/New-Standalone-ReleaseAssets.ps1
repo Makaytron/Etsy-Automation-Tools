@@ -21,16 +21,28 @@ function Assert-True {
 }
 
 Assert-True ($PackageSlug -match '^[a-z0-9]+(?:-[a-z0-9]+)*$') "PackageSlug is invalid: $PackageSlug"
-$packagePath = Join-Path $repoRoot "scripts/$PackageSlug"
-Assert-True (Test-Path -LiteralPath $packagePath -PathType Container) "Unknown standalone package: $PackageSlug"
+$registryPath = Join-Path $repoRoot 'config/production-packages.json'
+Assert-True (Test-Path -LiteralPath $registryPath -PathType Leaf) 'Production package registry is missing.'
+$registry = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($registryPath, [System.Text.Encoding]::UTF8)))
+$registeredMatches = @($registry | Where-Object { [string]$_.packageSlug -eq $PackageSlug })
+Assert-True ($registeredMatches.Count -eq 1) "PackageSlug is not a unique registered production package: $PackageSlug"
+$registeredPackage = $registeredMatches[0]
 
-$scriptFiles = @(Get-ChildItem -LiteralPath $packagePath -Filter '*.user.js' -File)
-Assert-True ($scriptFiles.Count -eq 1) "$PackageSlug must contain exactly one .user.js file; found $($scriptFiles.Count)."
-$scriptFile = $scriptFiles[0]
+$registeredRelativePath = [string]$registeredPackage.scriptPath
+Assert-True (-not [string]::IsNullOrWhiteSpace($registeredRelativePath)) "$PackageSlug has no registered scriptPath."
+$scriptPath = Join-Path $repoRoot $registeredRelativePath.Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+Assert-True (Test-Path -LiteralPath $scriptPath -PathType Leaf) "Registered userscript is missing: $registeredRelativePath"
+$scriptFile = Get-Item -LiteralPath $scriptPath
+$packagePath = $scriptFile.Directory.FullName
+$expectedPackagePath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "scripts/$PackageSlug"))
+Assert-True ([string]::Equals($packagePath, $expectedPackagePath, [System.StringComparison]::OrdinalIgnoreCase)) "$PackageSlug registered scriptPath is outside its package directory."
 $scriptName = $scriptFile.Name
-$scriptPath = $scriptFile.FullName
 $scriptBytes = [System.IO.File]::ReadAllBytes($scriptPath)
 $scriptSource = [System.Text.UTF8Encoding]::new($false, $true).GetString($scriptBytes)
+
+$nameMatches = @([regex]::Matches($scriptSource, '(?m)^//\s+@name\s+(?<name>.+?)\s*\r?$'))
+Assert-True ($nameMatches.Count -eq 1) "$PackageSlug userscript must contain exactly one @name."
+Assert-True ($nameMatches[0].Groups['name'].Value -eq [string]$registeredPackage.publicName) "$PackageSlug @name does not match the production package registry."
 
 $metadataPattern = '(?m)^//\s+@version\s+(?<version>{0})\s*\r?$' -f $strictSemVerPattern
 $metadataMatches = @([regex]::Matches($scriptSource, $metadataPattern))
