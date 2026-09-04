@@ -23,6 +23,14 @@ function metadataBlock(value) {
   return value.match(/^\/\/ ==UserScript==[\s\S]*?^\/\/ ==\/UserScript==/m)?.[0] || '';
 }
 
+function currentVersions(value = source) {
+  const metadata = value.match(/^\/\/ @version\s+(\d+\.\d+\.\d+)\s*$/m)?.[1];
+  const runtime = value.match(/^\s*const APP_VERSION\s*=\s*['"](\d+\.\d+\.\d+)['"]\s*;\s*$/m)?.[1];
+  assert.ok(metadata, 'Listing Analyzer @version is missing or not strict SemVer');
+  assert.ok(runtime, 'Listing Analyzer APP_VERSION is missing or not strict SemVer');
+  return { metadata, runtime };
+}
+
 function protectedMetadata(value) {
   return metadataBlock(value)
     .split(/\r?\n/)
@@ -44,11 +52,16 @@ function countMatches(value, regex) {
   return (value.match(regex) || []).length;
 }
 
-test('Listing Analyzer carries the reviewed MKUI production version', () => {
-  assert.match(source, /^\/\/ @version\s+1\.2\.3$/m);
-  assert.match(source, /const APP_VERSION = '1\.2\.3';/);
+function latestChangelogVersion(value) {
+  return value.match(/^##\s+\[?(\d+\.\d+\.\d+)\]?\b/m)?.[1] ?? '';
+}
+
+const productionVersion = currentVersions().metadata;
+
+test('Listing Analyzer current production version stays synchronized with MKUI', () => {
+  const { metadata, runtime } = currentVersions();
+  assert.equal(runtime, metadata, 'APP_VERSION must equal userscript @version');
   assert.match(source, /const MKUI_VERSION = '1\.0\.0';/);
-  assert.doesNotMatch(source, /^\/\/ @version\s+1\.2\.2$/m);
 });
 
 test('Listing Analyzer preserves its isolated UI architecture', () => {
@@ -134,9 +147,23 @@ test('Listing Analyzer navigation, filtering, queue, publish and deactivate hook
   assert.match(source, /verifyCurrentPublish/);
 });
 
-test('Listing Analyzer documentation and migration status are synchronized', () => {
+test('Listing Analyzer current release documentation follows production version', () => {
   const readmeTr = read('scripts/etsy-listing-analyzer/README.md');
   const readmeEn = read('scripts/etsy-listing-analyzer/README.en.md');
+  const rootEn = read('README.md');
+  const rootTr = read('README.tr.md');
+  const changelog = read('scripts/etsy-listing-analyzer/CHANGELOG.md');
+
+  assert.ok(readmeTr.includes(`**Sürüm:** ${productionVersion}`), 'Turkish package README version is stale');
+  assert.ok(readmeEn.includes(`Version: \`${productionVersion}\``), 'English package README version is stale');
+  assert.ok(rootEn.includes(`etsy-listing-analyzer/README.en.md) | ${productionVersion} |`), 'English root README row is stale');
+  assert.ok(rootTr.includes(`etsy-listing-analyzer/README.md) | ${productionVersion} |`), 'Turkish root README row is stale');
+  assert.equal(latestChangelogVersion(changelog), productionVersion, 'latest changelog heading must equal production version');
+  assert.match(readmeTr, /MKUI v1/);
+  assert.match(readmeEn, /MKUI v1/);
+});
+
+test('Listing Analyzer historical MKUI migration evidence remains immutable', () => {
   const rootEn = read('README.md');
   const rootTr = read('README.tr.md');
   const changelog = read('scripts/etsy-listing-analyzer/CHANGELOG.md');
@@ -145,12 +172,6 @@ test('Listing Analyzer documentation and migration status are synchronized', () 
   const scriptContract = read('docs/design/contracts/listing-analyzer.md');
   const crossScriptContract = read('docs/design/MKUI-CROSS-SCRIPT-QA.md');
 
-  assert.match(readmeTr, /\*\*Sürüm:\*\* 1\.2\.3/);
-  assert.match(readmeEn, /Version: `1\.2\.3`/);
-  assert.match(readmeTr, /MKUI v1/);
-  assert.match(readmeEn, /MKUI v1/);
-  assert.match(rootEn, /etsy-listing-analyzer\/README\.en\.md\) \| 1\.2\.3 \|/);
-  assert.match(rootTr, /etsy-listing-analyzer\/README\.md\) \| 1\.2\.3 \|/);
   assert.match(rootEn, /Listing Analyzer `v1\.2\.3`/);
   assert.match(rootTr, /Listing Analyzer `v1\.2\.3`/);
   assert.match(changelog, /## 1\.2\.3 - 2026-09-02/);
