@@ -2,7 +2,7 @@
 
 Canonical, framework-free source for the Makaytron Etsy userscript visual system.
 
-All five production userscripts carry MKUI as an inlined/mapped presentation layer. They do not fetch this directory or any remote stylesheet at runtime.
+All five production userscripts carry MKUI as an inlined/mapped presentation layer. They do not fetch this directory or any remote stylesheet at runtime. The literal `.mk-shell*` selectors in `shells.css` are canonical reference geometry rather than runtime classes that production scripts import directly; each userscript maps those shell semantics onto its own existing, isolated selector surface.
 
 ## Mandatory design-source lock
 
