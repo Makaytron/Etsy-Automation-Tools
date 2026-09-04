@@ -1,29 +1,21 @@
 name: Apply Message Assistant MKUI v1
 
+# Historical one-time migration workflow. The MKUI v1 migration is complete.
+# Keep this workflow manually dispatchable for audit/reproduction only; normal
+# production pushes are validated by message-assistant-ci.yml and MKUI drift CI.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - .github/workflows/mkui-message-assistant-migration.yml
-      - tools/Apply-Mkui-Message-Pilot.mjs
-      - tools/Finalize-Mkui-Message-Migration.mjs
-      - tools/Generate-Mkui-Message-Assistant-Preview.mjs
-      - tools/Test-Mkui-Message-Assistant.mjs
-      - tools/Sanitize-Public-Fixtures.ps1
-      - docs/design/previews/message-assistant-mkui-workspace-v1.2.9.audit.json
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: mkui-message-assistant-migration-main
+  group: mkui-message-assistant-migration-manual
   cancel-in-progress: true
 
 jobs:
   migrate:
-    name: Transform, verify, preview and publish
+    name: Reproduce historical transform, verify and preview
     runs-on: windows-latest
     timeout-minutes: 35
 
@@ -55,7 +47,7 @@ jobs:
       - name: Apply guarded Message Assistant MKUI transform
         run: node tools/Apply-Mkui-Message-Pilot.mjs --write
 
-      - name: Finalize version and documentation
+      - name: Finalize historical version and documentation
         run: node tools/Finalize-Mkui-Message-Migration.mjs --write
 
       - name: Verify transformed source syntax
@@ -76,7 +68,7 @@ jobs:
           node tools/Generate-Mkui-Message-Assistant-Preview.mjs --output=docs/design/previews
           if ($LASTEXITCODE -ne 0) { throw 'Preview HTML generation failed.' }
 
-      - name: Capture the real MKUI preview
+      - name: Capture the historical MKUI preview
         shell: pwsh
         run: |
           $html = Resolve-Path 'docs/design/previews/message-assistant-mkui-preview.html'
@@ -130,7 +122,7 @@ jobs:
       - name: Check patch hygiene
         run: git diff --check
 
-      - name: Commit verified migration to pull-request branch
+      - name: Commit verified historical migration to pull-request branch
         id: publish
         shell: pwsh
         run: |
@@ -180,7 +172,7 @@ jobs:
               throw "Unable to inspect staged changes; git diff exited with $diffExit."
           }
 
-          git commit -m 'MKUI v1: migrate Message Assistant to workspace shell'
+          git commit -m 'MKUI v1: reproduce Message Assistant workspace migration'
           if ($LASTEXITCODE -ne 0) { throw 'git commit failed.' }
 
           $local = (git rev-parse HEAD).Trim()
@@ -202,7 +194,7 @@ jobs:
           "commit_sha=$remote" >> $env:GITHUB_OUTPUT
           "publish_branch=$publishBranch" >> $env:GITHUB_OUTPUT
 
-      - name: Upload preview artifact
+      - name: Upload historical preview artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: message-assistant-mkui-v1.2.9-preview
