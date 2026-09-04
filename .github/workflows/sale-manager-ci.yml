@@ -13,6 +13,7 @@ on:
       - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Test-Release-Tag-Contracts.mjs'
+      - 'tools/New-Standalone-ReleaseAssets.ps1'
       - 'tools/Test-Updaters.mjs'
       - 'tools/Test-Distribution.ps1'
       - 'tools/Sanitize-Public-Fixtures.ps1'
@@ -28,6 +29,7 @@ on:
       - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Test-Release-Tag-Contracts.mjs'
+      - 'tools/New-Standalone-ReleaseAssets.ps1'
       - 'tools/Test-Updaters.mjs'
       - 'tools/Test-Distribution.ps1'
       - 'tools/Sanitize-Public-Fixtures.ps1'
@@ -95,3 +97,23 @@ jobs:
       - name: Run complete distribution gate
         shell: pwsh
         run: ./tools/Test-Distribution.ps1
+
+      - name: Build standalone release assets
+        id: package
+        shell: pwsh
+        run: |
+          $outputDirectory = Join-Path $env:RUNNER_TEMP 'etsy-sale-campaign-batch-runner-release'
+          ./tools/New-Standalone-ReleaseAssets.ps1 `
+              -PackageSlug 'etsy-sale-campaign-batch-runner' `
+              -OutputDirectory $outputDirectory
+          "artifact_path=$outputDirectory" >> $env:GITHUB_OUTPUT
+
+      - name: Upload the manually publishable release candidate
+        if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: etsy-sale-campaign-batch-runner-release-candidate
+          path: ${{ steps.package.outputs.artifact_path }}
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 14
