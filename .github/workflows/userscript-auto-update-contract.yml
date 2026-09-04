@@ -6,12 +6,22 @@ on:
       - main
     paths:
       - 'scripts/**/*.user.js'
+      - 'scripts/**/README.md'
+      - 'scripts/**/README.en.md'
+      - 'scripts/**/CHANGELOG.md'
+      - 'README.md'
+      - 'README.tr.md'
       - 'tools/Validate-Userscript-Auto-Update.mjs'
       - '.github/workflows/userscript-auto-update-contract.yml'
       - 'AGENTS.md'
   pull_request:
     paths:
       - 'scripts/**/*.user.js'
+      - 'scripts/**/README.md'
+      - 'scripts/**/README.en.md'
+      - 'scripts/**/CHANGELOG.md'
+      - 'README.md'
+      - 'README.tr.md'
       - 'tools/Validate-Userscript-Auto-Update.mjs'
       - '.github/workflows/userscript-auto-update-contract.yml'
       - 'AGENTS.md'
@@ -26,7 +36,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Validate Tampermonkey update contract
+    name: Validate Tampermonkey update and release consistency
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -42,7 +52,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Validate userscript metadata and version progression
+      - name: Validate userscript metadata, identity, documentation, and version progression
         shell: bash
         env:
           GH_EVENT_NAME: ${{ github.event_name }}
