@@ -9,17 +9,22 @@ function sectionBody(source, heading) {
   return match[1].trim();
 }
 
+function bulletLines(section) {
+  return section.split('\n').map((line) => line.trim()).filter((line) => line.startsWith('- '));
+}
+
 export function validateSuiteReleaseNote({ source, version, packages }) {
   if (typeof source !== 'string' || !source.trim()) fail('Suite release note source is empty.');
   if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(version ?? '')) fail(`Invalid suite version: ${version ?? 'missing'}`);
   if (!Array.isArray(packages) || packages.length === 0) fail('Suite package contract is empty.');
 
+  const normalizedSource = source.replace(/\r\n?/g, '\n');
   const title = `# Etsy Automation Tools bundle v${version}`;
-  const titleMatches = source.split(/\r?\n/).filter((line) => line === title);
+  const titleMatches = normalizedSource.split('\n').filter((line) => line === title);
   if (titleMatches.length !== 1) fail(`Suite release note must contain exactly one title: ${title}`);
 
-  const packageSection = sectionBody(source.replace(/\r\n?/g, '\n'), 'Package versions');
-  const packageRows = packageSection.split('\n').filter((line) => line.trim()).map((line) => {
+  const packageSection = sectionBody(normalizedSource, 'Package versions');
+  const packageRows = bulletLines(packageSection).map((line) => {
     const match = line.match(/^- (.+?): `((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))`$/);
     if (!match) fail(`Invalid package-version row: ${line}`);
     return { publicName: match[1], version: match[2] };
@@ -40,8 +45,8 @@ export function validateSuiteReleaseNote({ source, version, packages }) {
     if (!packages.some((expected) => expected.publicName === row.publicName)) fail(`Unexpected package in release note: ${row.publicName}`);
   }
 
-  const scriptSection = sectionBody(source.replace(/\r\n?/g, '\n'), 'Installable scripts');
-  const scriptRows = scriptSection.split('\n').filter((line) => line.trim()).map((line) => {
+  const scriptSection = sectionBody(normalizedSource, 'Installable scripts');
+  const scriptRows = bulletLines(scriptSection).map((line) => {
     const match = line.match(/^- `([^`/]+\.user\.js)`$/);
     if (!match) fail(`Invalid installable-script row: ${line}`);
     return match[1];
@@ -56,7 +61,7 @@ export function validateSuiteReleaseNote({ source, version, packages }) {
   }
 
   const signedTagReference = `signed \`v${version}\` tag`;
-  if (!source.includes(signedTagReference)) fail(`Suite release note must identify its immutable source as the ${signedTagReference}.`);
+  if (!normalizedSource.includes(signedTagReference)) fail(`Suite release note must identify its immutable source as the ${signedTagReference}.`);
 
   return { packageCount: packages.length, scriptCount: scriptRows.length };
 }
