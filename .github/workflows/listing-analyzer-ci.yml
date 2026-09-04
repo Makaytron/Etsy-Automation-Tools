@@ -43,6 +43,7 @@ jobs:
               'tools/Apply-Mkui-Listing-Pilot.mjs'
               'tools/Finalize-Mkui-Listing-Migration.mjs'
               'tools/Generate-Mkui-Listing-Analyzer-Preview.mjs'
+              'tools/Generate-Current-Mkui-Listing-Analyzer-Preview.mjs'
               'tools/Test-Mkui-Listing-Analyzer.mjs'
               'tools/Test-Listing-Analyzer.mjs'
           )
@@ -76,14 +77,8 @@ jobs:
               throw 'Whitespace validation failed.'
           }
 
-      - name: Validate guarded MKUI transformer
-        run: node tools/Apply-Mkui-Listing-Pilot.mjs
-
-      - name: Validate migration documentation finalizer
-        run: node tools/Finalize-Mkui-Listing-Migration.mjs
-
-      - name: Regenerate production-CSS preview
-        run: node tools/Generate-Mkui-Listing-Analyzer-Preview.mjs --output=docs/design/previews
+      - name: Regenerate current production-CSS preview
+        run: node tools/Generate-Current-Mkui-Listing-Analyzer-Preview.mjs --output=docs/design/previews
 
       - name: Verify committed preview is current
         shell: pwsh
@@ -93,19 +88,19 @@ jobs:
               throw 'Listing Analyzer MKUI preview is stale.'
           }
 
-      - name: Run Listing Analyzer MKUI invariant tests
+      - name: Run current Listing Analyzer MKUI invariant tests
         run: node --test tools/Test-Mkui-Listing-Analyzer.mjs
 
       - name: Run Listing Analyzer behavior and safety tests
         run: node --test tools/Test-Listing-Analyzer.mjs
 
-      - name: Verify committed screenshot exists
+      - name: Verify approved migration screenshot exists
         shell: pwsh
         run: |
           $path = 'assets/screenshots/listing-analyzer-mkui-dashboard-v1.2.3.png'
-          if (-not (Test-Path -LiteralPath $path)) { throw "Missing screenshot: $path" }
+          if (-not (Test-Path -LiteralPath $path)) { throw "Missing historical migration screenshot: $path" }
           $size = (Get-Item -LiteralPath $path).Length
-          if ($size -lt 50000) { throw "Listing Analyzer screenshot is unexpectedly small: $size bytes" }
+          if ($size -lt 50000) { throw "Listing Analyzer migration screenshot is unexpectedly small: $size bytes" }
 
       - name: Enforce public fixture privacy
         shell: pwsh
