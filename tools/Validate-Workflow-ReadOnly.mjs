@@ -9,6 +9,10 @@ function fail(message) {
   throw new Error(message);
 }
 
+function leadingSpaces(line) {
+  return line.match(/^\s*/)?.[0].length ?? 0;
+}
+
 if (!fs.existsSync(workflowDir) || !fs.statSync(workflowDir).isDirectory()) {
   fail('GitHub Actions workflow directory is missing.');
 }
@@ -28,26 +32,51 @@ for (const name of files) {
   const source = fs.readFileSync(fullPath, 'utf8');
   const lines = source.replace(/\r\n?/g, '\n').split('\n');
 
-  const permissionsIndex = lines.findIndex((line) => /^permissions:\s*(?:#.*)?$/.test(line));
-  if (permissionsIndex < 0) {
-    errors.push(`${name}: missing top-level permissions block.`);
-  } else {
+  let sawTopLevelPermissions = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const permissionMatch = lines[index].match(/^(\s*)permissions:\s*(.*?)\s*(?:#.*)?$/);
+    if (!permissionMatch) continue;
+
+    const baseIndent = permissionMatch[1].length;
+    const inlineValue = permissionMatch[2].trim();
+    const isTopLevel = baseIndent === 0;
+    if (isTopLevel) sawTopLevelPermissions = true;
+
+    if (inlineValue) {
+      if (/\bwrite-all\b/i.test(inlineValue) || /\b[A-Za-z0-9_-]+\s*:\s*write\b/i.test(inlineValue)) {
+        errors.push(`${name}:${index + 1}: write permission is forbidden: permissions: ${inlineValue}`);
+      }
+      if (isTopLevel) {
+        errors.push(`${name}:${index + 1}: top-level permissions must be a block containing contents: read.`);
+      }
+      continue;
+    }
+
     const block = [];
-    for (let index = permissionsIndex + 1; index < lines.length; index += 1) {
-      const line = lines[index];
-      if (/^[^\s#]/.test(line) && line.trim()) break;
-      block.push(line);
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const line = lines[cursor];
+      if (!line.trim() || line.trim().startsWith('#')) {
+        block.push({ line, lineNumber: cursor + 1 });
+        continue;
+      }
+      if (leadingSpaces(line) <= baseIndent) break;
+      block.push({ line, lineNumber: cursor + 1 });
     }
 
-    if (!block.some((line) => /^\s+contents:\s*read\s*(?:#.*)?$/.test(line))) {
-      errors.push(`${name}: top-level permissions must include contents: read.`);
+    if (isTopLevel && !block.some(({ line }) => /^\s+contents:\s*read\s*(?:#.*)?$/.test(line))) {
+      errors.push(`${name}:${index + 1}: top-level permissions must include contents: read.`);
     }
 
-    for (const line of block) {
+    for (const { line, lineNumber } of block) {
       if (/^\s+[A-Za-z0-9_-]+:\s*write\s*(?:#.*)?$/.test(line)) {
-        errors.push(`${name}: write permission is forbidden: ${line.trim()}`);
+        errors.push(`${name}:${lineNumber}: write permission is forbidden: ${line.trim()}`);
       }
     }
+  }
+
+  if (!sawTopLevelPermissions) {
+    errors.push(`${name}: missing top-level permissions block.`);
   }
 
   for (let index = 0; index < lines.length; index += 1) {
