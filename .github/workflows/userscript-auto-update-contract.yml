@@ -1,0 +1,63 @@
+name: Userscript Auto-Update Contract
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/**/*.user.js'
+      - 'tools/Validate-Userscript-Auto-Update.mjs'
+      - '.github/workflows/userscript-auto-update-contract.yml'
+      - 'AGENTS.md'
+  pull_request:
+    paths:
+      - 'scripts/**/*.user.js'
+      - 'tools/Validate-Userscript-Auto-Update.mjs'
+      - '.github/workflows/userscript-auto-update-contract.yml'
+      - 'AGENTS.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: userscript-auto-update-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Tampermonkey update contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Validate userscript metadata and version progression
+        shell: bash
+        env:
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          BASE=''
+          if [[ "$GH_EVENT_NAME" == 'pull_request' ]]; then
+            BASE="$GH_PR_BASE_SHA"
+          elif [[ "$GH_EVENT_NAME" == 'push' ]]; then
+            BASE="$GH_PUSH_BEFORE"
+          fi
+
+          if [[ -n "$BASE" && ! "$BASE" =~ ^0+$ ]]; then
+            node tools/Validate-Userscript-Auto-Update.mjs --base "$BASE"
+          else
+            node tools/Validate-Userscript-Auto-Update.mjs
+          fi
