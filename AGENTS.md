@@ -2,33 +2,61 @@
 
 These rules apply to the entire repository.
 
-## Tampermonkey auto-update contract
+## Tampermonkey auto-update and release consistency contract
 
-Any change to a production userscript under `scripts/**/*.user.js` must remain automatically updateable by Tampermonkey.
+Any change to a production userscript under `scripts/**/*.user.js` must remain automatically updateable by Tampermonkey and must leave the public release metadata synchronized.
 
-For every modified userscript:
+For every modified existing userscript:
 
 1. Increase `@version` using strict `major.minor.patch` SemVer. Default to a patch increase unless the task explicitly requires a minor or major release.
 2. Keep the runtime version synchronized with metadata:
    - `const APP_VERSION = 'x.y.z';`, or
    - `const VERSION = 'x.y.z';`
-3. Preserve exactly one `@updateURL` and one `@downloadURL`.
-4. Both URLs must point to the exact canonical raw file on `main`:
+3. Preserve the existing `@name` and `@namespace`. They are installed-userscript identity fields; changing either can create a second Tampermonkey identity instead of updating the existing installation.
+4. Preserve exactly one `@updateURL` and one `@downloadURL`.
+5. Both URLs must point to the exact canonical raw file on `main`:
    `https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/<userscript-path>`
-5. Never set `@downloadURL` to `none` for a production script.
-6. Do not replace Tampermonkey's native update mechanism with remote code execution, `eval`, or a custom self-updater. Existing in-app version checks are supplemental only.
-7. New production userscripts must follow the same contract from their first commit.
+6. Never set `@downloadURL` to `none` for a production script.
+7. Keep release documentation synchronized with the same userscript version:
+   - package `README.md`,
+   - package `README.en.md`,
+   - newest package `CHANGELOG.md` version heading,
+   - the script row in root `README.md`,
+   - the script row in root `README.tr.md`.
+8. Do not rewrite historical release notes, versioned screenshots, migration baselines, or versioned audit snapshots merely because the current userscript version increased. Historical artifacts keep the version they actually represent.
+9. All five current production userscripts participate in MKUI drift protection. After a production userscript change, verify the generated MKUI manifest and coexistence audit are current. Regenerate them with their documented `--write`/`--apply` commands only when the corresponding check reports drift.
+10. Do not replace Tampermonkey's native update mechanism with remote code execution, `eval`, or a custom self-updater. Existing in-app version checks are supplemental only.
+
+New production userscripts must follow the same update URL, SemVer, documentation, and identity rules from their first commit. Their initial identity is established by that first reviewed release.
+
+## Historical migration tools
+
+`tools/Apply-Mkui-*.mjs` and `tools/Finalize-Mkui-*.mjs` are deterministic migration records for the versions named in those transformations. Do not treat their historical source/target version numbers as the current production version, and do not use a one-time migration transformer as a normal current-version CI assertion after the migration is complete.
+
+Current production CI should validate behavior, invariants, metadata/runtime synchronization, generated manifests, and drift without requiring the production script to remain forever on the migration's historical target version.
+
+## Required validation
 
 Before completing a userscript change, run:
 
 ```bash
 node tools/Validate-Userscript-Auto-Update.mjs
+node tools/Build-Mkui-Bundle-Manifest.mjs --check
+node tools/Audit-Mkui-Cross-Script-Coexistence.mjs --check
 ```
 
-When a base commit is available, also verify that every changed userscript increased its version:
+When a base commit is available, also verify that every changed userscript increased its version while preserving installed identity:
 
 ```bash
 node tools/Validate-Userscript-Auto-Update.mjs --base <base-commit>
 ```
 
-The GitHub Actions workflow `.github/workflows/userscript-auto-update-contract.yml` enforces this contract on pull requests and pushes to `main`.
+Run the repository distribution gate on a PowerShell-capable environment:
+
+```powershell
+./tools/Test-Distribution.ps1
+```
+
+If an MKUI check reports a generated artifact is stale, use the documented regeneration command for that artifact, review the resulting diff, and rerun the checks. Do not hand-edit generated fingerprints to make a check pass.
+
+The GitHub Actions workflow `.github/workflows/userscript-auto-update-contract.yml` enforces the core userscript release contract on pull requests and pushes to `main`. Additional MKUI and distribution workflows enforce derived artifacts and behavior.
