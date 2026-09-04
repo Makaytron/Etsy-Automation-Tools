@@ -11,6 +11,7 @@ on:
       - tools/Audit-Mkui-Cross-Script-Coexistence.mjs
       - tools/Test-Mkui-Cross-Script-Coexistence.mjs
       - tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs
+      - tools/Run-Sale-Manager-Tests.mjs
       - docs/design/previews/mkui-cross-script-coexistence-audit.json
       - shared/mkui/**
       - scripts/**/*.user.js
@@ -21,6 +22,7 @@ on:
       - tools/Audit-Mkui-Cross-Script-Coexistence.mjs
       - tools/Test-Mkui-Cross-Script-Coexistence.mjs
       - tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs
+      - tools/Run-Sale-Manager-Tests.mjs
       - docs/design/previews/mkui-cross-script-coexistence-audit.json
       - shared/mkui/**
       - scripts/**/*.user.js
@@ -59,6 +61,7 @@ jobs:
               'tools/Audit-Mkui-Cross-Script-Coexistence.mjs'
               'tools/Test-Mkui-Cross-Script-Coexistence.mjs'
               'tools/Test-Mkui-Cross-Script-Browser-Fixture.mjs'
+              'tools/Run-Sale-Manager-Tests.mjs'
           )
           foreach ($file in $files) {
               node --check $file
@@ -98,20 +101,20 @@ jobs:
       - name: Run all focused behavior and MKUI invariant suites
         shell: pwsh
         run: |
-          $tests = @(
-              'tools/Test-Ads-Keyword-Manager.mjs'
-              'tools/Test-Keyword-Market-Analyzer.mjs'
-              'tools/Test-Sale-Manager.mjs'
-              'tools/Test-Mkui-Message-Assistant.mjs'
-              'tools/Test-Message-Assistant.mjs'
-              'tools/Test-Mkui-Listing-Analyzer.mjs'
-              'tools/Test-Listing-Analyzer.mjs'
-              'tools/Test-Updaters.mjs'
+          $commands = @(
+              'node --test tools/Test-Ads-Keyword-Manager.mjs'
+              'node --test tools/Test-Keyword-Market-Analyzer.mjs'
+              'node tools/Run-Sale-Manager-Tests.mjs'
+              'node --test tools/Test-Mkui-Message-Assistant.mjs'
+              'node --test tools/Test-Message-Assistant.mjs'
+              'node --test tools/Test-Mkui-Listing-Analyzer.mjs'
+              'node --test tools/Test-Listing-Analyzer.mjs'
+              'node --test tools/Test-Updaters.mjs'
           )
-          foreach ($test in $tests) {
-              node --test $test
+          foreach ($command in $commands) {
+              Invoke-Expression $command
               if ($LASTEXITCODE -ne 0) {
-                  throw "Regression suite failed: $test"
+                  throw "Regression suite failed: $command"
               }
           }
 
