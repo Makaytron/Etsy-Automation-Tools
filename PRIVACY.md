@@ -2,7 +2,7 @@
 
 # Gizlilik ve Veri İşleme
 
-Son güncelleme: 2026-08-27
+Son güncelleme: 2026-09-04
 
 Etsy Automation Tools, tarayıcı içinde çalışan Tampermonkey userscriptlerinden oluşur. Beş script de yalnız ürün kullanımını ölçen sınırlı, psödonimleştirilmiş telemetriyi varsayılan olarak açık getirir; ilk kullanımda görünür bir bildirim gösterir ve Ayarlar'dan tek tıkla kapatma olanağı verir. Telemetri Etsy içeriğini veya hesap verisini toplamaz. Message Assistant paneli varsayılan olarak kapalıdır ve **Otomatik Çeviri Önizlemesi** açık gelir. Kullanıcı tekil konuşma sayfasına girdiğinde panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajı seçili görüntüleme diline çeviri için seçili sağlayıcıya gönderilebilir; panel konuşma listesinde açılırsa en fazla 50 görünür önizleme gönderilebilir. Bu aktarımı istemiyorsanız konuşmayı veya paneli açmadan önce Tampermonkey menüsünden Makaytron ayarlarını açıp otomatik çeviri önizlemesini kapatın.
 
@@ -54,7 +54,7 @@ Tarayıcı Do Not Track (`navigator.doNotTrack === "1"`) veya Global Privacy Con
 - Google Translate varsayılan çeviri sağlayıcısıdır. Varsayılan açık otomatik çeviri önizlemesi, kullanıcı tekil konuşmaya girdiğinde panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajını seçili görüntüleme diline çeviri için `translate.googleapis.com` adresine gönderebilir; panel konuşma listesinde açıldığında en fazla 50 görünür önizleme gönderilebilir. Görüntüleme dilini değiştirmek açık konuşma notlarını ve görünür liste önizlemelerini yeni hedef için yeniden gönderir; manuel ücretsiz çeviri de seçilen metni aynı alıcıya gönderir.
 - DeepL seçildiğinde metin ve kullanıcıya ait API anahtarı DeepL API'sine gönderilir.
 - AI özelliği seçildiğinde ilgili mesaj bağlamı ve talimatlar kullanıcı tarafından seçilen OpenAI, Anthropic, Google Gemini, DeepSeek veya OpenRouter API'sine gönderilir.
-- Listing Analyzer `v1.2.2` bir AI sağlayıcısına ağ isteği göndermez ve AI API anahtarı saklamaz. Kullanıcı anonimleştirilebilir istek JSON'u/prompt'u dışa aktarabilir veya kopyalayabilir; harici araçtan aldığı teklif JSON'unu doğrulamadan sonra içe aktarabilir. Harici araca ne gönderileceğini kullanıcı kontrol eder.
+- Listing Analyzer bir AI sağlayıcısına ağ isteği göndermez ve AI API anahtarı saklamaz. Kullanıcı anonimleştirilebilir istek JSON'u/prompt'u dışa aktarabilir veya kopyalayabilir; harici araçtan aldığı teklif JSON'unu doğrulamadan sonra içe aktarabilir. Harici araca ne gönderileceğini kullanıcı kontrol eder.
 - Listing Analyzer güncelleme denetimi en fazla 24 saatte bir, çerez göndermeyen anonim isteklerle `api.github.com` üzerinden canonical `main` commit kimliğini ve ardından yalnız o değişmez commit altındaki `raw.githubusercontent.com` userscript metadata’sını okur. Kurulum otomatik yapılmaz; yalnız doğrulanan commit URL’si Tampermonkey onay ekranında açılır.
 - Keyword & Market Analyzer da canonical `main` commit kimliğini `api.github.com` üzerinden doğrular ve metadata'yı yalnız o değişmez commit altındaki `raw.githubusercontent.com` userscriptinden okur. Etsy Sale Manager, Message Assistant ve Ads Keyword Manager uygulama içi güncelleme denetimleri en fazla 24 saatte bir kendi canonical public Raw userscript kaynaklarını okuyabilir. Başka dağıtım kaynağından kurulumda özel GitHub akışı zorlanmaz.
 - Beş script, telemetri açıkken sınırlı günlük açılma, başarılı kullanım ve kategorize hata sinyallerini Makaytron telemetri toplayıcısına gönderebilir. Yukarıda sayılan ham hatalar, içerik ve hesap verileri bu alıcıya gönderilmez.
