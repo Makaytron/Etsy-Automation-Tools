@@ -8,6 +8,7 @@ on:
       - 'etsy-keyword-market-analyzer-v*'
     paths:
       - 'scripts/etsy-keyword-market-analyzer/**'
+      - 'config/production-packages.json'
       - 'tools/Test-Keyword-Market-Analyzer.mjs'
       - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
@@ -23,6 +24,7 @@ on:
   pull_request:
     paths:
       - 'scripts/etsy-keyword-market-analyzer/**'
+      - 'config/production-packages.json'
       - 'tools/Test-Keyword-Market-Analyzer.mjs'
       - 'tools/Release-Tag-Verification.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
