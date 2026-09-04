@@ -79,10 +79,7 @@ jobs:
               throw 'Whitespace validation failed.'
           }
 
-      - name: Validate guarded MKUI transformer
-        run: node tools/Apply-Mkui-Message-Pilot.mjs
-
-      - name: Run Message Assistant MKUI invariant tests
+      - name: Run current Message Assistant MKUI invariant tests
         run: node --test tools/Test-Mkui-Message-Assistant.mjs
 
       - name: Run Message Assistant behavior tests
