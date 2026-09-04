@@ -20,6 +20,10 @@ function Assert-True {
     }
 }
 
+$gitStatus = & git -C $repoRoot status --porcelain --untracked-files=no
+Assert-True ($LASTEXITCODE -eq 0) 'git status failed.'
+Assert-True ([string]::IsNullOrWhiteSpace(($gitStatus -join "`n"))) 'Standalone release assets must be built from a clean tracked working tree.'
+
 Assert-True ($PackageSlug -match '^[a-z0-9]+(?:-[a-z0-9]+)*$') "PackageSlug is invalid: $PackageSlug"
 $registryPath = Join-Path $repoRoot 'config/production-packages.json'
 Assert-True (Test-Path -LiteralPath $registryPath -PathType Leaf) 'Production package registry is missing.'
