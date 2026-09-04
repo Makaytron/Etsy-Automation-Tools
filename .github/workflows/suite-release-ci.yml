@@ -9,16 +9,22 @@ on:
     paths:
       - 'VERSION'
       - 'DISTRIBUTION.md'
-      - 'docs/releases/**'
+      - 'docs/releases/v*.md'
+      - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
+      - 'tools/Test-Release-Tag-Contracts.mjs'
       - 'tools/Test-Distribution.ps1'
       - '.github/workflows/suite-release-ci.yml'
   pull_request:
     paths:
       - 'VERSION'
       - 'DISTRIBUTION.md'
-      - 'docs/releases/**'
+      - 'docs/releases/v*.md'
+      - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
+      - 'tools/Test-Release-Tag-Contracts.mjs'
       - 'tools/Test-Distribution.ps1'
       - '.github/workflows/suite-release-ci.yml'
   workflow_dispatch:
@@ -48,10 +54,26 @@ jobs:
         with:
           node-version: 22
 
-      - name: Check suite tag validator syntax
-        run: node --check tools/Validate-Suite-Tag.mjs
+      - name: Check release tag validator syntax
+        shell: pwsh
+        run: |
+          $files = @(
+              'tools/Release-Tag-Verification.mjs'
+              'tools/Validate-Standalone-Tag.mjs'
+              'tools/Validate-Suite-Tag.mjs'
+              'tools/Test-Release-Tag-Contracts.mjs'
+          )
+          foreach ($file in $files) {
+              node --check $file
+              if ($LASTEXITCODE -ne 0) { throw "JavaScript syntax validation failed: $file" }
+          }
+
+      - name: Run release tag contract tests
+        run: node --test tools/Test-Release-Tag-Contracts.mjs
 
       - name: Validate suite release tag contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: node tools/Validate-Suite-Tag.mjs
 
       - name: Run complete distribution gate
