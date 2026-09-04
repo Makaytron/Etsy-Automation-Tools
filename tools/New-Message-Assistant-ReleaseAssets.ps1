@@ -14,7 +14,3 @@ if (-not (Test-Path -LiteralPath $builderPath -PathType Leaf)) {
     -PackageSlug 'etsy-message-assistant' `
     -ExpectedVersion $ExpectedVersion `
     -OutputDirectory $OutputDirectory
-
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
