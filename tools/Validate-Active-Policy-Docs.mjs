@@ -30,7 +30,8 @@ for (const relativePath of policyFiles) {
   contents.set(relativePath, source);
 
   for (const productName of productNames) {
-    const pattern = new RegExp(`${escapeRegExp(productName)}\\s+\\`v${semver}\\``, 'g');
+    const patternSource = `${escapeRegExp(productName)}\\s+` + '`v' + semver + '`';
+    const pattern = new RegExp(patternSource, 'g');
     const matches = [...source.matchAll(pattern)];
     for (const match of matches) {
       const line = source.slice(0, match.index).split(/\r?\n/).length;
