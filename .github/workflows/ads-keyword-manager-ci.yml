@@ -1,0 +1,77 @@
+name: Ads Keyword Manager CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'etsy-ads-keyword-manager-v*'
+    paths:
+      - 'scripts/etsy-ads-keyword-manager/**'
+      - 'tools/Test-Ads-Keyword-Manager.mjs'
+      - 'tools/Test-Updaters.mjs'
+      - 'tools/Test-Distribution.ps1'
+      - 'tools/Sanitize-Public-Fixtures.ps1'
+      - 'shared/mkui/**'
+      - 'README.md'
+      - 'README.tr.md'
+      - '.github/workflows/ads-keyword-manager-ci.yml'
+  pull_request:
+    paths:
+      - 'scripts/etsy-ads-keyword-manager/**'
+      - 'tools/Test-Ads-Keyword-Manager.mjs'
+      - 'tools/Test-Updaters.mjs'
+      - 'tools/Test-Distribution.ps1'
+      - 'tools/Sanitize-Public-Fixtures.ps1'
+      - 'shared/mkui/**'
+      - 'README.md'
+      - 'README.tr.md'
+      - '.github/workflows/ads-keyword-manager-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ads-keyword-manager-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Validate Ads Keyword Manager
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Check JavaScript syntax
+        shell: pwsh
+        run: |
+          node --check scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check tools/Test-Ads-Keyword-Manager.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run Ads Keyword Manager behavior regression tests
+        run: node --test tools/Test-Ads-Keyword-Manager.mjs
+
+      - name: Run shared updater regression tests
+        run: node --test tools/Test-Updaters.mjs
+
+      - name: Enforce public fixture privacy
+        shell: pwsh
+        run: ./tools/Sanitize-Public-Fixtures.ps1
+
+      - name: Run complete distribution gate
+        shell: pwsh
+        run: ./tools/Test-Distribution.ps1
