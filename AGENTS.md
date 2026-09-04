@@ -35,6 +35,8 @@ New production userscripts must follow the same update URL, SemVer, documentatio
 
 Current production CI should validate behavior, invariants, metadata/runtime synchronization, generated manifests, and drift without requiring the production script to remain forever on the migration's historical target version.
 
+Historical migration, pilot, preview, and audit workflows are read-only reproductions after the corresponding change has shipped. They must use `contents: read`, must not create or push branches, tags, commits, releases, or production changes, and must not act as self-updaters. Generated preview/output files may exist only in the runner workspace or be uploaded as workflow artifacts. A historical workflow should pin the immutable release commit or otherwise prove that the historical source it audits is already an ancestor of `main`.
+
 ## Merge discipline
 
 GitHub branch protection may not require every repository workflow as a server-side status check. Repository agents must therefore enforce the stricter rule themselves:
