@@ -46,7 +46,7 @@ if (!Array.isArray(registry)) fail('Production package registry must be a JSON a
 
 const matches = registry.filter((entry) => entry?.packageSlug === packageSlug);
 if (matches.length !== 1) {
-  fail(`Unknown or non-unique standalone production package: ${packageSlug}`);
+  fail(`Unknown standalone package or non-unique registry entry: ${packageSlug}`);
 }
 const packageEntry = matches[0];
 const registeredPath = packageEntry.scriptPath;
@@ -72,7 +72,7 @@ const scriptVersion = versions[0];
 const refType = process.env.GITHUB_REF_TYPE || '';
 const refName = process.env.GITHUB_REF_NAME || '';
 if (refType !== 'tag') {
-  console.log(`PASS ${packageSlug}: registered non-tag run; current version ${scriptVersion}.`);
+  console.log(`PASS ${packageSlug}: non-tag run; current version ${scriptVersion}.`);
   process.exit(0);
 }
 
