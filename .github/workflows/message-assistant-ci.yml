@@ -46,6 +46,7 @@ jobs:
               'tools/Run-Message-Assistant-Browser-Fixture.mjs'
               'tools/Test-Message-Assistant-Browser-Fixture.mjs'
               'tools/fixtures/message-assistant-delivered/fixture.js'
+              'tools/Validate-Standalone-Tag.mjs'
           )
           foreach ($file in $files) {
               node --check $file
@@ -53,6 +54,9 @@ jobs:
                   throw "JavaScript syntax validation failed: $file"
               }
           }
+
+      - name: Validate standalone package tag contract
+        run: node tools/Validate-Standalone-Tag.mjs --package-slug etsy-message-assistant
 
       - name: Check changed lines for whitespace errors
         shell: pwsh
