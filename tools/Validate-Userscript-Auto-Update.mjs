@@ -8,6 +8,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const scriptsRoot = path.join(repoRoot, 'scripts');
 const rawPrefix = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/';
 const semverPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const rootReadmeEn = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
+const rootReadmeTr = fs.readFileSync(path.join(repoRoot, 'README.tr.md'), 'utf8');
 
 function fail(message) {
   throw new Error(message);
@@ -42,8 +44,14 @@ function exactlyOne(values, label, relativePath) {
   return values[0];
 }
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function parseUserscript(source, relativePath, { requireRuntimeVersion = true } = {}) {
   const metadata = metadataBlock(source, relativePath);
+  const name = exactlyOne(metadataValues(metadata, 'name'), '@name', relativePath);
+  const namespace = exactlyOne(metadataValues(metadata, 'namespace'), '@namespace', relativePath);
   const version = exactlyOne(metadataValues(metadata, 'version'), '@version', relativePath);
   if (!semverPattern.test(version)) {
     fail(`${relativePath}: @version must be strict x.y.z SemVer, got ${version}.`);
@@ -72,7 +80,48 @@ function parseUserscript(source, relativePath, { requireRuntimeVersion = true } 
     }
   }
 
-  return { version, canonicalURL };
+  return { name, namespace, version, canonicalURL };
+}
+
+function validatePackageDocumentation(relativePath, version) {
+  const packageDir = path.dirname(path.join(repoRoot, relativePath));
+  const packageRelativeDir = path.dirname(relativePath).replaceAll(path.sep, '/');
+  const readmeTrPath = path.join(packageDir, 'README.md');
+  const readmeEnPath = path.join(packageDir, 'README.en.md');
+  const changelogPath = path.join(packageDir, 'CHANGELOG.md');
+
+  for (const file of [readmeTrPath, readmeEnPath, changelogPath]) {
+    if (!fs.existsSync(file)) fail(`${relativePath}: required package documentation is missing: ${path.relative(repoRoot, file)}`);
+  }
+
+  const readmeTr = fs.readFileSync(readmeTrPath, 'utf8');
+  const readmeEn = fs.readFileSync(readmeEnPath, 'utf8');
+  const changelog = fs.readFileSync(changelogPath, 'utf8');
+  const escapedVersion = escapeRegex(version);
+
+  if (!new RegExp(`(?:\\*\\*Sürüm:\\*\\*|Sürüm:)\\s*\`?${escapedVersion}\`?`).test(readmeTr)) {
+    fail(`${relativePath}: Turkish package README does not advertise current version ${version}.`);
+  }
+  if (!new RegExp(`(?:\\*\\*Version:\\*\\*|Version:)\\s*\`?${escapedVersion}\`?`).test(readmeEn)) {
+    fail(`${relativePath}: English package README does not advertise current version ${version}.`);
+  }
+
+  const latestChangelogVersion = changelog.match(/^##\s+\[?(\d+\.\d+\.\d+)\]?\b/m)?.[1] ?? '';
+  if (latestChangelogVersion !== version) {
+    fail(`${relativePath}: latest CHANGELOG version must be ${version}, found ${latestChangelogVersion || 'none'}.`);
+  }
+
+  const readmeEnRelative = `./${packageRelativeDir}/README.en.md`;
+  const readmeTrRelative = `./${packageRelativeDir}/README.md`;
+  const rootEnRow = new RegExp(`^\\|[^\\n]*\\(${escapeRegex(readmeEnRelative)}\\)\\s*\\|\\s*${escapedVersion}\\s*\\|`, 'm');
+  const rootTrRow = new RegExp(`^\\|[^\\n]*\\(${escapeRegex(readmeTrRelative)}\\)\\s*\\|\\s*${escapedVersion}\\s*\\|`, 'm');
+
+  if (!rootEnRow.test(rootReadmeEn)) {
+    fail(`${relativePath}: root English README row is missing current version ${version}.`);
+  }
+  if (!rootTrRow.test(rootReadmeTr)) {
+    fail(`${relativePath}: root Turkish README row is missing current version ${version}.`);
+  }
 }
 
 function compareVersions(left, right) {
@@ -127,6 +176,12 @@ function validateChangedVersions(base) {
     if (compareVersions(current.version, previous.version) <= 0) {
       fail(`${relativePath}: userscript content changed but @version did not increase (${previous.version} -> ${current.version}).`);
     }
+    if (current.name !== previous.name) {
+      fail(`${relativePath}: @name changed (${previous.name} -> ${current.name}); this would change the installed userscript identity.`);
+    }
+    if (current.namespace !== previous.namespace) {
+      fail(`${relativePath}: @namespace changed (${previous.namespace} -> ${current.namespace}); this would change the installed userscript identity.`);
+    }
   }
 
   return changed;
@@ -138,12 +193,13 @@ assert.ok(userscripts.length > 0, 'No .user.js files found under scripts/.');
 
 for (const file of userscripts) {
   const relativePath = path.relative(repoRoot, file).replaceAll(path.sep, '/');
-  parseUserscript(fs.readFileSync(file, 'utf8'), relativePath);
+  const parsed = parseUserscript(fs.readFileSync(file, 'utf8'), relativePath);
+  validatePackageDocumentation(relativePath, parsed.version);
 }
 
 const changed = validateChangedVersions(baseArgument());
 console.log(
-  `PASS userscript auto-update contract: ${userscripts.length} script(s) validated${
-    changed.length ? `, ${changed.length} changed script(s) version-bumped` : ''
+  `PASS userscript release consistency: ${userscripts.length} script(s) validated${
+    changed.length ? `, ${changed.length} changed script(s) version-bumped with stable identity` : ''
   }.`,
 );
