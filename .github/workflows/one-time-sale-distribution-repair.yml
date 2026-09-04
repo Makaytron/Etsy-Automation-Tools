@@ -1,0 +1,69 @@
+name: One-time Sale Distribution Repair
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/one-time-sale-distribution-repair.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: one-time-sale-distribution-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out current main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Replace the exact historical Sale test call
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'tools/Test-Distribution.ps1'
+          $source = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8).Replace("`r`n", "`n")
+          $old = @'
+          $saleManagerTestPath = Join-Path $repoRoot 'tools/Test-Sale-Manager.mjs'
+          Assert-True (Test-Path -LiteralPath $saleManagerTestPath -PathType Leaf) 'Sale Manager behavior test is missing.'
+          & node --test $saleManagerTestPath
+          Assert-True ($LASTEXITCODE -eq 0) 'Sale Manager behavior tests failed.'
+          '@.Replace("`r`n", "`n").Trim()
+          $new = @'
+          $saleManagerTestPath = Join-Path $repoRoot 'tools/Test-Sale-Manager.mjs'
+          $saleManagerRunnerPath = Join-Path $repoRoot 'tools/Run-Sale-Manager-Tests.mjs'
+          Assert-True (Test-Path -LiteralPath $saleManagerTestPath -PathType Leaf) 'Sale Manager behavior test is missing.'
+          Assert-True (Test-Path -LiteralPath $saleManagerRunnerPath -PathType Leaf) 'Sale Manager release-aware test runner is missing.'
+          & node $saleManagerRunnerPath
+          Assert-True ($LASTEXITCODE -eq 0) 'Sale Manager behavior tests failed.'
+          '@.Replace("`r`n", "`n").Trim()
+
+          $count = ([regex]::Matches($source, [regex]::Escape($old))).Count
+          if ($count -ne 1) {
+              throw "Expected exactly one historical Sale test block; found $count."
+          }
+          $updated = $source.Replace($old, $new)
+          [System.IO.File]::WriteAllText($path, $updated, [System.Text.UTF8Encoding]::new($false))
+
+          git diff --check
+          if ($LASTEXITCODE -ne 0) { throw 'Patch hygiene failed.' }
+
+      - name: Commit the verified repair
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/Test-Distribution.ps1
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) { throw 'Expected Test-Distribution.ps1 to change.' }
+          git commit -m 'ci: use release-aware Sale tests in distribution gate'
+          if ($LASTEXITCODE -ne 0) { throw 'git commit failed.' }
+          git push origin HEAD:main
+          if ($LASTEXITCODE -ne 0) { throw 'git push failed.' }
