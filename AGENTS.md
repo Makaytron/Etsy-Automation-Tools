@@ -35,6 +35,8 @@ All committed GitHub Actions workflows are repository-read-only. Keep top-level 
 
 Standalone release tags must use the exact form `<package-slug>-v<current-@version>`, must be annotated rather than lightweight, and must resolve to the exact reviewed commit being released. The tag signature and the release commit signature must both be verified before release publication. Package CI runs `node tools/Validate-Standalone-Tag.mjs --package-slug <package-slug>`; on GitHub tag pushes this uses GitHub's verification result, while local tag validation falls back to `git verify-tag` and `git verify-commit`. Never publish from a tag that fails this contract. Hosted-release parity remains mandatory under `DISTRIBUTION.md`.
 
+Every production package uses `tools/New-Standalone-ReleaseAssets.ps1` to build exactly one byte-identical `.user.js` asset plus `SHA256SUMS.txt`. Product CI must exercise that builder on reviewed runs and may upload the generated release-candidate artifact only on `workflow_dispatch` or the package's signed tag run. `tools/New-Message-Assistant-ReleaseAssets.ps1` remains a backward-compatible wrapper around the same generic builder; do not create a second product-specific packaging implementation.
+
 Suite release tags must use the exact form `v<VERSION>`, must be annotated rather than lightweight, must resolve to the exact reviewed commit being released, must have `docs/releases/v<VERSION>.md` present, and must have both tag and release-commit signatures verified before publication. Suite Release CI runs `node tools/Validate-Suite-Tag.mjs`. Complete release assets and hosted-channel parity remain mandatory under `DISTRIBUTION.md`.
 
 ## Historical migration tools
