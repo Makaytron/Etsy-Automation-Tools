@@ -23,6 +23,8 @@ on:
       - 'tools/Test-Release-Tag-Contracts.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
+      - 'tools/New-Standalone-ReleaseAssets.ps1'
+      - 'tools/Test-Standalone-Release-Assets.ps1'
       - 'tools/Test-Distribution.ps1'
   pull_request:
     paths:
@@ -44,6 +46,8 @@ on:
       - 'tools/Test-Release-Tag-Contracts.mjs'
       - 'tools/Validate-Standalone-Tag.mjs'
       - 'tools/Validate-Suite-Tag.mjs'
+      - 'tools/New-Standalone-ReleaseAssets.ps1'
+      - 'tools/Test-Standalone-Release-Assets.ps1'
       - 'tools/Test-Distribution.ps1'
   workflow_dispatch:
 
@@ -94,6 +98,10 @@ jobs:
 
       - name: Run release contract regressions
         run: node --test tools/Test-Release-Tag-Contracts.mjs
+
+      - name: Test standalone clean-tree release packaging
+        shell: pwsh
+        run: ./tools/Test-Standalone-Release-Assets.ps1
 
       - name: Check changed lines for whitespace errors
         run: git diff --check
