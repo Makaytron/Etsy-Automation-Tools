@@ -1,29 +1,40 @@
-name: MKUI Ads Pilot
+name: MKUI Ads Pilot Historical Audit
 
+# The Ads MKUI pilot is fully merged into main. Keep this workflow only for
+# manual reproduction/audit of the historical pilot branch; it must never
+# mutate the branch or act as a production updater.
 on:
-  push:
-    branches:
-      - mkui-ads-pilot
-    paths:
-      - '.github/workflows/mkui-ads-pilot.yml'
-      - 'tools/Apply-Mkui-Ads-Pilot.mjs'
-      - 'shared/mkui/**'
-      - 'docs/design/**'
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-and-verify:
+  audit:
+    name: Reproduce and verify historical Ads pilot
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-      - name: Checkout pilot branch
+      - name: Check out historical pilot branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: mkui-ads-pilot
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Apply or verify deterministic presentation-only pilot
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Require pilot history to remain merged into main
+        shell: bash
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+
+      - name: Reproduce deterministic presentation-only pilot
         run: node tools/Apply-Mkui-Ads-Pilot.mjs --write
 
       - name: Ads Keyword Manager behavior tests
@@ -35,23 +46,10 @@ jobs:
       - name: Patch hygiene
         run: git diff --check
 
-      - name: Limit generated changes to the intended production script
+      - name: Limit reproduced changes to the intended production script
         shell: bash
         run: |
           changed="$(git diff --name-only)"
           if [ -n "$changed" ]; then
             test "$changed" = "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js"
           fi
-
-      - name: Commit generated pilot result when needed
-        shell: bash
-        run: |
-          if git diff --quiet -- scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js; then
-            echo "Pilot source is already generated and verified."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
-          git commit -m "refactor: apply MKUI v1 Ads pilot [skip ci]"
-          git push origin HEAD:mkui-ads-pilot
