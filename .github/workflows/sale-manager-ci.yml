@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'etsy-sale-campaign-batch-runner-v*'
     paths:
       - 'scripts/etsy-sale-campaign-batch-runner/**'
       - 'tools/Test-Sale-Manager.mjs'
@@ -27,9 +29,14 @@ on:
       - 'README.md'
       - 'README.tr.md'
       - '.github/workflows/sale-manager-ci.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: sale-manager-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
@@ -39,6 +46,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node.js
