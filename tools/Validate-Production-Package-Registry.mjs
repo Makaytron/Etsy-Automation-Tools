@@ -82,12 +82,14 @@ if (JSON.stringify(mkuiPairs) !== JSON.stringify(registryPairs)) {
 }
 
 const distributionSource = fs.readFileSync(distributionPath, 'utf8');
-const documentedGreasyForkUrls = [...distributionSource.matchAll(/https:\/\/greasyfork\.org\/en\/scripts\/(\d+)-([a-z0-9-]+)/g)]
-  .map((match) => `${match[1]}\t${match[2]}`)
+const documentedGreasyForkListings = [...distributionSource.matchAll(/^- \[([^\]\r\n]+)\]\(https:\/\/greasyfork\.org\/en\/scripts\/(\d+)-([a-z0-9-]+)\)\s*$/gm)]
+  .map((match) => `${match[1]}\t${match[2]}\t${match[3]}`)
   .sort();
-const expectedGreasyForkUrls = registry.map((entry) => `${entry.greasyForkId}\t${entry.greasyForkSlug}`).sort();
-if (JSON.stringify(documentedGreasyForkUrls) !== JSON.stringify(expectedGreasyForkUrls)) {
-  fail('DISTRIBUTION.md Greasy Fork listing inventory does not match config/production-packages.json.');
+const expectedGreasyForkListings = registry
+  .map((entry) => `${entry.publicName}\t${entry.greasyForkId}\t${entry.greasyForkSlug}`)
+  .sort();
+if (JSON.stringify(documentedGreasyForkListings) !== JSON.stringify(expectedGreasyForkListings)) {
+  fail('DISTRIBUTION.md Greasy Fork labels/ids/slugs do not match config/production-packages.json.');
 }
 
 const distributionGateSource = fs.readFileSync(distributionGatePath, 'utf8');
