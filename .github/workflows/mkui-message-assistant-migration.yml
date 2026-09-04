@@ -1,16 +1,19 @@
 name: Message Assistant MKUI v1 Historical Audit
 
 # Historical one-time migration workflow. The MKUI v1 migration is complete.
-# This workflow reproduces and verifies the released v1.2.9 migration snapshot
-# without creating branches, commits, or changing production state.
+# In steady state this workflow is manual-only; a pull request that changes
+# this workflow also runs the audit once so the historical path is tested.
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/mkui-message-assistant-migration.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: mkui-message-assistant-migration-manual
+  group: mkui-message-assistant-migration-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
