@@ -6,6 +6,8 @@ GitHub repository: <https://github.com/Makaytron/Etsy-Automation-Tools>
 
 GitHub is the only source of truth. Every hosted copy must be derived from the exact public file under `main` or from the matching signed release tag. The legacy `https://github.com/Makaytron/EtsyScript` namespace is retained only as an installed-userscript identity; it is not a network endpoint.
 
+`config/production-packages.json` is the canonical machine-readable production inventory for package ids/slugs, public userscript names, exact script paths, and Greasy Fork ids/slugs. Distribution tooling and release packaging consume that registry; this document's Greasy Fork links are validated against it rather than acting as a second independent mapping.
+
 ## Active channels
 
 | Channel | Role | Update mechanism | Hosted validation |
