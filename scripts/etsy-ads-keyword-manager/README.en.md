@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.0.4`
+Version: `1.0.5`
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 
@@ -32,6 +32,10 @@ Disable or remove any legacy **Etsy Ad Wordlist** or local `2.x` test build firs
 - Confirmed updates from the canonical GitHub rule list, with the previous local list backed up first.
 - A manual script-version check from the panel or Tampermonkey menu, plus an automatic check capped at once per 24 hours.
 
+## Command-center layout
+
+The panel is presented as a responsive command center so long actions remain readable. Current-page operations, the confirmed all-pages batch action, and keyword-list maintenance are separated into distinct cards. The critical all-pages action remains inside its own warning boundary, while controls collapse to one column on narrow screens. Etsy selectors, user confirmations, verification, pagination order, and business behavior are unchanged.
+
 ## Matching choices
 
 | Choice | Example | Result |
@@ -56,7 +60,7 @@ The embedded first-run list is identical to the [canonical package rules](./keyw
 
 ## Script version checks
 
-When installed from the canonical GitHub file, the script checks version metadata at most once per 24 hours after the panel loads. Click the `v1.0.4` badge or use **Makaytron · Check script version** in the Tampermonkey menu for a manual check. The check reads only the remote `.user.js` `@version` value and never executes remote code. A network failure does not block the keyword tool.
+When installed from the canonical GitHub file, the script checks version metadata at most once per 24 hours after the panel loads. Click the `v1.0.5` badge or use **Makaytron · Check script version** in the Tampermonkey menu for a manual check. The check reads only the remote `.user.js` `@version` value and never executes remote code. A network failure does not block the keyword tool.
 
 If a newer version exists, the panel shows **Open install page**. No tab opens until the user clicks that button and accepts the explicit confirmation; Tampermonkey still owns the final installation approval. There is no silent installation. Version checks and install-page opening fail closed while a live keyword operation, rule-list update, or list editor is active. If the script was installed from another source such as Greasy Fork, or its source cannot be verified as GitHub, the private GitHub check is not forced; a verified external installation source remains responsible for updates.
 

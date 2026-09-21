@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
-  "sourceDigest": "sha256:0967d901524656d7b788dfc03d7cb8d8b5f58ede1e830a945a00271086bd5082",
+  "sourceDigest": "sha256:7f36389101c2792afbd619de5203a26db27c4322b80a335062e7405c4bcc52df",
   "status": "pass",
   "summary": {
     "scriptCount": 5,
@@ -35,10 +35,10 @@
       "id": "ads-keyword-manager",
       "label": "Ads Keyword Manager",
       "path": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
-      "bytes": 180365,
-      "lines": 3119,
-      "sha256": "1405363d15282da31cab73a39fa72d5a97ec81f52fa404c156f2073d602c8b0f",
-      "version": "1.0.4",
+      "bytes": 191619,
+      "lines": 3265,
+      "sha256": "3f568c59d5f5a889ff82e92d00a4f2c434c018eebd0998783f8167333b42a673",
+      "version": "1.0.5",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -70,7 +70,7 @@
         "maw-editor-title",
         "maw-rule-feedback"
       ],
-      "classTokenCount": 79,
+      "classTokenCount": 90,
       "classTokenSample": [
         "maw-actions",
         "maw-body",
@@ -81,6 +81,17 @@
         "maw-chip",
         "maw-collapsed-logo",
         "maw-collapsed-tab",
+        "maw-command-actions",
+        "maw-command-actions-single",
+        "maw-command-card",
+        "maw-command-card-no-key",
+        "maw-command-copy",
+        "maw-command-description",
+        "maw-command-head",
+        "maw-command-icon",
+        "maw-command-key",
+        "maw-command-stack",
+        "maw-command-title",
         "maw-editor-title",
         "maw-field",
         "maw-field-label",
@@ -166,6 +177,7 @@
       ],
       "zIndexes": [
         2,
+        5,
         2147483645,
         2147483646,
         2147483647
@@ -173,7 +185,7 @@
       "fixedSurfaces": [
         {
           "source": "direct-style-call",
-          "line": 1358,
+          "line": 1374,
           "selector": "#makaytron-ad-wordlist",
           "top": "86px",
           "right": "18px",
@@ -185,7 +197,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 1430,
+          "line": 1446,
           "selector": "#makaytron-ad-wordlist-toasts",
           "top": null,
           "right": "18px",
@@ -197,7 +209,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 1433,
+          "line": 1449,
           "selector": ".maw-modal-backdrop",
           "top": null,
           "right": null,
@@ -211,7 +223,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 3064,
+          "line": 3210,
           "key": "KeyK",
           "modifiers": [
             "Alt",
@@ -223,7 +235,7 @@
         },
         {
           "target": "document",
-          "line": 3064,
+          "line": 3210,
           "key": "Space",
           "modifiers": [
             "Alt",
@@ -245,9 +257,9 @@
           {
             "label": "direct-style-call",
             "kind": "global",
-            "line": 1358,
-            "bytes": 18975,
-            "selectorCount": 144,
+            "line": 1374,
+            "bytes": 26626,
+            "selectorCount": 162,
             "unsafeSelectors": []
           }
         ],

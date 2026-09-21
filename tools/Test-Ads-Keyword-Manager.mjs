@@ -225,3 +225,6 @@ test('row readiness waits for keyword text hydration', async () => {
     setTimeout(() => cell.candidates.push(textNode('bts concert shirt')), 20);
     assert.equal(await api.waitForKeywordRows(500), true);
 });
+
+/* Ads Command Center v1 presentation contract. */
+await import('./Test-Ads-Command-Center-v1.mjs');

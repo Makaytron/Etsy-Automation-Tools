@@ -36,3 +36,15 @@ Do not change in MKUI migration:
 ## Pilot target
 
 This is the first production MKUI migration. Prefer adding MKUI presentation classes/tokens while retaining existing behavior attributes and event topology.
+
+## Command Center v1 source map
+
+- Surface: Ads Keyword Manager main panel and responsive keyword-rule editor
+- Template source ids: `template.shell.base-layout`, `template.shell.site-header`, `template.theme.tokens`, `template.primitive.card`, `template.primitive.button`, `template.primitive.input`, `template.primitive.table`
+- Exact template locators: `Makaytron/Tamplate-Back-White-01@main:vite-version/src/components/layouts/base-layout.tsx`, `Makaytron/Tamplate-Back-White-01@main:vite-version/src/components/site-header.tsx`, `Makaytron/Tamplate-Back-White-01@main:vite-version/src/index.css`, `Makaytron/Tamplate-Back-White-01@main:vite-version/src/components/ui/card.tsx`, `Makaytron/Tamplate-Back-White-01@main:vite-version/src/components/ui/button.tsx`, `Makaytron/Tamplate-Back-White-01@main:vite-version/src/components/ui/input.tsx`, `Makaytron/Tamplate-Back-White-01@main:vite-version/src/components/ui/table.tsx`
+- Applied composition: `shadcn.dashboard.applied` — the sidebar/header/content hierarchy is translated into the standalone Compact shell without importing unrelated dashboard features
+- Block sources: `shadcn.blocks.application-interface` — **Application Interface 2**; `shadcn.blocks.datatable` — **Data Table 2**
+- Toast source: N/A — this presentation pass does not add or modify transient feedback; the existing toast behavior remains untouched
+- Makaytron adaptation: 464 px responsive command surface, sticky header, two-by-two metric grid, three-tier action hierarchy, readable Turkish labels, isolated all-pages warning region, 960 px two-column rule editor, mobile single-column layout, and reduced-motion fallback
+- Preserved behavior: all existing ids and data hooks, Etsy selectors, storage keys, confirmation boundaries, pagination, request sequencing, verification, retry, and fail-closed behavior
+- Evidence: `docs/design/previews/ads-keyword-manager-command-center-v1.html`, `docs/design/previews/ads-keyword-manager-command-center-v1.audit.json`, `assets/screenshots/ads-keywords-panel-ready.png`, `assets/screenshots/ads-keywords-rule-editor.png`, focused behavior/presentation tests, MKUI drift checks, and cross-script coexistence audit
