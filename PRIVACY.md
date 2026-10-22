@@ -2,9 +2,12 @@
 
 # Gizlilik ve Veri İşleme
 
-Son güncelleme: 2026-09-04
+Son güncelleme: 2026-10-22
 
 Etsy Automation Tools, tarayıcı içinde çalışan Tampermonkey userscriptlerinden oluşur. Beş script de yalnız ürün kullanımını ölçen sınırlı, psödonimleştirilmiş telemetriyi varsayılan olarak açık getirir; ilk kullanımda görünür bir bildirim gösterir ve Ayarlar'dan tek tıkla kapatma olanağı verir. Telemetri Etsy içeriğini veya hesap verisini toplamaz. Message Assistant paneli varsayılan olarak kapalıdır ve **Otomatik Çeviri Önizlemesi** açık gelir. Kullanıcı tekil konuşma sayfasına girdiğinde panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajı seçili görüntüleme diline çeviri için seçili sağlayıcıya gönderilebilir; panel konuşma listesinde açılırsa en fazla 50 görünür önizleme gönderilebilir. Bu aktarımı istemiyorsanız konuşmayı veya paneli açmadan önce Tampermonkey menüsünden Makaytron ayarlarını açıp otomatik çeviri önizlemesini kapatın.
+
+
+Userscript eşleştirmesi Etsy genelinde yalnız sayfa geçişlerini algılamak için geniştir. Desteklenmeyen sayfalarda Etsy içeriği okunmaz, telemetri gönderilmez ve işlevsel arayüz açılmaz; uygulama yalnız kendi desteklenen yollarında etkinleşir.
 
 ## Yerel olarak işlenen veriler
 

@@ -137,8 +137,8 @@ function createSandbox({ canonicalUrl, routes, listing = false }) {
         Blob,
         crypto: webcrypto,
         location: {
-            pathname: '/unsupported',
-            href: 'https://www.etsy.com/unsupported',
+            pathname: listing ? '/your/shops/me/tools/listings' : '/your/shops/me/marketplace-insights',
+            href: listing ? 'https://www.etsy.com/your/shops/me/tools/listings' : 'https://www.etsy.com/your/shops/me/marketplace-insights',
             hostname: 'www.etsy.com',
         },
         navigator: { locks: { request: async (_name, _options, callback) => callback() } },

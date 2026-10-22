@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Sale Manager
 // @name:tr      Makaytron Etsy Sale Manager
 // @name:en      Makaytron Etsy Sale Manager
-// @version      1.0.13
+// @version      1.0.14
 // @description  Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
 // @description:tr Etsy Sales and Discounts kampanyalarını güvenli toplu seriler hâlinde planlar, doğrular ve raporlar
 // @description:en Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
@@ -30,6 +30,9 @@
 // @grant        GM.info
 // @connect      raw.githubusercontent.com
 // @connect      sjwibgcflufmzaorlwqe.supabase.co
+// @match        https://www.etsy.com/*
+// @grant        window.onurlchange
+// @match        https://etsy.com/*
 // @noframes
 // @run-at       document-idle
 // ==/UserScript==
@@ -37,7 +40,97 @@
 (async function () {
     'use strict';
 
-    const VERSION = '1.0.13';
+    // BEGIN SPA LIFECYCLE (shared/lifecycle/spa-lifecycle.js)
+    function createRouteLifecycle(supported) {
+        let callbacks = null;
+        let observedHref = '';
+        let active = false;
+        let generation = 0;
+        let timer = null;
+        let entering = null;
+        let requestedGeneration = -1;
+        const allowed = () => supported(location.pathname);
+        const report = error => console.error('[Makaytron route lifecycle]', error);
+        const enter = () => {
+            requestedGeneration = generation;
+            if (entering) return entering;
+            let completedGeneration = -1;
+            const run = async () => {
+                while (callbacks && active && allowed()) {
+                    const requested = requestedGeneration;
+                    await callbacks.enter?.();
+                    completedGeneration = requested;
+                    if (requested === requestedGeneration) break;
+                }
+            };
+            entering = Promise.resolve().then(run).catch(error => {
+                completedGeneration = requestedGeneration; report(error);
+            }).finally(() => {
+                entering = null;
+                if (callbacks && active && allowed() && completedGeneration !== requestedGeneration) void enter();
+            });
+            return entering;
+        };
+        const sync = () => {
+            const href = location.href;
+            const next = allowed();
+            if (observedHref === href && next === active) return entering;
+            observedHref = href;
+            generation += 1;
+            const wasActive = active;
+            active = next;
+            if (wasActive && !next) {
+                try { Promise.resolve(callbacks?.leave?.()).catch(report); } catch (error) { report(error); }
+            }
+            if (next && !wasActive) return enter();
+            if (next && wasActive) {
+                if (entering) return enter();
+                try { Promise.resolve(callbacks?.change?.()).catch(report); } catch (error) { report(error); }
+            }
+            return entering;
+        };
+        return {
+            allowed,
+            capture() { sync(); return { generation, href: location.href }; },
+            current(token) { return allowed() && token?.generation === generation && token?.href === location.href; },
+            sync,
+            start(handlers) {
+                if (callbacks) return entering;
+                callbacks = handlers;
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.addEventListener(event, sync);
+                window.navigation?.addEventListener?.('currententrychange', sync);
+                // URL polling also covers userscript sandboxes that cannot patch the page's history object.
+                timer = window.setInterval(sync, 250);
+                return Promise.resolve(sync());
+            },
+            dispose() {
+                if (active) { active = false; generation += 1; callbacks?.leave?.(); }
+                window.clearInterval(timer);
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.removeEventListener(event, sync);
+                window.navigation?.removeEventListener?.('currententrychange', sync);
+                callbacks = null;
+            },
+        };
+    }
+    // END SPA LIFECYCLE
+    const RUNTIME_ROUTE_PATTERN = /^\/your\/shops\/me\/sales-discounts(?:\/|$)/;
+    const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path));
+    let saleInitialized = false;
+    let saleSuspending = null;
+    function suspendSaleRoute() {
+        routeActive = false;
+        abortAutomation('unsupported-route');
+        clearInterval(timerId); timerId = null;
+        clearTimeout(transitionTickTimerId); transitionTickTimerId = null;
+        saleFlowObserver?.disconnect(); saleFlowObserver = null;
+        removeOwnUi();
+        document.getElementById(`makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`)?.remove();
+        saleSuspending = releaseLease(job?.jobId || null);
+        return saleSuspending;
+    }
+
+
+    const VERSION = '1.0.14';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -205,7 +298,7 @@
     }
 
     function telemetrySuppressed() {
-        return navigator.webdriver === true
+        return !RouteLifecycle.allowed() || navigator.webdriver === true
             || navigator.doNotTrack === '1'
             || globalThis.doNotTrack === '1'
             || navigator.globalPrivacyControl === true;
@@ -299,6 +392,7 @@
 
     function sendTelemetry(method, payload) {
         return new Promise(resolve => {
+            if (method !== 'DELETE' && !RouteLifecycle.allowed()) { resolve(false); return; }
             const modernRequest = typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
                 ? GM.xmlHttpRequest.bind(GM)
                 : null;
@@ -680,6 +774,7 @@
     }
 
     async function openTelemetrySettings() {
+        if (!RouteLifecycle.allowed()) return;
         const modalId = `makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`;
         if (!document.documentElement || document.getElementById(modalId)) return;
         const modal = document.createElement('div');
@@ -974,7 +1069,7 @@
     `);
 
     function isSupportedRoute() {
-        return /^\/your\/shops\/me\/sales-discounts(?:\/|$)/.test(location.pathname);
+        return RUNTIME_ROUTE_PATTERN.test(location.pathname);
     }
 
     function readPanelCollapsed() {
@@ -1218,6 +1313,7 @@
         return document.hidden === true || document.visibilityState === 'hidden';
     }
     function assertForegroundTab() {
+        if (!isSupportedRoute()) throw new AutomationCancelledError('Etsy sayfası değişti; işlem durduruldu.');
         if (tabIsHidden()) throw new AutomationCancelledError('Sekme arka plana alındı; bu turda hiçbir Etsy işlemi yapılmadı.');
     }
 
@@ -1391,6 +1487,7 @@
     }
 
     async function checkForUpdates(options = {}) {
+        if (!RouteLifecycle.allowed()) return;
         const manual = options.manual === true;
         const force = options.force === true || manual;
         if (!usesGitHubUpdateChannel()) {
@@ -7365,6 +7462,7 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
 
     function openSettings() {
         if (!isSupportedRoute()) return;
+        if (!isSupportedRoute()) return;
         if (job?.active) {
             toast('Aktif seri sırasında ayarlar kilitlidir. Önce seriyi durdur.', 'warning', 4500);
             return;
@@ -7638,14 +7736,25 @@ Mağaza: ${shopLabel(job.shop)}`
         window.addEventListener('beforeunload', prepareLeaseHandoff);
     }
 
-    async function initialize() {
+    async function activateSaleRoute() {
+        if (!isSupportedRoute()) return;
+        if (saleSuspending) await saleSuspending;
+        if (!isSupportedRoute()) return;
+        if (saleInitialized) {
+            await syncRouteUi(true);
+            clearInterval(timerId); timerId = setInterval(processTick, 1000);
+            return;
+        }
         try {
             await loadState();
             await loadUpdateState();
+            if (!isSupportedRoute()) return;
             installRouteWatcher();
             if (isSupportedRoute()) mountPanel();
             registerShortcuts();
             await initializeStateSync();
+            saleInitialized = true;
+            if (!isSupportedRoute()) { suspendSaleRoute(); return; }
             if (job && !job.active && job.terminalStatus) await finalizeTerminalJob(job.jobId, false);
             if (job?.active) {
                 resetAutomationController();
@@ -7673,6 +7782,9 @@ Mağaza: ${shopLabel(job.shop)}`
             console.error(`EDA v${VERSION} initialize failed`, error);
             if (isSupportedRoute()) { mountPanel(); toast(`Script başlatılamadı: ${error?.message || error}`, 'error', 7000); }
         }
+    }
+    async function initialize() {
+        await RouteLifecycle.start({ enter: activateSaleRoute, leave: suspendSaleRoute });
     }
     await initialize();
 })();

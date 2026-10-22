@@ -7,6 +7,30 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.2.11] - 2026-10-22
+
+### Fixed
+
+- Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış desteklenmeyen bir Etsy sayfasında olsa da yalnız hafif URL dinleyicisi çalışır; araç kendi sayfasına girilince başlar, çıkılınca arayüzü kaldırılır ve sayfa işlemleri durur. Yeniden girişte mükerrer panel veya menü oluşmaz.
+- Sayfa dışına çıkmadan önce başlayan asenkron işlemler yeni sayfada tıklama veya yönlendirmeye devam etmez; kalıcı belirsiz gönderim/işlem kanıtları korunur.
+
+### Tests
+
+- Desteklenmeyen sayfada ilk yükleme, yenilemesiz giriş/çıkış, tekrar giriş, Back/Forward ve eski işin yeniden canlanmaması için ortak yaşam döngüsü ve gerçek Chrome testleri eklendi.
+
+
+## [1.2.10] - 2026-10-22
+
+### Fixed
+
+- Konuşma veya son müşteri mesajı değiştiğinde eski Türkçe taslak, ek talimat, çeviri, cevap ve şablon seçimi temizlenir; yenilemeden önce başlatılan cevap üretimi eski müşterinin metnini yeni konuşmaya bağlamadan durur. Mesaj listesine dönüş ve manuel çeviri de aynı temizleme kuralını uygular.
+- Güncel konuşmayla eşleşmeyen cevap kopyalanmaz. Gönderilecek cevap elle düzenlenince artık geçerli olmayan Türkçe anlam kaldırılır.
+- Türkçe olmayan şablonlar Türkçe hedefe gerçekten çevrilir; başka hedeflerde kaynak metin yanlışlıkla Türkçe önizleme olarak gösterilmez.
+
+### Tests
+
+- Müşteri/mesaj değişimi, manuel çeviriyle bağlam yenileme, mesaj listesine dönüş, değişmeyen taslağı koruma, eski cevabı kopyalama, cevap düzenleme ve üç şablon hedef dili için regresyon testleri eklendi.
+
 ## [1.2.9] - 2026-09-02
 
 ### Changed

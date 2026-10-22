@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.14] - 2026-10-22
+
+### Fixed
+
+- Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış desteklenmeyen bir Etsy sayfasında olsa da yalnız hafif URL dinleyicisi çalışır; araç kendi sayfasına girilince başlar, çıkılınca arayüzü kaldırılır ve sayfa işlemleri durur. Yeniden girişte mükerrer panel veya menü oluşmaz.
+- Sayfa dışına çıkmadan önce başlayan asenkron işlemler yeni sayfada tıklama veya yönlendirmeye devam etmez; kalıcı belirsiz gönderim/işlem kanıtları korunur.
+
+### Tests
+
+- Desteklenmeyen sayfada ilk yükleme, yenilemesiz giriş/çıkış, tekrar giriş, Back/Forward ve eski işin yeniden canlanmaması için ortak yaşam döngüsü ve gerçek Chrome testleri eklendi.
+
 ## [1.0.13] - 2026-09-02
 
 ### Changed

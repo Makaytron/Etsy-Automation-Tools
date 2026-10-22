@@ -2,7 +2,9 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.2.3` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
+Version: `1.2.4` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
+
+Same-document Etsy navigation is supported. A lightweight URL listener runs even when the initial Etsy page is unsupported; the application starts on its own surface, removes its UI and stops page work on exit, and reactivates without duplicate panels or menus on return.
 
 **Usage guide:** [English](./USAGE.en.md) · [Türkçe](./USAGE.md)
 

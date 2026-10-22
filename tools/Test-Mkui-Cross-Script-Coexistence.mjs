@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { access } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 import {
@@ -148,6 +148,24 @@ test('synthetic five-script repository passes every coexistence assertion', asyn
   assert.equal(audit.summary.scriptCount, 5);
   assert.equal(audit.assertions.canonicalRoutesHaveSingleOwner, true);
   assert.equal(audit.assertions.globalCssHasNoGenericLeakage, true);
+});
+
+test('broad SPA injection does not grant UI ownership outside each runtime route', async () => {
+  const audit = await buildCrossScriptAudit();
+  assert.equal(audit.assertions.broadBootstrapHasRuntimeGate, true);
+  assert.equal(audit.assertions.canonicalRoutesHaveSingleOwner, true);
+  assert.ok(audit.scripts.every(script => script.matches.includes('https://www.etsy.com/*') && script.runtimeRoute));
+});
+
+test('a broadened runtime route still fails the UI ownership and overlap audit', async () => {
+  const definition = MKUI_PRODUCTION_SCRIPTS.find(script => script.id === 'sale-manager');
+  const source = await readFile(resolve(MKUI_ROOT, definition.path), 'utf8');
+  const widened = source.replace(/^\s*const RUNTIME_ROUTE_PATTERN = .+;$/m, '    const RUNTIME_ROUTE_PATTERN = /.*/;');
+  assert.notEqual(widened, source);
+  const audit = await buildCrossScriptAudit({ sourceOverrides: new Map([[definition.id, widened]]) });
+  assert.equal(audit.status, 'fail');
+  assert.equal(audit.assertions.canonicalRoutesHaveSingleOwner, false);
+  assert.equal(audit.assertions.coexistingFixedSurfacesDoNotShareAnchors, false);
 });
 
 test('unexpected shared storage keys fail closed', async () => {

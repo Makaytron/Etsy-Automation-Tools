@@ -212,9 +212,11 @@ async function startChrome(proxyPort) {
     const profile = await mkdtemp(path.join(os.tmpdir(), 'mema-chrome-fixture-'));
     let child = null;
     let browser = null;
+    let stderr = '';
     try {
         child = spawn(executable, [
         '--headless=new',
+        '--disable-gpu',
         '--disable-background-networking',
         '--disable-component-update',
         '--disable-default-apps',
@@ -236,7 +238,6 @@ async function startChrome(proxyPort) {
             stdio: ['ignore', 'ignore', 'pipe'],
             windowsHide: true,
         });
-        let stderr = '';
         child.stderr.setEncoding('utf8');
         child.stderr.on('data', chunk => { stderr += chunk; });
         const activePortPath = path.join(profile, 'DevToolsActivePort');
@@ -244,7 +245,7 @@ async function startChrome(proxyPort) {
             if (child.exitCode !== null) throw new Error(`Isolated Chrome exited with code ${child.exitCode}.`);
             const content = await readFile(activePortPath, 'utf8');
             return Number.parseInt(content.split(/\r?\n/)[0], 10) || 0;
-        }, 'isolated Chrome DevTools port', 15_000);
+        }, 'isolated Chrome DevTools port', 45_000);
         const version = await waitUntil(async () => {
             if (child.exitCode !== null) throw new Error(`Isolated Chrome exited with code ${child.exitCode}.`);
             const response = await fetchLocal(`http://127.0.0.1:${port}/json/version`);
@@ -253,6 +254,7 @@ async function startChrome(proxyPort) {
         browser = await CdpConnection.connect(version.webSocketDebuggerUrl);
         return { browser, child, port, profile, get stderr() { return stderr; } };
     } catch (error) {
+        if (stderr) error.message += `\nChrome startup diagnostics: ${stderr.slice(-6000)}`;
         try { await stopChrome({ browser, child, profile }); } catch (cleanupError) { error.cleanupError = cleanupError; }
         throw error;
     }

@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Keyword & Market Analyzer
 // @name:tr      Makaytron Etsy Keyword & Market Analyzer
 // @name:en      Makaytron Etsy Keyword & Market Analyzer
-// @version      1.0.4
+// @version      1.0.5
 // @description  Etsy Marketplace Insights verilerini sayfada analiz edin ve Listing Analyzer ile güvenli araştırma sonuçları paylaşın.
 // @description:tr Etsy Marketplace Insights verilerini sayfada analiz edin ve Listing Analyzer ile güvenli araştırma sonuçları paylaşın.
 // @description:en Analyze Etsy Marketplace Insights data in-page and securely share research results with Listing Analyzer.
@@ -27,6 +27,8 @@
 // @connect      raw.githubusercontent.com
 // @connect      api.github.com
 // @connect      sjwibgcflufmzaorlwqe.supabase.co
+// @match        https://www.etsy.com/*
+// @grant        window.onurlchange
 // @noframes
 // @run-at       document-idle
 // ==/UserScript==
@@ -34,7 +36,82 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.0.4';
+    // BEGIN SPA LIFECYCLE (shared/lifecycle/spa-lifecycle.js)
+    function createRouteLifecycle(supported) {
+        let callbacks = null;
+        let observedHref = '';
+        let active = false;
+        let generation = 0;
+        let timer = null;
+        let entering = null;
+        let requestedGeneration = -1;
+        const allowed = () => supported(location.pathname);
+        const report = error => console.error('[Makaytron route lifecycle]', error);
+        const enter = () => {
+            requestedGeneration = generation;
+            if (entering) return entering;
+            let completedGeneration = -1;
+            const run = async () => {
+                while (callbacks && active && allowed()) {
+                    const requested = requestedGeneration;
+                    await callbacks.enter?.();
+                    completedGeneration = requested;
+                    if (requested === requestedGeneration) break;
+                }
+            };
+            entering = Promise.resolve().then(run).catch(error => {
+                completedGeneration = requestedGeneration; report(error);
+            }).finally(() => {
+                entering = null;
+                if (callbacks && active && allowed() && completedGeneration !== requestedGeneration) void enter();
+            });
+            return entering;
+        };
+        const sync = () => {
+            const href = location.href;
+            const next = allowed();
+            if (observedHref === href && next === active) return entering;
+            observedHref = href;
+            generation += 1;
+            const wasActive = active;
+            active = next;
+            if (wasActive && !next) {
+                try { Promise.resolve(callbacks?.leave?.()).catch(report); } catch (error) { report(error); }
+            }
+            if (next && !wasActive) return enter();
+            if (next && wasActive) {
+                if (entering) return enter();
+                try { Promise.resolve(callbacks?.change?.()).catch(report); } catch (error) { report(error); }
+            }
+            return entering;
+        };
+        return {
+            allowed,
+            capture() { sync(); return { generation, href: location.href }; },
+            current(token) { return allowed() && token?.generation === generation && token?.href === location.href; },
+            sync,
+            start(handlers) {
+                if (callbacks) return entering;
+                callbacks = handlers;
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.addEventListener(event, sync);
+                window.navigation?.addEventListener?.('currententrychange', sync);
+                // URL polling also covers userscript sandboxes that cannot patch the page's history object.
+                timer = window.setInterval(sync, 250);
+                return Promise.resolve(sync());
+            },
+            dispose() {
+                if (active) { active = false; generation += 1; callbacks?.leave?.(); }
+                window.clearInterval(timer);
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.removeEventListener(event, sync);
+                window.navigation?.removeEventListener?.('currententrychange', sync);
+                callbacks = null;
+            },
+        };
+    }
+    // END SPA LIFECYCLE
+
+
+    const APP_VERSION = '1.0.5';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -102,7 +179,7 @@
     }
 
     function telemetrySuppressed() {
-        return navigator.webdriver === true
+        return !RouteLifecycle.allowed() || navigator.webdriver === true
             || navigator.doNotTrack === '1'
             || globalThis.doNotTrack === '1'
             || navigator.globalPrivacyControl === true;
@@ -317,6 +394,7 @@
 
     function sendTelemetry(method, payload) {
         return new Promise(resolve => {
+            if (method !== 'DELETE' && !RouteLifecycle.allowed()) { resolve(false); return; }
             const modernRequest = typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
                 ? GM.xmlHttpRequest.bind(GM)
                 : null;
@@ -646,6 +724,7 @@
     }
 
     async function openTelemetrySettings() {
+        if (!RouteLifecycle.allowed()) return;
         const modalId = `makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`;
         if (!document.documentElement || document.getElementById(modalId)) return;
         const modal = document.createElement('div');
@@ -750,6 +829,8 @@
     const MAX_QUEUE_ENTRIES = 30;
     const MAX_EXPORT_BYTES = 2 * 1024 * 1024;
     const OBSERVER_DEBOUNCE_MS = 250;
+    const RUNTIME_ROUTE_PATTERN = /^\/your\/shops\/[^/]+\/marketplace-insights(?:\/search)?\/?$/;
+    const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path));
     const SUPPORTED_ROUTE = /^\/your\/shops\/[^/]+\/marketplace-insights(?:\/search)?\/?$/;
     const QUEUE_TERMINAL_RETENTION_MS = 24 * 60 * 60 * 1000;
     const RESULT_HISTORY_TTL_MS = CACHE_TTL_MS;
@@ -1245,6 +1326,7 @@
     }
 
     function requestQueueProcessing(delayMs = 0) {
+        if (!RouteLifecycle.allowed()) return;
         window.clearTimeout(Runtime.queueProcessTimer);
         Runtime.queueProcessTimer = window.setTimeout(() => {
             Runtime.queueProcessTimer = 0;
@@ -1362,6 +1444,7 @@
             }, LEASE_RENEW_MS);
         },
         scheduleTakeover(expiresAt) {
+            if (!RouteLifecycle.allowed()) return;
             if (Runtime.leaseTakeoverTimer) return;
             const delayMs = Math.max(100, Math.min(LEASE_TTL_MS + 250, Number(expiresAt || Date.now()) - Date.now() + 75));
             Runtime.leaseTakeoverTimer = window.setTimeout(() => {
@@ -1420,7 +1503,7 @@
                 && current.token === Runtime.leaseToken);
         },
         async assertOwner() {
-            if (await this.owns()) return true;
+            if (RouteLifecycle.allowed() && (!Runtime.processingRoute || RouteLifecycle.current(Runtime.processingRoute)) && await this.owns()) return true;
             const error = new Error('PROCESSOR_LEASE_LOST');
             error.code = 'PROCESSOR_LEASE_LOST';
             throw error;
@@ -1635,6 +1718,7 @@
     }
 
     async function checkForUpdates(options = {}) {
+        if (!RouteLifecycle.allowed()) return;
         const manual = options.manual === true;
         const force = manual || options.force === true;
         const source = installationSource();
@@ -1927,6 +2011,7 @@
     }
 
     function captureCurrentPage() {
+        if (!RouteLifecycle.allowed()) return null;
         const keyword = queryKeyword();
         if (!keyword) return null;
         const anchor = findMainKeywordAnchor(keyword);
@@ -2113,6 +2198,7 @@
     }
 
     function renderCapture(capture) {
+        if (!RouteLifecycle.allowed()) return;
         if (!capture) return false;
         ensureInlineStyles();
         renderInlineKeyword(capture.main, capture.main._anchor, capture.capturedAt);
@@ -2172,6 +2258,7 @@
     }
 
     function waitForCapture(expectedKeyword, timeoutMs = DOM_RESULT_TIMEOUT_MS) {
+        const route = RouteLifecycle.capture();
         return new Promise((resolve, reject) => {
             const wanted = normalizeKeyword(expectedKeyword);
             const tryCapture = () => {
@@ -2230,6 +2317,12 @@
                 resolve(capture);
             };
             const maybeFinish = () => {
+                if (!RouteLifecycle.current(route)) {
+                    if (settled) return;
+                    settled = true; clearTimeout(timer); clearInterval(poller); observer.disconnect();
+                    reject(Object.assign(new Error('PROCESSOR_LEASE_LOST'), { code: 'PROCESSOR_LEASE_LOST' }));
+                    return;
+                }
                 const capture = sample();
                 const now = Date.now();
                 if (capture
@@ -2318,9 +2411,11 @@
     }
 
     async function processQueue() {
+        if (!RouteLifecycle.allowed()) return false;
         if (Runtime.processing) return false;
         if (!await Lease.acquire()) return false;
         Runtime.processing = true;
+        Runtime.processingRoute = RouteLifecycle.capture();
         let activeItem = null;
         let activeTelemetryCode = '';
         try {
@@ -2436,6 +2531,7 @@
             }
         } finally {
             Runtime.processing = false;
+            Runtime.processingRoute = null;
         }
         if (Runtime.navigationPending || !await Lease.owns()) return true;
         const remaining = await Store.queue();
@@ -2604,6 +2700,7 @@
     }
 
     async function onChannelMessage(event) {
+        if (!RouteLifecycle.allowed()) return;
         const checked = validateEnvelope(event.data);
         if (!checked.ok) return;
         const envelope = checked.value;
@@ -2747,6 +2844,7 @@
 
     const UI = {
         mount() {
+            if (!RouteLifecycle.allowed()) return;
             if (document.getElementById('makaytron-etsy-keyword-market-analyzer')) return;
             const host = document.createElement('div');
             host.id = 'makaytron-etsy-keyword-market-analyzer';
@@ -2876,6 +2974,7 @@
             if (Runtime.ui) Runtime.ui.status.textContent = message;
         },
         async captureAndSave(timeoutMs = DOM_RESULT_TIMEOUT_MS) {
+            if (!RouteLifecycle.allowed()) return false;
             const expectedKeyword = queryKeyword();
             if (!expectedKeyword) {
                 this.status(t('noResult'));
@@ -2931,37 +3030,60 @@
 
     function registerMenuCommands() {
         if (typeof GM_registerMenuCommand !== 'function') return;
-        GM_registerMenuCommand(t('launcher'), () => UI.toggle(true));
-        GM_registerMenuCommand(t('capture'), () => { void UI.captureAndSave(); });
-        GM_registerMenuCommand(t('export'), () => { void UI.export(); });
-        GM_registerMenuCommand(t('importRequest'), () => {
+        const register = (label, callback) => GM_registerMenuCommand(label, () => { if (RouteLifecycle.allowed()) return callback(); });
+        register(t('launcher'), () => UI.toggle(true));
+        register(t('capture'), () => { void UI.captureAndSave(); });
+        register(t('export'), () => { void UI.export(); });
+        register(t('importRequest'), () => {
             UI.toggle(true);
             Runtime.ui?.researchJson.focus();
         });
-        GM_registerMenuCommand(t('copyResult'), async () => {
+        register(t('copyResult'), async () => {
             const outcome = await copyResearchResultEnvelope();
             UI.status(!outcome.ok ? t('resultMissing') : t(outcome.fallback ? 'clipboardError' : 'resultCopied'));
         });
-        GM_registerMenuCommand(t('clearData'), async () => {
+        register(t('clearData'), async () => {
             UI.status(await clearLocalData() ? t('clearDataDone') : t('clearDataError'));
             await UI.refreshCount();
         });
-        GM_registerMenuCommand(t('checkUpdate'), () => { void checkForUpdates({ manual: true, force: true }); });
+        register(t('checkUpdate'), () => { void checkForUpdates({ manual: true, force: true }); });
+    }
+
+    function suspendKeywordRoute() {
+        Runtime.observer?.disconnect();
+        Runtime.observer = null;
+        for (const key of ['observerTimer', 'queueProcessTimer', 'leaseTakeoverTimer', 'leaseRenewTimer']) {
+            window.clearTimeout(Runtime[key]); Runtime[key] = 0;
+        }
+        Runtime.channel?.close(); Runtime.channel = null;
+        Runtime.ui?.host.remove(); Runtime.ui = null;
+        document.querySelectorAll('[data-ekma-inline]').forEach(node => node.remove());
+        document.getElementById(`makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`)?.remove();
+        Runtime.suspending = Lease.release();
+        return Runtime.suspending;
     }
 
     async function boot() {
-        if (!SUPPORTED_ROUTE.test(location.pathname)) return;
+        if (!RouteLifecycle.allowed()) return;
+        const route = RouteLifecycle.capture();
+        if (Runtime.suspending) await Runtime.suspending;
         const settings = await Store.get(KEYS.settings, null);
         if (isPlainObject(settings) && ['tr', 'en'].includes(settings.language)) language = settings.language;
         await ensureUniqueTabIdentity();
+        if (!RouteLifecycle.current(route)) return;
         UI.mount();
         const capture = captureCurrentPage();
         if (capture) renderCapture(capture);
         installDomObserver();
-        registerMenuCommands();
-        registerTelemetryMenuCommand();
+        if (!Runtime.menusRegistered) {
+            registerMenuCommands();
+            registerTelemetryMenuCommand();
+            Runtime.menusRegistered = true;
+        }
         startChannel();
         await Store.cache();
+        while (Runtime.processing && RouteLifecycle.current(route)) await delay(50);
+        if (!RouteLifecycle.current(route)) return;
         await processQueue();
         if (!window.__EKMA_DISABLE_AUTO_UPDATE__) {
             window.setTimeout(() => { void checkForUpdates({ manual: false, force: false }); }, 1500);
@@ -3023,6 +3145,6 @@
             boot,
         };
     } else {
-        void boot();
+        void RouteLifecycle.start({ enter: boot, leave: suspendKeywordRoute, change: () => { if (!Runtime.navigationPending) void processQueue(); } });
     }
 })();
