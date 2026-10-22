@@ -74,7 +74,12 @@ test('Listing Analyzer preserves its isolated UI architecture', () => {
 });
 
 test('Listing Analyzer protected metadata and behavioral hook signatures match the baseline audit', () => {
-  assert.equal(sha256(protectedMetadata(source)), audit.source.protectedMetadataSha256);
+  // SPA bootstrap deliberately adds these two permissions; every historical
+  // metadata field must still match the immutable pre-migration audit.
+  const spaMetadata = ['// @match        https://www.etsy.com/*', '// @grant        window.onurlchange'];
+  const metadataLines = protectedMetadata(source).split('\n');
+  for (const line of spaMetadata) assert.equal(metadataLines.filter(value => value === line).length, 1);
+  assert.equal(sha256(metadataLines.filter(line => !spaMetadata.includes(line)).join('\n')), audit.source.protectedMetadataSha256);
   assert.equal(
     countedSignature(source, /\bdata-[a-z0-9-]+\b/gi, (value) => value.toLowerCase()),
     audit.source.dataAttributeSignatureSha256,
