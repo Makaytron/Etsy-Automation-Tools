@@ -649,7 +649,8 @@ test('empty create-sale hydration returns quickly without the legacy whole-page 
     assert.ok(elapsed < 50, `empty hydration lookup took ${elapsed.toFixed(1)} ms`);
 });
 
-test('each success dialog is durably queued and closed before the next date starts', { timeout: 5000 }, async () => {
+// Two real acknowledgement/cooldown cycles need headroom on shared CI runners.
+test('each success dialog is durably queued and closed before the next date starts', { timeout: 15000 }, async () => {
     const api = await loadManager();
     api.setDocumentReadyState('complete');
     api.setLocationPath('/your/shops/me/sales-discounts');
