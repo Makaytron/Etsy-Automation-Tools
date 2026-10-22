@@ -12,6 +12,8 @@ const scriptPath = path.join(
     'scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js',
 );
 
+const currentScriptVersion = fs.readFileSync(scriptPath, 'utf8').match(/^\/\/ @version\s+(\S+)/m)[1];
+
 class FakeElement {
     constructor(textContent = '') {
         this.textContent = textContent;
@@ -218,6 +220,7 @@ async function loadManager() {
         },
         getLocationReloadCount() { return location.reloadCount; },
         setTestJob(value) { job = value; },
+        disableTransitionTicks() { scheduleTransitionTick = () => {}; },
         async setStoredTestJob(value) {
             job = value;
             await gmSet(JOB_KEY, value);
@@ -649,7 +652,8 @@ test('empty create-sale hydration returns quickly without the legacy whole-page 
 test('each success dialog is durably queued and closed before the next date starts', { timeout: 5000 }, async () => {
     const api = await loadManager();
     api.setDocumentReadyState('complete');
-    api.setLocationPath('/test-only/unsupported');
+    api.setLocationPath('/your/shops/me/sales-discounts');
+    api.disableTransitionTicks();
     const activeJob = {
         schemaVersion: 5,
         version: '1.0.10',
@@ -872,7 +876,7 @@ test('mismatched unaccounted final submission remains fail-closed', async () => 
     assert.match(blocked.errorReason, /Yanlış güne ait kayıt doğrulanmadı/);
 });
 
-test('v1.0.8 active verification queue survives the v1.0.13 UI-only patch migration', async () => {
+test('v1.0.8 active verification queue survives migration to the current script version', async () => {
     const api = await loadManager();
     api.setLocationPath('/your/shops/me/sales-discounts/details-stats');
     const oldJob = {
@@ -904,7 +908,7 @@ test('v1.0.8 active verification queue survives the v1.0.13 UI-only patch migrat
 
     await api.loadState();
     const migrated = await api.getStoredTestJob();
-    assert.equal(migrated.version, '1.0.13');
+    assert.equal(migrated.version, currentScriptVersion);
     assert.equal(migrated.jobId, oldJob.jobId);
     assert.equal(migrated.generation, oldJob.generation + 1);
     assert.equal(migrated.currentDate, '2026-08-11');
@@ -957,7 +961,7 @@ test('a paused v1.0.10 job at 18 of 20 preserves its date, phase, results, and v
 
     await api.loadState();
     const migrated = await api.getStoredTestJob();
-    assert.equal(migrated.version, '1.0.13');
+    assert.equal(migrated.version, currentScriptVersion);
     assert.equal(migrated.generation, oldJob.generation + 1);
     assert.equal(migrated.currentDate, '2026-08-30');
     assert.equal(migrated.phase, 'fill_form');
@@ -971,7 +975,7 @@ test('a paused v1.0.10 job at 18 of 20 preserves its date, phase, results, and v
     assert.equal(migrated.legacyReconcileStartDate, undefined);
 });
 
-test('an active v1.0.11 transient-loading step survives the v1.0.13 UI-only patch migration', async () => {
+test('an active v1.0.11 transient-loading step survives migration to the current script version', async () => {
     const api = await loadManager();
     const oldJob = {
         schemaVersion: 5, version: '1.0.11', jobId: 'active-v111-transient-loading', generation: 23,
@@ -1008,7 +1012,7 @@ test('an active v1.0.11 transient-loading step survives the v1.0.13 UI-only patc
 
     await api.loadState();
     const migrated = await api.getStoredTestJob();
-    assert.equal(migrated.version, '1.0.13');
+    assert.equal(migrated.version, currentScriptVersion);
     assert.equal(migrated.generation, oldJob.generation + 1);
     assert.equal(migrated.currentDate, oldJob.currentDate);
     assert.equal(migrated.phase, 'select_listings');
@@ -1715,4 +1719,11 @@ test('Start, Retry, Skip, and Stop all use the shared panel action lock', () => 
     ]) {
         assert.match(source, new RegExp(`bindPanelAsyncAction\\('${selector}',\\s*${action},`));
     }
+});
+
+
+test('leaving the sale surface rejects DOM actions before any business operation', async () => {
+    const api = await loadManager();
+    api.setLocationPath('/your/shops/me/tools/listings');
+    assert.throws(() => api.assertForegroundTab(), /Etsy sayfası değişti/);
 });

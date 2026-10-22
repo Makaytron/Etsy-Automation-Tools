@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Ads Keyword Manager
 // @name:tr      Makaytron Etsy Ads Keyword Manager
 // @name:en      Makaytron Etsy Ads Keyword Manager
-// @version      1.0.4
+// @version      1.0.5
 // @description  Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:tr Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:en Manage Etsy Ads keyword matches from a form-based control panel.
@@ -27,6 +27,8 @@
 // @grant        GM_xmlhttpRequest
 // @connect      raw.githubusercontent.com
 // @connect      sjwibgcflufmzaorlwqe.supabase.co
+// @match        https://www.etsy.com/*
+// @grant        window.onurlchange
 // @noframes
 // @run-at       document-idle
 // ==/UserScript==
@@ -34,11 +36,99 @@
 (function () {
     'use strict';
 
+    // BEGIN SPA LIFECYCLE (shared/lifecycle/spa-lifecycle.js)
+    function createRouteLifecycle(supported) {
+        let callbacks = null;
+        let observedHref = '';
+        let active = false;
+        let generation = 0;
+        let timer = null;
+        let entering = null;
+        let requestedGeneration = -1;
+        const allowed = () => supported(location.pathname);
+        const report = error => console.error('[Makaytron route lifecycle]', error);
+        const enter = () => {
+            requestedGeneration = generation;
+            if (entering) return entering;
+            let completedGeneration = -1;
+            const run = async () => {
+                while (callbacks && active && allowed()) {
+                    const requested = requestedGeneration;
+                    await callbacks.enter?.();
+                    completedGeneration = requested;
+                    if (requested === requestedGeneration) break;
+                }
+            };
+            entering = Promise.resolve().then(run).catch(error => {
+                completedGeneration = requestedGeneration; report(error);
+            }).finally(() => {
+                entering = null;
+                if (callbacks && active && allowed() && completedGeneration !== requestedGeneration) void enter();
+            });
+            return entering;
+        };
+        const sync = () => {
+            const href = location.href;
+            const next = allowed();
+            if (observedHref === href && next === active) return entering;
+            observedHref = href;
+            generation += 1;
+            const wasActive = active;
+            active = next;
+            if (wasActive && !next) {
+                try { Promise.resolve(callbacks?.leave?.()).catch(report); } catch (error) { report(error); }
+            }
+            if (next && !wasActive) return enter();
+            if (next && wasActive) {
+                if (entering) return enter();
+                try { Promise.resolve(callbacks?.change?.()).catch(report); } catch (error) { report(error); }
+            }
+            return entering;
+        };
+        return {
+            allowed,
+            capture() { sync(); return { generation, href: location.href }; },
+            current(token) { return allowed() && token?.generation === generation && token?.href === location.href; },
+            sync,
+            start(handlers) {
+                if (callbacks) return entering;
+                callbacks = handlers;
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.addEventListener(event, sync);
+                window.navigation?.addEventListener?.('currententrychange', sync);
+                // URL polling also covers userscript sandboxes that cannot patch the page's history object.
+                timer = window.setInterval(sync, 250);
+                return Promise.resolve(sync());
+            },
+            dispose() {
+                if (active) { active = false; generation += 1; callbacks?.leave?.(); }
+                window.clearInterval(timer);
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.removeEventListener(event, sync);
+                window.navigation?.removeEventListener?.('currententrychange', sync);
+                callbacks = null;
+            },
+        };
+    }
+    // END SPA LIFECYCLE
+    const RUNTIME_ROUTE_PATTERN = /^\/your\/shops\/[^/]+\/advertising\/listings\/[^/]+(?:\/|$)/;
+    const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path));
+    function assertAdsRoute(token) {
+        if (!RouteLifecycle.allowed() || (token && !RouteLifecycle.current(token))) {
+            throw adsExpectedOperationError('Etsy page changed; keyword operation stopped.');
+        }
+    }
+    function suspendAdsRoute() {
+        editorOpenSequence += 1; editorCleanup?.();
+        clearManagedRowColors();
+        for (const id of [PANEL_ROOT_ID, TOAST_ROOT_ID, EDITOR_MODAL_ID, `makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`]) document.getElementById(id)?.remove();
+        panelEl = null;
+    }
+
+
     // ─── Constants ────────────────────────────────────────────────────────────
 
     const SCRIPT_SOURCE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
     const WORD_LIST_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/keyword-rules.txt';
-    const APP_VERSION = '1.0.4';
+    const APP_VERSION = '1.0.5';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -106,7 +196,7 @@
     }
 
     function telemetrySuppressed() {
-        return navigator.webdriver === true
+        return !RouteLifecycle.allowed() || navigator.webdriver === true
             || navigator.doNotTrack === '1'
             || globalThis.doNotTrack === '1'
             || navigator.globalPrivacyControl === true;
@@ -321,6 +411,7 @@
 
     function sendTelemetry(method, payload) {
         return new Promise(resolve => {
+            if (method !== 'DELETE' && !RouteLifecycle.allowed()) { resolve(false); return; }
             const modernRequest = typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
                 ? GM.xmlHttpRequest.bind(GM)
                 : null;
@@ -650,6 +741,7 @@
     }
 
     async function openTelemetrySettings() {
+        if (!RouteLifecycle.allowed()) return;
         const modalId = `makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`;
         if (!document.documentElement || document.getElementById(modalId)) return;
         const modal = document.createElement('div');
@@ -1478,6 +1570,7 @@ oversized
     }
 
     function notify(type, message, duration = 3400) {
+        if (!RouteLifecycle.allowed()) return;
         let root = document.getElementById(TOAST_ROOT_ID);
         if (!root) {
             root = document.createElement('div');
@@ -1524,8 +1617,10 @@ oversized
     }
 
     async function waitUntil(predicate, timeoutMs, intervalMs = 200) {
+        const route = RouteLifecycle.capture();
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
+            assertAdsRoute(route);
             if (predicate()) return true;
             await sleep(intervalMs);
         }
@@ -1619,6 +1714,7 @@ oversized
 
     /** All keyword rows currently in the DOM */
     function getAllRows() {
+        if (!RouteLifecycle.allowed()) return [];
         return Array.from(document.querySelectorAll(KEYWORD_ROW_SELECTOR)).filter((row) => {
             const style = window.getComputedStyle(row);
             return !row.hidden && row.getAttribute('aria-hidden') !== 'true' &&
@@ -1697,8 +1793,11 @@ oversized
     }
 
     async function decorateRows() {
+        const route = RouteLifecycle.capture();
+        assertAdsRoute(route);
         clearManagedRowColors();
         const filteredRows = await getFilteredRows();
+        assertAdsRoute(route);
         filteredRows.forEach((row) => setManagedRowColor(row, '#fff8ed', '#8a5a00'));
         colorRoas();
         updatePanelStats(filteredRows);
@@ -1867,12 +1966,15 @@ oversized
     }
 
     async function mountMakaytronPanel() {
+        const route = RouteLifecycle.capture();
+        assertAdsRoute(route);
         if (panelEl?.isConnected) return panelEl;
         await loadLanguage();
         document.getElementById(PANEL_ROOT_ID)?.remove();
         try { panelCollapsed = Boolean(await GM.getValue(PANEL_COLLAPSED_KEY, false)); }
         catch { panelCollapsed = false; }
 
+        assertAdsRoute(route);
         panelEl = document.createElement('section');
         panelEl.id = PANEL_ROOT_ID;
         panelEl.setAttribute('aria-label', t('panelAria'));
@@ -2031,11 +2133,14 @@ oversized
     }
 
     async function toggleCurrentPage(targetState) {
+        const route = RouteLifecycle.capture();
+        assertAdsRoute(route);
         const filteredRows = await getFilteredRows();
         const stateLabel = t(targetState ? 'enabled' : 'disabled');
         let count = 0;
 
         for (const row of filteredRows) {
+            assertAdsRoute(route);
             const checkbox = row.querySelector('input[type=checkbox]');
             if (!checkbox) {
                 void trackTelemetryError('selector_ads_control');
@@ -2047,13 +2152,14 @@ oversized
             const changed = await waitForStableCheckboxState(
                 checkbox,
                 targetState,
-                () => checkbox.click()
+                () => { assertAdsRoute(route); checkbox.click(); }
             );
             if (!changed) {
                 throw adsOperationError(t('keywordChangeFailed', {
                     keyword: getRowWord(row) || t('keywordFallback'),
                 }), 'selector_ads_verification');
             }
+            assertAdsRoute(route);
             void trackTelemetry('ads_keyword_change_applied');
             notify('success', t('keywordChanged', {
                 keyword: getRowWord(row) || t('keywordFallback'),
@@ -2094,6 +2200,7 @@ oversized
     }
 
     async function goToNextPage(previousState) {
+        assertAdsRoute();
         const nextButton = getNextButton();
         if (!nextButton) {
             throw adsOperationError(t('nextButtonMissing'), 'selector_ads_pagination');
@@ -2126,6 +2233,8 @@ oversized
      * @param {boolean} autoPaginate navigate to next page when done
      */
     async function toggleRows(targetState, autoPaginate = false) {
+        const route = RouteLifecycle.capture();
+        assertAdsRoute(route);
         const stateLabel = t(targetState ? 'enabled' : 'disabled');
         const visitedPages = new Set();
         let totalCount = 0;
@@ -2135,6 +2244,7 @@ oversized
             const rowsReady = await waitForKeywordRows();
             if (!rowsReady) throw adsOperationError(t('keywordRowsFailed'), 'selector_ads_table');
 
+            assertAdsRoute(route);
             const pageState = capturePageState();
             if (visitedPages.has(pageState.signature)) {
                 throw adsOperationError(t('repeatedPage'), 'selector_ads_pagination');
@@ -2150,6 +2260,7 @@ oversized
 
             totalCount += await toggleCurrentPage(targetState);
             await decorateRows();
+            assertAdsRoute(route);
 
             if (!autoPaginate) break;
             if (pageCount >= MAX_AUTO_PAGES && !isButtonDisabled(getNextButton())) {
@@ -2168,6 +2279,7 @@ oversized
     }
 
     function runToggleRows(targetState, autoPaginate = false) {
+        if (!RouteLifecycle.allowed()) return null;
         if (activeOperation || wordlistUpdateRunning) {
             notify('warning', t('operationBusy'));
             return activeOperation;
@@ -2197,6 +2309,7 @@ oversized
     }
 
     function requestDisableAllPages() {
+        if (!RouteLifecycle.allowed()) return null;
         if (activeOperation || wordlistUpdateRunning) {
             notify('warning', t('operationBusy'));
             return activeOperation;
@@ -2210,6 +2323,7 @@ oversized
     }
 
     function requestShortcutDisableCurrentPage() {
+        if (!RouteLifecycle.allowed()) return null;
         if (activeOperation || wordlistUpdateRunning) {
             notify('warning', t('operationBusy'));
             return activeOperation;
@@ -2227,6 +2341,7 @@ oversized
     let wordlistUpdateRunning = false;
 
     async function ensureWord() {
+        if (!RouteLifecycle.allowed()) return null;
         if (activeOperation || wordlistUpdateRunning) {
             notify('warning', t('operationBusy'));
             return;
@@ -2453,6 +2568,7 @@ oversized
     }
 
     async function checkScriptUpdate({ manual = false } = {}) {
+        if (!RouteLifecycle.allowed()) return;
         if (scriptUpdateCheckRunning) return null;
         if (isCriticalKeywordWorkActive()) {
             if (manual) {
@@ -2631,6 +2747,7 @@ oversized
     }
 
     async function openWordlistEditor() {
+        if (!RouteLifecycle.allowed()) return null;
         if (activeOperation || wordlistUpdateRunning) {
             notify('warning', t('operationBusy'));
             return;
@@ -2923,7 +3040,7 @@ oversized
             backdrop.remove();
             if (editorCleanup === forceClose) editorCleanup = null;
             if (editorRelocalize === relocalize) editorRelocalize = null;
-            if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) previouslyFocused.focus();
+            if (RouteLifecycle.allowed() && previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) previouslyFocused.focus();
         };
         const forceClose = () => close(true);
         const setEditorSaving = (busy) => {
@@ -3048,7 +3165,7 @@ oversized
             ['menuCheckScriptUpdate', () => checkScriptUpdate({ manual: true })],
         ];
         menuCommandIds = commands.map(([key, callback]) => (
-            GM_registerMenuCommand(`Makaytron · ${t(key)}`, callback)
+            GM_registerMenuCommand(`Makaytron · ${t(key)}`, () => { if (RouteLifecycle.allowed()) return callback(); })
         )).filter((id) => id !== undefined && id !== null);
         menuCommandsRegistered = true;
     }
@@ -3062,7 +3179,7 @@ oversized
     }
 
     document.addEventListener('keydown', (e) => {
-        if (e.repeat || e.isComposing || document.getElementById(EDITOR_MODAL_ID) || isEditableTarget(e.target)) return;
+        if (!RouteLifecycle.allowed() || e.repeat || e.isComposing || document.getElementById(EDITOR_MODAL_ID) || isEditableTarget(e.target)) return;
         if (e.getModifierState?.('AltGraph')) return;
 
         const autoShortcut = e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey && e.code === 'KeyK';
@@ -3077,7 +3194,10 @@ oversized
     // ─── Page load ────────────────────────────────────────────────────────────
 
     async function initializePage() {
+        const route = RouteLifecycle.capture();
+        assertAdsRoute(route);
         await loadLanguage();
+        assertAdsRoute(route);
         registerMenuCommands();
         registerTelemetryMenuCommand();
         await mountMakaytronPanel();
@@ -3088,7 +3208,9 @@ oversized
             void trackTelemetryError('selector_ads_table');
             throw new Error(t('keywordTableFailed'));
         }
+        assertAdsRoute(route);
         const filteredRows = await decorateRows();
+        assertAdsRoute(route);
         setPanelStatus(
             'rowsReady',
             filteredRows.length ? 'warning' : 'ready',
@@ -3102,7 +3224,8 @@ oversized
     }
 
     function startInitialization() {
-        initializePage().catch((error) => {
+        return initializePage().catch((error) => {
+            if (!RouteLifecycle.allowed() || error?.telemetryExpected) return;
             console.error('[Makaytron Etsy Ads Keyword Manager]', t('consoleInitializationFailed'), error);
             notify('error', t('appStartFailed', { error: error?.message || error }));
             setPanelStatus(error?.message || t('appStartFailedFallback'), 'error', '', {}, true);
@@ -3110,9 +3233,9 @@ oversized
     }
 
     if (document.readyState === 'complete') {
-        startInitialization();
+        void RouteLifecycle.start({ enter: startInitialization, leave: suspendAdsRoute, change: startInitialization });
     } else {
-        window.addEventListener('load', startInitialization, { once: true });
+        window.addEventListener('load', () => { void RouteLifecycle.start({ enter: startInitialization, leave: suspendAdsRoute, change: startInitialization }); }, { once: true });
     }
 
 })();

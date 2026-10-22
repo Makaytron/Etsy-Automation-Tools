@@ -131,8 +131,8 @@ function loadManager() {
         ArrayBuffer,
         Blob,
         location: {
-            pathname: '/your/shops/test/advertising',
-            href: 'https://www.etsy.com/your/shops/test/advertising',
+            pathname: '/your/shops/me/advertising/listings/123',
+            href: 'https://www.etsy.com/your/shops/me/advertising/listings/123',
             hostname: 'www.etsy.com',
         },
         navigator: {},

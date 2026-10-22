@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.2.4] - 2026-10-22
+
+### Fixed
+
+- Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış desteklenmeyen bir Etsy sayfasında olsa da yalnız hafif URL dinleyicisi çalışır; araç kendi sayfasına girilince başlar, çıkılınca arayüzü kaldırılır ve sayfa işlemleri durur. Yeniden girişte mükerrer panel veya menü oluşmaz.
+- Sayfa dışına çıkmadan önce başlayan asenkron işlemler yeni sayfada tıklama veya yönlendirmeye devam etmez; kalıcı belirsiz gönderim/işlem kanıtları korunur.
+
+### Tests
+
+- Desteklenmeyen sayfada ilk yükleme, yenilemesiz giriş/çıkış, tekrar giriş, Back/Forward ve eski işin yeniden canlanmaması için ortak yaşam döngüsü ve gerçek Chrome testleri eklendi.
+
 ## 1.2.3 - 2026-09-02
 
 - Migrated the existing Listing Analyzer dashboard presentation to MKUI v1 while preserving the open Shadow DOM, every recorded `data-*` hook and `meli-*` class signature, navigation/filter/selection state, keyboard shortcuts, storage and telemetry contracts, and the complete publish/deactivate verification state machines.

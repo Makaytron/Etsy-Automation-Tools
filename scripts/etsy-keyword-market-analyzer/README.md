@@ -4,7 +4,9 @@
 
 **Kısa ad:** Etsy Keyword & Market Analyzer
 
-**Sürüm:** 1.0.4
+**Sürüm:** 1.0.5
+
+Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış desteklenmeyen bir Etsy sayfasında olsa da yalnız hafif URL dinleyicisi çalışır; araç kendi sayfasına girilince başlar, çıkılınca arayüzü kaldırılır ve sayfa işlemleri durur. Yeniden girişte mükerrer panel veya menü oluşmaz.
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 

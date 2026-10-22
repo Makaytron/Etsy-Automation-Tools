@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.2.9
+// @version      1.2.11
 // @description  Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages into your selected language and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -44,6 +44,8 @@
 // @connect      raw.githubusercontent.com
 // @connect      sjwibgcflufmzaorlwqe.supabase.co
 // @connect      *
+// @match        https://www.etsy.com/*
+// @grant        window.onurlchange
 // @noframes
 // @run-at       document-end
 // ==/UserScript==
@@ -51,7 +53,84 @@
 (async () => {
     'use strict';
 
-    const APP_VERSION = '1.2.9';
+    // BEGIN SPA LIFECYCLE (shared/lifecycle/spa-lifecycle.js)
+    function createRouteLifecycle(supported) {
+        let callbacks = null;
+        let observedHref = '';
+        let active = false;
+        let generation = 0;
+        let timer = null;
+        let entering = null;
+        let requestedGeneration = -1;
+        const allowed = () => supported(location.pathname);
+        const report = error => console.error('[Makaytron route lifecycle]', error);
+        const enter = () => {
+            requestedGeneration = generation;
+            if (entering) return entering;
+            let completedGeneration = -1;
+            const run = async () => {
+                while (callbacks && active && allowed()) {
+                    const requested = requestedGeneration;
+                    await callbacks.enter?.();
+                    completedGeneration = requested;
+                    if (requested === requestedGeneration) break;
+                }
+            };
+            entering = Promise.resolve().then(run).catch(error => {
+                completedGeneration = requestedGeneration; report(error);
+            }).finally(() => {
+                entering = null;
+                if (callbacks && active && allowed() && completedGeneration !== requestedGeneration) void enter();
+            });
+            return entering;
+        };
+        const sync = () => {
+            const href = location.href;
+            const next = allowed();
+            if (observedHref === href && next === active) return entering;
+            observedHref = href;
+            generation += 1;
+            const wasActive = active;
+            active = next;
+            if (wasActive && !next) {
+                try { Promise.resolve(callbacks?.leave?.()).catch(report); } catch (error) { report(error); }
+            }
+            if (next && !wasActive) return enter();
+            if (next && wasActive) {
+                if (entering) return enter();
+                try { Promise.resolve(callbacks?.change?.()).catch(report); } catch (error) { report(error); }
+            }
+            return entering;
+        };
+        return {
+            allowed,
+            capture() { sync(); return { generation, href: location.href }; },
+            current(token) { return allowed() && token?.generation === generation && token?.href === location.href; },
+            sync,
+            start(handlers) {
+                if (callbacks) return entering;
+                callbacks = handlers;
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.addEventListener(event, sync);
+                window.navigation?.addEventListener?.('currententrychange', sync);
+                // URL polling also covers userscript sandboxes that cannot patch the page's history object.
+                timer = window.setInterval(sync, 250);
+                return Promise.resolve(sync());
+            },
+            dispose() {
+                if (active) { active = false; generation += 1; callbacks?.leave?.(); }
+                window.clearInterval(timer);
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.removeEventListener(event, sync);
+                window.navigation?.removeEventListener?.('currententrychange', sync);
+                callbacks = null;
+            },
+        };
+    }
+    // END SPA LIFECYCLE
+    const RUNTIME_ROUTE_PATTERN = /^(?:\/(?:messages|conversations)(?:\/|$)|\/your\/orders\/sold(?:\/|$)|\/your\/shops\/[^/]+\/dashboard(?:\/|$))/;
+    const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path));
+
+
+    const APP_VERSION = '1.2.11';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
@@ -120,7 +199,7 @@
     }
 
     function telemetrySuppressed() {
-        return navigator.webdriver === true
+        return !RouteLifecycle.allowed() || navigator.webdriver === true
             || navigator.doNotTrack === '1'
             || globalThis.doNotTrack === '1'
             || navigator.globalPrivacyControl === true;
@@ -268,6 +347,7 @@
 
     function sendTelemetry(method, payload) {
         return new Promise(resolve => {
+            if (method !== 'DELETE' && !RouteLifecycle.allowed()) { resolve(false); return; }
             const modernRequest = typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
                 ? GM.xmlHttpRequest.bind(GM)
                 : null;
@@ -614,6 +694,7 @@
     }
 
     async function openTelemetrySettings() {
+        if (!RouteLifecycle.allowed()) return;
         const modalId = `makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`;
         if (!document.documentElement || document.getElementById(modalId)) return;
         const modal = document.createElement('div');
@@ -1925,7 +2006,7 @@ zu|Zulu
             });
         },
         menu(label, handler) {
-            if (globalThis.GM?.registerMenuCommand) GM.registerMenuCommand(label, handler);
+            if (globalThis.GM?.registerMenuCommand) GM.registerMenuCommand(label, () => { if (RouteLifecycle.allowed()) return handler(); });
         },
         open(url, options = { active: true, insert: true, setParent: true }) {
             if (globalThis.GM?.openInTab) return GM.openInTab(url, options);
@@ -1971,6 +2052,7 @@ zu|Zulu
             setTimeout(() => note.remove(), 190);
         };
         const show = (message, type = 'info', duration = 3500) => {
+            if (!RouteLifecycle.allowed()) return null;
             const box = ensure();
             const safeType = marks[type] ? type : 'info';
             const note = document.createElement('div');
@@ -3840,6 +3922,7 @@ zu|Zulu
             return !['completed', 'cancelled'].includes(String(campaign.status || '').toLowerCase());
         },
         async check({ force = false, silent = false } = {}) {
+            if (!RouteLifecycle.allowed()) return;
             if (!Store.settings.checkUpdates && !force) return Store.update;
             if (!this.usesGitHubUpdateChannel()) {
                 const next = {
@@ -3927,6 +4010,7 @@ zu|Zulu
 
     const Router = {
         page() {
+            if (!RouteLifecycle.allowed()) return 'unknown';
             const path = location.pathname.toLowerCase();
             if (this.orderComposeTargetFromUrl()) return 'messages';
             if (/^\/(?:messages|conversations)(?:\/|$)/.test(path)) return 'messages';
@@ -5310,6 +5394,7 @@ zu|Zulu
             return cfg.enabled && Boolean(cfg.serverUrl && cfg.storeId && cfg.token);
         },
         bindingIsCurrent(binding, generation = this.generation) {
+            if (!RouteLifecycle.allowed()) return false;
             if (generation !== this.generation || !this.isConfigured(binding)) return false;
             const current = this.config();
             return this.isConfigured(current) && this.configId(current) === this.configId(binding);
@@ -5347,6 +5432,7 @@ zu|Zulu
             return 'Bağlantı bekleniyor';
         },
         async request(method, path, body = null, binding = this.config()) {
+            if (!RouteLifecycle.allowed()) throw this.staleRunError();
             const cfg = binding;
             if (!cfg.serverUrl || !cfg.storeId || !cfg.token) throw new Error('Mesaj Merkezi agent ayarları eksik.');
             const response = await GMX.request({
@@ -6722,6 +6808,7 @@ zu|Zulu
             return this.sendReplyJob(job, pending, run);
         },
         async processNextJobLocked() {
+            if (!RouteLifecycle.allowed()) return false;
             const binding = Object.freeze({ ...this.config() });
             const generation = this.generation;
             if (!this.isConfigured(binding)) return false;
@@ -6799,7 +6886,7 @@ zu|Zulu
         },
         schedule() {
             this.clearTimers();
-            if (!this.isConfigured()) return;
+            if (!RouteLifecycle.allowed() || !this.isConfigured()) return;
             const cfg = this.config();
             this.heartbeatTimer = setInterval(() => void this.heartbeat(), 15000);
             this.syncTimer = setInterval(() => void this.syncNow(), cfg.syncSeconds * 1000);
@@ -6832,7 +6919,7 @@ zu|Zulu
             return true;
         },
         async onRoute() {
-            if (!this.isConfigured()) return;
+            if (!RouteLifecycle.allowed() || !this.isConfigured()) return;
             if (Router.page() === 'messages') await this.syncNow().catch(() => false);
             await this.processNextJob();
         },
@@ -7792,6 +7879,7 @@ zu|Zulu
             return true;
         },
         beginNativeDispatchGuard() {
+            if (!RouteLifecycle.allowed()) return null;
             const textarea = MessageAdapter.getTextarea();
             const text = String(textarea?.value || '').trim();
             if (!textarea || !text) return null;
@@ -9935,7 +10023,9 @@ zu|Zulu
             return this.sendCurrentByUser();
         },
         async driveAutopilot(options = {}) {
+            if (!RouteLifecycle.allowed()) return false;
             if (options.recoveryComplete !== true) await this.recoverDurableSendPartials();
+            if (!RouteLifecycle.allowed()) return false;
             const campaign = Store.campaign;
             if (!this.isAutopilotRunning(campaign) || campaign.status !== 'active') return false;
             const item = campaign.items?.[campaign.currentIndex];
@@ -10595,9 +10685,22 @@ zu|Zulu
         },
         adoptMessageContext(context, previous = this.state.context) {
             const changed = this.messageContextChanged(context, previous);
+            if (changed && previous) this.clearMessageDraft();
             if (changed && Store.settings.replyInCustomerLanguage) this.state.targetLanguage = '';
             this.state.context = context;
             return changed;
+        },
+        clearMessageDraft() {
+            this.state.translation = null;
+            this.state.analysis = null;
+            this.state.reply = null;
+            this.state.replyBinding = null;
+            this.state.replyTr = '';
+            this.state.replyMethod = '';
+            this.state.draftTr = '';
+            this.state.extraInstruction = '';
+            this.state.lastReplyMode = '';
+            if (!Campaign.current()) this.state.selectedTemplateId = '';
         },
         beginMessageWork(context = MessageAdapter.context()) {
             return {
@@ -10993,6 +11096,7 @@ zu|Zulu
                 }
             });
             document.addEventListener('click', (event) => {
+                if (!RouteLifecycle.allowed()) return;
                 if (MessageAdapter.isPotentialSendButton(event.target)) {
                     if (!MessageAdapter.isSendButton(event.target)) {
                         event.preventDefault();
@@ -11060,6 +11164,7 @@ zu|Zulu
                 }
             }, true);
             document.addEventListener('submit', (event) => {
+                if (!RouteLifecycle.allowed()) return;
                 const form = MessageAdapter.potentialComposerForm(event.target);
                 if (!form) return;
                 const programmatic = MessageCenterAgent.programmaticDispatchActive
@@ -11088,6 +11193,7 @@ zu|Zulu
                 nativeButton.click();
             }, true);
             const interceptComposerShortcut = (event) => {
+                if (!RouteLifecycle.allowed()) return;
                 if (event.key !== 'Enter' || (!event.ctrlKey && !event.metaKey) || event.shiftKey) return;
                 const composer = MessageAdapter.composerFromEventTarget(event.target);
                 if (!composer) return;
@@ -11107,6 +11213,7 @@ zu|Zulu
             document.addEventListener('keyup', interceptComposerShortcut, true);
         },
         open(page = this.state.page) {
+            if (!RouteLifecycle.allowed()) return;
             this.state.open = true;
             this.state.page = page;
             // Rota değişmişse eski konuşmanın taslak/gönderim kontrollerini bir kare bile göstermeyin.
@@ -11148,9 +11255,8 @@ zu|Zulu
         async refreshMessages() {
             if (Router.isMessageListPage()) {
                 this.invalidateMessageWork();
+                this.clearMessageDraft();
                 this.state.context = null;
-                this.state.reply = null;
-                this.state.replyBinding = null;
                 if (Store.settings.autoTurkishPreview) {
                     await this.translateMessageListPreviews({ auto: true });
                 } else {
@@ -11167,16 +11273,8 @@ zu|Zulu
             if (changed) {
                 const work = this.beginMessageWork(context);
                 if (routeChanged) Verification.invalidate(pending => !Verification.composeTransitionMayContinue(pending));
-                this.state.translation = null;
+                this.clearMessageDraft();
                 this.state.analysis = Heuristics.analyze(context.lastCustomerMessage);
-                this.state.reply = null;
-                this.state.replyBinding = null;
-                this.state.replyTr = '';
-                this.state.replyMethod = '';
-                this.state.draftTr = '';
-                this.state.extraInstruction = '';
-                this.state.lastReplyMode = '';
-                if (!Campaign.current()) this.state.selectedTemplateId = '';
                 if (Store.settings.autoTurkishPreview && context.lastCustomerMessage) {
                     try {
                         const translated = await Translator.translate(context.lastCustomerMessage, Store.settings.previewLanguage || 'tr');
@@ -12081,6 +12179,10 @@ zu|Zulu
             if (bind) {
                 if (bind === 'selectedTemplateId') return;
                 this.state[bind] = event.target.value;
+                if (bind === 'reply') {
+                    this.state.replyTr = '';
+                    this.shadow?.querySelector?.('.ma-output-card .ma-disclosure')?.remove();
+                }
                 if (bind === 'draftTr') {
                     const hasDraft = Boolean(event.target.value.trim());
                     for (const selector of ['[data-action="ai-polish-reply"]', '[data-action="free-translate-reply"]']) {
@@ -12160,16 +12262,26 @@ zu|Zulu
             }
             if (event.target.hasAttribute('data-message-template-select')) {
                 const templateId = event.target.value;
-                this.state.selectedTemplateId = templateId;
                 const template = TemplateEngine.get(templateId);
                 if (template) {
-                    this.state.draftTr = TemplateEngine.render(template, this.state.context || MessageAdapter.context());
+                    const context = MessageAdapter.context();
+                    this.adoptMessageContext(context);
+                    this.state.selectedTemplateId = templateId;
+                    const work = this.beginMessageWork(context);
+                    const previousDraft = this.state.draftTr;
+                    const source = TemplateEngine.render(template, context);
+                    const draftTr = Translator.normalizedTarget(template.language || 'tr') === 'tr'
+                        ? source : (await Translator.translate(source, 'tr')).text;
+                    if (!this.messageWorkIsCurrent(work)
+                        || this.state.selectedTemplateId !== templateId
+                        || this.state.draftTr !== previousDraft) return;
+                    this.state.draftTr = draftTr;
                     this.state.reply = null;
                     this.state.replyBinding = null;
                     this.state.replyTr = '';
                     this.state.replyMethod = '';
                     this.state.lastReplyMode = '';
-                }
+                } else this.state.selectedTemplateId = '';
                 this.render();
                 setTimeout(() => this.shadow.querySelector('[data-bind="draftTr"]')?.focus(), 0);
                 return;
@@ -12221,6 +12333,11 @@ ${result.text || ''}`);
         },
         async generateReply(options = {}) {
             let context = MessageAdapter.context();
+            if (this.state.context && this.messageContextChanged(context)) {
+                this.adoptMessageContext(context);
+                this.invalidateMessageWork();
+                throw new Error('Konuşma veya müşteri mesajı değişti. Güncel konuşmayı kontrol edip cevabınızı yeniden hazırlayın.');
+            }
             let work = this.beginMessageWork(context);
             this.adoptMessageContext(context);
             const method = options.method || this.state.composeMethod;
@@ -12280,9 +12397,11 @@ ${result.text || ''}`);
             } else {
                 const source = method === 'template' ? renderedTemplate : userDraftTr.trim();
                 if (!source) throw new Error(method === 'template' ? 'Bir hazır mesaj seçin.' : 'Önce Türkçe cevabınızı yazın.');
-                reply = targetLanguage === 'tr' ? source : (await Translator.translate(source, targetLanguage)).text;
+                const sourceLanguage = method === 'template' ? Translator.normalizedTarget(template.language || 'tr') : 'tr';
+                reply = Translator.normalizedTarget(targetLanguage) === sourceLanguage
+                    ? source : (await Translator.translate(source, targetLanguage)).text;
                 if (!this.messageWorkIsCurrent(work)) return false;
-                replyTr = source;
+                replyTr = sourceLanguage === 'tr' ? source : Translator.normalizedTarget(targetLanguage) === 'tr' ? reply : '';
                 finalMethod = method === 'template' ? 'template' : 'free';
             }
             if (!replyTr && reply) {
@@ -12450,6 +12569,9 @@ ${result.text || ''}`);
             return { textarea, context, binding, text, replyMethod };
         },
         async copySource(source) {
+            if (source === 'reply' && !this.replyIsCurrent()) {
+                throw new Error('Konuşma veya müşteri mesajı değişti; eski cevap kopyalanmadı. Güncel konuşma için yeniden cevap hazırlayın.');
+            }
             const selected = this.state.reviews.find((review) => review.id === this.state.selectedReviewId);
             const isReviewSource = ['review-private', 'review-public'].includes(source);
             if (isReviewSource && (!selected || !this.reviewAnalysisIsCurrent(selected))) {
@@ -12728,7 +12850,33 @@ ${result.text || ''}`);
     const App = {
         routeFingerprint: '',
         translationConversationId: '',
+        initialized: false,
         async init() {
+            await RouteLifecycle.start({ enter: () => this.activate(), leave: () => this.suspend() });
+        },
+        suspend() {
+            UI.invalidateMessageWork(); UI.invalidateMessageListWork({ resetStatus: true }); UI.invalidateReviewWork();
+            UI.clearMessageDraft(); UI.state.context = null; UI.state.open = false;
+            UI.setBusy(false);
+            UI.app?.classList?.add('ma-hidden');
+            UI.app?.setAttribute?.('aria-hidden', 'true');
+            const launcher = UI.shadow?.querySelector?.('.ma-launcher');
+            launcher?.classList?.remove('ma-hidden'); launcher?.setAttribute?.('aria-expanded', 'false');
+            UI.host?.remove();
+            ConversationTranslations.clear(); ComposerQuickActions.stop();
+            Campaign.invalidateWork(); clearTimeout(Campaign.recoveryTimer); Campaign.recoveryTimer = null;
+            MessageCenterAgent.generation += 1; MessageCenterAgent.clearTimers();
+            Verification.invalidate(pending => !Verification.composeTransitionMayContinue(pending));
+            document.querySelectorAll('.mema-notify').forEach(node => node.remove());
+            document.getElementById(`makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`)?.remove();
+        },
+        async activate() {
+            if (!RouteLifecycle.allowed()) return;
+            if (this.initialized) {
+                if (UI.host && !UI.host.isConnected) document.documentElement.appendChild(UI.host);
+                ComposerQuickActions.start(); MessageCenterAgent.schedule();
+                return this.onRoute();
+            }
             await Store.load();
             await Campaign.recoverDurableSendPartials().catch(error => {
                 console.error(`[${APP.id}] Kalıcı gönderim günlüğü başlangıçta uzlaştırılamadı.`, error);
@@ -12737,6 +12885,7 @@ ${result.text || ''}`);
             await Verification.refreshNativeSendHold();
             await ensureTelemetryInstallationIdListener();
             BRAND_LOGO_URL = await GMX.resource('makaytronLogo', RELEASE.logoUrl);
+            if (!RouteLifecycle.allowed()) return;
             UI.mount();
             ComposerQuickActions.start();
             registerTelemetryMenuCommand();
@@ -12745,6 +12894,7 @@ ${result.text || ''}`);
             GMX.menu('Config Yedeğini İndir', () => ConfigManager.download(false));
             GMX.menu('Güncellemeyi Kontrol Et', () => Updates.check({ force: true }).catch((error) => Notify.show(error.message, 'error', 6000)));
             Router.start(() => this.onRoute());
+            this.initialized = true;
             await MessageCenterAgent.start();
             await this.onRoute();
             Updates.check({ silent: true }).then(() => UI.render()).catch(() => {});
@@ -12762,6 +12912,7 @@ ${result.text || ''}`);
             return true;
         },
         async onRoute() {
+            if (!RouteLifecycle.allowed()) { this.suspend(); return; }
             const fingerprint = Router.routeFingerprint();
             const routeChanged = fingerprint !== this.routeFingerprint;
             const translationConversationId = Router.page() === 'messages' && !Router.isMessageListPage()
@@ -12775,6 +12926,7 @@ ${result.text || ''}`);
                 console.error(`[${APP.id}] Compose gönderim kontrolü yeni konuşmaya bağlanamadı.`, error);
             });
             await Verification.refreshNativeSendHold();
+            if (!RouteLifecycle.allowed()) { this.suspend(); return; }
             if (routeChanged) {
                 this.routeFingerprint = fingerprint;
                 ComposerQuickActions.clear();

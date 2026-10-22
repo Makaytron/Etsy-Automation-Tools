@@ -21,13 +21,9 @@ if (!currentVersion || runtimeVersion !== currentVersion) {
 }
 
 const original = fs.readFileSync(testPath, 'utf8');
-const migrationExpectations = [...original.matchAll(/assert\.equal\(migrated\.version, ['"](\d+\.\d+\.\d+)['"]\);/g)];
+const migrationExpectations = [...original.matchAll(/assert\.equal\(migrated\.version, currentScriptVersion\);/g)];
 if (migrationExpectations.length !== 3) {
-  fail(`Expected exactly three Sale Manager migrated.version assertions, found ${migrationExpectations.length}.`);
-}
-const historicalTargets = new Set(migrationExpectations.map((match) => match[1]));
-if (historicalTargets.size !== 1) {
-  fail(`Sale Manager migration assertions disagree on their historical target: ${[...historicalTargets].join(', ')}`);
+  fail(`Expected exactly three current-version migration assertions, found ${migrationExpectations.length}.`);
 }
 
 const transitionFixturePattern = /waitForStepActionTransition\('review', \{\}, 180, \(\) => \(\{/g;
@@ -36,14 +32,7 @@ if (transitionFixtureMatches.length !== 1) {
   fail(`Expected exactly one Sale transition timing fixture, found ${transitionFixtureMatches.length}.`);
 }
 
-let transformed = original.replace(
-  /assert\.equal\(migrated\.version, ['"]\d+\.\d+\.\d+['"]\);/g,
-  `assert.equal(migrated.version, '${currentVersion}');`,
-);
-transformed = transformed.replace(
-  /v\d+\.\d+\.\d+ UI-only patch migration/g,
-  `v${currentVersion} UI-only patch migration`,
-);
+let transformed = original;
 transformed = transformed.replace(
   transitionFixturePattern,
   "waitForStepActionTransition('review', {}, 800, () => ({",

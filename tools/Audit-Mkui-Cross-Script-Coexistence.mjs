@@ -455,11 +455,23 @@ export function fixedSurfaceAnchor(surface) {
   return `${x}|${y}|W:${surface.width || 'auto'}|H:${surface.height || 'auto'}`;
 }
 
+export function extractRuntimeRoute(source) {
+  const literal = source.match(/^\s*const RUNTIME_ROUTE_PATTERN\s*=\s*(.+);\s*$/m)?.[1];
+  if (!literal) return null;
+  const end = literal.lastIndexOf('/');
+  if (!literal.startsWith('/') || end < 1 || !/^[imsu]*$/.test(literal.slice(end + 1))) {
+    throw new Error('Invalid runtime route literal.');
+  }
+  const regex = new RegExp(literal.slice(1, end), literal.slice(end + 1));
+  return { source: regex.source, flags: regex.flags };
+}
+
 function routeOwnership(scripts) {
   return MKUI_CANONICAL_ROUTE_FIXTURES.map(fixture => ({
     ...fixture,
     matchedScripts: scripts
-      .filter(script => script.matches.some(pattern => urlMatchesPattern(fixture.url, pattern)))
+      .filter(script => script.matches.some(pattern => urlMatchesPattern(fixture.url, pattern))
+        && (!script.runtimeRoute || new RegExp(script.runtimeRoute.source, script.runtimeRoute.flags).test(new URL(fixture.url).pathname)))
       .map(script => script.id),
   }));
 }
@@ -584,6 +596,7 @@ async function analyzeScript(definition, source) {
     mkuiVersion,
     mkuiBundleHash,
     matches: metadataValues(metadata, 'match'),
+    runtimeRoute: extractRuntimeRoute(source),
     runAt: metadataValues(metadata, 'run-at')[0] || null,
     grants: metadataValues(metadata, 'grant'),
     cssPrefixes: definition.cssPrefixes,
@@ -662,6 +675,8 @@ export async function buildCrossScriptAudit(options = {}) {
       JSON.stringify(script.shadowModes) === JSON.stringify(script.expectedShadowModes)),
     canonicalRoutesHaveSingleOwner: routes.every(route =>
       route.matchedScripts.length === 1 && route.matchedScripts[0] === route.owner),
+    broadBootstrapHasRuntimeGate: scripts.every(script =>
+      !script.matches.includes('https://www.etsy.com/*') || Boolean(script.runtimeRoute)),
     domIdsAreUnique: domIdCollisions.length === 0,
     windowGlobalsAreUnique: windowGlobalCollisions.length === 0,
     namespacedCustomEventsAreUnique: eventCollisions.length === 0,

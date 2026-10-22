@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
-  "sourceDigest": "sha256:0967d901524656d7b788dfc03d7cb8d8b5f58ede1e830a945a00271086bd5082",
+  "sourceDigest": "sha256:ec0b2042f90b4c1f88540c0adf31f4d96bb4e72a741a632871100f8671867c28",
   "status": "pass",
   "summary": {
     "scriptCount": 5,
@@ -19,6 +19,7 @@
     "telemetryIdsUnique": true,
     "expectedShadowModesMatch": true,
     "canonicalRoutesHaveSingleOwner": true,
+    "broadBootstrapHasRuntimeGate": true,
     "domIdsAreUnique": true,
     "windowGlobalsAreUnique": true,
     "namespacedCustomEventsAreUnique": true,
@@ -35,15 +36,20 @@
       "id": "ads-keyword-manager",
       "label": "Ads Keyword Manager",
       "path": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
-      "bytes": 180365,
-      "lines": 3119,
-      "sha256": "1405363d15282da31cab73a39fa72d5a97ec81f52fa404c156f2073d602c8b0f",
-      "version": "1.0.4",
+      "bytes": 186362,
+      "lines": 3242,
+      "sha256": "3b4368503aa3caf1bd06c4188bbd0f7d057af25092ba6aa4d2a039d6e729cdc3",
+      "version": "1.0.5",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
-        "https://www.etsy.com/your/shops/me/advertising/listings/*"
+        "https://www.etsy.com/your/shops/me/advertising/listings/*",
+        "https://www.etsy.com/*"
       ],
+      "runtimeRoute": {
+        "source": "^\\/your\\/shops\\/[^/]+\\/advertising\\/listings\\/[^/]+(?:\\/|$)",
+        "flags": ""
+      },
       "runAt": "document-idle",
       "grants": [
         "GM.getValue",
@@ -54,7 +60,8 @@
         "GM_registerMenuCommand",
         "GM_unregisterMenuCommand",
         "GM_addElement",
-        "GM_xmlhttpRequest"
+        "GM_xmlhttpRequest",
+        "window.onurlchange"
       ],
       "cssPrefixes": [
         "maw-"
@@ -173,7 +180,7 @@
       "fixedSurfaces": [
         {
           "source": "direct-style-call",
-          "line": 1358,
+          "line": 1450,
           "selector": "#makaytron-ad-wordlist",
           "top": "86px",
           "right": "18px",
@@ -185,7 +192,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 1430,
+          "line": 1522,
           "selector": "#makaytron-ad-wordlist-toasts",
           "top": null,
           "right": "18px",
@@ -197,7 +204,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 1433,
+          "line": 1525,
           "selector": ".maw-modal-backdrop",
           "top": null,
           "right": null,
@@ -211,7 +218,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 3064,
+          "line": 3181,
           "key": "KeyK",
           "modifiers": [
             "Alt",
@@ -223,7 +230,7 @@
         },
         {
           "target": "document",
-          "line": 3064,
+          "line": 3181,
           "key": "Space",
           "modifiers": [
             "Alt",
@@ -245,7 +252,7 @@
           {
             "label": "direct-style-call",
             "kind": "global",
-            "line": 1358,
+            "line": 1450,
             "bytes": 18975,
             "selectorCount": 144,
             "unsafeSelectors": []
@@ -258,15 +265,20 @@
       "id": "keyword-market-analyzer",
       "label": "Keyword & Market Analyzer",
       "path": "scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js",
-      "bytes": 160918,
-      "lines": 3029,
-      "sha256": "8c648e6cb8338be46dfabc1cdf4eb1ec1bb8b5567b73b9dda1e911d54bebcb24",
-      "version": "1.0.4",
+      "bytes": 167053,
+      "lines": 3151,
+      "sha256": "d2c31c66d97c56afd09c4369b53b380b2583aedbf5d2221dc6d860c4df67fbc2",
+      "version": "1.0.5",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
-        "https://www.etsy.com/your/shops/*/marketplace-insights*"
+        "https://www.etsy.com/your/shops/*/marketplace-insights*",
+        "https://www.etsy.com/*"
       ],
+      "runtimeRoute": {
+        "source": "^\\/your\\/shops\\/[^/]+\\/marketplace-insights(?:\\/search)?\\/?$",
+        "flags": ""
+      },
       "runAt": "document-idle",
       "grants": [
         "GM.getValue",
@@ -276,7 +288,8 @@
         "GM.xmlHttpRequest",
         "GM.openInTab",
         "GM.info",
-        "GM_registerMenuCommand"
+        "GM_registerMenuCommand",
+        "window.onurlchange"
       ],
       "cssPrefixes": [
         "ekma-",
@@ -333,7 +346,7 @@
       "fixedSurfaces": [
         {
           "source": "innerHTML<style>",
-          "line": 2756,
+          "line": 2854,
           "selector": ".launcher",
           "top": "148px",
           "right": "0",
@@ -345,7 +358,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 2757,
+          "line": 2855,
           "selector": ".panel",
           "top": "12px",
           "right": "12px",
@@ -368,7 +381,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 1702,
+            "line": 1786,
             "bytes": 58,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -376,7 +389,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 2010,
+            "line": 2095,
             "bytes": 2402,
             "selectorCount": 19,
             "unsafeSelectors": []
@@ -384,7 +397,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 2105,
+            "line": 2190,
             "bytes": 97,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -392,7 +405,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 2914,
+            "line": 3013,
             "bytes": 33,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -400,7 +413,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 2755,
+            "line": 2853,
             "bytes": 5826,
             "selectorCount": 48,
             "unsafeSelectors": []
@@ -413,16 +426,22 @@
       "id": "sale-manager",
       "label": "Sale Manager",
       "path": "scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js",
-      "bytes": 445896,
-      "lines": 7679,
-      "sha256": "1b7208f3aeb0a509556c088fddb07c1edc3ebff214700725abf19525a6d5c0f8",
-      "version": "1.0.13",
+      "bytes": 451103,
+      "lines": 7791,
+      "sha256": "be1675e8c46844be219b1653f089fbae4b2d340c2efd595bab0a3a3c8b9d24bf",
+      "version": "1.0.14",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
         "https://www.etsy.com/your/shops/me/sales-discounts*",
-        "https://etsy.com/your/shops/me/sales-discounts*"
+        "https://etsy.com/your/shops/me/sales-discounts*",
+        "https://www.etsy.com/*",
+        "https://etsy.com/*"
       ],
+      "runtimeRoute": {
+        "source": "^\\/your\\/shops\\/me\\/sales-discounts(?:\\/|$)",
+        "flags": ""
+      },
       "runAt": "document-idle",
       "grants": [
         "GM.addStyle",
@@ -434,7 +453,8 @@
         "GM.registerMenuCommand",
         "GM.xmlHttpRequest",
         "GM.getResourceURL",
-        "GM.info"
+        "GM.info",
+        "window.onurlchange"
       ],
       "cssPrefixes": [
         "eda-"
@@ -604,7 +624,7 @@
       "fixedSurfaces": [
         {
           "source": "direct-style-call",
-          "line": 844,
+          "line": 939,
           "selector": "#eda-batch-root",
           "top": "86px",
           "right": "18px",
@@ -616,7 +636,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 925,
+          "line": 1020,
           "selector": "#eda-batch-toast-root",
           "top": null,
           "right": "18px",
@@ -628,7 +648,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 928,
+          "line": 1023,
           "selector": ".eda-modal-backdrop,.eda-report-backdrop",
           "top": null,
           "right": null,
@@ -642,7 +662,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 7592,
+          "line": 7690,
           "key": "e",
           "modifiers": [
             "Alt",
@@ -652,7 +672,7 @@
         },
         {
           "target": "document",
-          "line": 7592,
+          "line": 7690,
           "key": "r",
           "modifiers": [
             "Alt",
@@ -662,7 +682,7 @@
         },
         {
           "target": "document",
-          "line": 7592,
+          "line": 7690,
           "key": "u",
           "modifiers": [
             "Alt",
@@ -682,7 +702,7 @@
           {
             "label": "direct-style-call",
             "kind": "global",
-            "line": 844,
+            "line": 939,
             "bytes": 16807,
             "selectorCount": 136,
             "unsafeSelectors": []
@@ -695,10 +715,10 @@
       "id": "message-assistant",
       "label": "Message Assistant",
       "path": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
-      "bytes": 831381,
-      "lines": 12821,
-      "sha256": "513ea9c1b834bf53a241271933d9162031407d9f01aada807a3eb6d7cc1c910b",
-      "version": "1.2.9",
+      "bytes": 839797,
+      "lines": 12973,
+      "sha256": "bef709daa72684542b95c95b7f1e7422ad935a5077bb8e76ae26fab52e740ff2",
+      "version": "1.2.11",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -707,8 +727,13 @@
         "https://www.etsy.com/conversations*",
         "https://www.etsy.com/conversations/*",
         "https://www.etsy.com/your/orders/sold*",
-        "https://www.etsy.com/your/shops/*/dashboard*"
+        "https://www.etsy.com/your/shops/*/dashboard*",
+        "https://www.etsy.com/*"
       ],
+      "runtimeRoute": {
+        "source": "^(?:\\/(?:messages|conversations)(?:\\/|$)|\\/your\\/orders\\/sold(?:\\/|$)|\\/your\\/shops\\/[^/]+\\/dashboard(?:\\/|$))",
+        "flags": ""
+      },
       "runAt": "document-end",
       "grants": [
         "GM.getValue",
@@ -721,7 +746,8 @@
         "GM.getResourceURL",
         "GM.openInTab",
         "GM.info",
-        "GM_addValueChangeListener"
+        "GM_addValueChangeListener",
+        "window.onurlchange"
       ],
       "cssPrefixes": [
         "ma-",
@@ -892,7 +918,7 @@
       "fixedSurfaces": [
         {
           "source": "GLOBAL_CSS",
-          "line": 1199,
+          "line": 1280,
           "selector": ".mema-notify",
           "top": "16px",
           "right": null,
@@ -904,7 +930,7 @@
         },
         {
           "source": "GLOBAL_CSS",
-          "line": 1199,
+          "line": 1280,
           "selector": ".mema-copy-buffer",
           "top": null,
           "right": null,
@@ -916,7 +942,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 10948,
+          "line": 11051,
           "selector": ".ma-launcher",
           "top": null,
           "right": "var(--ma-s5)",
@@ -928,7 +954,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 10948,
+          "line": 11051,
           "selector": ".ma-app",
           "top": "var(--ma-s3)",
           "right": "var(--ma-s3)",
@@ -951,7 +977,7 @@
           {
             "label": "GLOBAL_CSS",
             "kind": "global",
-            "line": 1199,
+            "line": 1280,
             "bytes": 4451,
             "selectorCount": 31,
             "unsafeSelectors": []
@@ -959,7 +985,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 4854,
+            "line": 4938,
             "bytes": 106,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -967,7 +993,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 11249,
+            "line": 11347,
             "bytes": 41,
             "selectorCount": 1,
             "unsafeSelectors": []
@@ -975,7 +1001,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 10948,
+            "line": 11051,
             "bytes": 30464,
             "selectorCount": 292,
             "unsafeSelectors": []
@@ -988,16 +1014,21 @@
       "id": "listing-analyzer",
       "label": "Listing Analyzer",
       "path": "scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js",
-      "bytes": 822268,
-      "lines": 10517,
-      "sha256": "cf6c8e4b884a6a76d59b0f12e2857978ebfea1713de595f0be49363f588ee9f0",
-      "version": "1.2.3",
+      "bytes": 828611,
+      "lines": 10642,
+      "sha256": "b6d38cb6474cbe47abdf537a8e503c37ecc15591c45c87031e3ebd17da5cc605",
+      "version": "1.2.4",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
         "https://www.etsy.com/your/shops/*/tools/listings*",
-        "https://www.etsy.com/your/shops/*/listing-editor/edit/*"
+        "https://www.etsy.com/your/shops/*/listing-editor/edit/*",
+        "https://www.etsy.com/*"
       ],
+      "runtimeRoute": {
+        "source": "^\\/your\\/shops\\/[^/]+\\/(?:tools\\/listings\\/?|listing-editor\\/edit\\/\\d+\\/?)$",
+        "flags": ""
+      },
       "runAt": "document-idle",
       "grants": [
         "GM.getValue",
@@ -1008,7 +1039,8 @@
         "GM.openInTab",
         "GM_info",
         "GM_registerMenuCommand",
-        "GM_unregisterMenuCommand"
+        "GM_unregisterMenuCommand",
+        "window.onurlchange"
       ],
       "cssPrefixes": [
         "meli-"
@@ -1170,7 +1202,7 @@
       "fixedSurfaces": [
         {
           "source": "innerHTML<style>",
-          "line": 7681,
+          "line": 7778,
           "selector": ".meli-launcher",
           "top": "148px",
           "right": "0",
@@ -1182,7 +1214,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 7682,
+          "line": 7779,
           "selector": ".meli-panel",
           "top": "12px",
           "right": "12px",
@@ -1194,7 +1226,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 7695,
+          "line": 7792,
           "selector": ".meli-overlay",
           "top": null,
           "right": null,
@@ -1206,7 +1238,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 7696,
+          "line": 7793,
           "selector": ".meli-toast-root",
           "top": "16px",
           "right": null,
@@ -1220,7 +1252,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 10350,
+          "line": 10474,
           "key": "Escape",
           "modifiers": [
             "Alt",
@@ -1232,7 +1264,7 @@
         },
         {
           "target": "document",
-          "line": 10350,
+          "line": 10474,
           "key": "KeyA",
           "modifiers": [
             "Alt",
@@ -1244,7 +1276,7 @@
         },
         {
           "target": "document",
-          "line": 10350,
+          "line": 10474,
           "key": "KeyL",
           "modifiers": [
             "Alt",
@@ -1266,7 +1298,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 8050,
+            "line": 8148,
             "bytes": 52,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -1274,7 +1306,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 9159,
+            "line": 9258,
             "bytes": 76,
             "selectorCount": 3,
             "unsafeSelectors": []
@@ -1282,7 +1314,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 7679,
+            "line": 7776,
             "bytes": 49073,
             "selectorCount": 418,
             "unsafeSelectors": []

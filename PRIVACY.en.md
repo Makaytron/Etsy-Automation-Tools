@@ -2,9 +2,12 @@
 
 # Privacy and Data Processing
 
-Last updated: 2026-09-04
+Last updated: 2026-10-22
 
 Etsy Automation Tools consists of Tampermonkey userscripts that run in the browser. All five scripts enable limited, pseudonymous product-usage telemetry by default, show a visible first-use notice, and provide a one-click off switch in Settings. Telemetry does not collect Etsy content or account data. The Message Assistant panel is closed by default and ships with **Automatic Translation Preview** enabled. Visiting an individual conversation may therefore send up to the latest 40 customer and seller messages to the selected translation provider even while the panel is closed; opening the panel on a conversation list may send up to 50 visible previews. To prevent this transfer, open Makaytron settings from the Tampermonkey menu and disable automatic translation preview before opening a conversation or the panel.
+
+
+Userscript matching covers Etsy broadly only to detect page transitions. On unsupported pages, the application does not read Etsy content, send telemetry, or show its functional interface; it activates only on its supported routes.
 
 ## Data processed locally
 

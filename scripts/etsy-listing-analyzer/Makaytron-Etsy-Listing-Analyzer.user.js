@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.2.3
+// @version      1.2.4
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -29,6 +29,8 @@
 // @connect      raw.githubusercontent.com
 // @connect      sjwibgcflufmzaorlwqe.supabase.co
 // @connect      api.github.com
+// @match        https://www.etsy.com/*
+// @grant        window.onurlchange
 // @noframes
 // @run-at       document-idle
 // ==/UserScript==
@@ -36,7 +38,97 @@
 (function () {
     'use strict';
 
-    const APP_VERSION = '1.2.3';
+    // BEGIN SPA LIFECYCLE (shared/lifecycle/spa-lifecycle.js)
+    function createRouteLifecycle(supported) {
+        let callbacks = null;
+        let observedHref = '';
+        let active = false;
+        let generation = 0;
+        let timer = null;
+        let entering = null;
+        let requestedGeneration = -1;
+        const allowed = () => supported(location.pathname);
+        const report = error => console.error('[Makaytron route lifecycle]', error);
+        const enter = () => {
+            requestedGeneration = generation;
+            if (entering) return entering;
+            let completedGeneration = -1;
+            const run = async () => {
+                while (callbacks && active && allowed()) {
+                    const requested = requestedGeneration;
+                    await callbacks.enter?.();
+                    completedGeneration = requested;
+                    if (requested === requestedGeneration) break;
+                }
+            };
+            entering = Promise.resolve().then(run).catch(error => {
+                completedGeneration = requestedGeneration; report(error);
+            }).finally(() => {
+                entering = null;
+                if (callbacks && active && allowed() && completedGeneration !== requestedGeneration) void enter();
+            });
+            return entering;
+        };
+        const sync = () => {
+            const href = location.href;
+            const next = allowed();
+            if (observedHref === href && next === active) return entering;
+            observedHref = href;
+            generation += 1;
+            const wasActive = active;
+            active = next;
+            if (wasActive && !next) {
+                try { Promise.resolve(callbacks?.leave?.()).catch(report); } catch (error) { report(error); }
+            }
+            if (next && !wasActive) return enter();
+            if (next && wasActive) {
+                if (entering) return enter();
+                try { Promise.resolve(callbacks?.change?.()).catch(report); } catch (error) { report(error); }
+            }
+            return entering;
+        };
+        return {
+            allowed,
+            capture() { sync(); return { generation, href: location.href }; },
+            current(token) { return allowed() && token?.generation === generation && token?.href === location.href; },
+            sync,
+            start(handlers) {
+                if (callbacks) return entering;
+                callbacks = handlers;
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.addEventListener(event, sync);
+                window.navigation?.addEventListener?.('currententrychange', sync);
+                // URL polling also covers userscript sandboxes that cannot patch the page's history object.
+                timer = window.setInterval(sync, 250);
+                return Promise.resolve(sync());
+            },
+            dispose() {
+                if (active) { active = false; generation += 1; callbacks?.leave?.(); }
+                window.clearInterval(timer);
+                for (const event of ['popstate', 'hashchange', 'urlchange', 'pageshow']) window.removeEventListener(event, sync);
+                window.navigation?.removeEventListener?.('currententrychange', sync);
+                callbacks = null;
+            },
+        };
+    }
+    // END SPA LIFECYCLE
+    const RUNTIME_ROUTE_PATTERN = /^\/your\/shops\/[^/]+\/(?:tools\/listings\/?|listing-editor\/edit\/\d+\/?)$/;
+    const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path));
+    let listingInitialized = false;
+    function suspendListingRoute() {
+        state.routeGeneration += 1;
+        state.collectionPauseRequested = true;
+        for (const key of ['leaseTimer', 'collectionLeaseTimer', 'collectionSyncTimer']) { clearInterval(state[key]); state[key] = 0; }
+        clearTimeout(state.analysisExpiryTimer); state.analysisExpiryTimer = 0;
+        UI.closeModal({ restoreFocus: false });
+        state.host?.remove(); state.host = null; state.panel = null; state.shadow = null; state.launcher = null;
+        state.researchChannel?.close(); state.researchChannel = null;
+        document.getElementById(`makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`)?.remove();
+        state.routeSuspending = Promise.allSettled([Lease.release(), CollectionLease.release()]);
+        return state.routeSuspending;
+    }
+
+
+    const APP_VERSION = '1.2.4';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -106,7 +198,7 @@
     }
 
     function telemetrySuppressed() {
-        return navigator.webdriver === true
+        return !RouteLifecycle.allowed() || navigator.webdriver === true
             || navigator.doNotTrack === '1'
             || globalThis.doNotTrack === '1'
             || navigator.globalPrivacyControl === true;
@@ -321,6 +413,7 @@
 
     function sendTelemetry(method, payload) {
         return new Promise(resolve => {
+            if (method !== 'DELETE' && !RouteLifecycle.allowed()) { resolve(false); return; }
             const modernRequest = typeof GM !== 'undefined' && typeof GM.xmlHttpRequest === 'function'
                 ? GM.xmlHttpRequest.bind(GM)
                 : null;
@@ -685,6 +778,7 @@
     }
 
     async function openTelemetrySettings() {
+        if (!RouteLifecycle.allowed()) return;
         const modalId = `makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`;
         if (!document.documentElement || document.getElementById(modalId)) return;
         const modal = document.createElement('div');
@@ -2691,6 +2785,7 @@
     }
 
     async function checkForUpdates(options = {}) {
+        if (!RouteLifecycle.allowed()) return;
         const manual = Boolean(options.manual);
         const force = Boolean(options.force);
         const age = Date.now() - Number(state.updateState.checkedAt || 0);
@@ -4936,6 +5031,7 @@
     }
 
     async function handleResearchMessage(raw) {
+        if (!RouteLifecycle.allowed()) return false;
         let envelope;
         try { envelope = validateResearchEnvelope(raw); }
         catch { return; }
@@ -7671,6 +7767,7 @@
 
     const UI = {
         async mount() {
+            if (!RouteLifecycle.allowed()) return;
             if (state.host?.isConnected) return;
             state.host = document.createElement('div');
             state.host.id = 'makaytron-etsy-listing-analyzer';
@@ -7753,6 +7850,7 @@
             return counts;
         },
         render(force = false) {
+            if (!RouteLifecycle.allowed() || !state.panel) return;
             if (!state.panel) return;
             const focusSnapshot = capturePanelFocus();
             const views = new Set(['overview', 'analysis', 'ai', 'queue', 'settings']);
@@ -8285,6 +8383,7 @@
             badge.hidden = count === 0;
         },
         openModal(title, body, options = {}) {
+            if (!RouteLifecycle.allowed() || !state.shadow) return;
             const active = state.shadow?.activeElement;
             const fallback = state.panel?.querySelector('[data-open-settings-modal], [data-view="settings"], [data-feedback], [data-import-backup]');
             const returnFocus = active instanceof HTMLElement && active.isConnected && !state.modal?.contains(active) ? active : fallback;
@@ -10174,12 +10273,17 @@
             ['exportData', () => exportBackup()],
             ['checkUpdate', () => checkForUpdates({ manual: true, force: true })],
             ['switchLanguage', () => UI.toggleLanguage()],
-        ].forEach(([key, callback]) => { const id = GMX.register(`Makaytron · ${t(key)}`, callback); if (id != null) state.menuIds.push(id); });
+        ].forEach(([key, callback]) => { const id = GMX.register(`Makaytron · ${t(key)}`, () => { if (RouteLifecycle.allowed()) return callback(); }); if (id != null) state.menuIds.push(id); });
     }
 
     function routeLocationKey() { return `${location.pathname}${location.search || ''}`; }
 
     function handleRoute(options = {}) {
+        if (!RouteLifecycle.allowed()) {
+            state.routeGeneration += 1; state.routeKey = routeLocationKey();
+            state.host?.remove(); UI.setStatus('unsupportedPage', 'blocked');
+            return Promise.resolve('unsupported');
+        }
         const force = options?.force === true;
         const key = routeLocationKey();
         if (!force && state.routeKey === key && state.panel) return Promise.resolve(null);
@@ -10217,7 +10321,7 @@
                 }
                 if (stable) state.routeKey = key;
             } else if (kind === 'editor') {
-                const editorReady = await waitFor(() => EditorAdapter.ready(), window.__MAKAYTRON_LISTING_TEST__ === true ? 120 : 12000, 250);
+                const editorReady = await waitFor(() => !isCurrent() ? 'stale-route' : EditorAdapter.ready(), window.__MAKAYTRON_LISTING_TEST__ === true ? 120 : 12000, 250);
                 if (!isCurrent()) return null;
                 if (!editorReady) { void trackTelemetryError('selector_listing_editor'); UI.setStatus('formNotReady', 'blocked'); UI.render(); return null; }
                 const captured = await EditorAdapter.captureCurrent({ routeKey: key, listingId: currentListingId() });
@@ -10310,9 +10414,13 @@
 
     function installCollectionWatcher() {
         clearInterval(state.collectionSyncTimer);
-        state.collectionSyncTimer = window.setInterval(() => { void syncCollectionState(); }, 4000);
-        window.addEventListener('focus', () => { void syncCollectionState(); });
-        document.addEventListener('visibilitychange', () => { if (!document.hidden) void syncCollectionState(); });
+        state.collectionSyncTimer = window.setInterval(() => { if (RouteLifecycle.allowed()) void syncCollectionState(); }, 4000);
+        if (!state.collectionFocusWatchInstalled) {
+            state.collectionFocusWatchInstalled = true;
+            window.addEventListener('focus', () => { if (RouteLifecycle.allowed()) void syncCollectionState(); });
+            document.addEventListener('visibilitychange', () => { if (!document.hidden && RouteLifecycle.allowed()) void syncCollectionState(); });
+        }
+
     }
 
     function installRouteWatcher() {
@@ -10333,21 +10441,38 @@
     }
 
     async function init() {
+        if (!RouteLifecycle.allowed()) return;
+        const route = RouteLifecycle.capture();
+        if (state.routeSuspending) await state.routeSuspending;
+        if (!RouteLifecycle.current(route)) return;
+        if (listingInitialized) {
+            if (state.collectionLoop) await state.collectionLoop;
+            if (!RouteLifecycle.current(route)) return;
+            state.collectionPauseRequested = false;
+            await UI.mount(); installResearchBridge(); installCollectionWatcher();
+            return handleRoute({ force: true });
+        }
         await ensureUniqueTabIdentity();
         installTrustedEditorInteractionWatcher();
         installResearchBridge();
-        await Store.loadSettings(); await Store.loadAnalysisFilters(); await Store.loadFilterPresets(); await Store.loadFeedback(); await Store.loadUpdateState(); await Store.loadQueue(); await Store.loadCollection(); await UI.mount();
+        await Store.loadSettings(); await Store.loadAnalysisFilters(); await Store.loadFilterPresets(); await Store.loadFeedback(); await Store.loadUpdateState(); await Store.loadQueue(); await Store.loadCollection();
+        if (!RouteLifecycle.current(route)) return;
+        await UI.mount();
         await refreshRecords();
         refreshStorageEstimate();
-        registerMenus(); registerTelemetryMenuCommand(); installRouteWatcher(); installCollectionWatcher(); await handleRoute();
+        registerMenus(); registerTelemetryMenuCommand(); installRouteWatcher(); installCollectionWatcher();
+        listingInitialized = true;
+        await handleRoute();
         window.setTimeout(() => { void checkForUpdates({ manual: false, force: false }); }, 1400);
         window.addEventListener('beforeunload', () => {
+            RouteLifecycle.dispose();
             clearInterval(state.routeTimer); clearInterval(state.leaseTimer); clearInterval(state.collectionLeaseTimer); clearInterval(state.collectionSyncTimer); clearTimeout(state.analysisExpiryTimer);
             state.researchProbeWaiters.forEach(clearResearchProbeTimers); state.researchProbeWaiters.clear();
             state.researchUiTimers.forEach((timer) => clearTimeout(timer)); state.researchUiTimers.clear();
             state.researchChannel?.close(); state.tabPresenceChannel?.close();
         });
         document.addEventListener('keydown', (event) => {
+            if (!RouteLifecycle.allowed()) return;
             if (event.key === 'Escape' && state.modal) UI.closeModal();
             const editable = event.composedPath().some((target) => target instanceof Element && Boolean(target.closest('input,textarea,select,button,a[href],[contenteditable="true"],[role="textbox"],[role="button"]')));
             if (event.repeat || event.isComposing || editable || event.getModifierState?.('AltGraph')) return;
@@ -10508,7 +10633,7 @@
     }
 
     if (window.__MAKAYTRON_LISTING_SKIP_INIT__ !== true) {
-        void init().catch((error) => {
+        void RouteLifecycle.start({ enter: init, leave: suspendListingRoute }).catch((error) => {
             console.error(`[${APP.name}]`, error);
             if (state.panel) UI.setStatus('formNotReady', 'error');
         });

@@ -38,6 +38,11 @@
     let api = null;
     let routeListener = null;
 
+    function syncBrowserRoute(method = 'replaceState') {
+        const target = new URL(routeUrl);
+        history[method]({}, '', `${target.pathname}${target.search}`);
+    }
+
     const copy = value => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     const emitStorage = (key, oldValue, newValue) => {
         for (const handler of valueListeners.get(key) || []) handler(key, copy(oldValue), copy(newValue), false);
@@ -229,7 +234,7 @@
         routeUrl = THREAD_URL;
         fixtureRoot().innerHTML = '<h1>Messages — loading created thread</h1><div role="status" aria-busy="true">Konuşma yükleniyor…</div>';
         setFixtureState('konuşma rotası değişti; DOM yükleniyor');
-        history.pushState({}, '', '/fixture/created-thread');
+        syncBrowserRoute('pushState');
         await routeListener?.(api.Router.routeFingerprint());
 
         await new Promise(resolve => setTimeout(resolve, 350));
@@ -617,7 +622,7 @@
         assertFixture(['shortcut', 'request-submit', 'blocked'].includes(nativeInputMode), 'native input mode');
         assertFixture(['', 'hold', 'stale', 'disabled'].includes(nativeInputBlock), 'native input block');
         renderConversation({ thread: true, incoming: true });
-        history.pushState({}, '', '/fixture/native-input-thread');
+        syncBrowserRoute('pushState');
 
         const form = document.getElementById('fixture-message-form');
         const textarea = document.getElementById('fixture-message');
@@ -825,7 +830,7 @@
         if (!api?.MessageCenterAgent) throw new Error('Message Center test API is not ready.');
         assertFixture(transitionOrderId === ORDER_ID && transitionBuyerName === BUYER_NAME, 'Message Center exact thread identity');
         renderConversation({ thread: true, incoming: true });
-        history.pushState({}, '', '/fixture/message-center-thread');
+        syncBrowserRoute('pushState');
         await routeListener?.(api.Router.routeFingerprint());
 
         const agent = api.MessageCenterAgent;
@@ -1018,7 +1023,7 @@
 
         renderConversation({ thread: true, incoming: true });
         routeUrl = `${THREAD_URL}?fixture_quick_actions=remounted`;
-        history.pushState({}, '', '/fixture/quick-actions-remounted');
+        syncBrowserRoute('pushState');
         await routeListener?.(api.Router.routeFingerprint());
         const remountedToolbar = await waitUntil(() => {
             const toolbars = [...document.querySelectorAll('[data-mema-composer-actions]')];
@@ -1342,7 +1347,7 @@
             if (!safe) throw new Error('Fixture rejected an unsafe conversation URL.');
             routeUrl = safe;
             renderConversation();
-            history.pushState({}, '', '/fixture/messages');
+            syncBrowserRoute('pushState');
             queueMicrotask(() => {
                 void routeListener?.(api.Router.routeFingerprint());
             });
@@ -1352,6 +1357,7 @@
             const candidate = String(value || '');
             return originalAgentCanonicalConversationUrl(candidate.startsWith(location.origin) ? routeUrl : candidate);
         };
+        syncBrowserRoute();
         await api.App.init();
         setFixtureState('hazır');
     }, { once: true });

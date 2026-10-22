@@ -10,9 +10,13 @@ Etsy mesajlarını seçtiğiniz görüntüleme dilinde önizlemek, Türkçe ceva
 
 Script standalone çalışır; diğer Etsy Automation Tools paketlerinin kurulması gerekmez.
 
+1.2.10, konuşma veya müşteri mesajı değiştiğinde eski taslakların kullanılmasını engeller; elle düzenlenen cevapların eski Türkçe anlamını kaldırır ve farklı dillerdeki şablonların Türkçe önizlemesini doğru üretir.
+
 1.2.9 sürümü MKUI 1.0.0 Workspace Shell tasarımına geçer: beyaz/nötr uygulama kabuğu, 60 px başlık, 184 px geniş menü, kartlar, kontroller ve odak durumları Tamplate-Back-White-01 ile onaylı ShadcnStore dashboard referanslarına uyarlanmıştır. Mesaj, sağlayıcı, Otopilot, depolama ve doğrulama davranışları değiştirilmemiştir.
 
-**Sürüm:** 1.2.9 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.2.11 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+
+Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış desteklenmeyen bir Etsy sayfasında olsa da yalnız hafif URL dinleyicisi çalışır; araç kendi sayfasına girilince başlar, çıkılınca arayüzü kaldırılır ve sayfa işlemleri durur. Yeniden girişte mükerrer panel veya menü oluşmaz.
 
 **Kullanım rehberi:** [Türkçe](./USAGE.md) · [English](./USAGE.en.md)
 

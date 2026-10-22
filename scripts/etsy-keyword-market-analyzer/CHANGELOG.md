@@ -2,6 +2,17 @@
 
 All notable changes to Makaytron Etsy Keyword & Market Analyzer are documented here.
 
+## [1.0.5] - 2026-10-22
+
+### Fixed
+
+- Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış desteklenmeyen bir Etsy sayfasında olsa da yalnız hafif URL dinleyicisi çalışır; araç kendi sayfasına girilince başlar, çıkılınca arayüzü kaldırılır ve sayfa işlemleri durur. Yeniden girişte mükerrer panel veya menü oluşmaz.
+- Sayfa dışına çıkmadan önce başlayan asenkron işlemler yeni sayfada tıklama veya yönlendirmeye devam etmez; kalıcı belirsiz gönderim/işlem kanıtları korunur.
+
+### Tests
+
+- Desteklenmeyen sayfada ilk yükleme, yenilemesiz giriş/çıkış, tekrar giriş, Back/Forward ve eski işin yeniden canlanmaması için ortak yaşam döngüsü ve gerçek Chrome testleri eklendi.
+
 ## [1.0.4] - 2026-09-02
 
 ### Changed

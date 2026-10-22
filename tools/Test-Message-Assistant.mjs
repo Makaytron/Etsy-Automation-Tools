@@ -200,6 +200,171 @@ const copy = (value) => JSON.parse(JSON.stringify(value));
 
 const readUserscriptSource = () => fs.readFileSync(scriptPath, 'utf8');
 
+async function loadDraftContext() {
+    const loaded = await loadAssistant();
+    const { api, sandbox } = loaded;
+    sandbox.location.pathname = '/messages/draft-buyer';
+    sandbox.location.href = 'https://www.etsy.com/messages/draft-buyer';
+    const context = {
+        conversationId: api.Router.conversationId(),
+        routeFingerprint: api.Router.routeFingerprint(),
+        customerName: 'Example Buyer',
+        orderId: '', itemTitle: '',
+        lastCustomerMessage: 'Can I return my blue mug?',
+        messages: [{ role: 'customer', text: 'Can I return my blue mug?' }],
+    };
+    api.MessageAdapter.context = () => context;
+    api.UI.state.context = { ...context };
+    api.UI.setBusy = () => {};
+    api.UI.toast = () => {};
+    api.Verification.invalidate = () => {};
+    api.Campaign.current = () => null;
+    api.History.tryLog = async () => {};
+    api.Store.settings.autoTurkishPreview = false;
+    api.Store.settings.replyInCustomerLanguage = false;
+    api.UI.state.targetLanguage = 'tr';
+    return { ...loaded, context };
+}
+
+for (const change of ['conversation', 'incoming-message']) {
+    test(`reply generation rejects a stale customer draft after a ${change} change`, async () => {
+        const { api, context } = await loadDraftContext();
+        api.UI.state.draftTr = 'Kırmızı tişörtünüzü yarın göndereceğim.';
+        api.UI.state.extraInstruction = 'Promise delivery tomorrow.';
+        api.UI.state.reply = 'Your red shirt ships tomorrow.';
+        api.UI.state.replyTr = api.UI.state.draftTr;
+        api.UI.state.replyBinding = api.UI.beginMessageWork(context);
+        api.UI.state.translation = { text: 'Eski müşteri mesajı.' };
+        api.UI.state.selectedTemplateId = 'tpl-delivered';
+        if (change === 'conversation') api.UI.state.context.conversationId = 'previous-buyer';
+        else api.UI.state.context.lastCustomerMessage = 'When will my red shirt ship?';
+        let providerCalls = 0;
+        api.Translator.translate = api.AI.generateReply = async () => { providerCalls += 1; throw new Error('Unexpected provider request'); };
+
+        await assert.rejects(api.UI.generateReply({ method: 'free' }), /Konuşma veya müşteri mesajı değişti/);
+        assert.equal(providerCalls, 0);
+        assert.equal(api.UI.state.draftTr, '');
+        assert.equal(api.UI.state.extraInstruction, '');
+        assert.equal(api.UI.state.reply, null);
+        assert.equal(api.UI.state.replyTr, '');
+        assert.equal(api.UI.state.replyBinding, null);
+        assert.equal(api.UI.state.translation, null);
+        assert.equal(api.UI.state.selectedTemplateId, '');
+
+        api.UI.state.draftTr = 'İade konusunda yardımcı olabilirim.';
+        assert.equal(await api.UI.generateReply({ method: 'free' }), true);
+        assert.equal(api.UI.state.reply, 'İade konusunda yardımcı olabilirim.');
+        assert.equal(api.UI.replyIsCurrent(), true);
+    });
+}
+
+test('translating a new conversation cannot adopt the previous customer draft', async () => {
+    const { api } = await loadDraftContext();
+    api.UI.state.context.conversationId = 'previous-buyer';
+    api.UI.state.draftTr = 'Eski müşterinin cevabı.';
+    api.UI.state.reply = 'Previous buyer reply';
+    api.UI.state.replyTr = 'Eski anlam.';
+    api.Translator.translate = async () => ({ text: 'Mavi kupamı iade edebilir miyim?', detectedLanguage: 'en' });
+    assert.equal(await api.UI.translateLast(), true);
+    assert.equal(api.UI.state.draftTr, '');
+    assert.equal(api.UI.state.reply, null);
+    assert.equal(api.UI.state.replyTr, '');
+    assert.equal(api.UI.state.translation.text, 'Mavi kupamı iade edebilir miyim?');
+});
+
+test('returning to the message list clears customer drafts even with automatic preview disabled', async () => {
+    const { api, sandbox } = await loadDraftContext();
+    api.UI.state.draftTr = 'Previous buyer draft';
+    api.UI.state.extraInstruction = 'Previous buyer instruction';
+    api.UI.state.replyTr = 'Previous preview';
+    api.UI.state.translation = { text: 'Previous translation' };
+    sandbox.location.pathname = '/messages';
+    sandbox.location.href = 'https://www.etsy.com/messages';
+    await api.UI.refreshMessages();
+    assert.equal(api.UI.state.context, null);
+    assert.equal(api.UI.state.draftTr, '');
+    assert.equal(api.UI.state.extraInstruction, '');
+    assert.equal(api.UI.state.replyTr, '');
+    assert.equal(api.UI.state.translation, null);
+});
+
+test('refreshing an unchanged conversation preserves its unsent customer draft', async () => {
+    const { api } = await loadDraftContext();
+    api.UI.state.draftTr = 'Güncel taslağım.';
+    api.UI.state.extraInstruction = 'Keep it brief.';
+    await api.UI.refreshMessages();
+    assert.equal(api.UI.state.draftTr, 'Güncel taslağım.');
+    assert.equal(api.UI.state.extraInstruction, 'Keep it brief.');
+});
+
+test('copying a stale reply refuses clipboard access after the incoming message changes', async () => {
+    const { api, context } = await loadDraftContext();
+    api.UI.state.reply = 'Previous reply';
+    api.UI.state.replyBinding = api.UI.beginMessageWork(context);
+    context.lastCustomerMessage = 'Actually, I would like a replacement.';
+    await assert.rejects(api.UI.copySource('reply'), /eski cevap kopyalanmadı/);
+});
+
+test('editing the outgoing reply removes its obsolete Turkish meaning', async () => {
+    const { api } = await loadDraftContext();
+    let previewRemoved = false;
+    api.UI.shadow = { querySelector: selector => {
+        assert.equal(selector, '.ma-output-card .ma-disclosure');
+        return { remove: () => { previewRemoved = true; } };
+    } };
+    api.UI.state.reply = 'I can offer a refund.';
+    api.UI.state.replyTr = 'İade önerebilirim.';
+    api.UI.onInput({ target: { dataset: { bind: 'reply' }, value: 'I can offer a replacement.' } });
+    assert.equal(api.UI.state.reply, 'I can offer a replacement.');
+    assert.equal(api.UI.state.replyTr, '');
+    assert.equal(previewRemoved, true, 'the obsolete meaning must disappear without rerendering the edited textarea');
+});
+
+for (const target of ['tr', 'en', 'de']) {
+    test(`English templates generate an honest Turkish meaning for the ${target} reply target`, async () => {
+        const { api } = await loadDraftContext();
+        api.Store.templates.push({ id: 'tpl-english-test', name: 'English test', language: 'en', text: 'I can help with your return.', archived: false });
+        api.UI.state.selectedTemplateId = 'tpl-english-test';
+        api.UI.state.targetLanguage = target;
+        const calls = [];
+        api.Translator.translate = async (text, language) => {
+            calls.push({ text, language });
+            return { text: language === 'tr' ? 'İadenizle ilgili yardımcı olabilirim.' : 'Ich kann Ihnen bei Ihrer Rücksendung helfen.', detectedLanguage: 'en' };
+        };
+        assert.equal(await api.UI.generateReply({ method: 'template' }), true);
+        assert.equal(api.UI.state.replyTr, 'İadenizle ilgili yardımcı olabilirim.');
+        assert.equal(api.UI.state.reply, target === 'en' ? 'I can help with your return.' : target === 'tr' ? 'İadenizle ilgili yardımcı olabilirim.' : 'Ich kann Ihnen bei Ihrer Rücksendung helfen.');
+        assert.equal(calls.length, target === 'de' ? 2 : 1);
+    });
+}
+
+for (const change of ['none', 'conversation', 'user-draft']) {
+    test(`selecting an English template prepares Turkish input without overwriting a ${change} change`, async () => {
+        const { api, context } = await loadDraftContext();
+        api.Store.templates.push({ id: 'tpl-picker-english', name: 'English picker', language: 'en', text: 'Hello {{firstName}}, I can help with your return.', archived: false });
+        api.UI.shadow = { querySelector: () => null };
+        api.UI.state.draftTr = 'Önceki metin.';
+        let release;
+        api.Translator.translate = async (text, target) => {
+            assert.equal(text, 'Hello Example, I can help with your return.');
+            assert.equal(target, 'tr');
+            await new Promise(resolve => { release = resolve; });
+            return { text: 'Merhaba Example, iadenize yardımcı olabilirim.' };
+        };
+        const selection = api.UI.onChange({ target: {
+            dataset: {}, value: 'tpl-picker-english', hasAttribute: name => name === 'data-message-template-select',
+        } });
+        assert.ok(release);
+        if (change === 'conversation') context.lastCustomerMessage = 'Actually, I would like a replacement.';
+        if (change === 'user-draft') api.UI.onInput({ target: { dataset: { bind: 'draftTr' }, value: 'Yeni elle yazdığım metin.' } });
+        release();
+        await selection;
+        assert.equal(api.UI.state.draftTr, change === 'none'
+            ? 'Merhaba Example, iadenize yardımcı olabilirim.'
+            : change === 'user-draft' ? 'Yeni elle yazdığım metin.' : 'Önceki metin.');
+    });
+}
+
 function readTemplateConstant(name) {
     const source = readUserscriptSource();
     const prefix = `const ${name} = \``;
@@ -3486,7 +3651,7 @@ test('assistant stays closed by default until the user explicitly opens it', asy
     };
     api.UI.state.open = false;
 
-    await api.App.init();
+    await api.App.activate();
 
     assert.equal(api.UI.state.open, false);
     assert.deepEqual(openedPages, []);
@@ -11745,4 +11910,26 @@ test('running review autopilot skips durable review evidence before draft insert
     assert.equal(outreach.workflow, 'none');
     assert.equal(navigations.length, 1);
     assert.equal(navigations[0], secondUrl);
+});
+
+
+test('outside supported routes the assistant never reads or intercepts unrelated Etsy controls', async () => {
+    const { api, sandbox, documentListeners } = await loadAssistant();
+    api.UI.shadow = { addEventListener() {} };
+    api.UI.bind();
+    sandbox.location.pathname = '/your/shops/me/tools/listings';
+    sandbox.location.href = 'https://www.etsy.com/your/shops/me/tools/listings';
+    let reads = 0;
+    const unexpectedRead = () => { reads += 1; throw new Error('Unrelated Etsy control was inspected'); };
+    api.MessageAdapter.isPotentialSendButton = unexpectedRead;
+    api.MessageAdapter.potentialComposerForm = unexpectedRead;
+    api.MessageAdapter.composerFromEventTarget = unexpectedRead;
+    for (const type of ['click', 'submit', 'keydown', 'keypress', 'keyup']) {
+        const event = { type, key: 'Enter', ctrlKey: true, target: {},
+            preventDefault() { throw new Error('Unrelated event was suppressed'); },
+            stopImmediatePropagation() { throw new Error('Unrelated event was intercepted'); },
+        };
+        for (const handler of documentListeners.get(type) || []) handler(event);
+    }
+    assert.equal(reads, 0);
 });
