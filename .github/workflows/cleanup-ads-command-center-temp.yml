@@ -1,0 +1,60 @@
+name: Cleanup Ads Command Center Temporary Files
+
+on:
+  push:
+    branches:
+      - chore/cleanup-ads-command-center-temp
+    paths:
+      - .github/workflows/cleanup-ads-command-center-temp.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out cleanup branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify production design is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'MKUI Ads Command Center v1' scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js
+          test -s docs/design/previews/ads-keyword-manager-command-center-v1.html
+          test -s docs/design/previews/ads-keyword-manager-command-center-v1.audit.json
+          test -s assets/screenshots/ads-keywords-panel-ready.png
+          node --test tools/Test-Ads-Keyword-Manager.mjs
+          node tools/Build-Mkui-Bundle-Manifest.mjs --check
+          git diff --check
+
+      - name: Remove temporary workflow and marker paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f \
+            docs/design/previews/.ads-command-center-pr-ready \
+            docs/design/previews/.ads-command-center-pr-ready-2 \
+            docs/design/previews/.pr-open-trigger \
+            docs/design/previews/.do-not-commit \
+            docs/design/previews/.stop \
+            docs/design/previews/.final-placeholder
+          git rm -f --ignore-unmatch \
+            .github/workflows/export-ads-design-workspace.yml \
+            .github/workflows/finalize-ads-command-center-v1.yml \
+            .github/workflows/verify-ads-command-center-v1.yml \
+            .github/workflows/remove-ads-pr-trigger.yml \
+            .github/workflows/remove-noop-marker.yml \
+            .github/workflows/cleanup-stop-marker.yml \
+            .github/workflows/cleanup-final-placeholder.yml \
+            .github/workflows/cleanup-ads-command-center-temp.yml
+          git add -u -- docs/design/previews
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: remove Ads command center temporary files'
+          git push origin HEAD:chore/cleanup-ads-command-center-temp
