@@ -22,6 +22,7 @@ import { adoptSaleManager } from './Unified-Adopt-Sale-Manager.mjs';
 import { adoptAdsKeywordManager } from './Unified-Adopt-Ads-Keyword-Manager.mjs';
 import { adoptKeywordMarketAnalyzer } from './Unified-Adopt-Keyword-Market-Analyzer.mjs';
 import { adoptMessageAssistant } from './Unified-Adopt-Message-Assistant.mjs';
+import { adoptListingAnalyzer } from './Unified-Adopt-Listing-Analyzer.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(repoRoot, 'src');
@@ -153,6 +154,9 @@ export async function buildUnified() {
   const maSource = adoptMessageAssistant();
   assertSupportedSyntax(maSource, 'adopted Message Assistant');
   const messageAssistant = maSource.split('\n').map((l) => (l ? `  ${l.replace(/^ {4}/, '')}` : l)).join('\n');
+  const laSource = adoptListingAnalyzer();
+  assertSupportedSyntax(laSource, 'adopted Listing Analyzer');
+  const listingAnalyzer = laSource.split('\n').map((l) => (l ? `  ${l.replace(/^ {4}/, '')}` : l)).join('\n');
   const keywordMarketAnalyzer = kwSource.split('\n').map((l) => (l ? `  ${l.replace(/^ {4}/, '')}` : l)).join('\n');
   // Assets are embedded so no Etsy page load makes a request for them.
   const assets = {
@@ -181,8 +185,10 @@ export async function buildUnified() {
     '',
     messageAssistant,
     '',
+    listingAnalyzer,
+    '',
     ...modules.map((m) => transform(m, available)),
-    `  ${moduleVar(ENTRY)}.boot({ scope: window, createRouteLifecycle, handoff: { ${HANDOFF_EXPORTS.join(', ')} }, assets: __eat_assets, engines: { createSaleManager: createAdoptedSaleManager, saleManagerVersion: ADOPTED_SALE_MANAGER_VERSION, createAdsKeywordManager: createAdoptedAdsKeywordManager, adsKeywordManagerVersion: ADOPTED_ADS_KEYWORD_MANAGER_VERSION, createKeywordMarketAnalyzer: createAdoptedKeywordMarketAnalyzer, keywordMarketAnalyzerVersion: ADOPTED_KEYWORD_MARKET_ANALYZER_VERSION, createMessageAssistant: createAdoptedMessageAssistant, messageAssistantVersion: ADOPTED_MESSAGE_ASSISTANT_VERSION } }).catch((error) => console.error('[Etsy Automation Tools] boot', error));`,
+    `  ${moduleVar(ENTRY)}.boot({ scope: window, createRouteLifecycle, handoff: { ${HANDOFF_EXPORTS.join(', ')} }, assets: __eat_assets, engines: { createSaleManager: createAdoptedSaleManager, saleManagerVersion: ADOPTED_SALE_MANAGER_VERSION, createAdsKeywordManager: createAdoptedAdsKeywordManager, adsKeywordManagerVersion: ADOPTED_ADS_KEYWORD_MANAGER_VERSION, createKeywordMarketAnalyzer: createAdoptedKeywordMarketAnalyzer, keywordMarketAnalyzerVersion: ADOPTED_KEYWORD_MARKET_ANALYZER_VERSION, createMessageAssistant: createAdoptedMessageAssistant, messageAssistantVersion: ADOPTED_MESSAGE_ASSISTANT_VERSION, createListingAnalyzer: createAdoptedListingAnalyzer, listingAnalyzerVersion: ADOPTED_LISTING_ANALYZER_VERSION } }).catch((error) => console.error('[Etsy Automation Tools] boot', error));`,
     '})();',
     '',
   ];

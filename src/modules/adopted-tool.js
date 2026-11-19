@@ -4,8 +4,7 @@
 // short grace period, never while the standalone script runs on the same page,
 // steps aside if that one appears later, stops when the tool is turned off, and
 // keeps its data under its own namespace through the GM shim. Until the tool's
-// new screens arrive, the engine shows its own panel. Not used by a tool right
-// now; Listing Analyzer starts from it.
+// new screens arrive, the engine shows its own panel (Listing Analyzer today).
 
 import { createScopedGm } from '../core/scoped-gm.js';
 

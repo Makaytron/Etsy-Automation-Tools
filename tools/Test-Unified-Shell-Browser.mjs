@@ -425,6 +425,23 @@ const scenarios = {
     out.requests = window.__requests || [];
     return out;
   }`,
+  laEngine: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    await wait(2000);
+    await until(() => document.getElementById('eat-listing-analyzer') || (document.getElementById('makaytron-etsy-listing-analyzer') && S().querySelector('[data-role="tool-status"]')?.textContent.includes('Ayrı')));
+    await wait(500);
+    const keys = [...window.__values.keys()];
+    let session = [];
+    try { session = Object.keys(sessionStorage); } catch { session = ['unreadable']; }
+    return {
+      unifiedHost: Boolean(document.getElementById('eat-listing-analyzer')),
+      foreignKeys: keys.filter((k) => !k.startsWith('eat:')),
+      foreignReads: window.__reads.filter((k) => !k.startsWith('eat:')),
+      foreignSession: session.filter((k) => !k.startsWith('eat-')),
+      requests: window.__requests || [],
+      status: S().querySelector('[data-role="tool-status"]')?.textContent ?? null,
+    };
+  }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
@@ -457,6 +474,8 @@ const PAGES = {
   '/messages/eat-engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maEngine },
   '/messages/eat-screens': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maScreens },
   '/messages/eat-standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maEngine, extra: '<div id="makaytron-etsy-message-assistant">standalone Message Assistant</div>' },
+  '/your/shops/me/tools/listings?eat=engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laEngine },
+  '/your/shops/me/tools/listings?eat=standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laEngine, extra: '<div id="makaytron-etsy-listing-analyzer">standalone Listing Analyzer</div>' },
   // Screenshot-only pages.
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -717,6 +736,23 @@ test('Message Assistant steps aside when the standalone script runs on the same 
   assert.equal(r.unifiedHost, false);
   assert.deepEqual(r.requests, []);
   assert.match(r.status, /Ayrı Message Assistant scripti de bu sayfada çalışıyor/);
+});
+
+test('Listing Analyzer engine runs inside the unified script, isolated from a standalone copy', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/tools/listings?eat=engine');
+  assert.equal(r.unifiedHost, true, 'the adopted engine shows its panel under its own id');
+  assert.deepEqual(r.foreignKeys, [], 'every value lives under eat:');
+  assert.deepEqual(r.foreignReads, [], 'and nothing outside eat: is read');
+  assert.deepEqual(r.foreignSession, [], 'its per-tab state uses eat- names');
+  assert.deepEqual(r.requests, [], 'no update check or other request');
+  assert.match(r.status, /kendi panelinde çalışıyor/);
+});
+
+test('Listing Analyzer steps aside when the standalone script runs on the same page', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/tools/listings?eat=standalone');
+  assert.equal(r.unifiedHost, false);
+  assert.deepEqual(r.requests, []);
+  assert.match(r.status, /Ayrı Listing Analyzer scripti de bu sayfada çalışıyor/);
 });
 
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
