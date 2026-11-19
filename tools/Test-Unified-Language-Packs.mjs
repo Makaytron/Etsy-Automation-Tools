@@ -97,3 +97,18 @@ test('a pack for another language or an older app is rejected', async () => {
   const newer = fakeGm((d) => d.onload({ status: 200, responseText: JSON.stringify({ ...pack('pl'), minAppVersion: '99.0.0' }) }));
   assert.deepEqual(await createLanguagePacks({ gm: newer, cache, appVersion: META.version }).ensure('pl'), { status: 'error', code: 'i18n_pack_version' });
 });
+
+test('browser language tags find the right pack', async () => {
+  const { normalizeTags } = await import('../src/ui/text.js');
+  const { detectLanguage } = await import('../src/core/i18n.js');
+  const codes = UI_LANGUAGES.map((l) => l.code);
+  const pick = (tags) => detectLanguage(normalizeTags(tags), codes, 'en');
+  assert.equal(pick(['zh-HK']), 'zh-TW');
+  assert.equal(pick(['zh-Hant-TW']), 'zh-TW');
+  assert.equal(pick(['zh']), 'zh-CN');
+  assert.equal(pick(['zh-SG']), 'zh-CN');
+  assert.equal(pick(['de-AT']), 'de');
+  assert.equal(pick(['pt-BR']), 'pt');
+  assert.equal(pick(['xx-YY']), 'en', 'an unknown language falls back to English');
+  for (const code of PACK_LANGUAGES) assert.equal(pick([code]), code, code);
+});

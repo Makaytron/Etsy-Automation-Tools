@@ -13,6 +13,20 @@ import { packText } from '../core/language-packs.js';
 
 const LANGS = UI_LANGUAGES.map((l) => l.code);
 
+// Browser tags that name a language we offer under another code.
+const ALIASES = Object.freeze({ no: 'nb', nn: 'nb', tl: 'fil', iw: 'he', in: 'id' });
+const TRADITIONAL_CHINESE = /^zh-(?:TW|HK|MO|Hant)/i;
+
+/** Maps browser language tags onto the codes of our packs before matching. */
+export function normalizeTags(tags) {
+  return (Array.isArray(tags) ? tags : [tags]).filter((tag) => typeof tag === 'string').map((tag) => {
+    if (TRADITIONAL_CHINESE.test(tag)) return 'zh-TW';
+    if (/^zh(?:-|$)/i.test(tag)) return 'zh-CN';
+    const base = tag.split('-')[0].toLowerCase();
+    return ALIASES[base] ?? tag;
+  });
+}
+
 /**
  * @param {object} o
  * @param {object} o.settings
@@ -23,7 +37,7 @@ export function createText({ settings, scope, packs = null }) {
   const listeners = new Set();
   const language = () => {
     const chosen = settings.get().language;
-    return chosen && LANGS.includes(chosen) ? chosen : detectLanguage(scope.navigator?.languages ?? [], LANGS, 'en');
+    return chosen && LANGS.includes(chosen) ? chosen : detectLanguage(normalizeTags(scope.navigator?.languages ?? []), LANGS, 'en');
   };
   const t = (key, vars) => {
     const lang = language();

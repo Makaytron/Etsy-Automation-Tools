@@ -1,5 +1,8 @@
 // Interface strings for the workspace and settings (English source; other languages come as packs).
 
+import { PACK_LANGUAGES } from '../core/language-packs.js';
+import { PACK_NAMES } from './strings-picker.js';
+
 export const WORKSPACE_STRINGS = Object.freeze({
   en: Object.freeze({
     'ws.open': 'Open the workspace',
@@ -128,19 +131,10 @@ export const WORKSPACE_STRINGS = Object.freeze({
 });
 
 /**
- * Languages the interface can show, with their own names. English is
- * bundled; every other language is a pack (core/language-packs.js) whose
- * first-screen strings are bundled in strings-picker.js.
+ * Languages the interface can show, with their own names: English (bundled)
+ * and every pack (core/language-packs.js), named from the pack itself.
  */
 export const UI_LANGUAGES = Object.freeze([
   Object.freeze({ code: 'en', name: 'English' }),
-  Object.freeze({ code: 'de', name: 'Deutsch' }),
-  Object.freeze({ code: 'es', name: 'Español' }),
-  Object.freeze({ code: 'fr', name: 'Français' }),
-  Object.freeze({ code: 'it', name: 'Italiano' }),
-  Object.freeze({ code: 'nl', name: 'Nederlands' }),
-  Object.freeze({ code: 'pl', name: 'Polski' }),
-  Object.freeze({ code: 'pt', name: 'Português' }),
-  Object.freeze({ code: 'tr', name: 'Türkçe' }),
-  Object.freeze({ code: 'ja', name: '日本語' }),
+  ...PACK_LANGUAGES.map((code) => Object.freeze({ code, name: PACK_NAMES[code] })),
 ]);
