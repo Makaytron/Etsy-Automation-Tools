@@ -6,6 +6,8 @@ on:
     paths:
       - 'scripts/**'
       - 'shared/lifecycle/**'
+      - 'shared/migration/**'
+      - 'tools/Sync-Migration-Blocks.mjs'
       - 'tools/Test-SPA-Lifecycle.mjs'
       - 'tools/Sync-SPA-Lifecycle.mjs'
       - 'config/production-packages.json'
@@ -31,5 +33,7 @@ jobs:
           node-version: 22
       - name: Check shared lifecycle source
         run: node tools/Sync-SPA-Lifecycle.mjs --check
+      - name: Check the shared migration blocks
+        run: node tools/Sync-Migration-Blocks.mjs
       - name: Verify all five applications across same-document navigation
         run: node --test tools/Test-SPA-Lifecycle.mjs

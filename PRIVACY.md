@@ -2,7 +2,7 @@
 
 # Gizlilik ve Veri İşleme
 
-Son güncelleme: 2026-10-22
+Son güncelleme: 2026-11-20
 
 Etsy Automation Tools, tarayıcı içinde çalışan Tampermonkey userscriptlerinden oluşur. Beş script de yalnız ürün kullanımını ölçen sınırlı, psödonimleştirilmiş telemetriyi varsayılan olarak açık getirir; ilk kullanımda görünür bir bildirim gösterir ve Ayarlar'dan tek tıkla kapatma olanağı verir. Telemetri Etsy içeriğini veya hesap verisini toplamaz. Message Assistant paneli varsayılan olarak kapalıdır ve **Otomatik Çeviri Önizlemesi** açık gelir. Kullanıcı tekil konuşma sayfasına girdiğinde panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajı seçili görüntüleme diline çeviri için seçili sağlayıcıya gönderilebilir; panel konuşma listesinde açılırsa en fazla 50 görünür önizleme gönderilebilir. Bu aktarımı istemiyorsanız konuşmayı veya paneli açmadan önce Tampermonkey menüsünden Makaytron ayarlarını açıp otomatik çeviri önizlemesini kapatın.
 
@@ -76,6 +76,10 @@ Kullanıcı bir listing için deaktivasyonu ayrıca onayladığında Listing Ana
 Keyword & Market Analyzer `Search results` değerini Etsy'nin görünür sonuç/rekabet göstergesi olarak etiketler. Makaytron fırsat puanı türetilmiş karar desteğidir; Etsy tarafından sağlanan kesin rekabet, satış veya performans tahmini değildir.
 
 Bu sağlayıcıların kendi gizlilik, saklama ve kullanım koşulları geçerlidir. Göndermeden önce gereksiz müşteri ve sipariş verisini kaldırın.
+
+## Verileri Etsy Automation Tools'a taşıma
+
+Ayrı scriptler, beş aracın hepsini içeren tek script Etsy Automation Tools hakkında bir bildirim gösterir. Aktarım yalnız bu bildirimde **Aktar**'a bastığınızda olur: script iki dakika boyunca aynı Etsy sekmesinde çalışan Etsy Automation Tools'tan gelen aktarım isteğine yanıt verir. İki script tek seferlik bir anahtarda anlaşır (ECDH P-256) ve veri sayfa üzerinden şifreli (AES-GCM) taşınır; iki taraf da aynı 4 haneli kontrol kodunu gösterir. Makaytron'a veya başka bir sunucuya hiçbir şey gönderilmez. API anahtarları ve tokenlar şifrelemeden önce çıkarılır ve hiç taşınmaz; kilitler, güncelleme denetimleri ve gönderim günlükleri geride kalır. Ayrı script kendi verilerini korur ve kendi depolamasına yalnız aktarımın tamamlandığını kaydeder. **Daha sonra**, bildirimin ne zaman yeniden görünebileceğini saklar. Listing Analyzer, listing başına geçmişin de taşınabilmesi için `GM.listValues` izni ister. Scriptin bir işi çalışırken aktarım başlamaz.
 
 ## Dışa aktarma ve sırlar
 

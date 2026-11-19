@@ -24,6 +24,7 @@ export function adoptStandalone({ name, label, source, open, close, edits, facto
   if (start < 0 || text.split(open).length !== 2) throw new Error(`${name} adoption: entry marker not found exactly once.`);
   if (!text.endsWith(close)) throw new Error(`${name} adoption: the closing block changed.`);
   let body = text.slice(start + open.length, text.length - close.length);
+  body = stripStandaloneOnly(body, name);
   for (const [from, to, expected, reason] of edits) {
     const count = body.split(from).length - 1;
     if (count !== expected) throw new Error(`${name} adoption: "${reason}" matched ${count} times, expected ${expected}.`);
@@ -42,6 +43,31 @@ export function adoptStandalone({ name, label, source, open, close, edits, facto
     `const ${versionConst} = '${version}';`,
     `// END ADOPTED ${label}`,
   ].join('\n');
+}
+
+/** Regions every standalone script carries for its users and the unified engine leaves out (see tools/Sync-Migration-Blocks.mjs). */
+export const STANDALONE_ONLY_REGIONS = Object.freeze([
+  ['    // BEGIN MIGRATION HANDOFF', '    // END MIGRATION HANDOFF'],
+  ['    // BEGIN MIGRATION NOTICE', '    // END MIGRATION NOTICE'],
+  ['    // BEGIN EAT MIGRATION START', '    // END EAT MIGRATION START'],
+]);
+
+/**
+ * Removes the standalone-only regions from an engine body. The standalone
+ * scripts' migration notice and sending side belong to the standalone
+ * scripts only: the unified script is the receiver.
+ */
+export function stripStandaloneOnly(body, name) {
+  let text = body;
+  for (const [from, to] of STANDALONE_ONLY_REGIONS) {
+    const starts = text.split(from).length - 1;
+    const ends = text.split(to).length - 1;
+    if (starts !== 1 || ends !== 1) throw new Error(`${name} adoption: standalone-only region "${from.trim()}" found ${starts} times, expected 1.`);
+    const a = text.indexOf(from);
+    const b = text.indexOf(to) + to.length;
+    text = text.slice(0, a) + text.slice(b).replace(/^\n+/, '');
+  }
+  return text;
 }
 
 /** Prologue shared by adopted engines: they reach the userscript manager only through __env. */

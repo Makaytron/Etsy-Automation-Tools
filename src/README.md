@@ -41,7 +41,7 @@ This folder holds the source of the single userscript that will replace the five
 
 ## Transfer from the standalone scripts
 
-Userscript storage is private to each script, so the data moves on an Etsy tab where both scripts run. The protocol is in `shared/migration/handoff.js`, plain script inlined into this build and, in phase 7, into the final versions of the standalone scripts.
+Userscript storage is private to each script, so the data moves on an Etsy tab where both scripts run. The protocol is in `shared/migration/handoff.js`, plain script inlined into this build and into the standalone scripts. The standalone scripts also carry `shared/migration/notice.js`, the notice with "Yeni scripti kur" (install), "Aktar" and "Daha sonra" (hide for a week); each starts it between `BEGIN/END EAT MIGRATION START` with its own "a job is running" check. `tools/Sync-Migration-Blocks.mjs` keeps both blocks equal to the shared files, and the adopters remove all three regions, so the unified script never shows the notice.
 
 1. The user presses "Aktar" in a standalone script; its responder accepts requests for a short window and never while a job of that script is running.
 2. The unified script sends a request with a fresh ECDH P-256 public key.
@@ -71,7 +71,7 @@ node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs to
 
 1. Core structure (done).
 2. Single-file deterministic build and product CI (done). MKUI is inlined together with the UI shell in step 4.
-3. Transfer protocol and receiving side (done). The standalone scripts get the sending side, the "Aktar" button and `@grant GM.listValues` (Listing Analyzer reads its per-listing keys) in step 7.
+3. Transfer protocol and receiving side (done). The standalone scripts got the sending side, the notice with "Aktar" and, for Listing Analyzer, `@grant GM.listValues` (its per-listing keys) in step 7.
 4. Shared UI shell: edge button and drawer, workspace and settings, first-run setup and the transfer screen (done).
 5. Move tools in: Sale Manager (engine adopted, new screens done; the part-based code builder in the design needs a change to the standalone engine first), Ads Keyword Manager (engine adopted, new screens done), Keyword & Market Analyzer (engine adopted, new screens done), Message Assistant (engine adopted, new screens done; its panel stays for the detailed work), Listing Analyzer (engine adopted, new screens done; its panel stays for the detailed work).
 
@@ -88,5 +88,5 @@ node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs to
 
 Fixes made in the standalone Sale Manager reach the unified script with the next build. `tools/Test-Unified-Sale-Manager.mjs` covers the edits and the GM shim; the Chrome test runs the engine on a fake Sales & Discounts page, checks it reads transferred data, writes only under `eat:` and makes no network request, and checks it stays off when the standalone script is present.
 6. Language packs (done). `node tools/Unified-Language-Catalog.mjs --check` checks that every pack has exactly the English catalog's keys and placeholders; `--source` prints the catalog to translate from.
-7. Distribution: registry entry, hosted channels, migration notice in the standalone scripts (kept for six months).
+7. Distribution: migration notice and sending side in the standalone scripts (done; they keep working for six months), registry entry and hosted channels.
 8. Release.

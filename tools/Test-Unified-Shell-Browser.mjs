@@ -35,6 +35,27 @@ ${handoffSource}
 })();
 </script>`;
 
+// The real standalone Ads Keyword Manager with its own userscript storage, next to the unified script.
+const REAL_STANDALONE_ADS = `<script>
+(() => {
+  const values = new Map(Object.entries({ adWordlist: 'bts\\nkpop poster', adWordlistLanguage: 'en' }));
+  window.__standaloneValues = values;
+  window.__standaloneGM = {
+    info: { script: { name: 'Makaytron Etsy Ads Keyword Manager', version: 'fixture' }, scriptHandler: 'fixture' },
+    getValue: async (k, d) => (values.has(k) ? structuredClone(values.get(k)) : d),
+    setValue: async (k, v) => { values.set(k, structuredClone(v)); },
+    deleteValue: async (k) => { values.delete(k); },
+    listValues: async () => [...values.keys()],
+    addValueChangeListener: () => 1,
+    registerMenuCommand: () => 1,
+    xmlHttpRequest: (d) => setTimeout(() => d.onerror?.(new Error('blocked in fixture')), 0),
+  };
+})();
+</script>
+<script>(function (GM) {
+${fs.readFileSync(new URL('../scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js', import.meta.url), 'utf8').replace(/<\/script/gi, '<\\/script')}
+})(window.__standaloneGM);</script>`;
+
 function chromeCandidates() {
   return [
     process.env.CHROME_PATH,
@@ -491,6 +512,31 @@ const scenarios = {
     out.retried = (window.__requests || []).length > out.requests;
     return out;
   }`,
+  realTransfer: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const q = (sel) => S().querySelector(sel);
+    const NOTICE = 'makaytron-eat-migration-notice-ads-keyword-manager';
+    await wait(1000);
+    await until(() => document.getElementById(NOTICE));
+    const notice = () => document.getElementById(NOTICE);
+    const out = { noticeText: notice()?.textContent ?? null };
+    [...notice().querySelectorAll('button')].find((b) => b.textContent === 'Transfer').click();
+    await until(() => notice().textContent.includes('Ready to transfer'));
+    out.armed = notice().textContent.includes('Ready to transfer');
+    await click(); q('[data-action="open-workspace"]').click(); await wait(120);
+    q('[data-page="settings"]').click(); await wait(120);
+    q('[data-name="settings-tab"][data-value="privacy"]').click(); await wait(120);
+    q('[data-action="start-migration"]').click();
+    await until(() => q('tr[data-tool="ads-keyword-manager"] [data-sas]') && notice().textContent.includes('Transferred'));
+    const row = q('tr[data-tool="ads-keyword-manager"]');
+    out.result = row?.querySelector('.badge')?.textContent ?? null;
+    out.sas = row?.querySelector('[data-sas]')?.dataset.sas ?? null;
+    out.done = notice().textContent;
+    out.stored = window.__values.get('eat:v1:ads-keyword-manager:legacy.adWordlist') ?? null;
+    out.doneRecord = window.__standaloneValues.get('eat-migration-done') ?? null;
+    out.standaloneKept = window.__standaloneValues.get('adWordlist') ?? null;
+    return out;
+  }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
@@ -528,7 +574,9 @@ const PAGES = {
   '/your/shops/me/tools/listings?eat=standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laEngine, extra: '<div id="makaytron-etsy-listing-analyzer">standalone Listing Analyzer</div>' },
   '/your/shops/me/stats/pack-de': { settings: { onboarded: true, language: 'de', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packReady, packs: { de: PACK_DE } },
   '/your/shops/me/stats/pack-fr': { settings: { onboarded: false, language: 'fr', theme: 'light' }, scenario: scenarios.packFailed },
+  '/your/shops/me/advertising/listings/transfer': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.realTransfer, extra: REAL_STANDALONE_ADS },
   // Screenshot-only pages.
+  '/your/shops/me/advertising/listings/notice-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: `async ({ wait }) => { await wait(1500); return { ok: true }; }`, extra: REAL_STANDALONE_ADS },
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
   '/your/account': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.openSettings },
@@ -839,6 +887,17 @@ test('a failed language pack keeps English, says so in the chosen language and c
   assert.equal(r.retried, true);
 });
 
+test('the real standalone script hands its data over from its notice, with the same check code on both sides', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising/listings/transfer');
+  assert.match(r.noticeText, /We are moving to Etsy Automation Tools/);
+  assert.equal(r.armed, true);
+  assert.equal(r.result, 'Aktarıldı');
+  assert.match(r.done, new RegExp(`Check code: ${r.sas}`), 'the notice showed the same check code before it finished');
+  assert.equal(r.stored, 'bts\nkpop poster');
+  assert.equal(r.doneRecord.tool, 'ads-keyword-manager');
+  assert.equal(r.standaloneKept, 'bts\nkpop poster', 'the standalone script keeps its own data');
+});
+
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
   const r = await visit(chrome, base, '/your/shops/me/orders');
   assert.equal(r.title1, 'Choose your language', 'Chrome runs with --lang=en-US, so the setup opens in English');
@@ -868,7 +927,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['pack-de', '/your/shops/me/stats/pack-de'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });

@@ -2,7 +2,7 @@
 
 # Privacy and Data Processing
 
-Last updated: 2026-10-22
+Last updated: 2026-11-20
 
 Etsy Automation Tools consists of Tampermonkey userscripts that run in the browser. All five scripts enable limited, pseudonymous product-usage telemetry by default, show a visible first-use notice, and provide a one-click off switch in Settings. Telemetry does not collect Etsy content or account data. The Message Assistant panel is closed by default and ships with **Automatic Translation Preview** enabled. Visiting an individual conversation may therefore send up to the latest 40 customer and seller messages to the selected translation provider even while the panel is closed; opening the panel on a conversation list may send up to 50 visible previews. To prevent this transfer, open Makaytron settings from the Tampermonkey menu and disable automatic translation preview before opening a conversation or the panel.
 
@@ -76,6 +76,10 @@ After the user separately confirms deactivation for one listing, Listing Analyze
 Keyword & Market Analyzer labels `Search results` as Etsy's visible result/competition indicator. The Makaytron opportunity score is derived decision support, not an Etsy-provided competition, sales, or performance forecast.
 
 Each provider's own privacy and retention terms apply. Remove unnecessary customer and order details before sending text to a provider.
+
+## Moving data to Etsy Automation Tools
+
+The standalone scripts show a notice about Etsy Automation Tools, the single script that contains all five tools. A transfer happens only when you press **Aktar** (Transfer) in that notice: for two minutes the script answers a transfer request from Etsy Automation Tools running on the same Etsy tab. The two scripts agree on a one-time key (ECDH P-256) and the data travels encrypted (AES-GCM) through the page; both show the same 4-digit check code. Nothing is sent to Makaytron or any other server. API keys and tokens are removed before encryption and never move; locks, update checks and send journals stay behind. The standalone script keeps its own data and only records, in its own storage, that a transfer was completed. **Daha sonra** (Later) stores when the notice may appear again. Listing Analyzer asks for `GM.listValues` so its per-listing history can be included. No transfer starts while one of the script's jobs is running.
 
 ## Exports and secrets
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
-  "sourceDigest": "sha256:ec0b2042f90b4c1f88540c0adf31f4d96bb4e72a741a632871100f8671867c28",
+  "sourceDigest": "sha256:fb1c23148ced9f36feacb3259e970c474db8e08fd99d7ef618877c0333424c00",
   "status": "pass",
   "summary": {
     "scriptCount": 5,
@@ -36,10 +36,10 @@
       "id": "ads-keyword-manager",
       "label": "Ads Keyword Manager",
       "path": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
-      "bytes": 186362,
-      "lines": 3242,
-      "sha256": "3b4368503aa3caf1bd06c4188bbd0f7d057af25092ba6aa4d2a039d6e729cdc3",
-      "version": "1.0.5",
+      "bytes": 209456,
+      "lines": 3637,
+      "sha256": "2ca15bf1389e6d2732f34a6950b574c78aa0ee1f007d0d5a4bd70539b6ca91ed",
+      "version": "1.1.0",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -180,7 +180,7 @@
       "fixedSurfaces": [
         {
           "source": "direct-style-call",
-          "line": 1450,
+          "line": 1837,
           "selector": "#makaytron-ad-wordlist",
           "top": "86px",
           "right": "18px",
@@ -192,7 +192,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 1522,
+          "line": 1909,
           "selector": "#makaytron-ad-wordlist-toasts",
           "top": null,
           "right": "18px",
@@ -204,7 +204,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 1525,
+          "line": 1912,
           "selector": ".maw-modal-backdrop",
           "top": null,
           "right": null,
@@ -218,7 +218,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 3181,
+          "line": 3568,
           "key": "KeyK",
           "modifiers": [
             "Alt",
@@ -230,7 +230,7 @@
         },
         {
           "target": "document",
-          "line": 3181,
+          "line": 3568,
           "key": "Space",
           "modifiers": [
             "Alt",
@@ -252,7 +252,7 @@
           {
             "label": "direct-style-call",
             "kind": "global",
-            "line": 1450,
+            "line": 1837,
             "bytes": 18975,
             "selectorCount": 144,
             "unsafeSelectors": []
@@ -265,10 +265,10 @@
       "id": "keyword-market-analyzer",
       "label": "Keyword & Market Analyzer",
       "path": "scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js",
-      "bytes": 167053,
-      "lines": 3151,
-      "sha256": "d2c31c66d97c56afd09c4369b53b380b2583aedbf5d2221dc6d860c4df67fbc2",
-      "version": "1.0.5",
+      "bytes": 190199,
+      "lines": 3548,
+      "sha256": "003cdf093067f7d226fb6bede5c3197b27fc5ce25572f7877b1c67e8bf264d1e",
+      "version": "1.1.0",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -341,12 +341,13 @@
       "zIndexes": [
         2,
         2147483000,
+        2147483646,
         2147483647
       ],
       "fixedSurfaces": [
         {
           "source": "innerHTML<style>",
-          "line": 2854,
+          "line": 3241,
           "selector": ".launcher",
           "top": "148px",
           "right": "0",
@@ -358,7 +359,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 2855,
+          "line": 3242,
           "selector": ".panel",
           "top": "12px",
           "right": "12px",
@@ -381,7 +382,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 1786,
+            "line": 2173,
             "bytes": 58,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -389,7 +390,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 2095,
+            "line": 2482,
             "bytes": 2402,
             "selectorCount": 19,
             "unsafeSelectors": []
@@ -397,7 +398,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 2190,
+            "line": 2577,
             "bytes": 97,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -405,7 +406,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 3013,
+            "line": 3400,
             "bytes": 33,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -413,7 +414,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 2853,
+            "line": 3240,
             "bytes": 5826,
             "selectorCount": 48,
             "unsafeSelectors": []
@@ -426,10 +427,10 @@
       "id": "sale-manager",
       "label": "Sale Manager",
       "path": "scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js",
-      "bytes": 451103,
-      "lines": 7791,
-      "sha256": "be1675e8c46844be219b1653f089fbae4b2d340c2efd595bab0a3a3c8b9d24bf",
-      "version": "1.0.14",
+      "bytes": 474185,
+      "lines": 8186,
+      "sha256": "71c4e57ba531e93261687df5d5da13c2820ad77e799b51639847b42a7719d8a2",
+      "version": "1.1.0",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -624,7 +625,7 @@
       "fixedSurfaces": [
         {
           "source": "direct-style-call",
-          "line": 939,
+          "line": 1326,
           "selector": "#eda-batch-root",
           "top": "86px",
           "right": "18px",
@@ -636,7 +637,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 1020,
+          "line": 1407,
           "selector": "#eda-batch-toast-root",
           "top": null,
           "right": "18px",
@@ -648,7 +649,7 @@
         },
         {
           "source": "direct-style-call",
-          "line": 1023,
+          "line": 1410,
           "selector": ".eda-modal-backdrop,.eda-report-backdrop",
           "top": null,
           "right": null,
@@ -662,7 +663,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 7690,
+          "line": 8077,
           "key": "e",
           "modifiers": [
             "Alt",
@@ -672,7 +673,7 @@
         },
         {
           "target": "document",
-          "line": 7690,
+          "line": 8077,
           "key": "r",
           "modifiers": [
             "Alt",
@@ -682,7 +683,7 @@
         },
         {
           "target": "document",
-          "line": 7690,
+          "line": 8077,
           "key": "u",
           "modifiers": [
             "Alt",
@@ -702,7 +703,7 @@
           {
             "label": "direct-style-call",
             "kind": "global",
-            "line": 939,
+            "line": 1326,
             "bytes": 16807,
             "selectorCount": 136,
             "unsafeSelectors": []
@@ -715,10 +716,10 @@
       "id": "message-assistant",
       "label": "Message Assistant",
       "path": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
-      "bytes": 839797,
-      "lines": 12973,
-      "sha256": "bef709daa72684542b95c95b7f1e7422ad935a5077bb8e76ae26fab52e740ff2",
-      "version": "1.2.11",
+      "bytes": 862898,
+      "lines": 13368,
+      "sha256": "19ad8b77ea486d5677486f5cb13aba4ba2992e38167a2676f509d68937dddc87",
+      "version": "1.3.0",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -918,7 +919,7 @@
       "fixedSurfaces": [
         {
           "source": "GLOBAL_CSS",
-          "line": 1280,
+          "line": 1667,
           "selector": ".mema-notify",
           "top": "16px",
           "right": null,
@@ -930,7 +931,7 @@
         },
         {
           "source": "GLOBAL_CSS",
-          "line": 1280,
+          "line": 1667,
           "selector": ".mema-copy-buffer",
           "top": null,
           "right": null,
@@ -942,7 +943,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 11051,
+          "line": 11438,
           "selector": ".ma-launcher",
           "top": null,
           "right": "var(--ma-s5)",
@@ -954,7 +955,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 11051,
+          "line": 11438,
           "selector": ".ma-app",
           "top": "var(--ma-s3)",
           "right": "var(--ma-s3)",
@@ -977,7 +978,7 @@
           {
             "label": "GLOBAL_CSS",
             "kind": "global",
-            "line": 1280,
+            "line": 1667,
             "bytes": 4451,
             "selectorCount": 31,
             "unsafeSelectors": []
@@ -985,7 +986,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 4938,
+            "line": 5325,
             "bytes": 106,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -993,7 +994,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 11347,
+            "line": 11734,
             "bytes": 41,
             "selectorCount": 1,
             "unsafeSelectors": []
@@ -1001,7 +1002,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 11051,
+            "line": 11438,
             "bytes": 30464,
             "selectorCount": 292,
             "unsafeSelectors": []
@@ -1014,10 +1015,10 @@
       "id": "listing-analyzer",
       "label": "Listing Analyzer",
       "path": "scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js",
-      "bytes": 828611,
-      "lines": 10642,
-      "sha256": "b6d38cb6474cbe47abdf537a8e503c37ecc15591c45c87031e3ebd17da5cc605",
-      "version": "1.2.4",
+      "bytes": 851857,
+      "lines": 11040,
+      "sha256": "0143e36162ffb6d3c37e3d0fea570af43e39b831ccd43881f33183177dba8627",
+      "version": "1.3.0",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -1034,6 +1035,7 @@
         "GM.getValue",
         "GM.setValue",
         "GM.deleteValue",
+        "GM.listValues",
         "GM.addValueChangeListener",
         "GM.xmlHttpRequest",
         "GM.openInTab",
@@ -1202,7 +1204,7 @@
       "fixedSurfaces": [
         {
           "source": "innerHTML<style>",
-          "line": 7778,
+          "line": 8166,
           "selector": ".meli-launcher",
           "top": "148px",
           "right": "0",
@@ -1214,7 +1216,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 7779,
+          "line": 8167,
           "selector": ".meli-panel",
           "top": "12px",
           "right": "12px",
@@ -1226,7 +1228,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 7792,
+          "line": 8180,
           "selector": ".meli-overlay",
           "top": null,
           "right": null,
@@ -1238,7 +1240,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 7793,
+          "line": 8181,
           "selector": ".meli-toast-root",
           "top": "16px",
           "right": null,
@@ -1252,7 +1254,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 10474,
+          "line": 10862,
           "key": "Escape",
           "modifiers": [
             "Alt",
@@ -1264,7 +1266,7 @@
         },
         {
           "target": "document",
-          "line": 10474,
+          "line": 10862,
           "key": "KeyA",
           "modifiers": [
             "Alt",
@@ -1276,7 +1278,7 @@
         },
         {
           "target": "document",
-          "line": 10474,
+          "line": 10862,
           "key": "KeyL",
           "modifiers": [
             "Alt",
@@ -1298,7 +1300,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 8148,
+            "line": 8536,
             "bytes": 52,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -1306,7 +1308,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 9258,
+            "line": 9646,
             "bytes": 76,
             "selectorCount": 3,
             "unsafeSelectors": []
@@ -1314,7 +1316,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 7776,
+            "line": 8164,
             "bytes": 49073,
             "selectorCount": 418,
             "unsafeSelectors": []

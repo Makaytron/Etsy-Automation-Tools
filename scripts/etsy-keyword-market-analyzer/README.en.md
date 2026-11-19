@@ -4,7 +4,7 @@
 
 **Short name:** Etsy Keyword & Market Analyzer
 
-**Version:** 1.0.5
+**Version:** 1.1.0
 
 Same-document Etsy navigation is supported. A lightweight URL listener runs even when the initial Etsy page is unsupported; the application starts on its own surface, removes its UI and stops page work on exit, and reactivates without duplicate panels or menus on return.
 

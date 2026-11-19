@@ -2,6 +2,15 @@
 
 All notable changes to Makaytron Etsy Keyword & Market Analyzer are documented here.
 
+## [1.1.0] - 2026-11-20
+
+### Added
+
+- A notice about the move to Etsy Automation Tools, the single script that now contains this tool. It links to the new script and offers **Aktar** (Transfer): for two minutes the script answers a transfer request from Etsy Automation Tools on the same tab, encrypted end to end on the page. API keys and tokens are never included; the data also stays in this script. **Daha sonra** (Later) hides the notice for a week.
+- The notice and the transfer never run while one of this script's jobs is running.
+
+This script keeps working for six months after Etsy Automation Tools is released and then gets no more updates.
+
 ## [1.0.5] - 2026-10-22
 
 ### Fixed
