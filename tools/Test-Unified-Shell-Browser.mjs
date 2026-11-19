@@ -56,7 +56,7 @@ async function findChrome() {
 const safe = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 // In-page stand-in for the userscript manager, plus a hook that keeps the closed shadow root reachable for the test.
-function pageHtml({ settings, scenario, extra = '', preload = {} }) {
+function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {} }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Etsy fixture</title>
 <style>body{margin:0;font:16px Georgia,serif;background:#f5f5f5} button.probe{font:13px Georgia,serif}</style></head>
 <body><header style="height:56px;background:#fff;border-bottom:1px solid #ddd"></header>
@@ -69,6 +69,7 @@ function pageHtml({ settings, scenario, extra = '', preload = {} }) {
   values.set('eat:secret:openai', 'fixture-placeholder');
   for (const [k, v] of Object.entries(${safe(preload)})) values.set(k, v);
   window.__values = values;
+  window.__packs = ${safe(packs)};
   window.__reads = [];
   window.__network = 0;
   const realFetch = window.fetch;
@@ -82,6 +83,8 @@ function pageHtml({ settings, scenario, extra = '', preload = {} }) {
       (window.__requests = window.__requests || []).push(details.url);
       // The Ads engine downloads its default word list; answer it like GitHub would.
       if (details.url.includes('keyword-rules.txt')) setTimeout(() => details.onload?.({ status: 200, responseText: ['bts', 'army gift', ''].join(String.fromCharCode(10)) }), 0);
+      // Language packs come from the repository; a page lists the ones it can serve.
+      else if (details.url.includes('/languages/') && window.__packs[details.url.split('/').pop().replace('.json', '')]) setTimeout(() => details.onload?.({ status: 200, responseText: JSON.stringify(window.__packs[details.url.split('/').pop().replace('.json', '')]) }), 0);
       else setTimeout(() => details.onerror?.(new Error('blocked in fixture')), 0);
     },
     getValue: async (k, d) => { window.__reads.push(k); return values.has(k) ? structuredClone(values.get(k)) : d; },
@@ -141,6 +144,8 @@ const KW_RESULT = `<div role="main"><section>
 </tbody></table></section></div>`;
 const KW_SAVED_KEY = 'eat:v1:keyword-market-analyzer:legacy.ekma.v1.captures';
 const KW_WAIT = `const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-kw-state="analysed"]'));`;
+
+const PACK_DE = JSON.parse(fs.readFileSync(new URL('../languages/de.json', import.meta.url), 'utf8'));
 
 const scenarios = {
   sellerPage: `async ({ wait }) => {${HELPERS}
@@ -466,6 +471,26 @@ const scenarios = {
     out.requests = window.__requests || [];
     return out;
   }`,
+  packReady: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    await until(() => S().querySelector('.sheet')?.textContent.includes('Auf dieser Seite läuft kein Werkzeug'));
+    return {
+      lang: S().querySelector('.mkui-root')?.getAttribute('lang') ?? null,
+      drawerText: S().querySelector('.sheet')?.textContent ?? '',
+      stored: Boolean(window.__values.get('eat:v1:core:pack.de')),
+      requests: window.__requests || [],
+    };
+  }`,
+  packFailed: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    await until(() => S().querySelector('[data-role="lang-status"][data-state="error"]'));
+    const status = S().querySelector('[data-role="lang-status"]');
+    const out = { title: S().querySelector('.dialog-title')?.textContent ?? null, failed: status?.textContent ?? null, requests: (window.__requests || []).length };
+    status.querySelector('[data-action="lang-retry"]').click();
+    await until(() => (window.__requests || []).length > out.requests);
+    out.retried = (window.__requests || []).length > out.requests;
+    return out;
+  }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
@@ -501,6 +526,8 @@ const PAGES = {
   '/your/shops/me/tools/listings?eat=engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laEngine },
   '/your/shops/me/tools/listings?eat=screens': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laScreens },
   '/your/shops/me/tools/listings?eat=standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laEngine, extra: '<div id="makaytron-etsy-listing-analyzer">standalone Listing Analyzer</div>' },
+  '/your/shops/me/stats/pack-de': { settings: { onboarded: true, language: 'de', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packReady, packs: { de: PACK_DE } },
+  '/your/shops/me/stats/pack-fr': { settings: { onboarded: false, language: 'fr', theme: 'light' }, scenario: scenarios.packFailed },
   // Screenshot-only pages.
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -795,6 +822,23 @@ test('Listing Analyzer steps aside when the standalone script runs on the same p
   assert.match(r.status, /Ayrı Listing Analyzer scripti de bu sayfada çalışıyor/);
 });
 
+test('a language pack downloads once and the interface switches to it', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/stats/pack-de');
+  assert.equal(r.lang, 'de');
+  assert.match(r.drawerText, /Auf dieser Seite läuft kein Werkzeug/);
+  assert.equal(r.stored, true, 'the pack is kept for the next page');
+  assert.deepEqual(r.requests, ['https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/languages/de.json']);
+});
+
+test('a failed language pack keeps English, says so in the chosen language and can be retried', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/stats/pack-fr');
+  assert.equal(r.title, 'Choisissez votre langue', 'the first screen is bundled in every language');
+  assert.match(r.failed, /Le pack de langue n’a pas pu être téléchargé/);
+  assert.match(r.failed, /Réessayer/);
+  assert.match(r.failed, /Signaler un problème/);
+  assert.equal(r.retried, true);
+});
+
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
   const r = await visit(chrome, base, '/your/shops/me/orders');
   assert.equal(r.title1, 'Choose your language', 'Chrome runs with --lang=en-US, so the setup opens in English');
@@ -824,7 +868,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['pack-de', '/your/shops/me/stats/pack-de'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });

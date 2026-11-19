@@ -14,6 +14,7 @@
 import { h } from '../ui/dom.js';
 import { card } from '../ui/controls.js';
 import { interpolate } from '../core/i18n.js';
+import { packText } from '../core/language-packs.js';
 
 export const MA_STRINGS = Object.freeze({
   en: Object.freeze({
@@ -56,9 +57,10 @@ export const MA_STRINGS = Object.freeze({
   }),
 });
 
+// Bundled English and Turkish; other languages read the downloaded pack ("ma." keys).
 function texts(language) {
   const lang = MA_STRINGS[language] ? language : 'en';
-  return (key, vars) => interpolate(MA_STRINGS[lang][key] ?? MA_STRINGS.en[key] ?? key, vars);
+  return (key, vars) => interpolate(MA_STRINGS[language]?.[key] ?? packText(language, `ma.${key}`) ?? MA_STRINGS[lang][key] ?? MA_STRINGS.en[key] ?? key, vars);
 }
 
 const TRANSLATORS = { google: 'Google Translate', deepl: 'DeepL' };

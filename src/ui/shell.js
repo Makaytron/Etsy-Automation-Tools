@@ -10,6 +10,7 @@ import { TOOL_HOME } from './strings.js';
 import { SHELL_CSS } from './styles.js';
 import { WORKSPACE_CSS } from './styles-workspace.js';
 import { createText } from './text.js';
+import { createLanguagePacks } from '../core/language-packs.js';
 import { createWorkspace } from './workspace.js';
 import { openOnboarding } from './onboarding.js';
 import { tabRect, snapToEdge, drawerSide, drawerWidth, TAB_SHORT } from '../core/drawer-geometry.js';
@@ -24,7 +25,10 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
   let root; let container; let tab; let sheet; let zones; let titleId; let workspace; let hostEl;
   let unsubscribe = [];
 
-  const text = createText({ settings, scope });
+  // Language packs download on demand; a change re-renders whatever is open.
+  let text = null;
+  const packs = createLanguagePacks({ gm: scope.GM, cache: storage.namespace('core'), appVersion, onChange: () => text?.packChanged() });
+  text = createText({ settings, scope, packs });
   const { t, language } = text;
   const viewport = () => ({ width: scope.innerWidth, height: scope.innerHeight });
   const theme = () => {
@@ -54,6 +58,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     unsubscribe = [
       settings.subscribe(() => { applyChrome(); render(); layout(); }),
       () => workspace.dispose(),
+      text.onPackChange(() => { applyChrome(); render(); if (workspace?.isOpen) workspace.refresh(); }),
       () => scheme?.removeEventListener?.('change', applyChrome),
     ];
     state.mounted = true;
@@ -80,6 +85,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
 
   function applyChrome() {
     const lang = language();
+    void text.ensurePack();
     container.setAttribute('data-theme', theme());
     container.setAttribute('lang', lang);
     container.setAttribute('dir', text.direction());

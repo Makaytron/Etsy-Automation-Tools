@@ -13,6 +13,7 @@
 import { h } from '../ui/dom.js';
 import { card, checkbox, segmented, openDialog } from '../ui/controls.js';
 import { interpolate } from '../core/i18n.js';
+import { packText } from '../core/language-packs.js';
 
 export const SALE_STRINGS = Object.freeze({
   en: Object.freeze({
@@ -69,9 +70,10 @@ export const SALE_STRINGS = Object.freeze({
   }),
 });
 
+// Bundled English and Turkish; other languages read the downloaded pack ("sale." keys).
 function texts(language) {
   const lang = SALE_STRINGS[language] ? language : 'en';
-  return (key, vars) => interpolate(SALE_STRINGS[lang][key] ?? SALE_STRINGS.en[key] ?? key, vars);
+  return (key, vars) => interpolate(SALE_STRINGS[language]?.[key] ?? packText(language, `sale.${key}`) ?? SALE_STRINGS[lang][key] ?? SALE_STRINGS.en[key] ?? key, vars);
 }
 
 const fmtDay = (iso, language) => {

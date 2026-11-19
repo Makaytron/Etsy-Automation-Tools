@@ -3,9 +3,10 @@
 import { h } from './dom.js';
 import { card, field, segmented, checkbox, select, openDialog } from './controls.js';
 import { UI_LANGUAGES } from './strings-workspace.js';
+import { languageStatus } from './language-status.js';
 import { TOOL_IDS } from '../core/settings.js';
 
-export function renderSettingsPage(doc, { t, language, settings, storage, appVersion, scope, container, tab = 'general', onTab, message = '', say, migration, migrationState = {}, runMigration }) {
+export function renderSettingsPage(doc, { t, text, language, settings, storage, appVersion, scope, container, tab = 'general', onTab, message = '', say, migration, migrationState = {}, runMigration }) {
   const s = settings.get();
   const notice = h(doc, 'p', { class: 'notice', role: 'status', 'aria-live': 'polite', text: message });
 
@@ -32,7 +33,8 @@ export function renderSettingsPage(doc, { t, language, settings, storage, appVer
         labelledBy: 'eat-language-title', name: 'language', value: s.language ?? '',
         options: UI_LANGUAGES.map((l) => ({ value: l.code, label: l.name })),
         onChange: (language) => settings.update({ language }),
-      })),
+      }),
+      text ? languageStatus(doc, text) : null),
     card(doc, { id: 'eat-drawer', title: t('set.drawer'), description: t('set.drawerHint') },
       field(doc, { label: t('set.edge'), hint: t('set.edgeHint'), labelId: 'eat-edge' }, segmented(doc, {
         labelledBy: 'eat-edge', name: 'edge', value: s.drawer.edge,

@@ -6,7 +6,7 @@ import { TOOL_HOME } from './strings.js';
 import { renderSettingsPage } from './settings-page.js';
 import { TOOL_IDS } from '../core/settings.js';
 
-const SUPPORT_URL = 'https://github.com/Makaytron/Etsy-Automation-Tools/issues';
+import { SUPPORT_URL } from './language-status.js';
 
 export function createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, assets = {}, onClose }) {
   const doc = scope.document;
@@ -77,7 +77,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
 
     const page = state.page === 'settings'
       ? renderSettingsPage(doc, {
-        t, language: text.language(), settings, storage, appVersion, scope, container,
+        t, text, language: text.language(), settings, storage, appVersion, scope, container,
         tab: state.tab, onTab: (tab) => { state.tab = tab; state.message = ''; render(); },
         message: state.message, say: (message) => { state.message = message; render(); },
         migration, migrationState: state.migration, runMigration,

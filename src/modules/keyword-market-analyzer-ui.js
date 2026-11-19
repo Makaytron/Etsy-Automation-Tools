@@ -16,6 +16,7 @@
 import { h } from '../ui/dom.js';
 import { card, segmented } from '../ui/controls.js';
 import { interpolate } from '../core/i18n.js';
+import { packText } from '../core/language-packs.js';
 
 export const KW_STRINGS = Object.freeze({
   en: Object.freeze({
@@ -58,13 +59,14 @@ export const KW_STRINGS = Object.freeze({
   }),
 });
 
+// Bundled English and Turkish; other languages read the downloaded pack ("kw." keys).
 function texts(language) {
   const lang = KW_STRINGS[language] ? language : 'en';
-  return (key, vars) => interpolate(KW_STRINGS[lang][key] ?? KW_STRINGS.en[key] ?? key, vars);
+  return (key, vars) => interpolate(KW_STRINGS[language]?.[key] ?? packText(language, `kw.${key}`) ?? KW_STRINGS[lang][key] ?? KW_STRINGS.en[key] ?? key, vars);
 }
 
 const TONE = { high: 'badge-ok', medium: 'badge-warn', low: 'badge-err' };
-const num = (language, value) => (Number.isFinite(value) ? new Intl.NumberFormat(language === 'tr' ? 'tr-TR' : 'en-US', { maximumFractionDigits: 0 }).format(value) : '—');
+const num = (language, value) => (Number.isFinite(value) ? new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(value) : '—');
 const opportunityBadge = (doc, ts, o) => h(doc, 'span', { class: `badge ${TONE[o?.label] ?? ''}`.trim(), text: o ? `${o.score} · ${ts(o.label)}` : '—' });
 
 function stateOf(snap, data) {

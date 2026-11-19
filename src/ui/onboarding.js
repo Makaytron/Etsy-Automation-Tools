@@ -9,6 +9,7 @@
 import { h } from './dom.js';
 import { checkbox, select } from './controls.js';
 import { UI_LANGUAGES } from './strings-workspace.js';
+import { languageStatus } from './language-status.js';
 import { TOOL_IDS } from '../core/settings.js';
 
 export function openOnboarding({ doc, container, text, settings, scope, onDone }) {
@@ -37,6 +38,7 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
           onChange: async (language) => { draft.language = language; await settings.update({ language }); render(); },
         }),
         detected ? h(doc, 'span', { class: 'badge', text: t('ob.detected', { tag: detected }) }) : null),
+      languageStatus(doc, text),
       h(doc, 'p', { class: 'field-hint', text: t('ob.privacy') }),
       h(doc, 'div', { class: 'dialog-footer' },
         h(doc, 'button', { class: 'btn btn-default', type: 'button', 'data-action': 'ob-continue', onclick: async () => { await settings.update({ language: draft.language }); draft.step = 2; render(); }, text: t('ob.continue') })),
@@ -60,11 +62,14 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
 
   async function finish() {
     await settings.update({ language: draft.language, tools: draft.tools, onboarded: true });
-    close();
+    end();
     onDone?.(true);
   }
 
+  // A language pack that finishes (or fails) while the setup is open redraws it.
+  let stopPackWatch = text.onPackChange?.(() => { if (overlay) render(); }) ?? null;
   function close() { overlay?.remove(); overlay = null; }
+  function end() { close(); stopPackWatch?.(); stopPackWatch = null; }
 
   function render() {
     const focused = overlay?.getRootNode?.().activeElement;
@@ -74,12 +79,12 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
       ...(draft.step === 1 ? stepLanguage() : stepTools()));
     overlay = h(doc, 'div', { class: 'overlay' }, dialog);
     // "Later" is Escape: the setup shows again on the next seller page.
-    overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); onDone?.(false); } });
+    overlay.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); end(); onDone?.(false); } });
     container.append(overlay);
     const target = keep ? dialog.querySelector(`[name="${keep}"], [data-action="${keep}"]`) : null;
     (target ?? dialog.querySelector('select, input, button')).focus({ preventScroll: true });
   }
 
   render();
-  return { close };
+  return { close: end };
 }

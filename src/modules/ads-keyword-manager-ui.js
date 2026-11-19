@@ -15,6 +15,7 @@
 import { h } from '../ui/dom.js';
 import { card, segmented } from '../ui/controls.js';
 import { interpolate } from '../core/i18n.js';
+import { packText } from '../core/language-packs.js';
 
 export const ADS_STRINGS = Object.freeze({
   en: Object.freeze({
@@ -51,9 +52,10 @@ export const ADS_STRINGS = Object.freeze({
   }),
 });
 
+// Bundled English and Turkish; other languages read the downloaded pack ("ads." keys).
 function texts(language) {
   const lang = ADS_STRINGS[language] ? language : 'en';
-  return (key, vars) => interpolate(ADS_STRINGS[lang][key] ?? ADS_STRINGS.en[key] ?? key, vars);
+  return (key, vars) => interpolate(ADS_STRINGS[language]?.[key] ?? packText(language, `ads.${key}`) ?? ADS_STRINGS[lang][key] ?? ADS_STRINGS.en[key] ?? key, vars);
 }
 
 const STATE_BADGE = { ready: '', running: 'badge-dark', success: 'badge-ok', warning: 'badge-warn', error: 'badge-err' };

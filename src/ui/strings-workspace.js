@@ -78,6 +78,9 @@ export const WORKSPACE_STRINGS = Object.freeze({
     'ob.later': 'Later',
     'ob.privacy': 'Settings and reports stay in this browser. Nothing is sent to Makaytron.',
     'ob.migrateHint': 'Using the standalone Makaytron scripts? You can bring their data over in Settings › Privacy and data.',
+    'lang.loading': 'Downloading the language pack…',
+    'lang.failed': 'The language pack could not be downloaded, so English is shown.',
+    'lang.retry': 'Try again',
     'mig.title': 'Bring data from the standalone scripts',
     'mig.text': 'Settings, word lists, templates, research and reports move over. API keys never move; enter them again here.',
     'mig.step1': 'Open the Etsy page of the standalone script and press "Aktar" (Transfer) in its notice.',
@@ -168,6 +171,9 @@ export const WORKSPACE_STRINGS = Object.freeze({
     'ob.later': 'Sonra',
     'ob.privacy': 'Ayarlar ve raporlar bu tarayıcıda kalır. Makaytron’a hiçbir şey gönderilmez.',
     'ob.migrateHint': 'Ayrı Makaytron scriptlerini kullanıyor musunuz? Verilerini Ayarlar › Gizlilik ve veri bölümünden aktarabilirsiniz.',
+    'lang.loading': 'Dil paketi indiriliyor…',
+    'lang.failed': 'Dil paketi indirilemedi; İngilizce gösteriliyor.',
+    'lang.retry': 'Tekrar dene',
     'mig.title': 'Ayrı scriptlerden veri aktar',
     'mig.text': 'Ayarlar, kelime listeleri, şablonlar, araştırmalar ve raporlar taşınır. API anahtarları asla taşınmaz; onları burada yeniden girin.',
     'mig.step1': 'Ayrı scriptin Etsy sayfasını açın ve bildirimindeki "Aktar"a basın.',
@@ -183,8 +189,20 @@ export const WORKSPACE_STRINGS = Object.freeze({
   }),
 });
 
-/** Languages the interface can show today, with their own names. Phase 6 adds the downloadable packs. */
+/**
+ * Languages the interface can show, with their own names. English and
+ * Turkish are bundled; the rest are packs (core/language-packs.js) whose
+ * first-screen strings are bundled in strings-picker.js.
+ */
 export const UI_LANGUAGES = Object.freeze([
   Object.freeze({ code: 'en', name: 'English' }),
+  Object.freeze({ code: 'de', name: 'Deutsch' }),
+  Object.freeze({ code: 'es', name: 'Español' }),
+  Object.freeze({ code: 'fr', name: 'Français' }),
+  Object.freeze({ code: 'it', name: 'Italiano' }),
+  Object.freeze({ code: 'nl', name: 'Nederlands' }),
+  Object.freeze({ code: 'pl', name: 'Polski' }),
+  Object.freeze({ code: 'pt', name: 'Português' }),
   Object.freeze({ code: 'tr', name: 'Türkçe' }),
+  Object.freeze({ code: 'ja', name: '日本語' }),
 ]);

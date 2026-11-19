@@ -14,6 +14,7 @@
 import { h } from '../ui/dom.js';
 import { card } from '../ui/controls.js';
 import { interpolate } from '../core/i18n.js';
+import { packText } from '../core/language-packs.js';
 
 export const LA_STRINGS = Object.freeze({
   en: Object.freeze({
@@ -54,13 +55,14 @@ export const LA_STRINGS = Object.freeze({
   }),
 });
 
+// Bundled English and Turkish; other languages read the downloaded pack ("la." keys).
 function texts(language) {
   const lang = LA_STRINGS[language] ? language : 'en';
-  return (key, vars) => interpolate(LA_STRINGS[lang][key] ?? LA_STRINGS.en[key] ?? key, vars);
+  return (key, vars) => interpolate(LA_STRINGS[language]?.[key] ?? packText(language, `la.${key}`) ?? LA_STRINGS[lang][key] ?? LA_STRINGS.en[key] ?? key, vars);
 }
 
 const VIEWS = [['overview', 'vOverview', 'dOverview'], ['analysis', 'vAnalysis', 'dAnalysis'], ['ai', 'vAi', 'dAi'], ['queue', 'vQueue', 'dQueue'], ['settings', 'vSettings', 'dSettings']];
-const num = (language, value) => new Intl.NumberFormat(language === 'tr' ? 'tr-TR' : 'en-US', { maximumFractionDigits: 0 }).format(value);
+const num = (language, value) => new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(value);
 
 function badge(doc, ts, snap) {
   if (snap.collecting) return h(doc, 'span', { class: 'badge badge-dark', 'data-la-state': 'collecting', text: ts('collecting') });
