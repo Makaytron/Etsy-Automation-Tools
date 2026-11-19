@@ -11,16 +11,18 @@ import { SHELL_CSS } from './styles.js';
 import { WORKSPACE_CSS } from './styles-workspace.js';
 import { createText } from './text.js';
 import { createWorkspace } from './workspace.js';
+import { openOnboarding } from './onboarding.js';
 import { tabRect, snapToEdge, drawerSide, drawerWidth, TAB_SHORT } from '../core/drawer-geometry.js';
 import { TOOL_IDS } from '../core/settings.js';
 
 const DRAG_THRESHOLD = 5;
 const HOST_ID = 'makaytron-eat-root';
 
-export function createShell({ scope, settings, host, storage, appVersion, assets = {}, onActiveChange }) {
+export function createShell({ scope, settings, host, storage, appVersion, migration, assets = {}, onActiveChange }) {
   const doc = scope.document;
   const state = { open: false, drag: null, mounted: false };
   let root; let container; let tab; let sheet; let zones; let titleId; let workspace;
+  let unsubscribe = [];
 
   const text = createText({ settings, scope });
   const { t, language } = text;
@@ -45,19 +47,30 @@ export function createShell({ scope, settings, host, storage, appVersion, assets
       onpointerdown: onPointerDown, onkeydown: onTabKey,
     }, assets.logo ? h(doc, 'img', { src: assets.logo, alt: '' }) : null, h(doc, 'span', { class: 'grip', 'aria-hidden': 'true' }));
     container.append(tab);
-    workspace = createWorkspace({ scope, container, text, settings, storage, host, appVersion, assets, onClose: onWorkspaceClose });
+    workspace = createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, assets, onClose: onWorkspaceClose });
     scope.addEventListener('resize', layout);
-    scope.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', applyChrome);
-    settings.subscribe(() => { applyChrome(); render(); layout(); });
+    const scheme = scope.matchMedia?.('(prefers-color-scheme: dark)');
+    scheme?.addEventListener?.('change', applyChrome);
+    unsubscribe = [
+      settings.subscribe(() => { applyChrome(); render(); layout(); }),
+      () => workspace.dispose(),
+      () => scheme?.removeEventListener?.('change', applyChrome),
+    ];
     state.mounted = true;
     applyChrome();
     render();
-    if (settings.get().drawer.openOnLoad) setOpen(true, { focus: false });
+    if (!settings.get().onboarded) {
+      openOnboarding({ doc, container, text, settings, scope, onDone: () => tab.focus({ preventScroll: true }) });
+    } else if (settings.get().drawer.openOnLoad) {
+      setOpen(true, { focus: false });
+    }
     layout();
   }
 
   function unmount() {
     if (!state.mounted) return;
+    for (const off of unsubscribe) off();
+    unsubscribe = [];
     scope.removeEventListener('resize', layout);
     if (workspace?.isOpen) workspace.close();
     doc.getElementById(HOST_ID)?.remove();

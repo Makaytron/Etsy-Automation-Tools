@@ -8,10 +8,23 @@ import { TOOL_IDS } from '../core/settings.js';
 
 const SUPPORT_URL = 'https://github.com/Makaytron/Etsy-Automation-Tools/issues';
 
-export function createWorkspace({ scope, container, text, settings, storage, host, appVersion, assets = {}, onClose }) {
+export function createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, assets = {}, onClose }) {
   const doc = scope.document;
   const { t } = text;
-  const state = { open: false, page: 'settings', tab: 'general', returnFocus: null, message: '' };
+  const state = { open: false, page: 'settings', tab: 'general', returnFocus: null, message: '', migration: { running: false, results: null, done: [] } };
+
+  async function runMigration() {
+    if (!migration || state.migration.running) return;
+    state.migration = { ...state.migration, running: true, results: null };
+    render();
+    try {
+      const results = await migration.run();
+      state.migration = { running: false, results, done: await migration.done() };
+    } catch {
+      state.migration = { running: false, results: [], done: state.migration.done };
+    }
+    render();
+  }
   let root = null;
 
   function focusKey(el) {
@@ -60,6 +73,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
         t, language: text.language(), settings, storage, appVersion, scope, container,
         tab: state.tab, onTab: (tab) => { state.tab = tab; state.message = ''; render(); },
         message: state.message, say: (message) => { state.message = message; render(); },
+        migration, migrationState: state.migration, runMigration,
       })
       : toolPage(state.page.slice(5));
 
@@ -102,13 +116,15 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     restoreFocus(page);
   }
 
-  function open({ page, returnFocus } = {}) {
+  function open({ page, tab, returnFocus } = {}) {
     const active = host.activeTool;
     state.page = page ?? (active ? `tool:${active}` : 'settings');
+    if (tab) state.tab = tab;
     state.returnFocus = returnFocus ?? null;
     state.open = true;
     render();
     root.querySelector('[aria-current="page"]')?.focus({ preventScroll: true });
+    migration?.done().then((done) => { state.migration = { ...state.migration, done }; render(); }).catch(() => {});
   }
 
   function close(backToDrawer) {
@@ -118,7 +134,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     onClose?.(backToDrawer);
   }
 
-  settings.subscribe(() => render());
+  const unsubscribe = settings.subscribe(() => render());
 
-  return { open, close: () => close(false), refresh: render, get isOpen() { return state.open; } };
+  return { open, close: () => close(false), refresh: render, dispose: unsubscribe, get isOpen() { return state.open; } };
 }

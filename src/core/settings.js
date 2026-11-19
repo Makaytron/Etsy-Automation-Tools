@@ -21,6 +21,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   tools: Object.freeze(Object.fromEntries(TOOL_IDS.map((id) => [id, true]))),
   showProSuggestions: true,
   updateNotes: true,
+  onboarded: false, // first-run setup finished
 });
 
 const pick = (value, allowed, fallback) => (allowed.includes(value) ? value : fallback);
@@ -46,6 +47,7 @@ export function normalizeSettings(input) {
     tools: Object.fromEntries(TOOL_IDS.map((id) => [id, bool(tools[id], true)])),
     showProSuggestions: bool(src.showProSuggestions, d.showProSuggestions),
     updateNotes: bool(src.updateNotes, d.updateNotes),
+    onboarded: bool(src.onboarded, d.onboarded),
   };
 }
 

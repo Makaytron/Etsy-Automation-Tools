@@ -5,7 +5,7 @@ import { card, field, segmented, checkbox, select, openDialog } from './controls
 import { UI_LANGUAGES } from './strings-workspace.js';
 import { TOOL_IDS } from '../core/settings.js';
 
-export function renderSettingsPage(doc, { t, language, settings, storage, appVersion, scope, container, tab = 'general', onTab, message = '', say }) {
+export function renderSettingsPage(doc, { t, language, settings, storage, appVersion, scope, container, tab = 'general', onTab, message = '', say, migration, migrationState = {}, runMigration }) {
   const s = settings.get();
   const notice = h(doc, 'p', { class: 'notice', role: 'status', 'aria-live': 'polite', text: message });
 
@@ -96,7 +96,29 @@ export function renderSettingsPage(doc, { t, language, settings, storage, appVer
   }
 
   const fileInput = h(doc, 'input', { type: 'file', accept: 'application/json,.json', hidden: true, onchange: (e) => { const f = e.target.files?.[0]; if (f) restoreBackup(f); e.target.value = ''; } });
+  const RESULT = { imported: ['mig.imported', 'badge-ok'], already: ['mig.already', ''], busy: ['mig.busy', 'badge-warn'], error: ['mig.error', 'badge-err'], rejected: ['mig.rejected', 'badge-err'] };
+  const migrationCard = () => {
+    const { running, results, done = [] } = migrationState;
+    const rows = (results ?? []).map((r) => {
+      const [label, tone] = RESULT[r.state] ?? RESULT.error;
+      return h(doc, 'tr', { 'data-tool': r.tool },
+        h(doc, 'td', { text: t(`tool.${r.tool}`) }),
+        h(doc, 'td', {}, h(doc, 'span', { class: `badge ${tone}`, text: t(label) })),
+        h(doc, 'td', {}, r.sas ? h(doc, 'span', { class: 'mono', 'data-sas': r.sas, text: r.sas }) : h(doc, 'span', { class: 'field-hint', text: '—' })));
+    });
+    return card(doc, { id: 'eat-migration', title: t('mig.title'), description: t('mig.text') },
+      h(doc, 'ol', { class: 'steps-list' }, h(doc, 'li', { text: t('mig.step1') }), h(doc, 'li', { text: t('mig.step2') })),
+      done.length ? h(doc, 'p', { class: 'field-hint', 'data-role': 'mig-done', text: t('mig.done', { tools: done.map((id) => t(`tool.${id}`)).join(', ') }) }) : null,
+      h(doc, 'div', {}, h(doc, 'button', { class: 'btn btn-default btn-sm', type: 'button', 'data-action': 'start-migration', disabled: Boolean(running) || !migration, onclick: () => runMigration?.(), text: running ? t('mig.running') : t('mig.start') })),
+      results && !results.length ? h(doc, 'p', { class: 'field-hint', role: 'status', text: t('mig.none') }) : null,
+      results?.length ? h(doc, 'div', { class: 'table-wrap' }, h(doc, 'table', { class: 'table' },
+        h(doc, 'thead', {}, h(doc, 'tr', {}, h(doc, 'th', { text: t('mig.colTool') }), h(doc, 'th', { text: t('mig.colResult') }), h(doc, 'th', { text: t('mig.colCode') }))),
+        h(doc, 'tbody', {}, rows))) : null,
+      results?.some((r) => r.sas) ? h(doc, 'p', { class: 'field-hint', text: t('mig.codeHint') }) : null);
+  };
+
   const privacy = () => h(doc, 'div', { class: 'cards' },
+    migrationCard(),
     card(doc, { id: 'eat-backup', title: t('set.backupTitle'), description: t('set.backupHint') },
       h(doc, 'div', { style: 'display:flex;gap:8px;flex-wrap:wrap' },
         h(doc, 'button', { class: 'btn btn-outline btn-sm', type: 'button', 'data-action': 'backup', onclick: downloadBackup, text: t('set.backupDownload') }),

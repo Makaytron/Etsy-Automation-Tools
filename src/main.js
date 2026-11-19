@@ -61,7 +61,7 @@ export async function boot({ scope, createRouteLifecycle, handoff, assets = {} }
     onError,
     onChange: syncShell,
   });
-  shell = createShell({ scope, settings, host, storage, appVersion: META.version, assets });
+  shell = createShell({ scope, settings, host, storage, appVersion: META.version, migration, assets });
   await host.start();
   syncShell();
   // Tool routes are followed by the lifecycle; this catches moves between other Etsy pages.

@@ -12,9 +12,26 @@ import { access, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+import { readFile } from 'node:fs/promises';
 import { buildUnified } from './Build-Unified-Userscript.mjs';
 
 const userscript = await buildUnified();
+const handoffSource = await readFile(new URL('../shared/migration/handoff.js', import.meta.url), 'utf8');
+
+// A stand-in for an armed standalone script on the same tab: the real sending side of the handoff.
+const STANDALONE_ADS = `<script>
+(() => {
+${handoffSource}
+  const values = { adWordlist: 'bts\\narmy gift', adWordlistLanguage: 'tr', adKeywordManagerScriptUpdateState: { x: 1 } };
+  const responder = createMigrationResponder({
+    tool: 'ads-keyword-manager', appVersion: '1.0.5', cryptoApi: crypto,
+    store: { get: async (k) => values[k], keys: async () => Object.keys(values) },
+    transport: createDomMigrationTransport(document),
+    onStatus: (s) => { if (s.sas) window.__standaloneSas = s.sas; if (s.state === 'done') window.__standaloneDone = true; },
+  });
+  responder.arm(60000);
+})();
+</script>`;
 
 function chromeCandidates() {
   return [
@@ -37,7 +54,7 @@ async function findChrome() {
 const safe = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 // In-page stand-in for the userscript manager, plus a hook that keeps the closed shadow root reachable for the test.
-function pageHtml({ settings, scenario }) {
+function pageHtml({ settings, scenario, extra = '' }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Etsy fixture</title>
 <style>body{margin:0;font:16px Georgia,serif;background:#f5f5f5} button.probe{font:13px Georgia,serif}</style></head>
 <body><header style="height:56px;background:#fff;border-bottom:1px solid #ddd"></header>
@@ -59,6 +76,7 @@ function pageHtml({ settings, scenario }) {
   Element.prototype.attachShadow = function (init) { const root = attach.call(this, init); window.__shadow = root; return root; };
 })();
 </script>
+${extra}
 <script>${userscript.replace(/<\/script/gi, '<\\/script')}</script>
 <script>
 (async () => {
@@ -159,6 +177,45 @@ const scenarios = {
     out.wsAfterEscape = Boolean(q('#eat-workspace')); out.tabBack = !tab().hidden; out.drawerBack = !sheet().hidden;
     return out;
   }`,
+  onboarding: `async ({ wait }) => {${HELPERS}
+    const q = (sel) => S().querySelector(sel);
+    const out = { title1: q('#eat-ob-title')?.textContent, modal: q('.onboarding')?.getAttribute('aria-modal'), focus: S().activeElement?.getAttribute('name') };
+    const sel = q('select[name="ob-language"]'); sel.value = 'tr'; sel.dispatchEvent(new Event('change', { bubbles: true })); await wait(150);
+    out.title1Tr = q('#eat-ob-title')?.textContent;
+    out.progress1 = q('[role="progressbar"]')?.getAttribute('aria-valuenow');
+    q('[data-action="ob-continue"]').click(); await wait(150);
+    out.title2 = q('#eat-ob-title')?.textContent;
+    out.progress2 = q('[role="progressbar"]')?.getAttribute('aria-valuenow');
+    q('input[name="ob-tool-message-assistant"]').click(); await wait(50);
+    q('[data-action="ob-finish"]').click(); await wait(200);
+    const stored = window.__values.get('eat:v1:core:settings');
+    out.saved = { onboarded: stored.onboarded, language: stored.language, ma: stored.tools['message-assistant'], sale: stored.tools['sale-manager'] };
+    out.dialogGone = !q('.onboarding');
+    out.tabFocused = S().activeElement === tab();
+    return out;
+  }`,
+  migration: `async ({ wait }) => {${HELPERS}
+    const q = (sel) => S().querySelector(sel);
+    await click(); q('[data-action="open-workspace"]').click(); await wait(120);
+    q('[data-page="settings"]').click(); await wait(120);
+    q('[data-name="settings-tab"][data-value="privacy"]').click(); await wait(120);
+    q('[data-action="start-migration"]').click(); await wait(100);
+    const runningLabel = q('[data-action="start-migration"]').textContent;
+    await wait(5000);
+    const row = q('tr[data-tool="ads-keyword-manager"]');
+    return {
+      runningLabel,
+      rows: [...S().querySelectorAll('tbody tr')].map((r) => r.dataset.tool),
+      result: row?.querySelector('.badge')?.textContent ?? null,
+      sas: row?.querySelector('[data-sas]')?.dataset.sas ?? null,
+      standaloneSas: window.__standaloneSas ?? null,
+      standaloneDone: window.__standaloneDone === true,
+      stored: window.__values.get('eat:v1:ads-keyword-manager:legacy.adWordlist') ?? null,
+      storedUpdateState: window.__values.has('eat:v1:ads-keyword-manager:legacy.adKeywordManagerScriptUpdateState'),
+      record: Boolean(window.__values.get('eat:v1:core:migration.ads-keyword-manager')),
+      doneLine: q('[data-role="mig-done"]')?.textContent ?? null,
+    };
+  }`,
   openSettings: `async ({ wait }) => {${HELPERS}
     await click(); S().querySelector('[data-action="open-workspace"]').click(); await wait(120);
     S().querySelector('[data-page="settings"]').click(); await wait(120);
@@ -171,15 +228,19 @@ const scenarios = {
 };
 
 const PAGES = {
-  '/your/shops/me/sales-discounts': { settings: { language: 'tr', theme: 'light' }, scenario: scenarios.sellerPage },
-  '/c/jewelry': { settings: { language: 'tr' }, scenario: scenarios.shoppingPage },
-  '/your/shops/me/stats': { settings: { language: 'tr', theme: 'dark', drawer: { openOnLoad: true } }, scenario: scenarios.darkOpen },
-  '/your/shops/me/tools/listings': { settings: { language: 'tr', theme: 'light' }, scenario: scenarios.workspace },
+  '/your/shops/me/sales-discounts': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.sellerPage },
+  '/c/jewelry': { settings: { onboarded: true, language: 'tr' }, scenario: scenarios.shoppingPage },
+  '/your/shops/me/stats': { settings: { onboarded: true, language: 'tr', theme: 'dark', drawer: { openOnLoad: true } }, scenario: scenarios.darkOpen },
+  '/your/shops/me/tools/listings': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.workspace },
+  '/your/shops/me/orders': { settings: null, scenario: scenarios.onboarding },
+  '/your/shops/me/advertising': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
   // Screenshot-only pages.
-  '/your/account': { settings: { language: 'tr', theme: 'light' }, scenario: scenarios.openSettings },
-  '/your/purchases': { settings: { language: 'tr', theme: 'dark' }, scenario: scenarios.openSettings },
-  '/messages': { settings: { language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.shoppingPage },
-  '/your/orders/sold': { settings: { language: 'tr', theme: 'light' }, scenario: scenarios.shoppingPage },
+  '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
+  '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
+  '/your/account': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.openSettings },
+  '/your/purchases': { settings: { onboarded: true, language: 'tr', theme: 'dark' }, scenario: scenarios.openSettings },
+  '/messages': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.shoppingPage },
+  '/your/orders/sold': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.shoppingPage },
 };
 
 function startServer() {
@@ -199,7 +260,7 @@ function runChrome(chrome, url, extra = []) {
     const profile = await mkdtemp(path.join(os.tmpdir(), 'eat-shell-'));
     const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`,
       // Reduced motion turns off the slide animation, so measurements do not depend on timing.
-      '--window-size=1440,900', '--hide-scrollbars', '--force-prefers-reduced-motion', '--virtual-time-budget=6000', ...extra, url], { stdio: ['ignore', 'pipe', 'pipe'] });
+      '--window-size=1440,900', '--hide-scrollbars', '--force-prefers-reduced-motion', '--lang=en-US', '--virtual-time-budget=12000', ...extra, url], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = ''; let stderr = '';
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', (c) => { stdout += c; }); child.stderr.on('data', (c) => { stderr += c; });
@@ -304,8 +365,36 @@ test('workspace: navigation, settings, deleting local data, Escape back to the d
   assert.equal(r.drawerBack, true, 'Escape returns to the drawer');
 });
 
+test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/orders');
+  assert.equal(r.title1, 'Choose your language', 'Chrome runs with --lang=en-US, so the setup opens in English');
+  assert.equal(r.modal, 'true');
+  assert.equal(r.focus, 'ob-language');
+  assert.equal(r.title1Tr, 'Dilinizi seçin');
+  assert.equal(r.progress1, '1');
+  assert.equal(r.title2, 'Hangi araçları istiyorsunuz?');
+  assert.equal(r.progress2, '2');
+  assert.deepEqual(r.saved, { onboarded: true, language: 'tr', ma: false, sale: true });
+  assert.equal(r.dialogGone, true);
+  assert.equal(r.tabFocused, true);
+});
+
+test('transfer screen pulls data from an armed standalone script on the same tab', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising');
+  assert.equal(r.runningLabel, 'Ayrı scriptlerin yanıtı bekleniyor…');
+  assert.deepEqual(r.rows, ['ads-keyword-manager']);
+  assert.equal(r.result, 'Aktarıldı');
+  assert.match(r.sas, /^\d{4}$/);
+  assert.equal(r.sas, r.standaloneSas, 'both sides show the same check code');
+  assert.equal(r.standaloneDone, true, 'the standalone script got the acknowledgement');
+  assert.equal(r.stored, 'bts\narmy gift');
+  assert.equal(r.storedUpdateState, false, 'update state stays behind');
+  assert.equal(r.record, true);
+  assert.match(r.doneLine, /Ads Keyword Manager/);
+});
+
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });
