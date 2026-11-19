@@ -14,7 +14,9 @@ export const META = Object.freeze({
   description: 'Sale Manager, Message Assistant, Ads Keyword Manager, Listing Analyzer and Keyword & Market Analyzer for Etsy sellers, in one drawer.',
   author: 'Makaytron',
   homepage: 'https://makaytron.com',
-  license: 'See LICENSE',
+  supportURL: 'https://github.com/Makaytron/Etsy-Automation-Tools/issues',
+  icon: 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/assets/makaytron-logo.png',
+  license: 'MIT',
   // Union of the standalone scripts' @match lines. Each tool still runs only
   // on its own pages through src/core/routes.js.
   match: Object.freeze(['https://www.etsy.com/*', 'https://etsy.com/*']),

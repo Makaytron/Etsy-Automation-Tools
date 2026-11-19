@@ -1,0 +1,41 @@
+name: Unified script CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'shared/lifecycle/**'
+      - 'config/production-packages.json'
+      - 'tools/Build-Unified-Userscript.mjs'
+      - 'tools/Test-Unified-*.mjs'
+      - '.github/workflows/unified-script-ci.yml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unified:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out the reviewed revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+      - name: Test core modules
+        run: node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs
+      - name: Test the single-file build
+        run: node --test tools/Test-Unified-Build.mjs
+      - name: Check the build is deterministic
+        run: node tools/Build-Unified-Userscript.mjs --check
+      - name: Build and syntax-check the userscript
+        run: |
+          node tools/Build-Unified-Userscript.mjs
+          node --check dist/etsy-automation-tools.user.js
