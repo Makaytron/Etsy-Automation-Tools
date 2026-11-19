@@ -16,7 +16,13 @@ test('every edit applies and the engine keeps its version', () => {
     if (!to.includes(from)) assert.ok(!adopted.includes(from), `${from} is gone`);
   }
   assert.match(adopted, /^async function createAdoptedListingAnalyzer\(__env\) \{/m);
-  assert.match(adopted, /return \{ start: __eatStart, suspend: suspendListingRoute, version: APP_VERSION \};/);
+  assert.match(adopted, /start: __eatStart, suspend: suspendListingRoute, version: APP_VERSION,/);
+  assert.match(adopted, /snapshot: __eatSnapshot, openPanel: __eatOpen, syncLanguage: __eatSyncLanguage,/);
+  assert.match(adopted, /scanPage: \(\) => scanCurrentPage\(\), toggleCollection: \(\) => Collection\.toggle\(\), exportData: \(\) => exportBackup\(\),/);
+  assert.equal(adopted.split('__env.onChange?.();').length - 1, 3, 'status, render and visibility hooks');
+  assert.ok(adopted.includes('.meli-launcher{display:none!important}'), 'the edge button replaces the floating launcher');
+  // The language switch never runs during a collection.
+  assert.match(adopted, /next === state\.settings\.language \|\| state\.collectionLoop \|\| !state\.panel\) return null;/);
   assert.doesNotMatch(adopted, /__MAKAYTRON_LISTING_SKIP_INIT__/, 'the standalone self-start is removed');
 });
 

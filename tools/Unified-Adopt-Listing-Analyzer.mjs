@@ -36,15 +36,58 @@ export const LA_EDITS = Object.freeze([
   ['window.__MAKAYTRON_LISTING_TEST__ === true', 'false', 9, 'test timing and surface off'],
   ["typeof window.__MAKAYTRON_LISTING_NAVIGATE__ === 'function'", 'false', 1, 'test navigation off'],
   ["typeof window.__MAKAYTRON_LISTING_PAGE_NAVIGATE__ === 'function'", 'false', 1, 'test page navigation off'],
+  // The unified edge button replaces the floating launcher; the panel itself stays for detailed work.
+  ['<style>${STYLES}</style><button class="meli-launcher"', '<style>${STYLES}.meli-launcher{display:none!important}</style><button class="meli-launcher"', 1, 'launcher hidden'],
+  // The panel opens from the unified screens, never by itself on page load (not saved, so the user's choice in the panel still counts while it is open).
+  ["            state.launcher.addEventListener('click', () => { void this.setCollapsed(false); });\n",
+    "            state.launcher.addEventListener('click', () => { void this.setCollapsed(false); });\n            state.settings.collapsed = true;\n", 1, 'panel starts hidden'],
+  // The unified screens follow the engine: status line, every panel render and showing or hiding the panel.
+  ["            element.querySelector('span').textContent = t(state.status.key, state.status.params);\n",
+    "            element.querySelector('span').textContent = t(state.status.key, state.status.params);\n            __env.onChange?.();\n", 1, 'status hook'],
+  ["            const views = new Set(['overview', 'analysis', 'ai', 'queue', 'settings']);\n",
+    "            const views = new Set(['overview', 'analysis', 'ai', 'queue', 'settings']);\n            __env.onChange?.();\n", 1, 'render hook'],
+  ['            if (!state.panel || !state.launcher) return;\n', '            if (!state.panel || !state.launcher) return;\n            __env.onChange?.();\n', 1, 'visibility hook'],
   // The standalone package's usage metrics stay with the standalone package.
   ['    function telemetrySuppressed() {\n', '    function telemetrySuppressed() {\n        return true;\n', 1, 'no telemetry from the unified engine'],
 ]);
 
+// What the unified screens may read and do: a read-only summary, opening the
+// engine's own panel at a view, and its own scan, collection and export actions.
 const EPILOGUE = `
     function __eatStart() {
         return RouteLifecycle.start({ enter: init, leave: suspendListingRoute });
     }
-    return { start: __eatStart, suspend: suspendListingRoute, version: APP_VERSION };`;
+    function __eatSnapshot() {
+        const counts = UI.summary();
+        const job = state.collection;
+        return {
+            route: routeKind(), language: state.settings.language, open: !state.settings.collapsed,
+            status: { tone: String(state.status.tone || 'ready'), text: t(state.status.key, state.status.params) },
+            listings: state.records.length, pageListings: state.pageListings.length, fresh: analysisCollectionIsFresh(),
+            healthy: counts.healthy, needsReview: counts.needsReview, experiments: counts.experiments, deactivateReview: counts.deactivateReview,
+            collection: job ? { status: String(job.status || 'idle'), pages: Collection.pageCount(), total: Number(job.totalPages) || 0, found: job.uniqueIds?.length || 0 } : null,
+            collecting: state.collection?.status === 'running' && Boolean(state.collectionLoop && state.collectionLeaseToken),
+            queue: Array.isArray(state.queue?.items) ? state.queue.items.length : 0,
+        };
+    }
+    async function __eatOpen(view) {
+        if (!state.panel || !RouteLifecycle.allowed()) return false;
+        await UI.setCollapsed(false);
+        if (view === 'analysis') await UI.openAnalysis();
+        else if (view === 'ai') UI.openAi();
+        else if (view === 'settings') UI.openSettings();
+        else { state.activeView = view === 'queue' ? 'queue' : 'overview'; UI.render(true); }
+        return true;
+    }
+    function __eatSyncLanguage(next) {
+        if (!['tr', 'en'].includes(next) || next === state.settings.language || state.collectionLoop || !state.panel) return null;
+        return UI.toggleLanguage();
+    }
+    return {
+        start: __eatStart, suspend: suspendListingRoute, version: APP_VERSION,
+        snapshot: __eatSnapshot, openPanel: __eatOpen, syncLanguage: __eatSyncLanguage,
+        scanPage: () => scanCurrentPage(), toggleCollection: () => Collection.toggle(), exportData: () => exportBackup(),
+    };`;
 
 export function adoptListingAnalyzer(source = fs.readFileSync(LA_SOURCE, 'utf8')) {
   return adoptStandalone({
