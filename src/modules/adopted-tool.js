@@ -4,9 +4,7 @@
 // short grace period, never while the standalone script runs on the same page,
 // steps aside if that one appears later, stops when the tool is turned off, and
 // keeps its data under its own namespace through the GM shim. Until the tool's
-// new screens arrive, the engine shows its own panel. Not used by a tool right
-// now; the next adopted tools (Keyword & Market Analyzer, Message Assistant,
-// Listing Analyzer) start from it.
+// new screens arrive, the engine shows its own panel (Message Assistant today).
 
 import { createScopedGm } from '../core/scoped-gm.js';
 
@@ -20,8 +18,9 @@ const STANDALONE_GRACE_MS = 1500;
  * @param {string} o.factoryKey       key of the engine factory in ctx.engines
  * @param {string} o.versionKey       key of the engine version in ctx.engines
  * @param {string} o.startMethod      engine method that starts it ('start' or 'initialize')
+ * @param {object} [o.secrets]       credential paths per legacy key; kept under eat:secret: (see core/scoped-gm.js)
  */
-export function createAdoptedToolModule({ id, name, standaloneRootId, factoryKey, versionKey, startMethod = 'start' }) {
+export function createAdoptedToolModule({ id, name, standaloneRootId, factoryKey, versionKey, startMethod = 'start', secrets = {} }) {
   const state = { engine: null, starting: null, standalone: false, observer: null };
   const standalonePresent = (doc) => Boolean(doc.getElementById(standaloneRootId));
 
@@ -50,6 +49,7 @@ export function createAdoptedToolModule({ id, name, standaloneRootId, factoryKey
       gm: scope.GM, namespace: id, doc,
       info: { name: `Etsy Automation Tools · ${name}`, version: ctx.engines[versionKey] },
       resources: { makaytronLogo: ctx.assets?.logo ?? '' },
+      secrets,
     });
     state.engine = await ctx.engines[factoryKey]({
       GM: gm,

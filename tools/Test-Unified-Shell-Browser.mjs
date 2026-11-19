@@ -386,6 +386,22 @@ const scenarios = {
       status: S().querySelector('[data-role="tool-status"]')?.textContent ?? null,
     };
   }`,
+  maEngine: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    await wait(2000);
+    await until(() => document.getElementById('eat-message-assistant') || (document.getElementById('makaytron-etsy-message-assistant') && S().querySelector('[data-role="tool-status"]')?.textContent.includes('Ayrı')));
+    await wait(500);
+    const keys = [...window.__values.keys()];
+    return {
+      unifiedHost: Boolean(document.getElementById('eat-message-assistant')),
+      foreignKeys: keys.filter((k) => !k.startsWith('eat:')),
+      maKeys: keys.filter((k) => k.startsWith('eat:v1:message-assistant:')).length,
+      foreignReads: window.__reads.filter((k) => !k.startsWith('eat:')),
+      requests: window.__requests || [],
+      network: window.__network,
+      status: S().querySelector('[data-role="tool-status"]')?.textContent ?? null,
+    };
+  }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
@@ -415,6 +431,8 @@ const PAGES = {
   '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { ${KW_WAIT} return { ok: true }; }`, extra: KW_RESULT },
   '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { ${KW_WAIT} window.__shadow.querySelector('[data-kw="details"]').click(); await wait(200); return { ok: true }; }`, extra: KW_RESULT },
   '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { ${KW_WAIT} window.__shadow.querySelector('[data-kw="save"]').click(); await until(() => (window.__values.get('${KW_SAVED_KEY}') || []).length); window.__shadow.querySelector('[data-kw="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="kw-tab"][data-value="saved"]').click(); await until(() => window.__shadow.querySelector('[data-role="kw-saved"]')); return { ok: true }; }`, extra: KW_RESULT },
+  '/messages/eat-engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maEngine },
+  '/messages/eat-standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maEngine, extra: '<div id="makaytron-etsy-message-assistant">standalone Message Assistant</div>' },
   // Screenshot-only pages.
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -644,6 +662,23 @@ test('Keyword & Market Analyzer steps aside when the standalone script runs on t
   assert.equal(r.unifiedPanel, false);
   assert.deepEqual(r.requests, []);
   assert.match(r.status, /Ayrı Keyword & Market Analyzer scripti de bu sayfada çalışıyor/);
+});
+
+test('Message Assistant engine runs inside the unified script, isolated from a standalone copy', async () => {
+  const r = await visit(chrome, base, '/messages/eat-engine');
+  assert.equal(r.unifiedHost, true, 'the adopted engine shows its panel under its own id');
+  assert.deepEqual(r.foreignKeys, [], 'every value lives under eat:');
+  assert.ok(r.maKeys > 0, 'the engine writes its own namespace');
+  assert.deepEqual(r.foreignReads, [], 'and reads nothing outside eat:');
+  assert.deepEqual(r.requests, [], 'no update check, translation or AI request without the user');
+  assert.match(r.status, /kendi panelinde çalışıyor/);
+});
+
+test('Message Assistant steps aside when the standalone script runs on the same page', async () => {
+  const r = await visit(chrome, base, '/messages/eat-standalone');
+  assert.equal(r.unifiedHost, false);
+  assert.deepEqual(r.requests, []);
+  assert.match(r.status, /Ayrı Message Assistant scripti de bu sayfada çalışıyor/);
 });
 
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {

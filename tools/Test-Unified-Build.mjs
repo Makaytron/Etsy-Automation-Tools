@@ -34,8 +34,8 @@ test('shared lifecycle, migration handoff and the adopted Sale Manager are inlin
     assert.equal(count(marker), 1, marker);
   }
   // One copy for the unified host and one inside each adopted engine (Sale Manager, Ads Keyword Manager).
-  assert.equal(count('BEGIN SPA LIFECYCLE'), 4);
-  assert.equal(count('END SPA LIFECYCLE'), 4);
+  assert.equal(count('BEGIN SPA LIFECYCLE'), 5);
+  assert.equal(count('END SPA LIFECYCLE'), 5);
 });
 
 test('output contains no remote code execution', () => {
