@@ -21,7 +21,9 @@ This folder holds the source of the single userscript that will replace the five
 | `modules/index.js` | Declarations of the five tools. Their code moves here in phase 5. |
 | `ui/shell.js` | Edge button and drawer on seller pages, inside a closed shadow root. Click or Enter opens, Escape closes, dragging snaps the button to the nearest edge and saves it. Shopping pages get nothing. |
 | `ui/styles.js` | Shell styles. Sources: `template.primitive.sheet` (non-modal), `template.primitive.button`, `template.theme.tokens` via `shared/mkui/tokens.css`, `shadcn.dashboard.applied`, `shadcn.blocks.application-shell` block "App Shell 2". |
-| `ui/strings.js`, `ui/icons.js`, `ui/dom.js` | Interface strings (English source, Turkish bundled until phase 6), lucide icon paths, and text-only DOM helpers. |
+| `ui/workspace.js` | Full-window workspace opened from the drawer: sidebar (tools, Makaytron Pro, Settings), header with "back to the drawer" and close, and pages. Escape returns to the drawer. Narrow windows get the icon rail. |
+| `ui/settings-page.js`, `ui/controls.js`, `ui/styles-workspace.js` | Settings (General: theme, density, language, drawer edge and behaviour; Tools: turn tools and Pro suggestions on or off; Privacy and data: backup download/restore and deleting local data with typed confirmation, API keys only when ticked). Sources: `template.shell.base-layout`, `template.shell.app-sidebar`, `template.shell.site-header`, `template.navigation.nav-main`, `template.primitive.sidebar`, `card`, `tabs`, `checkbox`, `select`, `input`, `dialog`. The registry has no switch or slider, so on/off settings use the checkbox and the position along the edge is set by dragging. |
+| `ui/strings.js`, `ui/strings-workspace.js`, `ui/text.js`, `ui/icons.js`, `ui/dom.js` | Interface strings (English source, Turkish bundled until phase 6), lucide icon paths, and text-only DOM helpers. |
 
 ## Transfer from the standalone scripts
 
@@ -56,7 +58,7 @@ node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs to
 1. Core structure (done).
 2. Single-file deterministic build and product CI (done). MKUI is inlined together with the UI shell in step 4.
 3. Transfer protocol and receiving side (done). The standalone scripts get the sending side, the "Aktar" button and `@grant GM.listValues` (Listing Analyzer reads its per-listing keys) in step 7.
-4. Shared UI shell: edge button and drawer (done), then workspace, settings, onboarding and the transfer screen.
+4. Shared UI shell: edge button and drawer (done), workspace and settings (done), then onboarding and the transfer screen.
 5. Move tools in: Sale Manager, Ads Keyword Manager, Keyword & Market Analyzer, Message Assistant, Listing Analyzer.
 6. Language packs.
 7. Distribution: registry entry, hosted channels, migration notice in the standalone scripts (kept for six months).

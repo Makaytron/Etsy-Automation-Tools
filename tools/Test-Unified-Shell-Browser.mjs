@@ -46,6 +46,8 @@ function pageHtml({ settings, scenario }) {
 (() => {
   const values = new Map();
   ${settings ? `values.set('eat:v1:core:settings', ${safe(settings)});` : ''}
+  values.set('eat:v1:sale-manager:legacy.eda-batch-config-v4', { discount: 25 });
+  values.set('eat:secret:openai', 'fixture-placeholder');
   window.__values = values;
   window.GM = {
     getValue: async (k, d) => (values.has(k) ? structuredClone(values.get(k)) : d),
@@ -120,6 +122,48 @@ const scenarios = {
     out.dir = S().querySelector('.mkui-root').getAttribute('dir');
     return out;
   }`,
+  workspace: `async ({ wait }) => {${HELPERS}
+    const out = {};
+    const q = (sel) => S().querySelector(sel);
+    const press = async (sel) => { q(sel).click(); await wait(120); };
+    await click();
+    await press('[data-action="open-workspace"]');
+    out.wsVisible = Boolean(q('#eat-workspace')); out.tabHidden = tab().hidden; out.sheetHidden = sheet().hidden;
+    out.wsModal = q('#eat-workspace').getAttribute('aria-modal');
+    out.firstPage = q('[aria-current="page"]')?.dataset.page; out.firstTitle = q('.page-title')?.textContent;
+    out.focusStart = S().activeElement?.dataset.page ?? null;
+    await press('[data-page="settings"]');
+    out.settingsTitle = q('.page-title')?.textContent;
+    await press('[data-name="theme"][data-value="dark"]');
+    out.themeAfter = q('.mkui-root').dataset.theme; out.savedTheme = window.__values.get('eat:v1:core:settings').theme;
+    out.focusAfterTheme = S().activeElement?.dataset.value ?? null;
+    q('[data-name="theme"][data-value="dark"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, composed: true }));
+    await wait(120);
+    out.themeByKey = window.__values.get('eat:v1:core:settings').theme;
+    await press('[data-name="edge"][data-value="left"]');
+    out.savedEdge = window.__values.get('eat:v1:core:settings').drawer.edge;
+    await press('[data-name="settings-tab"][data-value="tools"]');
+    const ads = q('input[name="tool-ads-keyword-manager"]'); ads.click(); await wait(120);
+    out.savedAds = window.__values.get('eat:v1:core:settings').tools['ads-keyword-manager'];
+    out.menuAfterOff = [...S().querySelectorAll('.ws-menu-button')].map((b) => b.dataset.page).filter(Boolean);
+    await press('[data-name="settings-tab"][data-value="privacy"]');
+    await press('[data-action="delete-data"]');
+    out.dialog = Boolean(q('[role="alertdialog"]')); out.confirmDisabledAtStart = q('[data-action="confirm-delete"]').disabled;
+    const input = q('#eat-confirm'); input.value = 'sil'; input.dispatchEvent(new Event('input', { bubbles: true })); await wait(20);
+    out.confirmEnabledAfterTyping = !q('[data-action="confirm-delete"]').disabled;
+    await press('[data-action="confirm-delete"]'); await wait(200);
+    out.keysAfterDelete = [...window.__values.keys()].sort();
+    out.notice = q('.notice')?.textContent ?? null;
+    q('#eat-workspace').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
+    await wait(120);
+    out.wsAfterEscape = Boolean(q('#eat-workspace')); out.tabBack = !tab().hidden; out.drawerBack = !sheet().hidden;
+    return out;
+  }`,
+  openSettings: `async ({ wait }) => {${HELPERS}
+    await click(); S().querySelector('[data-action="open-workspace"]').click(); await wait(120);
+    S().querySelector('[data-page="settings"]').click(); await wait(120);
+    return { ok: true };
+  }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
@@ -130,7 +174,10 @@ const PAGES = {
   '/your/shops/me/sales-discounts': { settings: { language: 'tr', theme: 'light' }, scenario: scenarios.sellerPage },
   '/c/jewelry': { settings: { language: 'tr' }, scenario: scenarios.shoppingPage },
   '/your/shops/me/stats': { settings: { language: 'tr', theme: 'dark', drawer: { openOnLoad: true } }, scenario: scenarios.darkOpen },
+  '/your/shops/me/tools/listings': { settings: { language: 'tr', theme: 'light' }, scenario: scenarios.workspace },
   // Screenshot-only pages.
+  '/your/account': { settings: { language: 'tr', theme: 'light' }, scenario: scenarios.openSettings },
+  '/your/purchases': { settings: { language: 'tr', theme: 'dark' }, scenario: scenarios.openSettings },
   '/messages': { settings: { language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.shoppingPage },
   '/your/orders/sold': { settings: { language: 'tr', theme: 'light' }, scenario: scenarios.shoppingPage },
 };
@@ -229,8 +276,36 @@ test('dark theme and open-on-load on a seller page without a tool', async () => 
   assert.equal(r.noTool, 'Bu sayfada çalışan bir araç yok');
 });
 
+test('workspace: navigation, settings, deleting local data, Escape back to the drawer', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/tools/listings');
+  assert.equal(r.wsVisible, true);
+  assert.equal(r.tabHidden, true);
+  assert.equal(r.sheetHidden, true);
+  assert.equal(r.wsModal, 'true');
+  assert.equal(r.firstPage, 'tool:listing-analyzer', 'opens on the tool of this page');
+  assert.equal(r.firstTitle, 'Listing Analyzer');
+  assert.equal(r.focusStart, 'tool:listing-analyzer');
+  assert.equal(r.settingsTitle, 'Ayarlar');
+  assert.equal(r.themeAfter, 'dark');
+  assert.equal(r.savedTheme, 'dark');
+  assert.equal(r.focusAfterTheme, 'dark', 'focus survives the re-render');
+  assert.equal(r.themeByKey, 'system', 'arrow keys move the choice');
+  assert.equal(r.savedEdge, 'left');
+  assert.equal(r.savedAds, false);
+  assert.ok(!r.menuAfterOff.includes('tool:ads-keyword-manager'), r.menuAfterOff.join(','));
+  assert.equal(r.dialog, true);
+  assert.equal(r.confirmDisabledAtStart, true);
+  assert.equal(r.confirmEnabledAfterTyping, true, 'typing "sil" matches SİL in Turkish');
+  assert.ok(!r.keysAfterDelete.includes('eat:v1:sale-manager:legacy.eda-batch-config-v4'), 'tool data deleted');
+  assert.ok(r.keysAfterDelete.includes('eat:secret:openai'), 'API keys stay unless ticked');
+  assert.ok(r.notice && r.notice.length > 0, 'deletion is confirmed on the page');
+  assert.equal(r.wsAfterEscape, false);
+  assert.equal(r.tabBack, true);
+  assert.equal(r.drawerBack, true, 'Escape returns to the drawer');
+});
+
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold']]) {
+  for (const [name, pathname] of [['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });

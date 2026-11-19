@@ -6,25 +6,24 @@
 
 import { h, icon } from './dom.js';
 import { ICONS } from './icons.js';
-import { UI_STRINGS, TOOL_HOME } from './strings.js';
+import { TOOL_HOME } from './strings.js';
 import { SHELL_CSS } from './styles.js';
+import { WORKSPACE_CSS } from './styles-workspace.js';
+import { createText } from './text.js';
+import { createWorkspace } from './workspace.js';
 import { tabRect, snapToEdge, drawerSide, drawerWidth, TAB_SHORT } from '../core/drawer-geometry.js';
-import { detectLanguage, interpolate, textDirection } from '../core/i18n.js';
 import { TOOL_IDS } from '../core/settings.js';
 
 const DRAG_THRESHOLD = 5;
 const HOST_ID = 'makaytron-eat-root';
 
-export function createShell({ scope, settings, host, assets = {}, onActiveChange }) {
+export function createShell({ scope, settings, host, storage, appVersion, assets = {}, onActiveChange }) {
   const doc = scope.document;
   const state = { open: false, drag: null, mounted: false };
-  let root; let container; let tab; let sheet; let zones; let titleId;
+  let root; let container; let tab; let sheet; let zones; let titleId; let workspace;
 
-  const language = () => settings.get().language ?? detectLanguage(scope.navigator?.languages ?? [], Object.keys(UI_STRINGS), 'en');
-  const t = (key, vars) => {
-    const lang = UI_STRINGS[language()] ? language() : 'en';
-    return interpolate(UI_STRINGS[lang][key] ?? UI_STRINGS.en[key] ?? key, vars);
-  };
+  const text = createText({ settings, scope });
+  const { t, language } = text;
   const viewport = () => ({ width: scope.innerWidth, height: scope.innerHeight });
   const theme = () => {
     const pref = settings.get().theme;
@@ -36,7 +35,7 @@ export function createShell({ scope, settings, host, assets = {}, onActiveChange
     if (state.mounted) return;
     const hostEl = h(doc, 'div', { id: HOST_ID });
     root = hostEl.attachShadow({ mode: 'closed' });
-    const style = h(doc, 'style', { text: `${assets.mkuiTokens ?? ''}\n${SHELL_CSS}` });
+    const style = h(doc, 'style', { text: `${assets.mkuiTokens ?? ''}\n${SHELL_CSS}\n${WORKSPACE_CSS}` });
     container = h(doc, 'div', { class: 'mkui-root' });
     root.append(style, container);
     (doc.body ?? doc.documentElement).append(hostEl);
@@ -46,6 +45,7 @@ export function createShell({ scope, settings, host, assets = {}, onActiveChange
       onpointerdown: onPointerDown, onkeydown: onTabKey,
     }, assets.logo ? h(doc, 'img', { src: assets.logo, alt: '' }) : null, h(doc, 'span', { class: 'grip', 'aria-hidden': 'true' }));
     container.append(tab);
+    workspace = createWorkspace({ scope, container, text, settings, storage, host, appVersion, assets, onClose: onWorkspaceClose });
     scope.addEventListener('resize', layout);
     scope.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', applyChrome);
     settings.subscribe(() => { applyChrome(); render(); layout(); });
@@ -59,6 +59,7 @@ export function createShell({ scope, settings, host, assets = {}, onActiveChange
   function unmount() {
     if (!state.mounted) return;
     scope.removeEventListener('resize', layout);
+    if (workspace?.isOpen) workspace.close();
     doc.getElementById(HOST_ID)?.remove();
     state.mounted = false;
     state.open = false;
@@ -68,7 +69,8 @@ export function createShell({ scope, settings, host, assets = {}, onActiveChange
     const lang = language();
     container.setAttribute('data-theme', theme());
     container.setAttribute('lang', lang);
-    container.setAttribute('dir', textDirection(lang));
+    container.setAttribute('dir', text.direction());
+    container.setAttribute('data-density', settings.get().density);
     tab.setAttribute('aria-label', state.open ? t('drawer.close') : t('drawer.open'));
   }
 
@@ -110,7 +112,8 @@ export function createShell({ scope, settings, host, assets = {}, onActiveChange
         h(doc, 'a', { class: 'brand', href: 'https://makaytron.com', target: '_blank', rel: 'noopener noreferrer', 'aria-label': t('drawer.brandLink') },
           assets.logo ? h(doc, 'img', { src: assets.logo, alt: '' }) : null,
           h(doc, 'span', { class: 'brand-text' }, h(doc, 'h2', { class: 'sheet-title', id: titleId, text: 'Makaytron.com' }), h(doc, 'p', { class: 'sheet-description', text: `Etsy Automation Tools · ${routeLabel}` }))),
-        h(doc, 'button', { class: 'btn btn-ghost btn-icon close', type: 'button', 'aria-label': t('drawer.close'), onclick: () => setOpen(false) }, icon(doc, ICONS.close))),
+        h(doc, 'button', { class: 'btn btn-ghost btn-icon close', type: 'button', 'aria-label': t('ws.open'), 'data-action': 'open-workspace', onclick: openWorkspace }, icon(doc, ICONS.expand)),
+        h(doc, 'button', { class: 'btn btn-ghost btn-icon close', type: 'button', 'aria-label': t('drawer.close'), 'data-action': 'close-drawer', onclick: () => setOpen(false) }, icon(doc, ICONS.close))),
       h(doc, 'div', { class: 'sheet-body' }, current, tools),
       footer);
     container.append(sheet);
@@ -141,7 +144,19 @@ export function createShell({ scope, settings, host, assets = {}, onActiveChange
     tab.setAttribute('aria-label', open ? t('drawer.close') : t('drawer.open'));
     layout();
     onActiveChange?.(open);
-    if (focus) (open ? sheet.querySelector('.close') : tab).focus({ preventScroll: true });
+    if (focus) (open ? sheet.querySelector('[data-action="close-drawer"]') : tab).focus({ preventScroll: true });
+  }
+
+  function openWorkspace() {
+    setOpen(false, { focus: false });
+    tab.hidden = true;
+    workspace.open({ returnFocus: tab });
+  }
+
+  function onWorkspaceClose(backToDrawer) {
+    tab.hidden = false;
+    layout();
+    if (backToDrawer) setOpen(true); else tab.focus({ preventScroll: true });
   }
 
   function onSheetKey(event) {
@@ -217,6 +232,7 @@ export function createShell({ scope, settings, host, assets = {}, onActiveChange
     unmount,
     refresh: () => { if (state.mounted) render(); },
     open: () => setOpen(true),
+    openWorkspace: () => openWorkspace(),
     close: () => setOpen(false),
     get isOpen() { return state.open; },
   };
