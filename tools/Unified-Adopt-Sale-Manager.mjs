@@ -32,7 +32,39 @@ export const SALE_MANAGER_EDITS = Object.freeze([
     'const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path) && __env.isAllowed());', 1, 'route gate'],
   // The standalone package's usage metrics stay with the standalone package.
   ['    function telemetrySuppressed() {\n', '    function telemetrySuppressed() {\n        return true;\n', 1, 'no telemetry from the unified engine'],
+  // The unified screens redraw when the engine redraws its own panel.
+  ['    function renderPanel() {\n', '    function renderPanel() {\n        __env.onChange?.();\n', 1, 'state change hook'],
 ]);
+
+// Read and command surface for the unified screens. It only reads state and calls the
+// engine's own actions, so every safety rule of the standalone Sale Manager still applies.
+const ENGINE_API = `
+    function __eatSnapshot() {
+        const source = job?.active ? job : config;
+        const plans = [];
+        let cursor = source?.batchStartDate;
+        for (let i = 0; i < 400 && cursor && !batchCompleteAt(source, cursor); i += 1) {
+            const plan = buildPlan(cursor, source);
+            if (!plan) break;
+            plans.push({ saleName: plan.saleName, startDate: plan.startDateIso, endDate: plan.endDateIso, discount: plan.discount });
+            cursor = nextScheduleDate(source, cursor);
+        }
+        return clone({ version: VERSION, config, job, lastReport, plans, leaseOwned, routeActive });
+    }
+    return {
+        initialize,
+        suspend: suspendSaleRoute,
+        version: VERSION,
+        snapshot: __eatSnapshot,
+        start: () => startBatch(),
+        retry: () => retryCurrent(),
+        skip: () => skipCurrent(),
+        stop: () => stopBatch(),
+        updateConfig: async (patch) => { config = normalizeConfig({ ...config, ...patch }); await saveConfig(); },
+        downloadCsv: () => downloadCsv(lastReport),
+        downloadExcel: () => downloadExcel(lastReport),
+        openCreateSale: () => go(CREATE_SALE_URL),
+    };`;
 
 /** Returns the source of `async function createAdoptedSaleManager(__env)`. */
 export function adoptSaleManager(source = fs.readFileSync(SALE_MANAGER_SOURCE, 'utf8')) {
@@ -57,7 +89,7 @@ export function adoptSaleManager(source = fs.readFileSync(SALE_MANAGER_SOURCE, '
     '    const GM_getValue = undefined, GM_setValue = undefined, GM_deleteValue = undefined, GM_addValueChangeListener = undefined;',
     '    const GM_registerMenuCommand = undefined, GM_xmlhttpRequest = undefined, GM_info = undefined;',
     body.trimEnd(),
-    '    return { initialize, suspend: suspendSaleRoute, version: VERSION };',
+    ENGINE_API,
     '}',
     `const ADOPTED_SALE_MANAGER_VERSION = '${version}';`,
     '// END ADOPTED SALE MANAGER',

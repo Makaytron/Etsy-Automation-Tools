@@ -17,7 +17,8 @@ test('every edit applies exactly as expected and the engine keeps its version', 
     if (!to.includes(from)) assert.ok(!adopted.includes(from), `${from} is gone`);
   }
   assert.match(adopted, /^async function createAdoptedSaleManager\(__env\) \{/m);
-  assert.match(adopted, /return \{ initialize, suspend: suspendSaleRoute, version: VERSION \};/);
+  assert.match(adopted, /snapshot: __eatSnapshot,/);
+  assert.match(adopted, /function renderPanel\(\) \{\n {8}__env\.onChange\?\.\(\);/);
   assert.doesNotMatch(adopted, /\n {4}await initialize\(\);\n\}\)\(\);/, 'the standalone self-start is removed');
 });
 

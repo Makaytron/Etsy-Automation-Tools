@@ -19,7 +19,8 @@ This folder holds the source of the single userscript that will replace the five
 | `core/events.js` | Small event bus. |
 | `core/migration.js` | Receiving side of the one-time transfer from the standalone scripts: stores each tool's data under `legacy.<key>` in its namespace and records the transfer once. |
 | `modules/index.js` | The five tools: moved-in tools and placeholders for the ones still in their standalone scripts. |
-| `modules/sale-manager.js` | Sale Manager. Its engine is the standalone script itself, adopted at build time by `tools/Unified-Adopt-Sale-Manager.mjs`, so its 50 safety tests keep covering the code that runs. The engine starts once per page after a short grace period and never while the standalone Sale Manager runs on the same page (it also steps aside if that one appears later). Until the new screens arrive it shows its own panel. |
+| `modules/sale-manager.js` | Sale Manager. Its engine is the standalone script itself, adopted at build time by `tools/Unified-Adopt-Sale-Manager.mjs`, so its 50 safety tests keep covering the code that runs. The engine starts once per page after a short grace period and never while the standalone Sale Manager runs on the same page (it also steps aside if that one appears later). |
+| `modules/sale-manager-ui.js` | Sale Manager screens: the series card in the drawer (ready, running with progress, paused with Continue / Skip this day / Stop), the start confirmation listing every code, and the workspace page with Overview (KPI tiles and the planned campaigns table), Settings (dates, days per campaign, discount, code text, resume after reload; locked while a series runs) and Report (table, CSV and Excel). The screens read the engine snapshot and call its own actions, so its safety rules decide what happens on Etsy. Sources: `card`, `table`, `badge`, `progress`, `button`, `input`, `checkbox`, `tabs`, `dialog`, `shadcn.blocks.kpi-widgets`, `shadcn.blocks.datatable`. |
 | `core/scoped-gm.js` | The `GM` object an adopted engine sees: its keys live under `<tool>:legacy.<key>` (where the transfer writes), menu commands are dropped, resources come from the build, and the script info has no update URLs. |
 | `ui/shell.js` | Edge button and drawer on seller pages, inside a closed shadow root. Click or Enter opens, Escape closes, dragging snaps the button to the nearest edge and saves it. Shopping pages get nothing. |
 | `ui/styles.js` | Shell styles. Sources: `template.primitive.sheet` (non-modal), `template.primitive.button`, `template.theme.tokens` via `shared/mkui/tokens.css`, `shadcn.dashboard.applied`, `shadcn.blocks.application-shell` block "App Shell 2". |
@@ -63,7 +64,7 @@ node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs to
 2. Single-file deterministic build and product CI (done). MKUI is inlined together with the UI shell in step 4.
 3. Transfer protocol and receiving side (done). The standalone scripts get the sending side, the "Aktar" button and `@grant GM.listValues` (Listing Analyzer reads its per-listing keys) in step 7.
 4. Shared UI shell: edge button and drawer, workspace and settings, first-run setup and the transfer screen (done).
-5. Move tools in: Sale Manager (engine adopted; new screens next), Ads Keyword Manager, Keyword & Market Analyzer, Message Assistant, Listing Analyzer.
+5. Move tools in: Sale Manager (engine adopted, new screens done; the part-based code builder in the design needs a change to the standalone engine first), Ads Keyword Manager, Keyword & Market Analyzer, Message Assistant, Listing Analyzer.
 
 ## Adopted engines
 
@@ -71,7 +72,8 @@ node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs to
 
 - page-level names (panel and toast ids, Web Locks name, BroadcastChannel, sessionStorage keys) get an `eat-sale-` prefix so a standalone copy on the same tab is never touched;
 - the route predicate also asks the unified script whether the tool may run (turned on, no standalone copy present);
-- usage metrics stay with the standalone package.
+- usage metrics stay with the standalone package;
+- `renderPanel()` notifies the unified screens, and the factory returns a small surface: `snapshot()` (config, job, last report and the planned campaigns computed by the engine's own `buildPlan`) and the engine's own actions (`start`, `retry`, `skip`, `stop`, `updateConfig`, CSV/Excel download, open the create-sale page). The old panel is hidden by a style rule; the engine's notices still show.
 
 Fixes made in the standalone Sale Manager reach the unified script with the next build. `tools/Test-Unified-Sale-Manager.mjs` covers the edits and the GM shim; the Chrome test runs the engine on a fake Sales & Discounts page, checks it reads transferred data, writes only under `eat:` and makes no network request, and checks it stays off when the standalone script is present.
 6. Language packs.

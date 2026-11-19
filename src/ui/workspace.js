@@ -11,7 +11,7 @@ const SUPPORT_URL = 'https://github.com/Makaytron/Etsy-Automation-Tools/issues';
 export function createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, assets = {}, onClose }) {
   const doc = scope.document;
   const { t } = text;
-  const state = { open: false, page: 'settings', tab: 'general', returnFocus: null, message: '', migration: { running: false, results: null, done: [] } };
+  const state = { open: false, page: 'settings', tab: 'general', toolTab: {}, returnFocus: null, message: '', migration: { running: false, results: null, done: [] } };
 
   async function runMigration() {
     if (!migration || state.migration.running) return;
@@ -48,6 +48,13 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
   }
 
   function toolPage(id) {
+    const custom = host.module?.(id)?.renderPage?.({
+      doc, container, language: text.language(), tab: state.toolTab[id] ?? 'overview',
+      onTab: (tab) => { state.toolTab[id] = tab; state.message = ''; render(); },
+      message: state.message, say: (message) => { state.message = message; render(); },
+      openWorkspace: (page) => go(page),
+    });
+    if (custom) return custom;
     return h(doc, 'div', { style: 'display:contents' },
       h(doc, 'div', { class: 'page-head' },
         h(doc, 'h1', { class: 'page-title', text: t(`tool.${id}`) })),

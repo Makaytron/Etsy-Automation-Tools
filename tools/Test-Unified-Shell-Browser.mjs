@@ -236,7 +236,7 @@ const scenarios = {
     // Virtual time races ahead of real browser work such as Web Locks; poll with zero-delay timers so that work can land.
     const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
     await wait(2000);
-    await until(() => document.getElementById('eat-sale-batch-root') || document.getElementById('eda-batch-root') && S().querySelector('[data-role="tool-status"]')?.textContent.includes('Ayrı'));
+    await until(() => S().querySelector('[data-role="sale-drawer"]') || document.getElementById('eda-batch-root') && S().querySelector('[data-role="tool-status"]')?.textContent.includes('Ayrı'));
     await wait(300);
     const keys = [...window.__values.keys()];
     return {
@@ -247,7 +247,40 @@ const scenarios = {
       saleKeys: keys.filter((k) => k.startsWith('eat:v1:sale-manager:')).length,
       network: window.__network,
       status: S().querySelector('[data-role="tool-status"]')?.textContent ?? null,
+      saleDrawer: Boolean(S().querySelector('[data-role="sale-drawer"]')),
     };
+  }`,
+  saleScreens: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const q = (sel) => S().querySelector(sel);
+    await wait(2000);
+    await until(() => q('[data-role="sale-drawer"]'));
+    const out = {};
+    const engineRoot = document.getElementById('eat-sale-batch-root');
+    out.enginePanelHidden = engineRoot ? getComputedStyle(engineRoot).display === 'none' : null;
+    out.drawerText = q('[data-role="sale-drawer"]')?.textContent ?? null;
+    q('[data-sale="start"]').click(); await wait(100);
+    out.confirmTitle = q('.dialog-title')?.textContent ?? null;
+    out.confirmCodes = [...S().querySelectorAll('.dialog .mono-code')].map((n) => n.textContent);
+    q('[data-sale="confirm-start"]').click();
+    await until(() => document.getElementById('eat-sale-batch-toast-root')?.textContent);
+    out.engineToast = document.getElementById('eat-sale-batch-toast-root')?.textContent ?? null;
+    out.jobAfterStart = window.__values.get('eat:v1:sale-manager:legacy.eda-batch-job-v4') ?? null;
+    q('[data-sale="details"]').click(); await wait(150);
+    out.pageTitle = q('.page-title')?.textContent ?? null;
+    out.planRows = S().querySelectorAll('[data-role="sale-plan"] tbody tr').length;
+    q('[data-name="sale-tab"][data-value="settings"]').click(); await wait(100);
+    const form = q('[data-role="sale-settings"]');
+    form.elements.discount.value = '30'; form.elements.discountName.value = 'SPRING';
+    form.requestSubmit(); await until(() => window.__values.get('eat:v1:sale-manager:legacy.eda-batch-config-v4')?.discount === 30); await wait(150);
+    const cfg = window.__values.get('eat:v1:sale-manager:legacy.eda-batch-config-v4');
+    out.savedConfig = { discount: cfg.discount, discountName: cfg.discountName };
+    out.notice = q('.notice')?.textContent ?? null;
+    q('[data-name="sale-tab"][data-value="overview"]').click(); await wait(100);
+    out.firstCode = q('[data-role="sale-plan"] tbody tr')?.dataset.code ?? null;
+    q('[data-name="sale-tab"][data-value="report"]').click(); await wait(100);
+    out.noReport = Boolean(q('[data-role="sale-no-report"]'));
+    return out;
   }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
@@ -264,6 +297,9 @@ const PAGES = {
   '/your/shops/me/advertising': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
   '/your/shops/me/sales-discounts/engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.saleEngine, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 33, discountName: 'WINTER' } } },
   '/your/shops/me/sales-discounts/standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.saleEngine, extra: '<div id="eda-batch-root">standalone Sale Manager</div>' },
+  '/your/shops/me/sales-discounts/ui': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.saleScreens, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 25, discountName: 'WINTER', batchStartDate: '2026-12-07', batchEndDate: '2026-12-11', saleDurationDays: 1 } } },
+  '/your/shops/me/sales-discounts/drawer-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="sale-drawer"]')); return { ok: true }; }`, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 25, discountName: 'WINTER', batchStartDate: '2026-12-07', batchEndDate: '2026-12-11', saleDurationDays: 1 } } },
+  '/your/shops/me/sales-discounts/ui-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="sale-drawer"]')); window.__shadow.querySelector('[data-sale="details"]').click(); await wait(200); return { ok: true }; }`, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 25, discountName: 'WINTER', batchStartDate: '2026-12-07', batchEndDate: '2026-12-11', saleDurationDays: 1 } } },
   // Screenshot-only pages.
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -407,7 +443,7 @@ test('Sale Manager engine runs inside the unified script, isolated from a standa
   assert.deepEqual(r.foreignKeys, [], 'every value lives under eat:');
   assert.ok(r.saleKeys >= 1);
   assert.equal(r.network, 0, 'no update check or telemetry request');
-  assert.match(r.status, /kendi panelinde çalışıyor/);
+  assert.equal(r.saleDrawer, true, 'the drawer shows the Sale Manager series card');
 });
 
 test('Sale Manager steps aside when the standalone script runs on the same page', async () => {
@@ -416,6 +452,22 @@ test('Sale Manager steps aside when the standalone script runs on the same page'
   assert.equal(r.standalonePanel, true);
   assert.equal(r.network, 0);
   assert.match(r.status, /Ayrı Sale Manager scripti de bu sayfada çalışıyor/);
+});
+
+test('Sale Manager screens drive the engine without bypassing its safety checks', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/sales-discounts/ui');
+  assert.equal(r.enginePanelHidden, true, 'the old panel is replaced by the new screens');
+  assert.match(r.drawerText, /5 kampanya/);
+  assert.equal(r.confirmTitle, '5 kampanya sırayla oluşturulacak');
+  assert.deepEqual(r.confirmCodes, ['261207WINTER25', '261208WINTER25', '261209WINTER25', '261210WINTER25', '261211WINTER25']);
+  assert.match(r.engineToast, /mağaza kimliği okunamadı/, 'the engine refuses to start without a verified shop');
+  assert.equal(r.jobAfterStart, null, 'no job was created');
+  assert.equal(r.pageTitle, 'Kampanya serisi');
+  assert.equal(r.planRows, 5);
+  assert.deepEqual(r.savedConfig, { discount: 30, discountName: 'SPRING' });
+  assert.equal(r.notice, 'Ayarlar kaydedildi.');
+  assert.equal(r.firstCode, '261207SPRING30');
+  assert.equal(r.noReport, true);
 });
 
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
@@ -447,7 +499,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });

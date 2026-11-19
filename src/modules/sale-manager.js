@@ -4,20 +4,23 @@
 // build time (tools/Unified-Adopt-Sale-Manager.mjs) so its tested behaviour
 // is unchanged: every campaign is verified in the Etsy list, an unverifiable
 // step stops the series, and a reload resumes only with the user's consent.
-// Until the new screens arrive the engine shows its own panel on the Sales &
-// Discounts page.
+// The new screens (sale-manager-ui.js) read the engine's snapshot and call its
+// own actions; the engine's old panel stays hidden. Its short notices (toasts)
+// still show, because they carry the engine's safety messages.
 //
 // Two engines must never create campaigns on the same page. If the
 // standalone Sale Manager is also installed and running here, the unified
 // engine does not start, and it steps aside if the standalone one appears.
 
 import { createScopedGm } from '../core/scoped-gm.js';
+import { renderSaleDrawer, renderSalePage, confirmSaleStart } from './sale-manager-ui.js';
 
 export const STANDALONE_ROOT_ID = 'eda-batch-root';
+export const ENGINE_ROOT_ID = 'eat-sale-batch-root';
 const STANDALONE_GRACE_MS = 1500;
 
 export function createSaleManagerModule() {
-  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null };
+  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, lastSnapshot: '' };
 
   const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
 
@@ -30,6 +33,16 @@ export function createSaleManagerModule() {
       }
     });
     state.observer.observe(doc.documentElement, { childList: true, subtree: true });
+  }
+
+  function onEngineChange() {
+    const ctx = state.ctx;
+    if (!state.engine || !ctx) return;
+    // Redraw only when what the screens show has changed.
+    const text = JSON.stringify(state.engine.snapshot());
+    if (text === state.lastSnapshot) return;
+    state.lastSnapshot = text;
+    ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'running' });
   }
 
   async function start(ctx) {
@@ -48,12 +61,34 @@ export function createSaleManagerModule() {
       info: { name: 'Etsy Automation Tools · Sale Manager', version: ctx.engines.saleManagerVersion },
       resources: { makaytronLogo: ctx.assets?.logo ?? '' },
     });
+    // The new screens replace the engine's own panel.
+    gm.addStyle(`#${ENGINE_ROOT_ID}{display:none!important}`);
     state.engine = await ctx.engines.createSaleManager({
       GM: gm,
       isAllowed: () => !state.standalone && ctx.isToolEnabled('sale-manager'),
+      onChange: () => ctx.scope.setTimeout(onEngineChange, 0),
     });
     await state.engine.initialize();
-    ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'running' });
+    onEngineChange();
+  }
+
+  function actionsFor(ui) {
+    const engine = state.engine;
+    const run = (fn) => Promise.resolve().then(fn).catch((error) => console.error('[Etsy Automation Tools] Sale Manager', error));
+    return {
+      retry: () => run(() => engine.retry()),
+      skip: () => run(() => engine.skip()),
+      stop: () => run(() => engine.stop()),
+      updateConfig: (patch) => run(() => engine.updateConfig(patch)),
+      downloadCsv: () => run(() => engine.downloadCsv()),
+      downloadExcel: () => run(() => engine.downloadExcel()),
+      openEtsy: () => run(() => engine.openCreateSale()),
+      openPage: () => ui.openWorkspace?.('tool:sale-manager'),
+      say: (message) => ui.say?.(message),
+      confirmStart: (trigger) => confirmSaleStart(ui.doc, ui.container, {
+        snap: engine.snapshot(), language: ui.language, returnFocus: trigger, onStart: () => run(() => engine.start()),
+      }),
+    };
   }
 
   return {
@@ -63,6 +98,16 @@ export function createSaleManagerModule() {
     storageNamespace: 'sale-manager',
     migrated: true,
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+    /** Drawer section; null keeps the generic status text. */
+    renderDrawer(ui) {
+      if (state.standalone || !state.engine) return null;
+      return renderSaleDrawer(ui.doc, { snap: state.engine.snapshot(), language: ui.language, actions: actionsFor(ui) });
+    },
+    /** Workspace page; null keeps the generic tool page. */
+    renderPage(ui) {
+      if (state.standalone || !state.engine) return null;
+      return renderSalePage(ui.doc, { snap: state.engine.snapshot(), language: ui.language, actions: actionsFor(ui), tab: ui.tab, onTab: ui.onTab, message: ui.message });
+    },
     async mount(ctx) {
       state.ctx = ctx;
       // The engine follows Etsy navigation itself; it is created once per page load.

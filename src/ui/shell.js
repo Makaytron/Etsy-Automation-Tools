@@ -108,11 +108,12 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
         icon(doc, ICONS[id]),
         h(doc, 'span', { class: 'tool-text' }, h(doc, 'span', { class: 'tool-name', text: t(`tool.${id}`) }), h(doc, 'span', { class: 'tool-where', text: t(`where.${id}`) }))));
 
+    const toolView = active ? host.module?.(active)?.renderDrawer?.(toolUi()) : null;
     const current = active
       ? h(doc, 'section', { class: 'section', 'aria-labelledby': 'eat-current' },
         h(doc, 'span', { class: 'overline', id: 'eat-current', text: t('drawer.thisPage') }),
-        h(doc, 'div', { class: 'current' }, icon(doc, ICONS[active]), h(doc, 'span', { text: t(`tool.${active}`) })),
-        h(doc, 'p', { class: 'muted', 'data-role': 'tool-status', text: statusText(active) }))
+        toolView ?? h(doc, 'div', { class: 'current' }, icon(doc, ICONS[active]), h(doc, 'span', { text: t(`tool.${active}`) })),
+        toolView ? null : h(doc, 'p', { class: 'muted', 'data-role': 'tool-status', text: statusText(active) }))
       : h(doc, 'section', { class: 'section empty' },
         h(doc, 'span', { class: 'empty-icon' }, icon(doc, ICONS.compass, 20)),
         h(doc, 'strong', { text: t('drawer.noTool') }),
@@ -176,11 +177,16 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     if (focus) (open ? sheet.querySelector('[data-action="close-drawer"]') : tab).focus({ preventScroll: true });
   }
 
-  function openWorkspace() {
+  function openWorkspace(page) {
     raise();
     setOpen(false, { focus: false });
     tab.hidden = true;
-    workspace.open({ returnFocus: tab });
+    workspace.open({ page: typeof page === 'string' ? page : undefined, returnFocus: tab });
+  }
+
+  /** What a tool's drawer section may use. */
+  function toolUi() {
+    return { doc, container, language: language(), openWorkspace: (page) => openWorkspace(page) };
   }
 
   function onWorkspaceClose(backToDrawer) {
@@ -260,7 +266,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
   return {
     mount,
     unmount,
-    refresh: () => { if (state.mounted) render(); },
+    refresh: () => { if (state.mounted) { render(); workspace?.refresh(); } },
     open: () => setOpen(true),
     openWorkspace: () => openWorkspace(),
     close: () => setOpen(false),
