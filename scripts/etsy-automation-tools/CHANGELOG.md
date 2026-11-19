@@ -12,7 +12,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak 
 - The edge button and drawer on Etsy seller pages, the full-window workspace, shared settings (theme, density, language, drawer position, tools, Makaytron Pro suggestions), backup download and restore, and deleting local data.
 - First-run setup: language, then tools.
 - New screens for every tool; Message Assistant and Listing Analyzer keep their own panel for detailed work.
-- Languages: English and Turkish built in; German, Spanish, French, Italian, Dutch, Polish, Portuguese and Japanese as downloadable packs.
+- Languages: English built in; 42 more languages, Turkish included, as downloadable packs. The language screen and the problem report dialog are built in for every language.
 - The transfer from the standalone scripts: encrypted on the page, with a check code on both sides; API keys never move.
 
 ### Security

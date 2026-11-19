@@ -28,7 +28,7 @@ Her araç yalnız kendi sayfasında çalışır ve Ayarlar'dan kapatılabilir.
 
 ## Diller
 
-İngilizce ve Türkçe scriptin içindedir. Almanca, İspanyolca, Fransızca, İtalyanca, Felemenkçe, Lehçe, Portekizce ve Japonca seçildiğinde bu depodaki `languages/` klasöründen bir kez indirilir, doğrulanır ve saklanır. İlk ekran (dil seçimi) her dilde scriptin içindedir.
+Scriptin içinde yalnızca İngilizce tam olarak bulunur. Türkçe dahil 42 dil daha, seçildiğinde bu depodaki `languages/` klasöründen bir kez indirilir, doğrulanır ve saklanır. İlk ekran (dil seçimi) ve sorun bildirme penceresi her dilde scriptin içindedir; bu yüzden ilk açılış tarayıcının dilinde olur.
 
 ## Ayrı scriptlerden geçiş
 

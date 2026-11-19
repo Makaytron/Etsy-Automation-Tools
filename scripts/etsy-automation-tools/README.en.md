@@ -28,7 +28,7 @@ Each tool works only on its own page and can be turned off in Settings.
 
 ## Languages
 
-English and Turkish are built in. German, Spanish, French, Italian, Dutch, Polish, Portuguese and Japanese are downloaded once from this repository's `languages/` folder when chosen, validated and kept. The first screen (language choice) is built in for every language.
+Only English is built in in full. 42 more languages, Turkish included, are downloaded once from this repository's `languages/` folder when chosen, validated and kept. The first screen (language choice) and the problem report dialog are built in for every language, so the first start opens in the browser's language.
 
 ## Moving from the standalone scripts
 

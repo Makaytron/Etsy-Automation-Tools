@@ -9,7 +9,7 @@
 
 import { validatePack } from './i18n.js';
 
-export const PACK_LANGUAGES = Object.freeze(['ar', 'de', 'es', 'fr', 'hi', 'id', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ru', 'tr', 'uk', 'vi', 'zh-CN', 'zh-TW']);
+export const PACK_LANGUAGES = Object.freeze(['ar', 'bg', 'bn', 'ca', 'cs', 'da', 'de', 'el', 'es', 'et', 'fa', 'fi', 'fil', 'fr', 'he', 'hi', 'hr', 'hu', 'id', 'it', 'ja', 'ko', 'lt', 'lv', 'ms', 'nb', 'nl', 'pl', 'pt', 'ro', 'ru', 'sk', 'sl', 'sr', 'sv', 'th', 'tr', 'uk', 'ur', 'vi', 'zh-CN', 'zh-TW']);
 export const PACK_MIN_APP_VERSION = '2.0.0';
 export const PACK_BASE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/languages/';
 const MAX_PACK_BYTES = 256 * 1024;

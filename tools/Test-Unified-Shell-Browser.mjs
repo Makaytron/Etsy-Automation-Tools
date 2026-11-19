@@ -173,6 +173,7 @@ const KW_SAVED_KEY = 'eat:v1:keyword-market-analyzer:legacy.ekma.v1.captures';
 const KW_WAIT = `const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-kw-state="analysed"]'));`;
 
 const PACK_DE = JSON.parse(fs.readFileSync(new URL('../languages/de.json', import.meta.url), 'utf8'));
+const PACK_HE = JSON.parse(fs.readFileSync(new URL('../languages/he.json', import.meta.url), 'utf8'));
 
 const scenarios = {
   sellerPage: `async ({ wait }) => {${HELPERS}
@@ -508,6 +509,15 @@ const scenarios = {
       requests: window.__requests || [],
     };
   }`,
+  packRtl: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    await until(() => S().querySelector('.sheet')?.textContent.includes('אין כלי שפועל בדף הזה'));
+    return {
+      lang: S().querySelector('.mkui-root')?.getAttribute('lang') ?? null,
+      dir: S().querySelector('[dir]')?.getAttribute('dir') ?? null,
+      drawerText: S().querySelector('.sheet')?.textContent ?? '',
+    };
+  }`,
   packFailed: `async ({ wait }) => {${HELPERS}
     const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
     await until(() => S().querySelector('[data-role="lang-status"][data-state="error"]'));
@@ -605,6 +615,7 @@ const PAGES = {
   '/your/shops/me/tools/listings?eat=screens': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laScreens },
   '/your/shops/me/tools/listings?eat=standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laEngine, extra: '<div id="makaytron-etsy-listing-analyzer">standalone Listing Analyzer</div>' },
   '/your/shops/me/stats/pack-de': { settings: { onboarded: true, language: 'de', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packReady, packs: { de: PACK_DE } },
+  '/your/shops/me/stats/pack-he': { settings: { onboarded: true, language: 'he', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packRtl, packs: { he: PACK_HE } },
   '/your/shops/me/stats/pack-fr': { settings: { onboarded: false, language: 'fr', theme: 'light' }, scenario: scenarios.packFailed },
   '/your/shops/me/advertising/listings/transfer': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.realTransfer, extra: REAL_STANDALONE_ADS },
   '/your/shops/me/stats/feedback': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.feedback },
@@ -912,6 +923,13 @@ test('a language pack downloads once and the interface switches to it', async ()
   assert.deepEqual(r.requests, ['https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/languages/de.json']);
 });
 
+test('a right-to-left pack turns the interface around', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/stats/pack-he');
+  assert.equal(r.lang, 'he');
+  assert.equal(r.dir, 'rtl');
+  assert.match(r.drawerText, /אין כלי שפועל בדף הזה/);
+});
+
 test('a failed language pack keeps English, says so in the chosen language and can be retried', async () => {
   const r = await visit(chrome, base, '/your/shops/me/stats/pack-fr');
   assert.equal(r.title, 'Choisissez votre langue', 'the first screen is bundled in every language');
@@ -978,7 +996,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['feedback', '/your/shops/me/stats/feedback-shot'], ['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['feedback', '/your/shops/me/stats/feedback-shot'], ['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-he-rtl', '/your/shops/me/stats/pack-he'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });
