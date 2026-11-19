@@ -12,10 +12,13 @@ import { createEvents } from './core/events.js';
 import { createHost } from './core/host.js';
 import { TOOLS } from './modules/index.js';
 import { runLegacyMigration, migratedTools } from './core/migration.js';
+import { isSellerPath } from './core/routes.js';
+import { createShell } from './ui/shell.js';
 
 const LOG_PREFIX = '[Etsy Automation Tools]';
+const PATH_POLL_MS = 1000;
 
-export async function boot({ scope, createRouteLifecycle, handoff }) {
+export async function boot({ scope, createRouteLifecycle, handoff, assets = {} }) {
   if (scope.top !== scope.self) return null; // never run inside Etsy iframes
   if (scope.__etsyAutomationToolsBooted) return null; // one instance per document
   scope.__etsyAutomationToolsBooted = true;
@@ -42,6 +45,13 @@ export async function boot({ scope, createRouteLifecycle, handoff }) {
     done: () => migratedTools(storage, toolIds),
   };
 
+  // The edge button and drawer appear on seller pages only.
+  let shell = null;
+  const syncShell = () => {
+    if (!shell || !scope.document) return;
+    if (isSellerPath(scope.location.pathname)) { shell.mount(); shell.refresh(); } else shell.unmount();
+  };
+
   const host = createHost({
     modules: TOOLS,
     createRouteLifecycle,
@@ -49,7 +59,15 @@ export async function boot({ scope, createRouteLifecycle, handoff }) {
     services: { storage, settings, events, migration, appVersion: META.version, persistent: Boolean(gmStore) },
     isEnabled: (id) => settings.get().tools[id] !== false,
     onError,
+    onChange: syncShell,
   });
+  shell = createShell({ scope, settings, host, assets });
   await host.start();
-  return { host, storage, settings, events };
+  syncShell();
+  // Tool routes are followed by the lifecycle; this catches moves between other Etsy pages.
+  let lastPath = scope.location.pathname;
+  scope.setInterval?.(() => {
+    if (scope.location.pathname !== lastPath) { lastPath = scope.location.pathname; syncShell(); }
+  }, PATH_POLL_MS);
+  return { host, storage, settings, events, shell };
 }

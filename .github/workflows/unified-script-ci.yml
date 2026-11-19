@@ -7,6 +7,8 @@ on:
       - 'src/**'
       - 'shared/lifecycle/**'
       - 'shared/migration/**'
+      - 'shared/mkui/tokens.css'
+      - 'assets/makaytron-logo.png'
       - 'scripts/**'
       - 'config/production-packages.json'
       - 'tools/Build-Unified-Userscript.mjs'
@@ -37,6 +39,8 @@ jobs:
         run: node --test tools/Test-Unified-Migration.mjs
       - name: Test the single-file build
         run: node --test tools/Test-Unified-Build.mjs
+      - name: Test the edge button and drawer in real Chrome
+        run: node --test tools/Test-Unified-Shell-Browser.mjs
       - name: Check the build is deterministic
         run: node tools/Build-Unified-Userscript.mjs --check
       - name: Build and syntax-check the userscript

@@ -1,0 +1,77 @@
+// Interface strings for the drawer shell.
+//
+// English is the source language. Turkish is bundled for now; in phase 6 it
+// moves into a downloadable language pack like every other language, and only
+// the language-picker strings stay bundled.
+
+export const UI_STRINGS = Object.freeze({
+  en: Object.freeze({
+    'drawer.label': 'Makaytron drawer',
+    'drawer.open': 'Open the Makaytron drawer',
+    'drawer.close': 'Close the Makaytron drawer',
+    'drawer.brandLink': 'Open makaytron.com in a new tab',
+    'drawer.thisPage': 'On this page',
+    'drawer.tools': 'Tools',
+    'drawer.otherTools': 'Other tools',
+    'drawer.noTool': 'No tool runs on this page',
+    'drawer.noToolHint': 'Each tool gets ready on its own Etsy page. Choose where you want to go below.',
+    'drawer.notMigrated': 'This tool has not moved into Etsy Automation Tools yet. Keep using its standalone script for now.',
+    'drawer.pro': 'Drafts, mockups and a publishing queue in',
+    'drawer.proLink': 'Makaytron Pro',
+    'drawer.hidePro': 'Hide this suggestion',
+    'drag.hint': 'Drop: {edge} edge · the drawer opens from the {side}',
+    'drag.help': 'Left or right edge: opens from that side · Top or bottom edge: opens from the left · Esc: cancel',
+    'edge.left': 'left', 'edge.right': 'right', 'edge.top': 'top', 'edge.bottom': 'bottom',
+    'side.left': 'left', 'side.right': 'right',
+    'tool.sale-manager': 'Sale Manager',
+    'tool.message-assistant': 'Message Assistant',
+    'tool.ads-keyword-manager': 'Ads Keyword Manager',
+    'tool.listing-analyzer': 'Listing Analyzer',
+    'tool.keyword-market-analyzer': 'Keyword & Market Analyzer',
+    'where.sale-manager': 'On Sales & Discounts',
+    'where.message-assistant': 'On Messages',
+    'where.ads-keyword-manager': 'On an Etsy Ads listing',
+    'where.listing-analyzer': 'On Listings',
+    'where.keyword-market-analyzer': 'On Marketplace Insights',
+    'page.unsupported': 'Etsy',
+  }),
+  tr: Object.freeze({
+    'drawer.label': 'Makaytron çekmecesi',
+    'drawer.open': 'Makaytron çekmecesini aç',
+    'drawer.close': 'Makaytron çekmecesini kapat',
+    'drawer.brandLink': 'makaytron.com’u yeni sekmede aç',
+    'drawer.thisPage': 'Bu sayfada',
+    'drawer.tools': 'Araçlar',
+    'drawer.otherTools': 'Diğer araçlar',
+    'drawer.noTool': 'Bu sayfada çalışan bir araç yok',
+    'drawer.noToolHint': 'Her araç kendi Etsy sayfasında kendiliğinden hazır olur. Gitmek istediğiniz sayfayı aşağıdan seçin.',
+    'drawer.notMigrated': 'Bu araç henüz Etsy Automation Tools’a taşınmadı. Şimdilik ayrı scriptini kullanmaya devam edin.',
+    'drawer.pro': 'Taslak, mockup ve yayın kuyruğu için',
+    'drawer.proLink': 'Makaytron Pro',
+    'drawer.hidePro': 'Öneriyi gizle',
+    'drag.hint': 'Bırakın: {edge} kenar · Çekmece {side}dan açılır',
+    'drag.help': 'Sağ veya sol kenar: o taraftan açılır · Üst veya alt kenar: soldan açılır · Esc: vazgeç',
+    'edge.left': 'sol', 'edge.right': 'sağ', 'edge.top': 'üst', 'edge.bottom': 'alt',
+    'side.left': 'sol', 'side.right': 'sağ',
+    'tool.sale-manager': 'Sale Manager',
+    'tool.message-assistant': 'Message Assistant',
+    'tool.ads-keyword-manager': 'Ads Keyword Manager',
+    'tool.listing-analyzer': 'Listing Analyzer',
+    'tool.keyword-market-analyzer': 'Keyword & Market Analyzer',
+    'where.sale-manager': 'Sales & Discounts sayfasında',
+    'where.message-assistant': 'Mesajlar sayfasında',
+    'where.ads-keyword-manager': 'Etsy Ads listing sayfasında',
+    'where.listing-analyzer': 'Listings sayfasında',
+    'where.keyword-market-analyzer': 'Marketplace Insights sayfasında',
+    'page.unsupported': 'Etsy',
+  }),
+});
+
+/** Where each tool's page is; `me` resolves to the signed-in shop on Etsy. */
+export const TOOL_HOME = Object.freeze({
+  'sale-manager': '/your/shops/me/sales-discounts',
+  'message-assistant': '/messages',
+  'ads-keyword-manager': '/your/shops/me/advertising',
+  'listing-analyzer': '/your/shops/me/tools/listings',
+  'keyword-market-analyzer': '/your/shops/me/marketplace-insights',
+});

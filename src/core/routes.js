@@ -67,6 +67,11 @@ export function isSupportedPath(pathname) {
   return matchRoute(pathname) !== null;
 }
 
+/** Seller-side Etsy pages, where the edge button is shown. Shopping pages stay untouched. */
+export function isSellerPath(pathname) {
+  return typeof pathname === 'string' && /^\/(?:your(?:\/|$)|messages(?:\/|$)|conversations(?:\/|$))/.test(pathname);
+}
+
 /** Shop-name-free description of the current page for diagnostics. */
 export function describePath(pathname) {
   const route = matchRoute(pathname);

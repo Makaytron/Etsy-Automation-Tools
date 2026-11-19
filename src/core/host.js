@@ -18,7 +18,7 @@ import { matchRoute, isSupportedPath } from './routes.js';
  * @property {(ctx: object) => (void|Promise<void>)} [routeChange] same tool, new URL
  */
 
-export function createHost({ modules, createRouteLifecycle, location, services, isEnabled = () => true, onError }) {
+export function createHost({ modules, createRouteLifecycle, location, services, isEnabled = () => true, onError, onChange }) {
   const byId = new Map(modules.map((m) => [m.id, m]));
   if (byId.size !== modules.length) throw new Error('Duplicate tool id');
   const report = onError ?? ((code, error) => console.error('[Etsy Automation Tools]', code, error));
@@ -32,14 +32,22 @@ export function createHost({ modules, createRouteLifecycle, location, services, 
     return ctx;
   }
 
+  const notify = () => { try { onChange?.(active?.module.id ?? null); } catch (error) { report('module_mount', error); } };
+
   async function stopActive() {
     if (!active) return;
     const { module, ctx } = active;
     active = null;
     try { await module.unmount?.(ctx); } catch (error) { report('module_unmount', error); }
+    notify();
   }
 
   async function reconcile() {
+    await reconcileTool();
+    notify();
+  }
+
+  async function reconcileTool() {
     const route = matchRoute(location.pathname);
     const module = route ? byId.get(route.module) : null;
     const wanted = module && isEnabled(module.id) ? module : null;

@@ -24,6 +24,8 @@ const SRC = path.join(repoRoot, 'src');
 const ENTRY = path.join(SRC, 'main.js');
 const LIFECYCLE = path.join(repoRoot, 'shared', 'lifecycle', 'spa-lifecycle.js');
 const HANDOFF = path.join(repoRoot, 'shared', 'migration', 'handoff.js');
+const MKUI_TOKENS = path.join(repoRoot, 'shared', 'mkui', 'tokens.css');
+const LOGO = path.join(repoRoot, 'assets', 'makaytron-logo.png');
 const HANDOFF_EXPORTS = ['MIGRATION_SPECS', 'migrationIsTransferableKey', 'migrationStripSecrets', 'createMigrationRequester', 'createDomMigrationTransport'];
 export const OUTPUT = path.join(repoRoot, 'dist', 'etsy-automation-tools.user.js');
 
@@ -136,6 +138,12 @@ export async function buildUnified() {
   };
   const lifecycle = inline(LIFECYCLE);
   const handoff = inline(HANDOFF);
+  // Assets are embedded so no Etsy page load makes a request for them.
+  const assets = {
+    logo: `data:image/png;base64,${fs.readFileSync(LOGO).toString('base64')}`,
+    mkuiTokens: read(MKUI_TOKENS).trim(),
+  };
+  const assetsLine = `  const __eat_assets = Object.freeze(${JSON.stringify(assets)});`;
   const parts = [
     renderHeader(meta),
     '',
@@ -147,8 +155,10 @@ export async function buildUnified() {
     '',
     handoff,
     '',
+    assetsLine,
+    '',
     ...modules.map((m) => transform(m, available)),
-    `  ${moduleVar(ENTRY)}.boot({ scope: window, createRouteLifecycle, handoff: { ${HANDOFF_EXPORTS.join(', ')} } }).catch((error) => console.error('[Etsy Automation Tools] boot', error));`,
+    `  ${moduleVar(ENTRY)}.boot({ scope: window, createRouteLifecycle, handoff: { ${HANDOFF_EXPORTS.join(', ')} }, assets: __eat_assets }).catch((error) => console.error('[Etsy Automation Tools] boot', error));`,
     '})();',
     '',
   ];

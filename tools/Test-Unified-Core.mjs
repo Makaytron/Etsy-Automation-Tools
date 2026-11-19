@@ -124,7 +124,7 @@ test('drawer opens from the button side, from the left for top and bottom', () =
   assert.equal(drawerSide('top'), 'left');
   assert.equal(drawerSide('bottom'), 'left');
   assert.equal(drawerWidth(1024), 360);
-  assert.equal(drawerWidth(1440), 400);
+  assert.equal(drawerWidth(1440), 384);
 });
 
 test('edge button stays inside the viewport and snaps to the nearest edge', () => {

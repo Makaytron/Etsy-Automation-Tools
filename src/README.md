@@ -19,6 +19,9 @@ This folder holds the source of the single userscript that will replace the five
 | `core/events.js` | Small event bus. |
 | `core/migration.js` | Receiving side of the one-time transfer from the standalone scripts: stores each tool's data under `legacy.<key>` in its namespace and records the transfer once. |
 | `modules/index.js` | Declarations of the five tools. Their code moves here in phase 5. |
+| `ui/shell.js` | Edge button and drawer on seller pages, inside a closed shadow root. Click or Enter opens, Escape closes, dragging snaps the button to the nearest edge and saves it. Shopping pages get nothing. |
+| `ui/styles.js` | Shell styles. Sources: `template.primitive.sheet` (non-modal), `template.primitive.button`, `template.theme.tokens` via `shared/mkui/tokens.css`, `shadcn.dashboard.applied`, `shadcn.blocks.application-shell` block "App Shell 2". |
+| `ui/strings.js`, `ui/icons.js`, `ui/dom.js` | Interface strings (English source, Turkish bundled until phase 6), lucide icon paths, and text-only DOM helpers. |
 
 ## Transfer from the standalone scripts
 
@@ -38,22 +41,22 @@ node tools/Build-Unified-Userscript.mjs          # writes dist/etsy-automation-t
 node tools/Build-Unified-Userscript.mjs --check  # builds twice, fails unless byte-identical
 ```
 
-`main.js` is the entry. The build inlines `shared/lifecycle/spa-lifecycle.js` and `shared/migration/handoff.js`, wraps every module in one closure, and renders the header from `meta.js`. It accepts only named relative imports and `export` on declarations; other module syntax, `eval`, `new Function`, `require`, and dynamic `import()` fail the build. The output is a development build: its header has no `@updateURL`/`@downloadURL` until the script is registered as a production package.
+`main.js` is the entry. The build inlines `shared/lifecycle/spa-lifecycle.js`, `shared/migration/handoff.js`, `shared/mkui/tokens.css` and the logo, wraps every module in one closure, and renders the header from `meta.js`. It accepts only named relative imports and `export` on declarations; other module syntax, `eval`, `new Function`, `require`, and dynamic `import()` fail the build. The output is a development build: its header has no `@updateURL`/`@downloadURL` until the script is registered as a production package.
 
 ## Tests
 
 ```bash
-node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs tools/Test-Unified-Migration.mjs tools/Test-Unified-Build.mjs
+node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs tools/Test-Unified-Migration.mjs tools/Test-Unified-Build.mjs tools/Test-Unified-Shell-Browser.mjs
 ```
 
-`Test-Unified-Host-Lifecycle.mjs` runs the host against the real shared lifecycle source. `Test-Unified-Migration.mjs` runs both ends of the transfer. `Test-Unified-Build.mjs` checks determinism and the header, then runs the built file in a sandbox with a fake userscript manager. `.github/workflows/unified-script-ci.yml` runs all of them.
+`Test-Unified-Host-Lifecycle.mjs` runs the host against the real shared lifecycle source. `Test-Unified-Migration.mjs` runs both ends of the transfer. `Test-Unified-Shell-Browser.mjs` runs the built script in real Chrome on fake Etsy pages (set `CHROME_PATH` if Chrome is elsewhere; `EAT_SCREENSHOTS=<dir>` also saves screenshots). `Test-Unified-Build.mjs` checks determinism and the header, then runs the built file in a sandbox with a fake userscript manager. `.github/workflows/unified-script-ci.yml` runs all of them.
 
 ## Roadmap
 
 1. Core structure (done).
 2. Single-file deterministic build and product CI (done). MKUI is inlined together with the UI shell in step 4.
 3. Transfer protocol and receiving side (done). The standalone scripts get the sending side, the "Aktar" button and `@grant GM.listValues` (Listing Analyzer reads its per-listing keys) in step 7.
-4. Shared UI shell: drawer, edge button, workspace, settings, onboarding.
+4. Shared UI shell: edge button and drawer (done), then workspace, settings, onboarding and the transfer screen.
 5. Move tools in: Sale Manager, Ads Keyword Manager, Keyword & Market Analyzer, Message Assistant, Listing Analyzer.
 6. Language packs.
 7. Distribution: registry entry, hosted channels, migration notice in the standalone scripts (kept for six months).
