@@ -15,7 +15,7 @@
 
 export const SHELL_CSS = `
 :host { all: initial; }
-.mkui-root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483000; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased; }
+.mkui-root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; font-size: 14px; line-height: 20px; -webkit-font-smoothing: antialiased; }
 .mkui-root[data-theme="dark"] {
   --mk-bg: #0b0b0b; --mk-surface: #171717; --mk-fg: #ededed; --mk-muted: #262626; --mk-muted-fg: #a3a3a3;
   --mk-border: #2e2e2e; --mk-input: #404040; --mk-primary: #ededed; --mk-primary-strong: #ffffff; --mk-primary-fg: #141414;

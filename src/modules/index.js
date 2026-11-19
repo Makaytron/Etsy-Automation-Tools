@@ -1,10 +1,11 @@
 // The five tools of the unified script.
 //
-// Phase 1 only declares each tool: identity, the standalone script it
-// replaces, and its storage namespace. `mount`/`unmount` are placeholders
-// until each tool's code moves here in phase 5 (order: Sale -> Ads -> KW ->
-// Messages -> Listing). The standalone scripts stay the production code until
-// then.
+// A tool is either moved in (`migrated: true`) or still a placeholder that
+// points to its standalone script. Order of moving in (phase 5):
+// Sale -> Ads -> KW -> Messages -> Listing. Placeholder tools keep running in
+// their standalone scripts until then.
+
+import { createSaleManagerModule } from './sale-manager.js';
 
 function placeholder(id, name, legacyScriptId) {
   return Object.freeze({
@@ -13,13 +14,14 @@ function placeholder(id, name, legacyScriptId) {
     legacyScriptId,
     storageNamespace: id,
     migrated: false,
+    status: () => 'not-migrated',
     async mount(ctx) { ctx.events?.emit('tool:placeholder', { tool: id }); },
     async unmount() {},
   });
 }
 
 export const TOOLS = Object.freeze([
-  placeholder('sale-manager', 'Sale Manager', 'sale-manager'),
+  createSaleManagerModule(),
   placeholder('message-assistant', 'Message Assistant', 'message-assistant'),
   placeholder('ads-keyword-manager', 'Ads Keyword Manager', 'ads-keyword-manager'),
   placeholder('listing-analyzer', 'Listing Analyzer', 'listing-analyzer'),

@@ -4,6 +4,7 @@
 //
 //   node --test tools/Test-Unified-Shell-Browser.mjs
 //   EAT_SCREENSHOTS=<dir> node --test tools/Test-Unified-Shell-Browser.mjs   (also writes screenshots)
+//   EAT_DEBUG_DIR=<dir> node --test tools/Test-Unified-Shell-Browser.mjs     (also writes each page's console log)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
@@ -13,6 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { readFile } from 'node:fs/promises';
+import fs from 'node:fs';
 import { buildUnified } from './Build-Unified-Userscript.mjs';
 
 const userscript = await buildUnified();
@@ -54,7 +56,7 @@ async function findChrome() {
 const safe = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 // In-page stand-in for the userscript manager, plus a hook that keeps the closed shadow root reachable for the test.
-function pageHtml({ settings, scenario, extra = '' }) {
+function pageHtml({ settings, scenario, extra = '', preload = {} }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Etsy fixture</title>
 <style>body{margin:0;font:16px Georgia,serif;background:#f5f5f5} button.probe{font:13px Georgia,serif}</style></head>
 <body><header style="height:56px;background:#fff;border-bottom:1px solid #ddd"></header>
@@ -65,9 +67,18 @@ function pageHtml({ settings, scenario, extra = '' }) {
   ${settings ? `values.set('eat:v1:core:settings', ${safe(settings)});` : ''}
   values.set('eat:v1:sale-manager:legacy.eda-batch-config-v4', { discount: 25 });
   values.set('eat:secret:openai', 'fixture-placeholder');
+  for (const [k, v] of Object.entries(${safe(preload)})) values.set(k, v);
   window.__values = values;
+  window.__reads = [];
+  window.__network = 0;
+  const realFetch = window.fetch;
+  window.fetch = (...args) => { window.__network += 1; return realFetch(...args); };
   window.GM = {
-    getValue: async (k, d) => (values.has(k) ? structuredClone(values.get(k)) : d),
+    info: { script: { name: 'fixture' }, scriptHandler: 'fixture' },
+    addValueChangeListener: () => 1,
+    removeValueChangeListener: () => {},
+    xmlHttpRequest: () => { window.__network += 1; },
+    getValue: async (k, d) => { window.__reads.push(k); return values.has(k) ? structuredClone(values.get(k)) : d; },
     setValue: async (k, v) => { values.set(k, structuredClone(v)); },
     deleteValue: async (k) => { values.delete(k); },
     listValues: async () => [...values.keys()],
@@ -221,6 +232,23 @@ const scenarios = {
     S().querySelector('[data-page="settings"]').click(); await wait(120);
     return { ok: true };
   }`,
+  saleEngine: `async ({ wait }) => {${HELPERS}
+    // Virtual time races ahead of real browser work such as Web Locks; poll with zero-delay timers so that work can land.
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    await wait(2000);
+    await until(() => document.getElementById('eat-sale-batch-root') || document.getElementById('eda-batch-root') && S().querySelector('[data-role="tool-status"]')?.textContent.includes('Ayrı'));
+    await wait(300);
+    const keys = [...window.__values.keys()];
+    return {
+      unifiedPanel: Boolean(document.getElementById('eat-sale-batch-root')),
+      standalonePanel: Boolean(document.getElementById('eda-batch-root')),
+      readMigratedConfig: window.__reads.includes('eat:v1:sale-manager:legacy.eda-batch-config-v4'),
+      foreignKeys: keys.filter((k) => !k.startsWith('eat:')),
+      saleKeys: keys.filter((k) => k.startsWith('eat:v1:sale-manager:')).length,
+      network: window.__network,
+      status: S().querySelector('[data-role="tool-status"]')?.textContent ?? null,
+    };
+  }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
@@ -234,6 +262,8 @@ const PAGES = {
   '/your/shops/me/tools/listings': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.workspace },
   '/your/shops/me/orders': { settings: null, scenario: scenarios.onboarding },
   '/your/shops/me/advertising': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
+  '/your/shops/me/sales-discounts/engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.saleEngine, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 33, discountName: 'WINTER' } } },
+  '/your/shops/me/sales-discounts/standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.saleEngine, extra: '<div id="eda-batch-root">standalone Sale Manager</div>' },
   // Screenshot-only pages.
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -260,13 +290,17 @@ function runChrome(chrome, url, extra = []) {
     const profile = await mkdtemp(path.join(os.tmpdir(), 'eat-shell-'));
     const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`,
       // Reduced motion turns off the slide animation, so measurements do not depend on timing.
-      '--window-size=1440,900', '--hide-scrollbars', '--force-prefers-reduced-motion', '--lang=en-US', '--virtual-time-budget=12000', ...extra, url], { stdio: ['ignore', 'pipe', 'pipe'] });
+      '--window-size=1440,900', '--hide-scrollbars', '--force-prefers-reduced-motion', '--lang=en-US', ...(process.env.EAT_DEBUG_DIR ? ['--enable-logging=stderr', '--v=0'] : []), '--virtual-time-budget=12000', ...extra, url], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = ''; let stderr = '';
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', (c) => { stdout += c; }); child.stderr.on('data', (c) => { stderr += c; });
     child.once('error', reject);
     child.once('exit', async (code) => {
       await rm(profile, { recursive: true, force: true }).catch(() => {});
+      if (process.env.EAT_DEBUG_DIR) {
+        const name = url.replace(/[^a-z0-9]+/gi, '_').slice(-60);
+        fs.writeFileSync(path.join(process.env.EAT_DEBUG_DIR, `${name}.log`), stderr.split(/\r?\n/).filter((l) => l.includes('CONSOLE')).join('\n'));
+      }
       if (code === 0) resolve(stdout); else reject(new Error(`Chrome exited with ${code}\n${stderr}`));
     });
   });
@@ -365,6 +399,25 @@ test('workspace: navigation, settings, deleting local data, Escape back to the d
   assert.equal(r.drawerBack, true, 'Escape returns to the drawer');
 });
 
+test('Sale Manager engine runs inside the unified script, isolated from a standalone copy', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/sales-discounts/engine');
+  assert.equal(r.unifiedPanel, true, 'the adopted engine shows its panel under its own id');
+  assert.equal(r.standalonePanel, false);
+  assert.equal(r.readMigratedConfig, true, 'it reads the data the transfer stored');
+  assert.deepEqual(r.foreignKeys, [], 'every value lives under eat:');
+  assert.ok(r.saleKeys >= 1);
+  assert.equal(r.network, 0, 'no update check or telemetry request');
+  assert.match(r.status, /kendi panelinde çalışıyor/);
+});
+
+test('Sale Manager steps aside when the standalone script runs on the same page', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/sales-discounts/standalone');
+  assert.equal(r.unifiedPanel, false, 'the unified engine never starts');
+  assert.equal(r.standalonePanel, true);
+  assert.equal(r.network, 0);
+  assert.match(r.status, /Ayrı Sale Manager scripti de bu sayfada çalışıyor/);
+});
+
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
   const r = await visit(chrome, base, '/your/shops/me/orders');
   assert.equal(r.title1, 'Choose your language', 'Chrome runs with --lang=en-US, so the setup opens in English');
@@ -394,7 +447,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });

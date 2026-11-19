@@ -21,7 +21,7 @@ const HOST_ID = 'makaytron-eat-root';
 export function createShell({ scope, settings, host, storage, appVersion, migration, assets = {}, onActiveChange }) {
   const doc = scope.document;
   const state = { open: false, drag: null, mounted: false };
-  let root; let container; let tab; let sheet; let zones; let titleId; let workspace;
+  let root; let container; let tab; let sheet; let zones; let titleId; let workspace; let hostEl;
   let unsubscribe = [];
 
   const text = createText({ settings, scope });
@@ -35,12 +35,12 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
 
   function mount() {
     if (state.mounted) return;
-    const hostEl = h(doc, 'div', { id: HOST_ID });
+    hostEl = h(doc, 'div', { id: HOST_ID });
     root = hostEl.attachShadow({ mode: 'closed' });
     const style = h(doc, 'style', { text: `${assets.mkuiTokens ?? ''}\n${SHELL_CSS}\n${WORKSPACE_CSS}` });
     container = h(doc, 'div', { class: 'mkui-root' });
     root.append(style, container);
-    (doc.body ?? doc.documentElement).append(hostEl);
+    doc.documentElement.append(hostEl);
     titleId = 'eat-sheet-title';
     tab = h(doc, 'button', {
       class: 'tab', type: 'button', 'aria-haspopup': 'dialog', 'aria-controls': 'eat-sheet', 'aria-expanded': 'false',
@@ -87,6 +87,16 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     tab.setAttribute('aria-label', state.open ? t('drawer.close') : t('drawer.open'));
   }
 
+  function statusText(id) {
+    const module = host.module?.(id);
+    const tool = t(`tool.${id}`);
+    if (!module?.migrated) return t('drawer.notMigrated');
+    const status = module.status?.();
+    if (status === 'standalone') return t('drawer.standaloneActive', { tool });
+    if (status === 'running') return t('drawer.engineRunning', { tool });
+    return t('drawer.engineStarting', { tool });
+  }
+
   // ── Drawer content ──────────────────────────────────────────────────
   function render() {
     sheet?.remove();
@@ -102,7 +112,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
       ? h(doc, 'section', { class: 'section', 'aria-labelledby': 'eat-current' },
         h(doc, 'span', { class: 'overline', id: 'eat-current', text: t('drawer.thisPage') }),
         h(doc, 'div', { class: 'current' }, icon(doc, ICONS[active]), h(doc, 'span', { text: t(`tool.${active}`) })),
-        h(doc, 'p', { class: 'muted', text: t('drawer.notMigrated') }))
+        h(doc, 'p', { class: 'muted', 'data-role': 'tool-status', text: statusText(active) }))
       : h(doc, 'section', { class: 'section empty' },
         h(doc, 'span', { class: 'empty-icon' }, icon(doc, ICONS.compass, 20)),
         h(doc, 'strong', { text: t('drawer.noTool') }),
@@ -150,7 +160,13 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     sheet.style.width = `${width}px`;
   }
 
+  // Engines adopted from standalone scripts draw their own panels at the top layer too; whatever opens last stays on top.
+  function raise() {
+    if (hostEl && hostEl.nextElementSibling) doc.documentElement.append(hostEl);
+  }
+
   function setOpen(open, { focus = true } = {}) {
+    if (open) raise();
     state.open = open;
     sheet.hidden = !open;
     tab.setAttribute('aria-expanded', String(open));
@@ -161,6 +177,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
   }
 
   function openWorkspace() {
+    raise();
     setOpen(false, { focus: false });
     tab.hidden = true;
     workspace.open({ returnFocus: tab });

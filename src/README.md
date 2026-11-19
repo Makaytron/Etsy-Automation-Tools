@@ -18,7 +18,9 @@ This folder holds the source of the single userscript that will replace the five
 | `core/diagnostics.js` | Problem reports built from an allowlist: version, browser family/major, OS family, locale/region, redacted route template, known error code, category, and a scrubbed note. |
 | `core/events.js` | Small event bus. |
 | `core/migration.js` | Receiving side of the one-time transfer from the standalone scripts: stores each tool's data under `legacy.<key>` in its namespace and records the transfer once. |
-| `modules/index.js` | Declarations of the five tools. Their code moves here in phase 5. |
+| `modules/index.js` | The five tools: moved-in tools and placeholders for the ones still in their standalone scripts. |
+| `modules/sale-manager.js` | Sale Manager. Its engine is the standalone script itself, adopted at build time by `tools/Unified-Adopt-Sale-Manager.mjs`, so its 50 safety tests keep covering the code that runs. The engine starts once per page after a short grace period and never while the standalone Sale Manager runs on the same page (it also steps aside if that one appears later). Until the new screens arrive it shows its own panel. |
+| `core/scoped-gm.js` | The `GM` object an adopted engine sees: its keys live under `<tool>:legacy.<key>` (where the transfer writes), menu commands are dropped, resources come from the build, and the script info has no update URLs. |
 | `ui/shell.js` | Edge button and drawer on seller pages, inside a closed shadow root. Click or Enter opens, Escape closes, dragging snaps the button to the nearest edge and saves it. Shopping pages get nothing. |
 | `ui/styles.js` | Shell styles. Sources: `template.primitive.sheet` (non-modal), `template.primitive.button`, `template.theme.tokens` via `shared/mkui/tokens.css`, `shadcn.dashboard.applied`, `shadcn.blocks.application-shell` block "App Shell 2". |
 | `ui/workspace.js` | Full-window workspace opened from the drawer: sidebar (tools, Makaytron Pro, Settings), header with "back to the drawer" and close, and pages. Escape returns to the drawer. Narrow windows get the icon rail. |
@@ -61,7 +63,17 @@ node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs to
 2. Single-file deterministic build and product CI (done). MKUI is inlined together with the UI shell in step 4.
 3. Transfer protocol and receiving side (done). The standalone scripts get the sending side, the "Aktar" button and `@grant GM.listValues` (Listing Analyzer reads its per-listing keys) in step 7.
 4. Shared UI shell: edge button and drawer, workspace and settings, first-run setup and the transfer screen (done).
-5. Move tools in: Sale Manager, Ads Keyword Manager, Keyword & Market Analyzer, Message Assistant, Listing Analyzer.
+5. Move tools in: Sale Manager (engine adopted; new screens next), Ads Keyword Manager, Keyword & Market Analyzer, Message Assistant, Listing Analyzer.
+
+## Adopted engines
+
+`tools/Unified-Adopt-Sale-Manager.mjs` turns the standalone Sale Manager body into `createAdoptedSaleManager(__env)`. Its edit list is short and exact; each edit must match the expected number of times or the build fails:
+
+- page-level names (panel and toast ids, Web Locks name, BroadcastChannel, sessionStorage keys) get an `eat-sale-` prefix so a standalone copy on the same tab is never touched;
+- the route predicate also asks the unified script whether the tool may run (turned on, no standalone copy present);
+- usage metrics stay with the standalone package.
+
+Fixes made in the standalone Sale Manager reach the unified script with the next build. `tools/Test-Unified-Sale-Manager.mjs` covers the edits and the GM shim; the Chrome test runs the engine on a fake Sales & Discounts page, checks it reads transferred data, writes only under `eat:` and makes no network request, and checks it stays off when the standalone script is present.
 6. Language packs.
 7. Distribution: registry entry, hosted channels, migration notice in the standalone scripts (kept for six months).
 8. Release.

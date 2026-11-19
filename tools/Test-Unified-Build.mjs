@@ -27,10 +27,14 @@ test('header is a development header with the new identity', () => {
   assert.doesNotMatch(header, /@namespace\s+https:\/\/github\.com\/Makaytron\/EtsyScript/);
 });
 
-test('shared lifecycle and migration handoff are inlined once', () => {
-  for (const marker of ['BEGIN SPA LIFECYCLE', 'END SPA LIFECYCLE', 'BEGIN MIGRATION HANDOFF', 'END MIGRATION HANDOFF']) {
-    assert.equal(built.split(marker).length - 1, 1, marker);
+test('shared lifecycle, migration handoff and the adopted Sale Manager are inlined', () => {
+  const count = (marker) => built.split(marker).length - 1;
+  for (const marker of ['BEGIN MIGRATION HANDOFF', 'END MIGRATION HANDOFF', 'BEGIN ADOPTED SALE MANAGER', 'END ADOPTED SALE MANAGER']) {
+    assert.equal(count(marker), 1, marker);
   }
+  // One copy for the unified host, one inside the adopted Sale Manager engine.
+  assert.equal(count('BEGIN SPA LIFECYCLE'), 2);
+  assert.equal(count('END SPA LIFECYCLE'), 2);
 });
 
 test('output contains no remote code execution', () => {
@@ -46,7 +50,8 @@ test('bundler refuses syntax it cannot bundle', () => {
   assert.doesNotThrow(() => assertSupportedSyntax("import { a } from './a.js';\nexport function b() {}", 'sample'));
 });
 
-function sandbox({ pathname = '/your/shops/me/sales-discounts', framed = false } = {}) {
+// A seller page without a tool: the boot path is checked here, the Sale Manager engine in real Chrome.
+function sandbox({ pathname = '/your/shops/me/stats', framed = false } = {}) {
   const values = new Map();
   const errors = [];
   const window = {

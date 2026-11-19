@@ -18,7 +18,7 @@ import { createShell } from './ui/shell.js';
 const LOG_PREFIX = '[Etsy Automation Tools]';
 const PATH_POLL_MS = 1000;
 
-export async function boot({ scope, createRouteLifecycle, handoff, assets = {} }) {
+export async function boot({ scope, createRouteLifecycle, handoff, assets = {}, engines = {} }) {
   if (scope.top !== scope.self) return null; // never run inside Etsy iframes
   if (scope.__etsyAutomationToolsBooted) return null; // one instance per document
   scope.__etsyAutomationToolsBooted = true;
@@ -56,12 +56,17 @@ export async function boot({ scope, createRouteLifecycle, handoff, assets = {} }
     modules: TOOLS,
     createRouteLifecycle,
     location: scope.location,
-    services: { storage, settings, events, migration, appVersion: META.version, persistent: Boolean(gmStore) },
+    services: {
+      storage, settings, events, migration, scope, assets, engines,
+      appVersion: META.version, persistent: Boolean(gmStore),
+      isToolEnabled: (id) => settings.get().tools[id] !== false,
+    },
     isEnabled: (id) => settings.get().tools[id] !== false,
     onError,
     onChange: syncShell,
   });
   shell = createShell({ scope, settings, host, storage, appVersion: META.version, migration, assets });
+  events.on('tool:status', () => shell.refresh());
   await host.start();
   syncShell();
   // Tool routes are followed by the lifecycle; this catches moves between other Etsy pages.

@@ -18,6 +18,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { adoptSaleManager } from './Unified-Adopt-Sale-Manager.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = path.join(repoRoot, 'src');
@@ -138,6 +139,9 @@ export async function buildUnified() {
   };
   const lifecycle = inline(LIFECYCLE);
   const handoff = inline(HANDOFF);
+  const saleManagerSource = adoptSaleManager();
+  assertSupportedSyntax(saleManagerSource, 'adopted Sale Manager');
+  const saleManager = saleManagerSource.split('\n').map((l) => (l ? `  ${l.replace(/^ {4}/, '')}` : l)).join('\n');
   // Assets are embedded so no Etsy page load makes a request for them.
   const assets = {
     logo: `data:image/png;base64,${fs.readFileSync(LOGO).toString('base64')}`,
@@ -157,8 +161,10 @@ export async function buildUnified() {
     '',
     assetsLine,
     '',
+    saleManager,
+    '',
     ...modules.map((m) => transform(m, available)),
-    `  ${moduleVar(ENTRY)}.boot({ scope: window, createRouteLifecycle, handoff: { ${HANDOFF_EXPORTS.join(', ')} }, assets: __eat_assets }).catch((error) => console.error('[Etsy Automation Tools] boot', error));`,
+    `  ${moduleVar(ENTRY)}.boot({ scope: window, createRouteLifecycle, handoff: { ${HANDOFF_EXPORTS.join(', ')} }, assets: __eat_assets, engines: { createSaleManager: createAdoptedSaleManager, saleManagerVersion: ADOPTED_SALE_MANAGER_VERSION } }).catch((error) => console.error('[Etsy Automation Tools] boot', error));`,
     '})();',
     '',
   ];

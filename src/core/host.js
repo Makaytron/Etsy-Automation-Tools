@@ -73,6 +73,7 @@ export function createHost({ modules, createRouteLifecycle, location, services, 
     async stop() { await stopActive(); lifecycle.dispose(); },
     reconcile,
     get activeTool() { return active?.module.id ?? null; },
+    module: (id) => byId.get(id) ?? null,
     get activeRoute() { return active?.route.id ?? null; },
   };
 }
