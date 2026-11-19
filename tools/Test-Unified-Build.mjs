@@ -29,12 +29,13 @@ test('header is a development header with the new identity', () => {
 
 test('shared lifecycle, migration handoff and the adopted Sale Manager are inlined', () => {
   const count = (marker) => built.split(marker).length - 1;
-  for (const marker of ['BEGIN MIGRATION HANDOFF', 'END MIGRATION HANDOFF', 'BEGIN ADOPTED SALE MANAGER', 'END ADOPTED SALE MANAGER']) {
+  for (const marker of ['BEGIN MIGRATION HANDOFF', 'END MIGRATION HANDOFF', 'BEGIN ADOPTED SALE MANAGER', 'END ADOPTED SALE MANAGER',
+    'BEGIN ADOPTED ADS KEYWORD MANAGER', 'END ADOPTED ADS KEYWORD MANAGER']) {
     assert.equal(count(marker), 1, marker);
   }
-  // One copy for the unified host, one inside the adopted Sale Manager engine.
-  assert.equal(count('BEGIN SPA LIFECYCLE'), 2);
-  assert.equal(count('END SPA LIFECYCLE'), 2);
+  // One copy for the unified host and one inside each adopted engine (Sale Manager, Ads Keyword Manager).
+  assert.equal(count('BEGIN SPA LIFECYCLE'), 3);
+  assert.equal(count('END SPA LIFECYCLE'), 3);
 });
 
 test('output contains no remote code execution', () => {

@@ -77,7 +77,13 @@ function pageHtml({ settings, scenario, extra = '', preload = {} }) {
     info: { script: { name: 'fixture' }, scriptHandler: 'fixture' },
     addValueChangeListener: () => 1,
     removeValueChangeListener: () => {},
-    xmlHttpRequest: () => { window.__network += 1; },
+    xmlHttpRequest: (details) => {
+      window.__network += 1;
+      (window.__requests = window.__requests || []).push(details.url);
+      // The Ads engine downloads its default word list; answer it like GitHub would.
+      if (details.url.includes('keyword-rules.txt')) setTimeout(() => details.onload?.({ status: 200, responseText: ['bts', 'army gift', ''].join(String.fromCharCode(10)) }), 0);
+      else setTimeout(() => details.onerror?.(new Error('blocked in fixture')), 0);
+    },
     getValue: async (k, d) => { window.__reads.push(k); return values.has(k) ? structuredClone(values.get(k)) : d; },
     setValue: async (k, v) => { values.set(k, structuredClone(v)); },
     deleteValue: async (k) => { values.delete(k); },
@@ -282,6 +288,22 @@ const scenarios = {
     out.noReport = Boolean(q('[data-role="sale-no-report"]'));
     return out;
   }`,
+  adsEngine: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    await wait(2000);
+    await until(() => document.getElementById('eat-ads-wordlist') || (document.getElementById('makaytron-ad-wordlist') && S().querySelector('[data-role="tool-status"]')?.textContent.includes('Ayrı')));
+    await wait(300);
+    const keys = [...window.__values.keys()];
+    return {
+      unifiedPanel: Boolean(document.getElementById('eat-ads-wordlist')),
+      standalonePanel: Boolean(document.getElementById('makaytron-ad-wordlist')),
+      foreignKeys: keys.filter((k) => !k.startsWith('eat:')),
+      adsReads: window.__reads.filter((k) => k.startsWith('eat:v1:ads-keyword-manager:legacy.')).length,
+      foreignReads: window.__reads.filter((k) => !k.startsWith('eat:')),
+      requests: window.__requests || [],
+      status: S().querySelector('[data-role="tool-status"]')?.textContent ?? null,
+    };
+  }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
@@ -300,6 +322,8 @@ const PAGES = {
   '/your/shops/me/sales-discounts/ui': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.saleScreens, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 25, discountName: 'WINTER', batchStartDate: '2026-12-07', batchEndDate: '2026-12-11', saleDurationDays: 1 } } },
   '/your/shops/me/sales-discounts/drawer-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="sale-drawer"]')); return { ok: true }; }`, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 25, discountName: 'WINTER', batchStartDate: '2026-12-07', batchEndDate: '2026-12-11', saleDurationDays: 1 } } },
   '/your/shops/me/sales-discounts/ui-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="sale-drawer"]')); window.__shadow.querySelector('[data-sale="details"]').click(); await wait(200); return { ok: true }; }`, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 25, discountName: 'WINTER', batchStartDate: '2026-12-07', batchEndDate: '2026-12-11', saleDurationDays: 1 } } },
+  '/your/shops/me/advertising/listings/123': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsEngine },
+  '/your/shops/me/advertising/listings/456': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsEngine, extra: '<div id="makaytron-ad-wordlist">standalone Ads Keyword Manager</div>' },
   // Screenshot-only pages.
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -468,6 +492,25 @@ test('Sale Manager screens drive the engine without bypassing its safety checks'
   assert.equal(r.notice, 'Ayarlar kaydedildi.');
   assert.equal(r.firstCode, '261207SPRING30');
   assert.equal(r.noReport, true);
+});
+
+test('Ads Keyword Manager engine runs inside the unified script, isolated from a standalone copy', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising/listings/123');
+  assert.equal(r.unifiedPanel, true, 'the adopted engine shows its panel under its own id');
+  assert.equal(r.standalonePanel, false);
+  assert.deepEqual(r.foreignKeys, [], 'every value lives under eat:');
+  assert.ok(r.adsReads > 0, 'the engine reads its own namespace');
+  assert.deepEqual(r.foreignReads, [], 'and nothing outside eat:');
+  assert.ok(r.requests.every((url) => url.includes('/scripts/etsy-ads-keyword-manager/keyword-rules.txt')), `only the word list is requested: ${r.requests.join(', ')}`);
+  assert.match(r.status, /kendi panelinde çalışıyor/);
+});
+
+test('Ads Keyword Manager steps aside when the standalone script runs on the same page', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising/listings/456');
+  assert.equal(r.unifiedPanel, false);
+  assert.equal(r.standalonePanel, true);
+  assert.deepEqual(r.requests, []);
+  assert.match(r.status, /Ayrı Ads Keyword Manager scripti de bu sayfada çalışıyor/);
 });
 
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
