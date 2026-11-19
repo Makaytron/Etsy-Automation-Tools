@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import fs from 'node:fs';
 
 import { buildUnified, assertSupportedSyntax, sha256 } from './Build-Unified-Userscript.mjs';
 
@@ -15,7 +16,7 @@ test('build is deterministic and uses LF line endings', async () => {
 test('header is a development header with the new identity', () => {
   const header = built.slice(0, built.indexOf('// ==/UserScript==') + 18);
   const one = (key) => header.match(new RegExp(`^// @${key}\\s+(.+)$`, 'm'))?.[1];
-  assert.equal(one('name'), 'Etsy Automation Tools');
+  assert.equal(one('name'), 'Makaytron Etsy Automation Tools');
   assert.equal(one('namespace'), 'https://makaytron.com/etsy-automation-tools');
   assert.match(one('version'), /^\d+\.\d+\.\d+$/);
   assert.equal(one('license'), 'MIT');
@@ -100,4 +101,26 @@ test('built script stays idle inside iframes', async () => {
   await settle();
   assert.equal(s.window.__etsyAutomationToolsBooted, undefined);
   assert.deepEqual(s.errors, []);
+});
+
+test('the production build carries the canonical update URLs and a synchronized runtime version', async () => {
+  const { buildUnified, RAW_MAIN } = await import('./Build-Unified-Userscript.mjs');
+  const { META } = await import('../src/meta.js');
+  const production = await buildUnified({ production: true });
+  const header = production.slice(0, production.indexOf('// ==/UserScript==') + 18);
+  const all = (key) => [...header.matchAll(new RegExp(`^// @${key}\\s+(.+)$`, 'gm'))].map((m) => m[1]);
+  const url = `${RAW_MAIN}${META.scriptPath}`;
+  assert.deepEqual(all('updateURL'), [url]);
+  assert.deepEqual(all('downloadURL'), [url]);
+  assert.deepEqual(all('name'), ['Makaytron Etsy Automation Tools']);
+  assert.match(all('version')[0], /^\d+\.\d+\.\d+$/);
+  assert.ok(production.includes(`const APP_VERSION = '${all('version')[0]}';`));
+  assert.match(META.scriptPath, /^scripts\/etsy-automation-tools\/[^/]+\.user\.js$/);
+  // The standalone scripts' notice links to the same file.
+  const notice = fs.readFileSync(new URL('../shared/migration/notice.js', import.meta.url), 'utf8');
+  assert.ok(notice.includes(`const EAT_INSTALL_URL = '${url}';`));
+  // Development and production builds differ only in the header lines and the banner.
+  const development = await buildUnified();
+  const strip = (text) => text.split('\n').filter((l) => !/^\/\/ @(updateURL|downloadURL)\b/.test(l) && !/^\/\/ (Etsy Automation Tools\. Generated|Development build)/.test(l)).join('\n');
+  assert.equal(strip(production), strip(development));
 });

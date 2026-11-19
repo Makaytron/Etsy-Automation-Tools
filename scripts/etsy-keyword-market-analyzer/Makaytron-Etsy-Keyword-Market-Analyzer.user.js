@@ -374,7 +374,7 @@
     // tools/Sync-Migration-Blocks.mjs. The unified script strips it when it
     // adopts a standalone engine.
 
-    const EAT_INSTALL_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-automation-tools/Etsy-Automation-Tools.user.js';
+    const EAT_INSTALL_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-automation-tools/Makaytron-Etsy-Automation-Tools.user.js';
     const EAT_NOTICE_HIDDEN_KEY = 'eat-migration-notice-hidden-until';
     const EAT_NOTICE_DONE_KEY = 'eat-migration-done';
     const EAT_NOTICE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
