@@ -37,7 +37,7 @@ jobs:
       - name: Test core modules
         run: node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs
       - name: Test the adopted engines
-        run: node --test tools/Test-Unified-Sale-Manager.mjs tools/Test-Unified-Ads-Keyword-Manager.mjs
+        run: node --test tools/Test-Unified-Sale-Manager.mjs tools/Test-Unified-Ads-Keyword-Manager.mjs tools/Test-Unified-Keyword-Market-Analyzer.mjs
       - name: Test the transfer from the standalone scripts
         run: node --test tools/Test-Unified-Migration.mjs
       - name: Test the single-file build

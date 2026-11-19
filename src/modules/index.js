@@ -7,6 +7,7 @@
 
 import { createSaleManagerModule } from './sale-manager.js';
 import { createAdsKeywordManagerModule } from './ads-keyword-manager.js';
+import { createKeywordMarketAnalyzerModule } from './keyword-market-analyzer.js';
 
 function placeholder(id, name, legacyScriptId) {
   return Object.freeze({
@@ -26,5 +27,5 @@ export const TOOLS = Object.freeze([
   placeholder('message-assistant', 'Message Assistant', 'message-assistant'),
   createAdsKeywordManagerModule(),
   placeholder('listing-analyzer', 'Listing Analyzer', 'listing-analyzer'),
-  placeholder('keyword-market-analyzer', 'Keyword & Market Analyzer', 'keyword-market-analyzer'),
+  createKeywordMarketAnalyzerModule(),
 ]);

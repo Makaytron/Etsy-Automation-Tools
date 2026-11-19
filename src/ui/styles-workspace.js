@@ -131,6 +131,7 @@ export const WORKSPACE_CSS = `
 .table-scroll { max-height: 280px; overflow: auto; }
 .sale-drawer, .ads-drawer { display: flex; flex-direction: column; gap: 12px; }
 .ads-drawer p { margin: 0; }
+.tile .badge { align-self: flex-start; }
 .sale-drawer .progress { flex: none; }
 @media (max-width: 1100px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 

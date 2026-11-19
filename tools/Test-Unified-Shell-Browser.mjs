@@ -90,7 +90,7 @@ function pageHtml({ settings, scenario, extra = '', preload = {} }) {
     listValues: async () => [...values.keys()],
   };
   const attach = Element.prototype.attachShadow;
-  Element.prototype.attachShadow = function (init) { const root = attach.call(this, init); window.__shadow = root; return root; };
+  Element.prototype.attachShadow = function (init) { const root = attach.call(this, init); if (this.id === 'makaytron-eat-root') window.__shadow = root; return root; };
 })();
 </script>
 ${extra}
@@ -130,6 +130,17 @@ const ADS_TABLE = `<section id="listing-detail-targeted-keywords-accordion"><tab
 ${[['bts sticker', 4, 1], ['army gift', 30, 0], ['kpop poster', 2, 1], ['wedding card', 3, 1]].map(([w, c, o]) => `<tr class="wt-table__row"><th class="wt-table__row__cell"><p>${w}</p></th><td><span>${c}</span></td><td><span>${o}</span></td></tr>`).join('')}
 </tbody></table><nav><button aria-current="true">1</button></nav></section>`;
 const ADS_RULES = ['bts', '=army gift', '/^kpop/'].join(String.fromCharCode(10));
+
+// A small Marketplace Insights result for "bts sticker" with two similar search terms.
+const KW_RESULT = `<div role="main"><section>
+<div><span>Your search</span><h2>bts sticker</h2></div>
+<div><span>Searches</span><span class="wt-text-title-larger">12,400</span></div>
+<div><span>Search results</span><span class="wt-text-title-larger">3,210</span></div>
+<table><thead><tr><th>Similar search terms</th><th>Searches</th><th>Search results</th></tr></thead><tbody>
+<tr><td>bts gift</td><td>8,100</td><td>1,200</td></tr><tr><td>kpop sticker</td><td>950</td><td>40,000</td></tr>
+</tbody></table></section></div>`;
+const KW_SAVED_KEY = 'eat:v1:keyword-market-analyzer:legacy.ekma.v1.captures';
+const KW_WAIT = `const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-kw-state="analysed"]'));`;
 
 const scenarios = {
   sellerPage: `async ({ wait }) => {${HELPERS}
@@ -338,6 +349,43 @@ const scenarios = {
     out.requests = window.__requests || [];
     return out;
   }`,
+  kwScreens: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const q = (sel) => S().querySelector(sel);
+    await wait(2000);
+    await until(() => q('[data-kw-state="analysed"]'));
+    const out = {};
+    const engineRoot = document.getElementById('eat-kw-market-analyzer');
+    out.enginePanelHidden = engineRoot ? getComputedStyle(engineRoot).display === 'none' : null;
+    out.summary = q('[data-role="kw-summary"]')?.textContent ?? null;
+    out.inlineBadges = document.querySelectorAll('[data-ekma-inline]').length;
+    q('[data-kw="save"]').click();
+    await until(() => (window.__values.get('${KW_SAVED_KEY}') || []).length === 1);
+    await until(() => q('[data-role="kw-status"]')?.textContent.includes('kaydedildi'));
+    out.savedStatus = q('[data-role="kw-status"]')?.textContent ?? null;
+    q('[data-kw="details"]').click(); await wait(150);
+    out.pageTitle = q('.page-title')?.textContent ?? null;
+    out.tiles = { searches: q('[data-kw-tile="searches"] .tile-value')?.textContent, results: q('[data-kw-tile="results"] .tile-value')?.textContent };
+    out.related = [...S().querySelectorAll('[data-role="kw-related"] tbody tr')].map((tr) => tr.children[0].textContent);
+    q('[data-name="kw-tab"][data-value="saved"]').click(); await wait(100);
+    await until(() => q('[data-role="kw-saved"]'));
+    out.saved = [...S().querySelectorAll('[data-role="kw-saved"] tbody tr')].map((tr) => tr.children[0].textContent);
+    q('[data-name="kw-tab"][data-value="research"]').click(); await wait(100);
+    out.noResearch = Boolean(q('[data-role="kw-none"]'));
+    out.copyDisabled = q('[data-kw="copy-result"]')?.disabled === true;
+    out.foreignKeys = [...window.__values.keys()].filter((k) => !k.startsWith('eat:'));
+    out.foreignReads = window.__reads.filter((k) => !k.startsWith('eat:'));
+    out.requests = window.__requests || [];
+    return out;
+  }`,
+  kwStandalone: `async ({ wait }) => {${HELPERS}
+    await wait(2600);
+    return {
+      unifiedPanel: Boolean(document.getElementById('eat-kw-market-analyzer')),
+      requests: window.__requests || [],
+      status: S().querySelector('[data-role="tool-status"]')?.textContent ?? null,
+    };
+  }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
@@ -362,6 +410,11 @@ const PAGES = {
   '/your/shops/me/advertising/listings/drawer-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/page-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/rules-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="ads-tab"][data-value="wordlist"]').click(); await until(() => window.__shadow.querySelector('[data-role="ads-rules"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
+  '/your/shops/me/marketplace-insights/search?query=bts%20sticker': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.kwScreens, extra: KW_RESULT },
+  '/your/shops/me/marketplace-insights/search?query=bts%20sticker&standalone=1': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.kwStandalone, extra: KW_RESULT + '<div id="makaytron-etsy-keyword-market-analyzer">standalone Keyword & Market Analyzer</div>' },
+  '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { ${KW_WAIT} return { ok: true }; }`, extra: KW_RESULT },
+  '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { ${KW_WAIT} window.__shadow.querySelector('[data-kw="details"]').click(); await wait(200); return { ok: true }; }`, extra: KW_RESULT },
+  '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { ${KW_WAIT} window.__shadow.querySelector('[data-kw="save"]').click(); await until(() => (window.__values.get('${KW_SAVED_KEY}') || []).length); window.__shadow.querySelector('[data-kw="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="kw-tab"][data-value="saved"]').click(); await until(() => window.__shadow.querySelector('[data-role="kw-saved"]')); return { ok: true }; }`, extra: KW_RESULT },
   // Screenshot-only pages.
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -374,7 +427,8 @@ const PAGES = {
 function startServer() {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
-      const page = PAGES[new URL(req.url, 'http://x').pathname];
+      const url = new URL(req.url, 'http://x');
+      const page = PAGES[url.pathname + url.search] ?? PAGES[url.pathname];
       if (!page) { res.writeHead(404).end(); return; }
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       res.end(pageHtml(page));
@@ -568,6 +622,30 @@ test('Ads Keyword Manager steps aside when the standalone script runs on the sam
   assert.match(r.status, /Ayrı Ads Keyword Manager scripti de bu sayfada çalışıyor/);
 });
 
+test('Keyword & Market Analyzer screens read the Insights page and save research under eat:', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/marketplace-insights/search?query=bts%20sticker');
+  assert.equal(r.enginePanelHidden, true, 'the old panel is replaced by the new screens');
+  assert.match(r.summary, /^“bts sticker” · 12\.400 arama · 3\.210 sonuç · fırsat \d+$/);
+  assert.ok(r.inlineBadges > 0, 'the engine still marks the keywords on the Etsy page');
+  assert.match(r.savedStatus, /Analiz kaydedildi/);
+  assert.equal(r.pageTitle, 'Anahtar kelime araştırması');
+  assert.deepEqual(r.tiles, { searches: '12.400', results: '3.210' });
+  assert.deepEqual(r.related, ['bts gift', 'kpop sticker']);
+  assert.deepEqual(r.saved, ['bts sticker']);
+  assert.equal(r.noResearch, true);
+  assert.equal(r.copyDisabled, true);
+  assert.deepEqual(r.foreignKeys, []);
+  assert.deepEqual(r.foreignReads, []);
+  assert.deepEqual(r.requests, [], 'no update check or other request');
+});
+
+test('Keyword & Market Analyzer steps aside when the standalone script runs on the same page', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/marketplace-insights/search?query=bts%20sticker&standalone=1');
+  assert.equal(r.unifiedPanel, false);
+  assert.deepEqual(r.requests, []);
+  assert.match(r.status, /Ayrı Keyword & Market Analyzer scripti de bu sayfada çalışıyor/);
+});
+
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
   const r = await visit(chrome, base, '/your/shops/me/orders');
   assert.equal(r.title1, 'Choose your language', 'Chrome runs with --lang=en-US, so the setup opens in English');
@@ -597,7 +675,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });
