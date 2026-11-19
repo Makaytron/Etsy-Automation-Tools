@@ -186,7 +186,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
 
   /** What a tool's drawer section may use. */
   function toolUi() {
-    return { doc, container, language: language(), openWorkspace: (page) => openWorkspace(page) };
+    return { doc, container, language: language(), openWorkspace: (page) => openWorkspace(page), hide: () => setOpen(false, { focus: false }) };
   }
 
   function onWorkspaceClose(backToDrawer) {

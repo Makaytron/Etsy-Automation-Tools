@@ -129,7 +129,8 @@ export const WORKSPACE_CSS = `
 .alert-warn { margin: 0; padding: 12px 14px; border-radius: var(--mk-radius-md); background: var(--mk-warning-soft); color: var(--mk-warning); font-size: 13px; }
 .field-col { display: flex; flex-direction: column; gap: 6px; }
 .table-scroll { max-height: 280px; overflow: auto; }
-.sale-drawer { display: flex; flex-direction: column; gap: 12px; }
+.sale-drawer, .ads-drawer { display: flex; flex-direction: column; gap: 12px; }
+.ads-drawer p { margin: 0; }
 .sale-drawer .progress { flex: none; }
 @media (max-width: 1100px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 

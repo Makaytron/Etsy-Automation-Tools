@@ -6,7 +6,7 @@
 // their standalone scripts until then.
 
 import { createSaleManagerModule } from './sale-manager.js';
-import { createAdoptedToolModule } from './adopted-tool.js';
+import { createAdsKeywordManagerModule } from './ads-keyword-manager.js';
 
 function placeholder(id, name, legacyScriptId) {
   return Object.freeze({
@@ -24,10 +24,7 @@ function placeholder(id, name, legacyScriptId) {
 export const TOOLS = Object.freeze([
   createSaleManagerModule(),
   placeholder('message-assistant', 'Message Assistant', 'message-assistant'),
-  createAdoptedToolModule({
-    id: 'ads-keyword-manager', name: 'Ads Keyword Manager', standaloneRootId: 'makaytron-ad-wordlist',
-    factoryKey: 'createAdsKeywordManager', versionKey: 'adsKeywordManagerVersion',
-  }),
+  createAdsKeywordManagerModule(),
   placeholder('listing-analyzer', 'Listing Analyzer', 'listing-analyzer'),
   placeholder('keyword-market-analyzer', 'Keyword & Market Analyzer', 'keyword-market-analyzer'),
 ]);

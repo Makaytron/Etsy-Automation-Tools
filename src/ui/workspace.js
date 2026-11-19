@@ -52,7 +52,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
       doc, container, language: text.language(), tab: state.toolTab[id] ?? 'overview',
       onTab: (tab) => { state.toolTab[id] = tab; state.message = ''; render(); },
       message: state.message, say: (message) => { state.message = message; render(); },
-      openWorkspace: (page) => go(page),
+      openWorkspace: (page) => go(page), hide: () => close(false),
     });
     if (custom) return custom;
     return h(doc, 'div', { style: 'display:contents' },

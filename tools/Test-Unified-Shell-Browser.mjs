@@ -125,6 +125,12 @@ const HELPERS = `
   const saved = () => window.__values.get('eat:v1:core:settings')?.drawer ?? null;
 `;
 
+// A small Etsy Ads keyword table: four keywords, three of them match the word list, one has a high click ratio.
+const ADS_TABLE = `<section id="listing-detail-targeted-keywords-accordion"><table><thead><tr><th>Keyword</th><th>Clicks</th><th>Orders</th></tr></thead><tbody>
+${[['bts sticker', 4, 1], ['army gift', 30, 0], ['kpop poster', 2, 1], ['wedding card', 3, 1]].map(([w, c, o]) => `<tr class="wt-table__row"><th class="wt-table__row__cell"><p>${w}</p></th><td><span>${c}</span></td><td><span>${o}</span></td></tr>`).join('')}
+</tbody></table><nav><button aria-current="true">1</button></nav></section>`;
+const ADS_RULES = ['bts', '=army gift', '/^kpop/'].join(String.fromCharCode(10));
+
 const scenarios = {
   sellerPage: `async ({ wait }) => {${HELPERS}
     const out = {};
@@ -301,8 +307,36 @@ const scenarios = {
       adsReads: window.__reads.filter((k) => k.startsWith('eat:v1:ads-keyword-manager:legacy.')).length,
       foreignReads: window.__reads.filter((k) => !k.startsWith('eat:')),
       requests: window.__requests || [],
+      adsDrawer: Boolean(S().querySelector('[data-role="ads-drawer"]')),
       status: S().querySelector('[data-role="tool-status"]')?.textContent ?? null,
     };
+  }`,
+  adsScreens: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const q = (sel) => S().querySelector(sel);
+    await wait(2000);
+    await until(() => q('[data-role="ads-drawer"]') && q('[data-ads-state]')?.dataset.adsState === 'warning');
+    const out = {};
+    const engineRoot = document.getElementById('eat-ads-wordlist');
+    out.enginePanelHidden = engineRoot ? getComputedStyle(engineRoot).display === 'none' : null;
+    out.summary = q('[data-role="ads-summary"]')?.textContent ?? null;
+    out.status = q('[data-role="ads-status"]')?.textContent ?? null;
+    out.closeEnabled = q('[data-ads="close-page"]')?.disabled === false;
+    q('[data-ads="details"]').click(); await wait(150);
+    out.pageTitle = q('.page-title')?.textContent ?? null;
+    out.tiles = { rows: q('[data-ads-tile="rows"] .tile-value')?.textContent, matches: q('[data-ads-tile="matches"] .tile-value')?.textContent };
+    q('[data-name="ads-tab"][data-value="wordlist"]').click(); await wait(100);
+    await until(() => q('[data-role="ads-rules"]'));
+    out.rules = [...S().querySelectorAll('[data-role="ads-rules"] tbody tr')].map((tr) => [tr.children[1].textContent, tr.children[2].textContent]);
+    out.restoreDisabled = q('[data-ads="restore"]')?.disabled === true;
+    out.noBackup = Boolean(q('[data-role="ads-no-backup"]'));
+    q('[data-ads="edit"]').click();
+    await until(() => document.getElementById('eat-ads-wordlist-editor'));
+    out.editorOpen = Boolean(document.getElementById('eat-ads-wordlist-editor'));
+    out.workspaceClosed = !q('.workspace') || q('.workspace').hidden || getComputedStyle(q('.workspace')).display === 'none';
+    out.foreignKeys = [...window.__values.keys()].filter((k) => !k.startsWith('eat:'));
+    out.requests = window.__requests || [];
+    return out;
   }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
@@ -324,6 +358,10 @@ const PAGES = {
   '/your/shops/me/sales-discounts/ui-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="sale-drawer"]')); window.__shadow.querySelector('[data-sale="details"]').click(); await wait(200); return { ok: true }; }`, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 25, discountName: 'WINTER', batchStartDate: '2026-12-07', batchEndDate: '2026-12-11', saleDurationDays: 1 } } },
   '/your/shops/me/advertising/listings/123': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsEngine },
   '/your/shops/me/advertising/listings/456': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsEngine, extra: '<div id="makaytron-ad-wordlist">standalone Ads Keyword Manager</div>' },
+  '/your/shops/me/advertising/listings/ui': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsScreens, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
+  '/your/shops/me/advertising/listings/drawer-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
+  '/your/shops/me/advertising/listings/page-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
+  '/your/shops/me/advertising/listings/rules-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="ads-tab"][data-value="wordlist"]').click(); await until(() => window.__shadow.querySelector('[data-role="ads-rules"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   // Screenshot-only pages.
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -502,7 +540,24 @@ test('Ads Keyword Manager engine runs inside the unified script, isolated from a
   assert.ok(r.adsReads > 0, 'the engine reads its own namespace');
   assert.deepEqual(r.foreignReads, [], 'and nothing outside eat:');
   assert.ok(r.requests.every((url) => url.includes('/scripts/etsy-ads-keyword-manager/keyword-rules.txt')), `only the word list is requested: ${r.requests.join(', ')}`);
-  assert.match(r.status, /kendi panelinde çalışıyor/);
+  assert.equal(r.adsDrawer, true, 'the drawer shows the new Ads screen');
+});
+
+test('Ads Keyword Manager screens show the engine counts and open its own rule editor', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising/listings/ui');
+  assert.equal(r.enginePanelHidden, true, 'the old panel is replaced by the new screens');
+  assert.equal(r.summary, 'Bu sayfada 4 kelime · 3 tanesi listenizle eşleşiyor');
+  assert.match(r.status, /4 satır/, 'the engine status follows the Turkish interface');
+  assert.equal(r.closeEnabled, true);
+  assert.equal(r.pageTitle, 'Anahtar kelime temizliği');
+  assert.deepEqual(r.tiles, { rows: '4', matches: '3' });
+  assert.deepEqual(r.rules, [['bts', 'İçerir'], ['army gift', 'Tam'], ['^kpop', 'Desen']]);
+  assert.equal(r.restoreDisabled, true, 'no previous list to go back to');
+  assert.equal(r.noBackup, true);
+  assert.equal(r.editorOpen, true, 'the engine opens its own rule editor');
+  assert.equal(r.workspaceClosed, true, 'the workspace steps out of the way of the editor');
+  assert.deepEqual(r.foreignKeys, []);
+  assert.deepEqual(r.requests, [], 'a stored word list needs no download');
 });
 
 test('Ads Keyword Manager steps aside when the standalone script runs on the same page', async () => {
@@ -542,7 +597,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });

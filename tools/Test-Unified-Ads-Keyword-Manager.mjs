@@ -16,7 +16,7 @@ test('every edit applies and the engine keeps its version', () => {
     if (!to.includes(from)) assert.ok(!adopted.includes(from), `${from} is gone`);
   }
   assert.match(adopted, /^async function createAdoptedAdsKeywordManager\(__env\) \{/m);
-  assert.match(adopted, /return \{ start: __eatStart, suspend: suspendAdsRoute, version: APP_VERSION \};/);
+  assert.match(adopted, /start: __eatStart, suspend: suspendAdsRoute, version: APP_VERSION,/);
   assert.doesNotMatch(adopted, /\n\}\)\(\);\n?$/, 'the standalone self-start is removed');
 });
 
@@ -34,4 +34,16 @@ test('adoption fails loudly when the standalone script changes shape', () => {
   assert.throws(() => adoptAdsKeywordManager(source.replace("'makaytron-ad-wordlist-editor'", "'makaytron-ad-editor'")), /editor element id/);
   assert.throws(() => adoptAdsKeywordManager(source.replace("window.addEventListener('load', () => { void RouteLifecycle.start(", "window.addEventListener('DOMContentLoaded', () => { void RouteLifecycle.start(")), /closing block/);
   assert.throws(() => adoptAdsKeywordManager(source.replace("(function () {\n    'use strict';\n", "(() => {\n    'use strict';\n")), /entry marker/);
+});
+
+test('the unified screens get a read-only snapshot and the engine actions', () => {
+  // Commands are the engine's own functions, so its busy, editor and confirmation checks stay in force.
+  assert.match(adopted, /closePage: \(\) => runToggleRows\(false\), openPage: \(\) => runToggleRows\(true\), closeAllPages: requestDisableAllPages,/);
+  assert.match(adopted, /updateList: ensureWord, restoreBackup: restoreWordlistBackup, editRules: openWordlistEditor,/);
+  assert.match(adopted, /snapshot: __eatSnapshot, rules: __eatRules, syncLanguage: __eatSyncLanguage,/);
+  // The screens hear about counts, status and busy changes.
+  assert.equal(adopted.split('__env.onChange?.();').length - 1, 3);
+  assert.match(adopted, /__eatStats = \{ \.\.\.values \};\n {8}__env\.onChange\?\.\(\);/);
+  // The language sync never runs during a job.
+  assert.match(adopted, /if \(activeOperation \|\| wordlistUpdateRunning \|\| languageChangePromise\) return null;/);
 });
