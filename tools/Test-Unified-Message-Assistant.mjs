@@ -36,7 +36,10 @@ test('every edit applies and the engine keeps its version', () => {
     if (!to.includes(from)) assert.ok(!adopted.includes(from), `${from} is gone`);
   }
   assert.match(adopted, /^async function createAdoptedMessageAssistant\(__env\) \{/m);
-  assert.match(adopted, /return \{ start: \(\) => App\.init\(\), version: APP_VERSION \};/);
+  assert.match(adopted, /start: \(\) => App\.init\(\), version: APP_VERSION,/);
+  assert.match(adopted, /snapshot: __eatSnapshot, openPanel: __eatOpen,/);
+  assert.equal(adopted.split('__env.onChange?.();').length - 1, 3, 'render, busy and close hooks');
+  assert.ok(adopted.includes('.ma-launcher{display:none!important}'), 'the edge button replaces the floating launcher');
   assert.doesNotMatch(adopted, /\n {4}await App\.init\(\);\n\}\)\(\);/, 'the standalone self-start is removed');
 });
 

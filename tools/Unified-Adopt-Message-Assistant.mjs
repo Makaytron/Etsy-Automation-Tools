@@ -38,12 +38,49 @@ export const MA_EDITS = Object.freeze([
     'const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path) && __env.isAllowed());', 1, 'route gate'],
   // Updates come with the unified script: the engine never fetches the standalone package to compare versions.
   ['        usesGitHubUpdateChannel() {\n', '        usesGitHubUpdateChannel() {\n            return false;\n', 1, 'no standalone update check'],
+  // The unified edge button replaces the floating launcher; the panel itself stays for detailed work.
+  ['<style>${CSS}${LAUNCHER_CSS}${UX_CSS}${PREMIUM_CSS}</style>', '<style>${CSS}${LAUNCHER_CSS}${UX_CSS}${PREMIUM_CSS}.ma-launcher{display:none!important}</style>', 1, 'launcher hidden'],
+  // The unified screens follow the engine: every panel render, busy state and closing.
+  ['            if (!this.app || !this.view) return;\n', '            if (!this.app || !this.view) return;\n            __env.onChange?.();\n', 1, 'render hook'],
+  ["            this.app?.setAttribute?.('aria-busy', String(Boolean(value)));\n", "            this.app?.setAttribute?.('aria-busy', String(Boolean(value)));\n            __env.onChange?.();\n", 1, 'busy hook'],
+  ['            launcher.focus({ preventScroll: true });\n', '            launcher.focus({ preventScroll: true });\n            __env.onChange?.();\n', 1, 'close hook'],
   // The standalone package's usage metrics stay with the standalone package.
   ['    function telemetrySuppressed() {\n', '    function telemetrySuppressed() {\n        return true;\n', 1, 'no telemetry from the unified engine'],
 ]);
 
+// What the unified screens may read and do: a read-only summary, opening the
+// engine's own panel at a section, and its own translate and reply actions.
+const SECTIONS = "['messages', 'orders', 'reviews', 'templates', 'history', 'settings']";
 const EPILOGUE = `
-    return { start: () => App.init(), version: APP_VERSION };`;
+    function __eatSnapshot() {
+        const provider = AI.provider();
+        const profile = Store.providers?.[Store.settings.aiProvider] || {};
+        const page = Router.page();
+        return {
+            open: Boolean(UI.state?.open), section: String(UI.state?.page || ''), page, busy: Boolean(UI.state?.busy),
+            ai: { name: provider.name, model: String(profile.model || ''), hasKey: Boolean(String(profile.apiKey || '').trim()) },
+            translator: String(Store.settings.translator || ''), previewLanguage: String(Store.settings.previewLanguage || ''),
+            templates: TemplateEngine.active().length, history: Array.isArray(Store.history) ? Store.history.length : 0,
+            campaign: Store.campaign?.status === 'active',
+            canCompose: page === 'messages' && Boolean(MessageAdapter.getTextarea()),
+        };
+    }
+    function __eatOpen(section) {
+        if (!UI.app || !RouteLifecycle.allowed()) return false;
+        UI.open(${SECTIONS}.includes(section) ? section : UI.state.page);
+        return true;
+    }
+    async function __eatCompose(kind) {
+        if (!__eatOpen('messages') || UI.state.busy) return false;
+        if (kind === 'translate') await UI.translateLast();
+        else await UI.generateReply();
+        return true;
+    }
+    return {
+        start: () => App.init(), version: APP_VERSION,
+        snapshot: __eatSnapshot, openPanel: __eatOpen,
+        translateLast: () => __eatCompose('translate'), generateReply: () => __eatCompose('reply'),
+    };`;
 
 export function adoptMessageAssistant(source = fs.readFileSync(MA_SOURCE, 'utf8')) {
   return adoptStandalone({

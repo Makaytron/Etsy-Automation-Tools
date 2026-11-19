@@ -8,7 +8,7 @@
 import { createSaleManagerModule } from './sale-manager.js';
 import { createAdsKeywordManagerModule } from './ads-keyword-manager.js';
 import { createKeywordMarketAnalyzerModule } from './keyword-market-analyzer.js';
-import { createAdoptedToolModule } from './adopted-tool.js';
+import { createMessageAssistantModule } from './message-assistant.js';
 
 // Credentials inside Message Assistant's stored objects; the same paths the transfer strips
 // (shared/migration/handoff.js, kept equal by a test). They live under eat:secret:.
@@ -29,10 +29,7 @@ function placeholder(id, name, legacyScriptId) {
 
 export const TOOLS = Object.freeze([
   createSaleManagerModule(),
-  createAdoptedToolModule({
-    id: 'message-assistant', name: 'Message Assistant', standaloneRootId: 'makaytron-etsy-message-assistant',
-    factoryKey: 'createMessageAssistant', versionKey: 'messageAssistantVersion', secrets: MESSAGE_ASSISTANT_SECRETS,
-  }),
+  createMessageAssistantModule({ secrets: MESSAGE_ASSISTANT_SECRETS }),
   createAdsKeywordManagerModule(),
   placeholder('listing-analyzer', 'Listing Analyzer', 'listing-analyzer'),
   createKeywordMarketAnalyzerModule(),
