@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/**'
       - 'shared/lifecycle/**'
+      - 'shared/migration/**'
+      - 'scripts/**'
       - 'config/production-packages.json'
       - 'tools/Build-Unified-Userscript.mjs'
       - 'tools/Test-Unified-*.mjs'
@@ -31,6 +33,8 @@ jobs:
           node-version: 22
       - name: Test core modules
         run: node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs
+      - name: Test the transfer from the standalone scripts
+        run: node --test tools/Test-Unified-Migration.mjs
       - name: Test the single-file build
         run: node --test tools/Test-Unified-Build.mjs
       - name: Check the build is deterministic

@@ -11,10 +11,11 @@ import { createSettings } from './core/settings.js';
 import { createEvents } from './core/events.js';
 import { createHost } from './core/host.js';
 import { TOOLS } from './modules/index.js';
+import { runLegacyMigration, migratedTools } from './core/migration.js';
 
 const LOG_PREFIX = '[Etsy Automation Tools]';
 
-export async function boot({ scope, createRouteLifecycle }) {
+export async function boot({ scope, createRouteLifecycle, handoff }) {
   if (scope.top !== scope.self) return null; // never run inside Etsy iframes
   if (scope.__etsyAutomationToolsBooted) return null; // one instance per document
   scope.__etsyAutomationToolsBooted = true;
@@ -30,11 +31,22 @@ export async function boot({ scope, createRouteLifecycle }) {
     events.emit('error', { code });
   };
 
+  // Transfer from the standalone scripts; the UI (phase 4) calls migration.run().
+  const toolIds = TOOLS.map((t) => t.id);
+  const rules = { specs: handoff.MIGRATION_SPECS, isTransferable: handoff.migrationIsTransferableKey, strip: handoff.migrationStripSecrets };
+  const migration = {
+    run: ({ timeoutMs } = {}) => runLegacyMigration({
+      requester: handoff.createMigrationRequester({ transport: handoff.createDomMigrationTransport(scope.document), cryptoApi: scope.crypto }),
+      storage, rules, tools: toolIds, timeoutMs,
+    }),
+    done: () => migratedTools(storage, toolIds),
+  };
+
   const host = createHost({
     modules: TOOLS,
     createRouteLifecycle,
     location: scope.location,
-    services: { storage, settings, events, appVersion: META.version, persistent: Boolean(gmStore) },
+    services: { storage, settings, events, migration, appVersion: META.version, persistent: Boolean(gmStore) },
     isEnabled: (id) => settings.get().tools[id] !== false,
     onError,
   });

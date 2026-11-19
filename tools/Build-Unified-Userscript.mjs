@@ -23,6 +23,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const SRC = path.join(repoRoot, 'src');
 const ENTRY = path.join(SRC, 'main.js');
 const LIFECYCLE = path.join(repoRoot, 'shared', 'lifecycle', 'spa-lifecycle.js');
+const HANDOFF = path.join(repoRoot, 'shared', 'migration', 'handoff.js');
+const HANDOFF_EXPORTS = ['MIGRATION_SPECS', 'migrationIsTransferableKey', 'migrationStripSecrets', 'createMigrationRequester', 'createDomMigrationTransport'];
 export const OUTPUT = path.join(repoRoot, 'dist', 'etsy-automation-tools.user.js');
 
 const IMPORT_RE = /^import\s*\{([^}]*)\}\s*from\s*'([^']+)';[ \t]*$/gm;
@@ -127,7 +129,13 @@ export async function buildUnified() {
   const meta = await loadMeta();
   const modules = collect(ENTRY);
   const available = new Map(modules.map((m) => [m.file, m.exports]));
-  const lifecycle = read(LIFECYCLE).trimEnd().split('\n').map((l) => (l ? `  ${l.replace(/^ {4}/, '')}` : l)).join('\n');
+  const inline = (file) => {
+    const text = read(file);
+    assertSupportedSyntax(text, rel(file));
+    return text.trimEnd().split('\n').map((l) => (l ? `  ${l.replace(/^ {4}/, '')}` : l)).join('\n');
+  };
+  const lifecycle = inline(LIFECYCLE);
+  const handoff = inline(HANDOFF);
   const parts = [
     renderHeader(meta),
     '',
@@ -137,8 +145,10 @@ export async function buildUnified() {
     '',
     lifecycle,
     '',
+    handoff,
+    '',
     ...modules.map((m) => transform(m, available)),
-    `  ${moduleVar(ENTRY)}.boot({ scope: window, createRouteLifecycle }).catch((error) => console.error('[Etsy Automation Tools] boot', error));`,
+    `  ${moduleVar(ENTRY)}.boot({ scope: window, createRouteLifecycle, handoff: { ${HANDOFF_EXPORTS.join(', ')} } }).catch((error) => console.error('[Etsy Automation Tools] boot', error));`,
     '})();',
     '',
   ];

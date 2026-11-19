@@ -27,6 +27,12 @@ test('header is a development header with the new identity', () => {
   assert.doesNotMatch(header, /@namespace\s+https:\/\/github\.com\/Makaytron\/EtsyScript/);
 });
 
+test('shared lifecycle and migration handoff are inlined once', () => {
+  for (const marker of ['BEGIN SPA LIFECYCLE', 'END SPA LIFECYCLE', 'BEGIN MIGRATION HANDOFF', 'END MIGRATION HANDOFF']) {
+    assert.equal(built.split(marker).length - 1, 1, marker);
+  }
+});
+
 test('output contains no remote code execution', () => {
   const body = built.slice(built.indexOf('// ==/UserScript=='));
   assert.doesNotMatch(body, /\beval\s*\(|\bnew\s+Function\s*\(|\bimport\s*\(/);
