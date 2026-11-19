@@ -1,7 +1,7 @@
 // The unified script's interface text as one flat catalog, and the checks
 // every language pack in languages/ must pass.
 //
-// English and Turkish are bundled in the script. Every other language is a
+// Only English, the source text, is bundled in the script. Every other language is a
 // pack (languages/<code>.json) downloaded once the user chooses it. Shell
 // keys keep their names ("ws.report"); tool screen keys get a prefix
 // ("sale.start", "ads.closePage", ...), the same one the screens look up.

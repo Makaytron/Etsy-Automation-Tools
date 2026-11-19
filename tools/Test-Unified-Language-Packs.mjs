@@ -28,8 +28,8 @@ test('every pack matches the English catalog (keys, placeholders, plain text, ve
   assert.deepEqual(await checkAll(), []);
 });
 
-test('the language list is English, Turkish and every pack, with picker strings for each pack', async () => {
-  assert.deepEqual(UI_LANGUAGES.map((l) => l.code).sort(), ['en', 'tr', ...PACK_LANGUAGES].sort());
+test('the language list is English and every pack, with picker strings for each pack', async () => {
+  assert.deepEqual(UI_LANGUAGES.map((l) => l.code).sort(), ['en', ...PACK_LANGUAGES].sort());
   const source = await catalog('en');
   const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
   for (const code of PACK_LANGUAGES) {
@@ -56,7 +56,7 @@ test('a pack is downloaded once, validated and kept in storage', async () => {
   assert.deepEqual(changes, ['de:loading', 'de:ready']);
   assert.equal((await cache.get('pack.de')).language, 'de');
   // Bundled languages never download anything.
-  assert.deepEqual(await packs.ensure('tr'), { status: 'bundled' });
+  assert.deepEqual(await packs.ensure('en'), { status: 'bundled' });
   assert.equal(gm.requests.length, 1);
 
   // A new page reads the stored pack without a request.

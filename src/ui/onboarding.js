@@ -41,7 +41,8 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
       languageStatus(doc, text),
       h(doc, 'p', { class: 'field-hint', text: t('ob.privacy') }),
       h(doc, 'div', { class: 'dialog-footer' },
-        h(doc, 'button', { class: 'btn btn-default', type: 'button', 'data-action': 'ob-continue', onclick: async () => { await settings.update({ language: draft.language }); draft.step = 2; render(); }, text: t('ob.continue') })),
+        // The setup goes on only once the chosen language is there.
+        h(doc, 'button', { class: 'btn btn-default', type: 'button', 'data-action': 'ob-continue', disabled: !['ready', 'bundled'].includes(text.pack().status), onclick: async () => { await settings.update({ language: draft.language }); draft.step = 2; render(); }, text: t('ob.continue') })),
     ];
   }
 

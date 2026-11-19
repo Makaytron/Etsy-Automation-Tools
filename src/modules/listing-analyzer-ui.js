@@ -35,27 +35,9 @@ export const LA_STRINGS = Object.freeze({
     vSettings: 'Settings', dSettings: 'Thresholds, language and data.',
     queueCount: '{n} in the queue',
   }),
-  tr: Object.freeze({
-    title: 'Listing performansı', description: 'Listinglerinizi zaman içinde izler, geçmişiyle karşılaştırır ve tek tek onayladığınız değişiklikleri hazırlar.',
-    ready: 'Hazır', collecting: 'Taranıyor', review: '{n} inceleme', stopped: 'Durdu',
-    stored: '{listings} listing kayıtlı · bu sayfada {page}', editorLine: 'İyileştirme kuyruğu bu listing düzenleyicisinde çalışır.',
-    progress: 'Sayfa {pages} / {total} · {found} listing bulundu', notFresh: 'Güncel analiz için tüm sayfaları tarayın.',
-    scanAll: 'Tüm sayfaları tara', stop: 'Taramayı durdur', resume: 'Taramaya devam et', scanPage: 'Bu sayfayı tara',
-    openAnalysis: 'Analizi aç', openQueue: 'Kuyruğu aç', details: 'Ayrıntıları aç', exportData: 'Yedek indir',
-    tileListings: 'Kayıtlı listing', tileHealthy: 'Sağlıklı', tileReview: 'İnceleme gerekiyor', tileExperiments: 'Süren deneme',
-    reviewHint: 'İyileştir, düşüşte veya kapatmayı değerlendir', deactivate: '{n} listing kapatılmayı değerlendirmeli',
-    views: 'Panel görünümleri', viewsNote: 'Ayrıntılı çalışma bu sayfadaki Listing Analyzer panelinde açılır.',
-    colView: 'Görünüm', colWhat: 'Ne yapar', open: 'Aç',
-    vOverview: 'Genel bakış', dOverview: 'Durum, sayılar ve tarama.',
-    vAnalysis: 'Analiz', dAnalysis: 'Her listing, eğilimi, filtreleri ve geçmişiyle.',
-    vAi: 'AI alışverişi', dAi: 'Listingleri AI’nıza gönderin, önerileri geri alın.',
-    vQueue: 'Kuyruk', dQueue: 'Onaylanan değişiklikler düzenleyicide tek tek uygulanır.',
-    vSettings: 'Ayarlar', dSettings: 'Eşikler, dil ve veriler.',
-    queueCount: 'Kuyrukta {n}',
-  }),
 });
 
-// Bundled English and Turkish; other languages read the downloaded pack ("la." keys).
+// Bundled English; other languages read the downloaded pack ("la." keys).
 function texts(language) {
   const lang = LA_STRINGS[language] ? language : 'en';
   return (key, vars) => interpolate(LA_STRINGS[language]?.[key] ?? packText(language, `la.${key}`) ?? LA_STRINGS[lang][key] ?? LA_STRINGS.en[key] ?? key, vars);

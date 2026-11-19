@@ -77,7 +77,10 @@ async function findChrome() {
 const safe = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 // In-page stand-in for the userscript manager, plus a hook that keeps the closed shadow root reachable for the test.
-function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {} }) {
+// Turkish comes as a pack; most pages start as if it had been downloaded on an earlier visit.
+const PACK_TR = JSON.parse(fs.readFileSync(new URL('../languages/tr.json', import.meta.url), 'utf8'));
+
+function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, trCached = true }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Etsy fixture</title>
 <style>body{margin:0;font:16px Georgia,serif;background:#f5f5f5} button.probe{font:13px Georgia,serif}</style></head>
 <body><header style="height:56px;background:#fff;border-bottom:1px solid #ddd"></header>
@@ -88,6 +91,7 @@ function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {} }) 
   ${settings ? `values.set('eat:v1:core:settings', ${safe(settings)});` : ''}
   values.set('eat:v1:sale-manager:legacy.eda-batch-config-v4', { discount: 25 });
   values.set('eat:secret:openai', 'fixture-placeholder');
+  ${trCached ? `values.set('eat:v1:core:pack.tr', ${safe(PACK_TR)});` : ''}
   for (const [k, v] of Object.entries(${safe(preload)})) values.set(k, v);
   window.__values = values;
   window.__packs = ${safe(packs)};
@@ -104,6 +108,8 @@ function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {} }) 
       (window.__requests = window.__requests || []).push(details.url);
       // The Ads engine downloads its default word list; answer it like GitHub would.
       if (details.url.includes('keyword-rules.txt')) setTimeout(() => details.onload?.({ status: 200, responseText: ['bts', 'army gift', ''].join(String.fromCharCode(10)) }), 0);
+      // Problem reports: recorded, and accepted unless the page says the endpoint is down.
+      if (details.url.includes('/functions/v1/feedback-ingest')) { window.__feedback = JSON.parse(details.data); setTimeout(() => (window.__feedbackDown ? details.onerror?.(new Error('down')) : details.onload?.({ status: 204, responseText: '' })), 0); return; }
       // Language packs come from the repository; a page lists the ones it can serve.
       else if (details.url.includes('/languages/') && window.__packs[details.url.split('/').pop().replace('.json', '')]) setTimeout(() => details.onload?.({ status: 200, responseText: JSON.stringify(window.__packs[details.url.split('/').pop().replace('.json', '')]) }), 0);
       else setTimeout(() => details.onerror?.(new Error('blocked in fixture')), 0);
@@ -506,7 +512,12 @@ const scenarios = {
     const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
     await until(() => S().querySelector('[data-role="lang-status"][data-state="error"]'));
     const status = S().querySelector('[data-role="lang-status"]');
-    const out = { title: S().querySelector('.dialog-title')?.textContent ?? null, failed: status?.textContent ?? null, requests: (window.__requests || []).length };
+    const out = { title: S().querySelector('.dialog-title')?.textContent ?? null, failed: status?.textContent ?? null, requests: (window.__requests || []).length, continueDisabled: S().querySelector('[data-action="ob-continue"]')?.disabled === true };
+    status.querySelector('[data-action="lang-report"]').click(); await wait(80);
+    out.reportCategory = S().querySelector('[data-name="fb-category"]')?.value ?? S().querySelector('select[name="fb-category"]')?.value ?? null;
+    out.reportCode = [...S().querySelectorAll('[data-role="fb-preview"] tr')].find((tr) => tr.dataset.field === 'errorCode')?.children[1].textContent ?? null;
+    S().querySelectorAll('.overlay')[S().querySelectorAll('.overlay').length - 1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(50);
     status.querySelector('[data-action="lang-retry"]').click();
     await until(() => (window.__requests || []).length > out.requests);
     out.retried = (window.__requests || []).length > out.requests;
@@ -535,6 +546,27 @@ const scenarios = {
     out.stored = window.__values.get('eat:v1:ads-keyword-manager:legacy.adWordlist') ?? null;
     out.doneRecord = window.__standaloneValues.get('eat-migration-done') ?? null;
     out.standaloneKept = window.__standaloneValues.get('adWordlist') ?? null;
+    return out;
+  }`,
+  feedback: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const q = (sel) => S().querySelector(sel);
+    await click(); q('[data-action="open-workspace"]').click(); await wait(120);
+    q('[data-action="report-problem"]').click(); await wait(100);
+    const out = { title: q('.dialog-title')?.textContent ?? null };
+    const note = q('#eat-fb-note');
+    note.value = 'Shop https://www.etsy.com/shop/MyShop 1234567890 mail me@example.com'; note.dispatchEvent(new Event('input', { bubbles: true }));
+    out.preview = Object.fromEntries([...S().querySelectorAll('[data-role="fb-preview"] tr')].map((tr) => [tr.dataset.field, tr.children[1].textContent]));
+    window.__feedbackDown = true;
+    q('[data-action="fb-send"]').click();
+    await until(() => q('[data-action="fb-github"]'));
+    out.failed = q('[data-role="fb-status"]')?.textContent ?? null;
+    out.github = q('[data-action="fb-github"]')?.getAttribute('href') ?? '';
+    window.__feedbackDown = false;
+    q('[data-action="fb-send"]').click();
+    await until(() => (q('[data-role="fb-status"]')?.textContent ?? '').includes('gönderildi'));
+    out.sent = q('[data-role="fb-status"]')?.textContent ?? null;
+    out.payload = window.__feedback ?? null;
     return out;
   }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
@@ -575,7 +607,9 @@ const PAGES = {
   '/your/shops/me/stats/pack-de': { settings: { onboarded: true, language: 'de', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packReady, packs: { de: PACK_DE } },
   '/your/shops/me/stats/pack-fr': { settings: { onboarded: false, language: 'fr', theme: 'light' }, scenario: scenarios.packFailed },
   '/your/shops/me/advertising/listings/transfer': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.realTransfer, extra: REAL_STANDALONE_ADS },
+  '/your/shops/me/stats/feedback': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.feedback },
   // Screenshot-only pages.
+  '/your/shops/me/stats/feedback-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: `async ({ wait }) => { ${HELPERS} await click(); S().querySelector('[data-action="open-workspace"]').click(); await wait(120); S().querySelector('[data-action="report-problem"]').click(); await wait(150); return { ok: true }; }` },
   '/your/shops/me/advertising/listings/notice-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: `async ({ wait }) => { await wait(1500); return { ok: true }; }`, extra: REAL_STANDALONE_ADS },
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
@@ -603,7 +637,7 @@ function runChrome(chrome, url, extra = []) {
     const profile = await mkdtemp(path.join(os.tmpdir(), 'eat-shell-'));
     const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`,
       // Reduced motion turns off the slide animation, so measurements do not depend on timing.
-      '--window-size=1440,900', '--hide-scrollbars', '--force-prefers-reduced-motion', '--lang=en-US', ...(process.env.EAT_DEBUG_DIR ? ['--enable-logging=stderr', '--v=0'] : []), '--virtual-time-budget=12000', ...extra, url], { stdio: ['ignore', 'pipe', 'pipe'] });
+      '--window-size=1440,900', '--hide-scrollbars', '--force-prefers-reduced-motion', '--lang=en-US', ...(process.env.EAT_DEBUG_DIR ? ['--enable-logging=stderr', '--v=0'] : []), '--virtual-time-budget=20000', ...extra, url], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = ''; let stderr = '';
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', (c) => { stdout += c; }); child.stderr.on('data', (c) => { stderr += c; });
@@ -885,6 +919,9 @@ test('a failed language pack keeps English, says so in the chosen language and c
   assert.match(r.failed, /Réessayer/);
   assert.match(r.failed, /Signaler un problème/);
   assert.equal(r.retried, true);
+  assert.equal(r.continueDisabled, true, 'the setup waits for the chosen language');
+  assert.equal(r.reportCategory, 'language-pack');
+  assert.equal(r.reportCode, 'i18n_pack_download');
 });
 
 test('the real standalone script hands its data over from its notice, with the same check code on both sides', async () => {
@@ -896,6 +933,20 @@ test('the real standalone script hands its data over from its notice, with the s
   assert.equal(r.stored, 'bts\nkpop poster');
   assert.equal(r.doneRecord.tool, 'ads-keyword-manager');
   assert.equal(r.standaloneKept, 'bts\nkpop poster', 'the standalone script keeps its own data');
+});
+
+test('a problem report shows everything it sends, never shop data, and falls back to GitHub', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/stats/feedback');
+  assert.equal(r.title, 'Sorun bildir');
+  assert.equal(r.preview.region, 'US');
+  assert.equal(r.preview.browserLocale, 'en-US');
+  assert.equal(r.preview.uiLanguage, 'tr');
+  assert.equal(r.preview.note, 'Shop [link] [number] mail [email]');
+  assert.match(r.failed, /gönderilemedi/);
+  assert.match(r.github, /^https:\/\/github\.com\/Makaytron\/Etsy-Automation-Tools\/issues\/new\?/);
+  assert.match(r.sent, /gönderildi/);
+  assert.deepEqual(Object.keys(r.payload).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorCode', 'format', 'formatVersion', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'uiLanguage']);
+  assert.doesNotMatch(JSON.stringify(r.payload), /MyShop|1234567890|example\.com/);
 });
 
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
@@ -927,7 +978,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['feedback', '/your/shops/me/stats/feedback-shot'], ['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });

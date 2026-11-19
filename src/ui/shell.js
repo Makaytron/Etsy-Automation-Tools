@@ -11,6 +11,7 @@ import { SHELL_CSS } from './styles.js';
 import { WORKSPACE_CSS } from './styles-workspace.js';
 import { createText } from './text.js';
 import { createLanguagePacks } from '../core/language-packs.js';
+import { openFeedback } from './feedback.js';
 import { createWorkspace } from './workspace.js';
 import { openOnboarding } from './onboarding.js';
 import { tabRect, snapToEdge, drawerSide, drawerWidth, TAB_SHORT } from '../core/drawer-geometry.js';
@@ -29,6 +30,8 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
   let text = null;
   const packs = createLanguagePacks({ gm: scope.GM, cache: storage.namespace('core'), appVersion, onChange: () => text?.packChanged() });
   text = createText({ settings, scope, packs });
+  // "Report a problem" anywhere in the interface opens the same dialog.
+  text.report = (options = {}) => openFeedback({ doc, container, text, scope, appVersion, ...options });
   const { t, language } = text;
   const viewport = () => ({ width: scope.innerWidth, height: scope.innerHeight });
   const theme = () => {

@@ -6,7 +6,6 @@ import { TOOL_HOME } from './strings.js';
 import { renderSettingsPage } from './settings-page.js';
 import { TOOL_IDS } from '../core/settings.js';
 
-import { SUPPORT_URL } from './language-status.js';
 
 export function createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, assets = {}, onClose }) {
   const doc = scope.document;
@@ -100,7 +99,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
         h(doc, 'div', { class: 'ws-sidebar-footer' },
           h(doc, 'a', { href: 'https://makaytron.com', target: '_blank', rel: 'noopener noreferrer', text: 'makaytron.com' }),
           h(doc, 'span', { 'aria-hidden': 'true', text: '·' }),
-          h(doc, 'a', { href: SUPPORT_URL, target: '_blank', rel: 'noopener noreferrer', text: t('ws.report') }))),
+          h(doc, 'button', { class: 'ws-link', type: 'button', 'data-action': 'report-problem', onclick: (e) => text.report?.({ returnFocus: e.currentTarget }), text: t('ws.report') }))),
       h(doc, 'div', { class: 'ws-inset' },
         h(doc, 'header', { class: 'ws-header' },
           h(doc, 'span', { class: 'ws-context', text: t('ws.thisPage', { page: active ? t(`tool.${active}`) : t('page.unsupported') }) }),

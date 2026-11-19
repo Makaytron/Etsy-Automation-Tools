@@ -38,28 +38,9 @@ export const KW_STRINGS = Object.freeze({
     active: 'Running: {done} of {seeds} keywords', activeStatus: 'Request {id}', none: 'No research running.',
     cancel: 'Cancel the research', importFile: 'Research request file (JSON)', copyResult: 'Copy the result', downloadResult: 'Download the result',
   }),
-  tr: Object.freeze({
-    title: 'Anahtar kelime araştırması', description: 'Bu sayfadaki Etsy Marketplace Insights verisini okur, her kelimeye puan verir ve araştırmanızı saklar.',
-    page: 'Bu sayfa', saved: 'Kaydedilenler', research: 'Listing Analyzer',
-    ready: 'Hazır', analysed: 'Analiz hazır', researching: 'Araştırma sürüyor',
-    noResult: 'Bu sayfada henüz Marketplace Insights sonucu yok. Bir anahtar kelime arayın.',
-    line: '“{keyword}” · {searches} arama · {results} sonuç · fırsat {score}',
-    save: 'Bu analizi kaydet', details: 'Ayrıntıları aç',
-    keyword: 'Anahtar kelime', search: 'Etsy Insights’ta ara',
-    tileSearches: 'Aylık arama', tileResults: 'Arama sonucu', tileTrend: '7 günlük eğilim', tileOpportunity: 'Fırsat',
-    opportunityHint: 'Talep ve rekabetten Makaytron puanı', noTrend: '—',
-    related: 'Benzer arama terimleri', colKeyword: 'Kelime', colSearches: 'Arama', colResults: 'Sonuç', colOpportunity: 'Fırsat', colDate: 'Tarih',
-    high: 'Yüksek', medium: 'Orta', low: 'Düşük',
-    savedTitle: '{count} kayıtlı analiz', savedNone: 'Henüz kayıt yok. Kaydedilen analizler bu bilgisayarda kalır.',
-    exportJson: 'JSON indir', clear: 'Yerel verileri temizle…',
-    researchTitle: 'Listing Analyzer için araştırma',
-    researchNote: 'İkisi bu tarayıcıda çalışırken Listing Analyzer kelimelerini buraya gönderir. Çalışmıyorsa onun dışa aktardığı araştırma talebi dosyasını seçin.',
-    active: 'Sürüyor: {done} / {seeds} kelime', activeStatus: 'Talep {id}', none: 'Süren araştırma yok.',
-    cancel: 'Araştırmayı iptal et', importFile: 'Araştırma talebi dosyası (JSON)', copyResult: 'Sonucu kopyala', downloadResult: 'Sonucu indir',
-  }),
 });
 
-// Bundled English and Turkish; other languages read the downloaded pack ("kw." keys).
+// Bundled English; other languages read the downloaded pack ("kw." keys).
 function texts(language) {
   const lang = KW_STRINGS[language] ? language : 'en';
   return (key, vars) => interpolate(KW_STRINGS[language]?.[key] ?? packText(language, `kw.${key}`) ?? KW_STRINGS[lang][key] ?? KW_STRINGS.en[key] ?? key, vars);

@@ -1,6 +1,7 @@
 // Downloaded language packs.
 //
-// English and Turkish are bundled. The languages below come as packs
+// Only English, the source text, is bundled in full, so something always
+// reads if a download fails. Every other language comes as a pack
 // (languages/<code>.json in the repository): downloaded once when the user
 // picks one, validated (format, language, version, plain text only), kept
 // in storage, and used from then on without a request. While a pack is
@@ -8,7 +9,7 @@
 
 import { validatePack } from './i18n.js';
 
-export const PACK_LANGUAGES = Object.freeze(['de', 'es', 'fr', 'it', 'ja', 'nl', 'pl', 'pt']);
+export const PACK_LANGUAGES = Object.freeze(['de', 'es', 'fr', 'it', 'ja', 'nl', 'pl', 'pt', 'tr']);
 export const PACK_MIN_APP_VERSION = '2.0.0';
 export const PACK_BASE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/languages/';
 const MAX_PACK_BYTES = 256 * 1024;

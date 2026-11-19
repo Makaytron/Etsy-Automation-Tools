@@ -1,9 +1,9 @@
 // One translator for the drawer, the workspace and the setup.
 //
-// English and Turkish are bundled. Any other language reads its downloaded
-// pack (core/language-packs.js); until the pack is there, the first-screen
-// strings come from strings-picker.js and everything else falls back to
-// English.
+// Only English, the source text, is bundled in full. Every other language
+// reads its downloaded pack (core/language-packs.js); until the pack is there,
+// the first-screen strings come from strings-picker.js (bundled for every
+// language) and everything else falls back to English.
 
 import { UI_STRINGS } from './strings.js';
 import { WORKSPACE_STRINGS, UI_LANGUAGES } from './strings-workspace.js';

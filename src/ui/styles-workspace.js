@@ -41,6 +41,7 @@ export const WORKSPACE_CSS = `
 .ws-menu-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-sidebar-footer { margin-top: auto; display: flex; gap: 8px; padding: 8px; font-size: 12px; color: var(--mk-muted-fg); }
 .ws-sidebar-footer a { color: inherit; }
+.ws-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
 .ws-inset { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--mk-surface); }
 .ws-header { display: flex; align-items: center; gap: 8px; padding: 12px 24px; border-bottom: 1px solid var(--mk-border); min-height: 57px; }
 .ws-context { font-size: 13px; color: var(--mk-muted-fg); }
