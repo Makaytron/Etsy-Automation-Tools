@@ -318,12 +318,15 @@ const scenarios = {
     const engineRoot = document.getElementById('eat-sale-batch-root');
     out.enginePanelHidden = engineRoot ? getComputedStyle(engineRoot).display === 'none' : null;
     out.drawerText = q('[data-role="sale-drawer"]')?.textContent ?? null;
+    // A report left open from an earlier series would hold the engine back, hidden behind the new screens.
+    document.body.insertAdjacentHTML('beforeend', '<div class="eda-report-backdrop" id="left-report"></div>');
     q('[data-sale="start"]').click(); await wait(100);
     out.confirmTitle = q('.dialog-title')?.textContent ?? null;
     out.confirmCodes = [...S().querySelectorAll('.dialog .mono-code')].map((n) => n.textContent);
     q('[data-sale="confirm-start"]').click();
     await until(() => document.getElementById('eat-sale-batch-toast-root')?.textContent);
     out.engineToast = document.getElementById('eat-sale-batch-toast-root')?.textContent ?? null;
+    out.leftReportClosed = !document.getElementById('left-report');
     out.jobAfterStart = window.__values.get('eat:v1:sale-manager:legacy.eda-batch-job-v4') ?? null;
     q('[data-sale="details"]').click(); await wait(150);
     out.pageTitle = q('.page-title')?.textContent ?? null;
@@ -785,6 +788,7 @@ test('Sale Manager screens drive the engine without bypassing its safety checks'
   assert.deepEqual(r.confirmCodes, ['261207WINTER25', '261208WINTER25', '261209WINTER25', '261210WINTER25', '261211WINTER25']);
   assert.match(r.engineToast, /mağaza kimliği okunamadı/, 'the engine refuses to start without a verified shop');
   assert.equal(r.jobAfterStart, null, 'no job was created');
+  assert.equal(r.leftReportClosed, true, 'a leftover engine report is closed before the series starts');
   assert.equal(r.pageTitle, 'Kampanya serisi');
   assert.equal(r.planRows, 5);
   assert.deepEqual(r.savedConfig, { discount: 30, discountName: 'SPRING' });

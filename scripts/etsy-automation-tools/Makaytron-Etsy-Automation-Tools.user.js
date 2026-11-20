@@ -7873,6 +7873,8 @@
       downloadCsv: () => downloadCsv(lastReport),
       downloadExcel: () => downloadExcel(lastReport),
       openCreateSale: () => go(CREATE_SALE_URL),
+      // The engine waits while its own report is open; from the unified screens that report sits out of sight.
+      closeReport: () => { document.querySelectorAll('.eda-report-backdrop').forEach((node) => node.remove()); },
   };
   }
   const ADOPTED_SALE_MANAGER_VERSION = '1.1.1';
@@ -40431,7 +40433,7 @@
           openPage: () => ui.openWorkspace?.('tool:sale-manager'),
           say: (message) => ui.say?.(message),
           confirmStart: (trigger) => confirmSaleStart(ui.doc, ui.container, {
-            snap: engine.snapshot(), language: ui.language, returnFocus: trigger, onStart: () => run(() => engine.start()),
+            snap: engine.snapshot(), language: ui.language, returnFocus: trigger, onStart: () => run(async () => { engine.closeReport?.(); await engine.start(); }),
           }),
         };
       }

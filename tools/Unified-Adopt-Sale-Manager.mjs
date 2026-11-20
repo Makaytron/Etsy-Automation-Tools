@@ -65,6 +65,8 @@ const ENGINE_API = `
         downloadCsv: () => downloadCsv(lastReport),
         downloadExcel: () => downloadExcel(lastReport),
         openCreateSale: () => go(CREATE_SALE_URL),
+        // The engine waits while its own report is open; from the unified screens that report sits out of sight.
+        closeReport: () => { document.querySelectorAll('.eda-report-backdrop').forEach((node) => node.remove()); },
     };`;
 
 /** Returns the source of `async function createAdoptedSaleManager(__env)`. */

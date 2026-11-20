@@ -86,7 +86,7 @@ export function createSaleManagerModule() {
       openPage: () => ui.openWorkspace?.('tool:sale-manager'),
       say: (message) => ui.say?.(message),
       confirmStart: (trigger) => confirmSaleStart(ui.doc, ui.container, {
-        snap: engine.snapshot(), language: ui.language, returnFocus: trigger, onStart: () => run(() => engine.start()),
+        snap: engine.snapshot(), language: ui.language, returnFocus: trigger, onStart: () => run(async () => { engine.closeReport?.(); await engine.start(); }),
       }),
     };
   }
