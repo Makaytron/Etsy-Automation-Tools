@@ -1,8 +1,9 @@
 // The problem report dialog ("Sorun bildir").
 //
 // The user picks what went wrong and may add a note. The dialog shows every
-// field that will be sent (version, browser, OS, interface language, browser
-// locale and country, the page template, the error code) before Send. Shop
+// field of the report (version, browser, OS, interface language, browser
+// locale and country, the page template, the error code). "Report on GitHub"
+// opens a prefilled public issue; the script itself sends nothing. Shop
 // names, customer data, page addresses with ids and API keys never enter it
 // (core/diagnostics.js).
 //
@@ -13,7 +14,7 @@
 import { h } from './dom.js';
 import { openDialog, select } from './controls.js';
 import { buildReport, PROBLEM_CATEGORIES } from '../core/diagnostics.js';
-import { sendReport, fallbackIssueUrl } from '../core/feedback.js';
+import { issueUrl } from '../core/feedback.js';
 
 const PREVIEW_FIELDS = ['category', 'errorCode', 'appVersion', 'browser', 'os', 'uiLanguage', 'browserLocale', 'region', 'routeTemplate', 'note'];
 
@@ -30,7 +31,7 @@ const PREVIEW_FIELDS = ['category', 'errorCode', 'appVersion', 'browser', 'os', 
  */
 export function openFeedback({ doc, container, text, scope, appVersion, category = 'other', errorCode = null, returnFocus = null }) {
   const { t } = text;
-  const draft = { category: PROBLEM_CATEGORIES.includes(category) ? category : 'other', note: '', state: 'editing' };
+  const draft = { category: PROBLEM_CATEGORIES.includes(category) ? category : 'other', note: '' };
   const env = () => ({
     userAgent: scope.navigator?.userAgent ?? '',
     locale: scope.navigator?.language ?? '',
@@ -40,11 +41,11 @@ export function openFeedback({ doc, container, text, scope, appVersion, category
   const report = () => buildReport({ appVersion, category: draft.category, errorCode, note: draft.note }, env());
 
   const previewBody = h(doc, 'tbody', {});
-  const status = h(doc, 'p', { class: 'field-hint', role: 'status', 'aria-live': 'polite', 'data-role': 'fb-status' });
-  const after = h(doc, 'div', { class: 'row-actions', 'data-role': 'fb-after' });
+  let github = null;
 
   function renderPreview() {
     const r = report();
+    github?.setAttribute('href', issueUrl(r));
     previewBody.replaceChildren(...PREVIEW_FIELDS.map((field) => {
       const value = field === 'browser' ? [r.browser, r.browserMajor].filter((v) => v != null).join(' ') : r[field];
       const shown = field === 'category' ? t(`fb.cat.${r.category}`) : (value === null || value === '' || value === undefined ? '—' : String(value));
@@ -68,31 +69,14 @@ export function openFeedback({ doc, container, text, scope, appVersion, category
     h(doc, 'div', { class: 'stack' },
       h(doc, 'span', { class: 'label', text: t('fb.preview') }),
       h(doc, 'div', { class: 'table-wrap' }, h(doc, 'table', { class: 'table', 'data-role': 'fb-preview' }, previewBody)),
-      h(doc, 'span', { class: 'field-hint', text: t('fb.previewHint') })),
-    status, after);
+      h(doc, 'span', { class: 'field-hint', text: t('fb.githubHint') })));
   renderPreview();
 
   const dialog = openDialog(doc, container, {
     title: t('fb.title'), description: t('fb.text'), body, closeLabel: t('fb.cancel'), returnFocus,
     footer: (close) => {
-      const send = h(doc, 'button', { class: 'btn btn-default', type: 'button', 'data-action': 'fb-send', text: t('fb.send'), onclick: async () => {
-        if (draft.state === 'sending') return;
-        draft.state = 'sending';
-        send.disabled = true;
-        status.textContent = t('fb.sending');
-        const r = report();
-        const ok = await sendReport(scope.GM, r);
-        draft.state = ok ? 'sent' : 'failed';
-        if (ok) {
-          status.textContent = t('fb.sent');
-          send.hidden = true;
-          return;
-        }
-        status.textContent = t('fb.failed');
-        send.disabled = false;
-        after.replaceChildren(h(doc, 'a', { class: 'btn btn-outline btn-sm', href: fallbackIssueUrl(r), target: '_blank', rel: 'noopener noreferrer', 'data-action': 'fb-github', text: t('fb.github') }));
-      } });
-      return [h(doc, 'button', { class: 'btn btn-outline', type: 'button', onclick: close, text: t('fb.cancel') }), send];
+      github = h(doc, 'a', { class: 'btn btn-default', href: issueUrl(report()), target: '_blank', rel: 'noopener noreferrer', 'data-action': 'fb-github', text: t('fb.github') });
+      return [h(doc, 'button', { class: 'btn btn-outline', type: 'button', onclick: close, text: t('fb.cancel') }), github];
     },
   });
   return dialog;

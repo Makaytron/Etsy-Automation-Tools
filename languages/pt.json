@@ -374,7 +374,7 @@
     "fb.notePlaceholder": "O que você fez e o que aconteceu?",
     "fb.noteHint": "Links, endereços de e-mail, chaves e números longos são removidos da observação.",
     "fb.preview": "O que será enviado",
-    "fb.previewHint": "Só isto, e só quando você tocar em Enviar.",
+    "fb.githubHint": "Abre um relatório público no GitHub com os dados preenchidos. Você revisa e envia por lá; é preciso uma conta no GitHub.",
     "fb.f.category": "Problema",
     "fb.f.errorCode": "Código de erro",
     "fb.f.appVersion": "Versão",
@@ -385,10 +385,6 @@
     "fb.f.region": "País",
     "fb.f.routeTemplate": "Página",
     "fb.f.note": "Observação",
-    "fb.send": "Enviar",
-    "fb.sending": "Enviando…",
-    "fb.sent": "Obrigado, seu relatório foi enviado.",
-    "fb.failed": "Não foi possível enviar o relatório. Você pode relatar no GitHub; as mesmas informações são preenchidas.",
     "fb.github": "Relatar no GitHub",
     "fb.cancel": "Fechar"
   }

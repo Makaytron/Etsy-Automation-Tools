@@ -374,7 +374,7 @@
     "fb.notePlaceholder": "Qu’avez-vous fait, et que s’est-il passé ?",
     "fb.noteHint": "Les liens, adresses e-mail, clés et longs nombres sont retirés de la note.",
     "fb.preview": "Ce qui sera envoyé",
-    "fb.previewHint": "Seulement ceci, et seulement quand vous appuyez sur Envoyer.",
+    "fb.githubHint": "Cela ouvre un ticket public sur GitHub avec le rapport déjà rempli. Vous le vérifiez et l'envoyez là-bas ; un compte GitHub est nécessaire.",
     "fb.f.category": "Problème",
     "fb.f.errorCode": "Code d’erreur",
     "fb.f.appVersion": "Version",
@@ -385,10 +385,6 @@
     "fb.f.region": "Pays",
     "fb.f.routeTemplate": "Page",
     "fb.f.note": "Note",
-    "fb.send": "Envoyer",
-    "fb.sending": "Envoi…",
-    "fb.sent": "Merci, votre rapport a été envoyé.",
-    "fb.failed": "Le rapport n’a pas pu être envoyé. Vous pouvez le signaler sur GitHub ; les mêmes informations sont préremplies.",
     "fb.github": "Signaler sur GitHub",
     "fb.cancel": "Fermer"
   }

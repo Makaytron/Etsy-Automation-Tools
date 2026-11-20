@@ -44,4 +44,4 @@ API keys do not move; enter them again here. The standalone scripts keep working
 
 Settings, reports and tool data stay in this browser. API keys never go into backups or the transfer. Details: [PRIVACY.en.md](../../PRIVACY.en.md).
 
-Report a problem: [GitHub Issues](https://github.com/Makaytron/Etsy-Automation-Tools/issues).
+Report a problem: the workspace's **Report a problem** dialog opens a public [GitHub Issues](https://github.com/Makaytron/Etsy-Automation-Tools/issues) entry with the report filled in (version, browser, operating system, language, country, page type and your note). The script sends nothing itself; you check the report on GitHub and submit it.

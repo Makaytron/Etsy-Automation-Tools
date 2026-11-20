@@ -374,7 +374,7 @@
     "fb.notePlaceholder": "Cosa hai fatto e cosa è successo?",
     "fb.noteHint": "Link, indirizzi e-mail, chiavi e numeri lunghi vengono rimossi dalla nota.",
     "fb.preview": "Cosa verrà inviato",
-    "fb.previewHint": "Solo questo, e solo quando premi Invia.",
+    "fb.githubHint": "Si apre una segnalazione pubblica su GitHub con il report già compilato. La controlli e la invii lì; serve un account GitHub.",
     "fb.f.category": "Problema",
     "fb.f.errorCode": "Codice di errore",
     "fb.f.appVersion": "Versione",
@@ -385,10 +385,6 @@
     "fb.f.region": "Paese",
     "fb.f.routeTemplate": "Pagina",
     "fb.f.note": "Nota",
-    "fb.send": "Invia",
-    "fb.sending": "Invio…",
-    "fb.sent": "Grazie, il tuo report è stato inviato.",
-    "fb.failed": "Non è stato possibile inviare il report. Puoi segnalarlo su GitHub; vengono compilate le stesse informazioni.",
     "fb.github": "Segnala su GitHub",
     "fb.cancel": "Chiudi"
   }

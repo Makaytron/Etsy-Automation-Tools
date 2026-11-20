@@ -374,7 +374,7 @@
     "fb.notePlaceholder": "Was haben Sie getan, und was ist passiert?",
     "fb.noteHint": "Links, E-Mail-Adressen, Schlüssel und lange Zahlen werden aus der Notiz entfernt.",
     "fb.preview": "Was gesendet wird",
-    "fb.previewHint": "Nur das, und nur wenn Sie auf Senden drücken.",
+    "fb.githubHint": "Dadurch öffnet sich ein öffentliches GitHub-Issue mit ausgefülltem Bericht. Sie prüfen es und senden es dort ab; ein GitHub-Konto ist nötig.",
     "fb.f.category": "Problem",
     "fb.f.errorCode": "Fehlercode",
     "fb.f.appVersion": "Version",
@@ -385,10 +385,6 @@
     "fb.f.region": "Land",
     "fb.f.routeTemplate": "Seite",
     "fb.f.note": "Notiz",
-    "fb.send": "Senden",
-    "fb.sending": "Wird gesendet…",
-    "fb.sent": "Danke, Ihr Bericht wurde gesendet.",
-    "fb.failed": "Der Bericht konnte nicht gesendet werden. Sie können ihn stattdessen auf GitHub melden; dieselben Angaben werden eingetragen.",
     "fb.github": "Auf GitHub melden",
     "fb.cancel": "Schließen"
   }

@@ -374,7 +374,7 @@
     "fb.notePlaceholder": "Ne yaptınız, ne oldu?",
     "fb.noteHint": "Nottaki bağlantılar, e-posta adresleri, anahtarlar ve uzun sayılar çıkarılır.",
     "fb.preview": "Gönderilecekler",
-    "fb.previewHint": "Yalnız bunlar ve yalnız Gönder’e bastığınızda.",
+    "fb.githubHint": "GitHub'da rapor doldurulmuş, herkese açık bir bildirim açılır. Orada kontrol edip gönderirsin; GitHub hesabı gerekir.",
     "fb.f.category": "Sorun",
     "fb.f.errorCode": "Hata kodu",
     "fb.f.appVersion": "Sürüm",
@@ -385,10 +385,6 @@
     "fb.f.region": "Ülke",
     "fb.f.routeTemplate": "Sayfa",
     "fb.f.note": "Not",
-    "fb.send": "Gönder",
-    "fb.sending": "Gönderiliyor…",
-    "fb.sent": "Teşekkürler, raporunuz gönderildi.",
-    "fb.failed": "Rapor gönderilemedi. Bunun yerine GitHub’da bildirebilirsiniz; aynı bilgiler doldurulur.",
     "fb.github": "GitHub’da bildir",
     "fb.cancel": "Kapat"
   }

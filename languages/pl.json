@@ -374,7 +374,7 @@
     "fb.notePlaceholder": "Co zrobiłeś i co się stało?",
     "fb.noteHint": "Linki, adresy e-mail, klucze i długie liczby są usuwane z notatki.",
     "fb.preview": "Co zostanie wysłane",
-    "fb.previewHint": "Tylko to i tylko po naciśnięciu Wyślij.",
+    "fb.githubHint": "Otworzy się publiczne zgłoszenie na GitHubie z wypełnionym raportem. Sprawdzasz je i wysyłasz tam; potrzebne jest konto GitHub.",
     "fb.f.category": "Problem",
     "fb.f.errorCode": "Kod błędu",
     "fb.f.appVersion": "Wersja",
@@ -385,10 +385,6 @@
     "fb.f.region": "Kraj",
     "fb.f.routeTemplate": "Strona",
     "fb.f.note": "Notatka",
-    "fb.send": "Wyślij",
-    "fb.sending": "Wysyłanie…",
-    "fb.sent": "Dziękujemy, raport został wysłany.",
-    "fb.failed": "Nie udało się wysłać raportu. Możesz zgłosić go na GitHubie; te same dane zostaną uzupełnione.",
     "fb.github": "Zgłoś na GitHubie",
     "fb.cancel": "Zamknij"
   }

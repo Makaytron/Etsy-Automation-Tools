@@ -374,7 +374,7 @@
     "fb.notePlaceholder": "何をして、何が起きましたか？",
     "fb.noteHint": "メモ内のリンク、メールアドレス、キー、長い数字は削除されます。",
     "fb.preview": "送信される内容",
-    "fb.previewHint": "送信されるのはこれだけで、「送信」を押したときだけです。",
+    "fb.githubHint": "レポートが入力された公開の GitHub Issue が開きます。内容を確認してそこで送信してください。GitHub アカウントが必要です。",
     "fb.f.category": "問題",
     "fb.f.errorCode": "エラーコード",
     "fb.f.appVersion": "バージョン",
@@ -385,10 +385,6 @@
     "fb.f.region": "国",
     "fb.f.routeTemplate": "ページ",
     "fb.f.note": "メモ",
-    "fb.send": "送信",
-    "fb.sending": "送信しています…",
-    "fb.sent": "ありがとうございます。レポートを送信しました。",
-    "fb.failed": "レポートを送信できませんでした。代わりに GitHub で報告できます。同じ情報が入力されます。",
     "fb.github": "GitHub で報告",
     "fb.cancel": "閉じる"
   }

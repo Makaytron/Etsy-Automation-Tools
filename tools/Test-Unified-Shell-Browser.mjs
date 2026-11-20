@@ -108,8 +108,6 @@ function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, tr
       (window.__requests = window.__requests || []).push(details.url);
       // The Ads engine downloads its default word list; answer it like GitHub would.
       if (details.url.includes('keyword-rules.txt')) setTimeout(() => details.onload?.({ status: 200, responseText: ['bts', 'army gift', ''].join(String.fromCharCode(10)) }), 0);
-      // Problem reports: recorded, and accepted unless the page says the endpoint is down.
-      if (details.url.includes('/functions/v1/feedback-ingest')) { window.__feedback = JSON.parse(details.data); setTimeout(() => (window.__feedbackDown ? details.onerror?.(new Error('down')) : details.onload?.({ status: 204, responseText: '' })), 0); return; }
       // Language packs come from the repository; a page lists the ones it can serve.
       else if (details.url.includes('/languages/') && window.__packs[details.url.split('/').pop().replace('.json', '')]) setTimeout(() => details.onload?.({ status: 200, responseText: JSON.stringify(window.__packs[details.url.split('/').pop().replace('.json', '')]) }), 0);
       else setTimeout(() => details.onerror?.(new Error('blocked in fixture')), 0);
@@ -567,16 +565,11 @@ const scenarios = {
     const note = q('#eat-fb-note');
     note.value = 'Shop https://www.etsy.com/shop/MyShop 1234567890 mail me@example.com'; note.dispatchEvent(new Event('input', { bubbles: true }));
     out.preview = Object.fromEntries([...S().querySelectorAll('[data-role="fb-preview"] tr')].map((tr) => [tr.dataset.field, tr.children[1].textContent]));
-    window.__feedbackDown = true;
-    q('[data-action="fb-send"]').click();
-    await until(() => q('[data-action="fb-github"]'));
-    out.failed = q('[data-role="fb-status"]')?.textContent ?? null;
     out.github = q('[data-action="fb-github"]')?.getAttribute('href') ?? '';
-    window.__feedbackDown = false;
-    q('[data-action="fb-send"]').click();
-    await until(() => (q('[data-role="fb-status"]')?.textContent ?? '').includes('gönderildi'));
-    out.sent = q('[data-role="fb-status"]')?.textContent ?? null;
-    out.payload = window.__feedback ?? null;
+    out.target = q('[data-action="fb-github"]')?.getAttribute('target') ?? null;
+    const body = new URL(out.github).searchParams.get('body') ?? '';
+    out.payload = JSON.parse(body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1));
+    out.requests = window.__requests || [];
     return out;
   }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
@@ -953,16 +946,16 @@ test('the real standalone script hands its data over from its notice, with the s
   assert.equal(r.standaloneKept, 'bts\nkpop poster', 'the standalone script keeps its own data');
 });
 
-test('a problem report shows everything it sends, never shop data, and falls back to GitHub', async () => {
+test('a problem report shows everything, never shop data, and opens a prefilled GitHub issue without sending anything', async () => {
   const r = await visit(chrome, base, '/your/shops/me/stats/feedback');
   assert.equal(r.title, 'Sorun bildir');
   assert.equal(r.preview.region, 'US');
   assert.equal(r.preview.browserLocale, 'en-US');
   assert.equal(r.preview.uiLanguage, 'tr');
   assert.equal(r.preview.note, 'Shop [link] [number] mail [email]');
-  assert.match(r.failed, /gönderilemedi/);
   assert.match(r.github, /^https:\/\/github\.com\/Makaytron\/Etsy-Automation-Tools\/issues\/new\?/);
-  assert.match(r.sent, /gönderildi/);
+  assert.equal(r.target, '_blank');
+  assert.deepEqual(r.requests, [], 'the script itself sends nothing');
   assert.deepEqual(Object.keys(r.payload).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorCode', 'format', 'formatVersion', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'uiLanguage']);
   assert.doesNotMatch(JSON.stringify(r.payload), /MyShop|1234567890|example\.com/);
 });

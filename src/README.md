@@ -16,6 +16,7 @@ This folder holds the source of the single userscript that will replace the five
 | `core/drawer-geometry.js` | Edge button and drawer geometry: the drawer opens from the button's side, from the left when the button is on the top or bottom edge. |
 | `core/i18n.js` | Browser-language detection, bundled language-picker strings, downloaded and validated language packs with caching, RTL detection. |
 | `core/diagnostics.js` | Problem reports built from an allowlist: version, browser family/major, OS family, locale/region, redacted route template, known error code, category, and a scrubbed note. |
+| `core/feedback.js`, `ui/feedback.js` | The Report a problem dialog: shows every field of the report, then a link opens a prefilled public GitHub issue. The script sends nothing itself. |
 | `core/events.js` | Small event bus. |
 | `core/migration.js` | Receiving side of the one-time transfer from the standalone scripts: stores each tool's data under `legacy.<key>` in its namespace and records the transfer once. |
 | `modules/index.js` | The five tools, each running its adopted standalone engine. |

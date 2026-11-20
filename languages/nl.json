@@ -374,7 +374,7 @@
     "fb.notePlaceholder": "Wat deed je en wat gebeurde er?",
     "fb.noteHint": "Links, e-mailadressen, sleutels en lange getallen worden uit de notitie verwijderd.",
     "fb.preview": "Wat wordt verstuurd",
-    "fb.previewHint": "Alleen dit, en alleen als je op Versturen drukt.",
+    "fb.githubHint": "Hiermee opent een openbaar GitHub-issue met het rapport ingevuld. Je controleert het en dient het daar in; een GitHub-account is nodig.",
     "fb.f.category": "Probleem",
     "fb.f.errorCode": "Foutcode",
     "fb.f.appVersion": "Versie",
@@ -385,10 +385,6 @@
     "fb.f.region": "Land",
     "fb.f.routeTemplate": "Pagina",
     "fb.f.note": "Notitie",
-    "fb.send": "Versturen",
-    "fb.sending": "Bezig met versturen…",
-    "fb.sent": "Bedankt, je rapport is verstuurd.",
-    "fb.failed": "Het rapport kon niet worden verstuurd. Je kunt het op GitHub melden; dezelfde gegevens worden ingevuld.",
     "fb.github": "Melden op GitHub",
     "fb.cancel": "Sluiten"
   }

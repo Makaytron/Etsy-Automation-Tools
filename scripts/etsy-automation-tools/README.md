@@ -44,4 +44,4 @@ API anahtarları taşınmaz; burada yeniden girersiniz. Ayrı scriptler altı ay
 
 Ayarlar, raporlar ve araç verileri bu tarayıcıda kalır. API anahtarları yedeklere ve aktarıma hiç girmez. Ayrıntılar: [PRIVACY.md](../../PRIVACY.md).
 
-Sorun bildirmek için: [GitHub Issues](https://github.com/Makaytron/Etsy-Automation-Tools/issues).
+Sorun bildirmek için: çalışma alanındaki **Sorun bildir** penceresi, raporu (sürüm, tarayıcı, işletim sistemi, dil, ülke, sayfa türü ve notunuz) doldurulmuş hâlde herkese açık bir [GitHub Issues](https://github.com/Makaytron/Etsy-Automation-Tools/issues) kaydı olarak açar. Script kendisi hiçbir şey göndermez; raporu GitHub'da kontrol edip siz gönderirsiniz.

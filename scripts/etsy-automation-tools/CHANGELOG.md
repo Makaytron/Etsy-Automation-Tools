@@ -14,6 +14,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak 
 - New screens for every tool; Message Assistant and Listing Analyzer keep their own panel for detailed work.
 - Languages: English built in; 42 more languages, Turkish included, as downloadable packs. The language screen and the problem report dialog are built in for every language.
 - The transfer from the standalone scripts: encrypted on the page, with a check code on both sides; API keys never move.
+- Report a problem: shows every field of the report, then opens a prefilled public GitHub issue. The script sends nothing itself.
 
 ### Security
 
