@@ -644,6 +644,7 @@
     "ads.saveBusy": "Egy feladat fut; a lista nem lett mentve.",
     "ads.saveEmpty": "A listának legalább egy szabályra van szüksége.",
     "ads.saveLarge": "A lista túl nagy.",
+    "ads.saveRegex": "A(z) {rule} minta érvénytelen, a lista nem lett mentve. Ellenőrizd a jeleket, és próbáld újra.",
     "ads.emptyTitle": "A szólistád üres",
     "ads.emptyText": "Add hozzá azokat a szavakat, amelyekhez nem futhatnak hirdetési kulcsszavak. Az Etsy Adsben az ezeket tartalmazó kulcsszavak megkereshetők és kikapcsolhatók, amikor szólsz.",
     "ads.emptyStart": "Az első szó hozzáadása",

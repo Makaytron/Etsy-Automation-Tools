@@ -644,6 +644,7 @@
     "ads.saveBusy": "Vykdomas darbas; sąrašas neišsaugotas.",
     "ads.saveEmpty": "Sąraše turi būti bent viena taisyklė.",
     "ads.saveLarge": "Sąrašas per didelis.",
+    "ads.saveRegex": "Šablonas {rule} netinkamas; sąrašas neišsaugotas. Patikrinkite simbolius ir bandykite dar kartą.",
     "ads.emptyTitle": "Jūsų žodžių sąrašas tuščias",
     "ads.emptyText": "Pridėkite žodžius, kurių reklamos raktažodžiai neturėtų veikti. Etsy Ads juos turintys raktažodžiai randami ir jums nurodžius išjungiami.",
     "ads.emptyStart": "Pridėti pirmą žodį",

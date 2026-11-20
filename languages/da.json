@@ -644,6 +644,7 @@
     "ads.saveBusy": "Et job kører; listen blev ikke gemt.",
     "ads.saveEmpty": "Listen skal have mindst én regel.",
     "ads.saveLarge": "Listen er for stor.",
+    "ads.saveRegex": "Mønsteret {rule} er ugyldigt; listen blev ikke gemt. Tjek tegnene, og prøv igen.",
     "ads.emptyTitle": "Din ordliste er tom",
     "ads.emptyText": "Tilføj de ord, som annoncesøgeord ikke skal køre for. I Etsy Ads findes de søgeord, der indeholder dem, og slås fra, når du siger til.",
     "ads.emptyStart": "Tilføj det første ord",

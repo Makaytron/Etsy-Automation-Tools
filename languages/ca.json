@@ -644,6 +644,7 @@
     "ads.saveBusy": "Hi ha una tasca en marxa; la llista no s'ha desat.",
     "ads.saveEmpty": "La llista necessita almenys una regla.",
     "ads.saveLarge": "La llista és massa gran.",
+    "ads.saveRegex": "El patró {rule} no és vàlid; la llista no s'ha desat. Revisa'n els símbols i torna-ho a provar.",
     "ads.emptyTitle": "La teva llista de paraules és buida",
     "ads.emptyText": "Afegeix les paraules per a les quals no s'han d'activar les paraules clau de publicitat. A Etsy Ads, les paraules clau que les contenen es troben i es desactiven quan tu ho dius.",
     "ads.emptyStart": "Afegeix la primera paraula",

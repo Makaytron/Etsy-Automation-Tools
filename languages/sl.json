@@ -644,6 +644,7 @@
     "ads.saveBusy": "Opravilo teče; seznam ni bil shranjen.",
     "ads.saveEmpty": "Seznam potrebuje vsaj eno pravilo.",
     "ads.saveLarge": "Seznam je prevelik.",
+    "ads.saveRegex": "Vzorec {rule} ni veljaven; seznam ni bil shranjen. Preverite znake in poskusite znova.",
     "ads.emptyTitle": "Vaš seznam besed je prazen",
     "ads.emptyText": "Dodajte besede, za katere ključne besede oglasov ne smejo teči. V Etsy Ads se ključne besede, ki jih vsebujejo, najdejo in izklopijo, ko to rečete.",
     "ads.emptyStart": "Dodaj prvo besedo",

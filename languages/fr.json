@@ -644,6 +644,7 @@
     "ads.saveBusy": "Une tâche est en cours ; la liste n’a pas été enregistrée.",
     "ads.saveEmpty": "La liste doit contenir au moins une règle.",
     "ads.saveLarge": "La liste est trop volumineuse.",
+    "ads.saveRegex": "Le motif {rule} n'est pas valide ; la liste n'a pas été enregistrée. Vérifiez ses symboles et réessayez.",
     "ads.emptyTitle": "Votre liste de mots est vide",
     "ads.emptyText": "Ajoutez les mots pour lesquels les mots-clés publicitaires ne doivent pas diffuser. Dans Etsy Ads, les mots-clés qui les contiennent sont trouvés et désactivés quand vous le décidez.",
     "ads.emptyStart": "Ajouter le premier mot",

@@ -644,6 +644,7 @@
     "ads.saveBusy": "有工作正在執行；清單未儲存。",
     "ads.saveEmpty": "清單至少需要一條規則。",
     "ads.saveLarge": "清單太大。",
+    "ads.saveRegex": "模式 {rule} 無效，清單未儲存。請檢查符號後再試一次。",
     "ads.emptyTitle": "你的詞彙清單是空的",
     "ads.emptyText": "新增不希望廣告關鍵字投放的詞彙。在 Etsy Ads 中，包含這些詞彙的關鍵字會被找出，並在你同意後關閉。",
     "ads.emptyStart": "新增第一個詞彙",

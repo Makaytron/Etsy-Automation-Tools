@@ -644,6 +644,7 @@
     "ads.saveBusy": "Darbojas darbs; saraksts netika saglabāts.",
     "ads.saveEmpty": "Sarakstā jābūt vismaz vienam noteikumam.",
     "ads.saveLarge": "Saraksts ir pārāk liels.",
+    "ads.saveRegex": "Šablons {rule} nav derīgs; saraksts netika saglabāts. Pārbaudiet simbolus un mēģiniet vēlreiz.",
     "ads.emptyTitle": "Jūsu vārdu saraksts ir tukšs",
     "ads.emptyText": "Pievienojiet vārdus, kuriem nedrīkst darboties reklāmas atslēgvārdi. Etsy Ads atslēgvārdi, kas tos satur, tiek atrasti un izslēgti, kad jūs to sakāt.",
     "ads.emptyStart": "Pievienot pirmo vārdu",

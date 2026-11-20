@@ -644,6 +644,7 @@
     "ads.saveBusy": "È in corso un’attività; l’elenco non è stato salvato.",
     "ads.saveEmpty": "L’elenco deve contenere almeno una regola.",
     "ads.saveLarge": "L’elenco è troppo grande.",
+    "ads.saveRegex": "Lo schema {rule} non è valido; l'elenco non è stato salvato. Controlla i simboli e riprova.",
     "ads.emptyTitle": "Il tuo elenco di parole è vuoto",
     "ads.emptyText": "Aggiungi le parole per cui le parole chiave pubblicitarie non devono essere attive. In Etsy Ads, le parole chiave che le contengono vengono trovate e disattivate quando lo decidi tu.",
     "ads.emptyStart": "Aggiungi la prima parola",

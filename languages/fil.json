@@ -644,6 +644,7 @@
     "ads.saveBusy": "May tumatakbong gawain; hindi na-save ang listahan.",
     "ads.saveEmpty": "Kailangan ng listahan ng kahit isang panuntunan.",
     "ads.saveLarge": "Masyadong malaki ang listahan.",
+    "ads.saveRegex": "Hindi valid ang pattern na {rule}; hindi na-save ang listahan. Suriin ang mga simbolo at subukan ulit.",
     "ads.emptyTitle": "Walang laman ang iyong listahan ng salita",
     "ads.emptyText": "Idagdag ang mga salitang hindi dapat patakbuhin ang mga ad keyword. Sa Etsy Ads, hahanapin at io-off ang mga keyword na naglalaman ng mga ito kapag sinabi mo.",
     "ads.emptyStart": "Idagdag ang unang salita",

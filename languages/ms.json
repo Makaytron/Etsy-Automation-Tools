@@ -644,6 +644,7 @@
     "ads.saveBusy": "Ada kerja sedang berjalan; senarai tidak disimpan.",
     "ads.saveEmpty": "Senarai memerlukan sekurang-kurangnya satu peraturan.",
     "ads.saveLarge": "Senarai terlalu besar.",
+    "ads.saveRegex": "Corak {rule} tidak sah; senarai tidak disimpan. Semak simbolnya dan cuba lagi.",
     "ads.emptyTitle": "Senarai perkataan anda kosong",
     "ads.emptyText": "Tambah perkataan yang kata kunci iklannya tidak patut berjalan. Dalam Etsy Ads, kata kunci yang mengandunginya ditemui dan dimatikan apabila anda meminta.",
     "ads.emptyStart": "Tambah perkataan pertama",

@@ -644,6 +644,7 @@
     "ads.saveBusy": "Một công việc đang chạy; danh sách chưa được lưu.",
     "ads.saveEmpty": "Danh sách cần ít nhất một quy tắc.",
     "ads.saveLarge": "Danh sách quá lớn.",
+    "ads.saveRegex": "Mẫu {rule} không hợp lệ; danh sách chưa được lưu. Hãy kiểm tra các ký hiệu rồi thử lại.",
     "ads.emptyTitle": "Danh sách từ của bạn đang trống",
     "ads.emptyText": "Thêm những từ mà từ khóa quảng cáo chứa chúng không nên chạy. Trong Etsy Ads, các từ khóa chứa chúng sẽ được tìm và tắt khi bạn yêu cầu.",
     "ads.emptyStart": "Thêm từ đầu tiên",

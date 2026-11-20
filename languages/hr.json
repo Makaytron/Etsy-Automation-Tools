@@ -644,6 +644,7 @@
     "ads.saveBusy": "Zadatak je u tijeku; popis nije spremljen.",
     "ads.saveEmpty": "Popis treba barem jedno pravilo.",
     "ads.saveLarge": "Popis je prevelik.",
+    "ads.saveRegex": "Uzorak {rule} nije valjan; popis nije spremljen. Provjerite znakove i pokušajte ponovno.",
     "ads.emptyTitle": "Vaš popis riječi je prazan",
     "ads.emptyText": "Dodajte riječi za koje ključne riječi oglasa ne smiju raditi. U Etsy Ads ključne riječi koje ih sadrže pronalaze se i isključuju kad vi to kažete.",
     "ads.emptyStart": "Dodaj prvu riječ",

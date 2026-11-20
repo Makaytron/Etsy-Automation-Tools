@@ -644,6 +644,7 @@
     "ads.saveBusy": "有任务正在运行；词表未保存。",
     "ads.saveEmpty": "词表至少需要一条规则。",
     "ads.saveLarge": "词表太大。",
+    "ads.saveRegex": "模式 {rule} 无效，列表未保存。请检查符号后重试。",
     "ads.emptyTitle": "你的词表是空的",
     "ads.emptyText": "添加不希望广告关键词投放的词。在 Etsy Ads 中，包含这些词的关键词会被找出，并在你确认后关闭。",
     "ads.emptyStart": "添加第一个词",

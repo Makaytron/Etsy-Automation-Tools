@@ -12,12 +12,14 @@
 
 import { createScopedGm } from '../core/scoped-gm.js';
 import { renderMaDrawer, renderMaPage } from './message-assistant-ui.js';
+import { createWaitingNotices } from '../core/waiting-notices.js';
 
 export const MA_TOOL_ID = 'message-assistant';
 export const STANDALONE_ROOT_ID = 'makaytron-etsy-message-assistant';
 const STANDALONE_GRACE_MS = 1500;
 
 export function createMessageAssistantModule({ secrets }) {
+  const waiting = createWaitingNotices({ event: 'autopilotWaiting', tool: MA_TOOL_ID, page: `tool:${MA_TOOL_ID}` });
   const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', languages: null, local: { list: [], filter: 'all' } };
 
   const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
@@ -40,6 +42,10 @@ export function createMessageAssistantModule({ secrets }) {
     if (text === state.last) return;
     state.last = text;
     emit('running');
+    // An autopilot or guided step that now waits for the user (send to confirm, result to check) is announced once.
+    const camp = state.engine.messages?.view().campaign;
+    waiting.update((camp?.active ? camp.items : []).filter((i) => ['inserted', 'sent_pending_verification'].includes(i.status)).map((i) => ({ key: `${i.id}:${i.status}`, detail: i.name })),
+      { notify: state.ctx?.notify, language: state.ctx?.settings?.get().language });
   }
 
   async function start(ctx) {
@@ -148,6 +154,8 @@ export function createMessageAssistantModule({ secrets }) {
       return current ? renderMaPage(ui.doc, {
         view: current, language: ui.language, actions: actionsFor(ui), tab: ui.tab === 'overview' ? 'inbox' : ui.tab, onTab: ui.onTab,
         local: state.local, container: ui.container, version: state.ctx?.appVersion ?? '',
+        // Settings › Tools › "Order details in messages".
+        showOrder: state.ctx?.settings?.get().links?.orderInfoInMessages !== false,
       }) : null;
     },
     async mount(ctx) {

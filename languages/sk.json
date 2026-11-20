@@ -644,6 +644,7 @@
     "ads.saveBusy": "Beží úloha; zoznam sa neuložil.",
     "ads.saveEmpty": "Zoznam potrebuje aspoň jedno pravidlo.",
     "ads.saveLarge": "Zoznam je príliš veľký.",
+    "ads.saveRegex": "Vzor {rule} nie je platný; zoznam sa neuložil. Skontrolujte znaky a skúste to znova.",
     "ads.emptyTitle": "Váš zoznam slov je prázdny",
     "ads.emptyText": "Pridajte slová, pre ktoré nemajú bežať kľúčové slová reklám. V Etsy Ads sa kľúčové slová, ktoré ich obsahujú, nájdu a vypnú, keď to poviete.",
     "ads.emptyStart": "Pridať prvé slovo",

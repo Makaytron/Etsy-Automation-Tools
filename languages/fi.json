@@ -644,6 +644,7 @@
     "ads.saveBusy": "Työ on käynnissä; luetteloa ei tallennettu.",
     "ads.saveEmpty": "Luettelossa on oltava vähintään yksi sääntö.",
     "ads.saveLarge": "Luettelo on liian suuri.",
+    "ads.saveRegex": "Kaava {rule} ei kelpaa, joten luetteloa ei tallennettu. Tarkista merkit ja yritä uudelleen.",
     "ads.emptyTitle": "Sanaluettelosi on tyhjä",
     "ads.emptyText": "Lisää sanat, joille mainosavainsanoja ei pidä käyttää. Etsy Adsissa niitä sisältävät avainsanat löydetään ja kytketään pois, kun annat luvan.",
     "ads.emptyStart": "Lisää ensimmäinen sana",

@@ -134,7 +134,7 @@ export function renderMaDrawer(doc, { snap, view, language, actions, unread = 0 
 }
 
 /** Workspace page with Conversations, Quick replies and Autopilot and reviews. */
-export function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTab, local, container, version }) {
+export function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTab, local, container, version, showOrder = true }) {
   const ts = texts(language);
   const current = ['inbox', 'templates', 'automation'].includes(tab) ? tab : 'inbox';
   const list = local.list ?? [];
@@ -188,12 +188,12 @@ export function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTa
 
     const active = view.templates.filter((t) => !t.archived);
     const right = h(doc, 'aside', { style: 'width: 280px; flex: none; border-left: 1px solid #e7e7e7; display: flex; flex-direction: column;' },
-      h(doc, 'div', { style: 'padding: 14px 16px; border-bottom: 1px solid #ececec;' }, h(doc, 'span', { class: 'h3', text: ts('orderTitle') })),
-      h(doc, 'div', { style: 'padding: 14px 16px; display: flex; gap: 12px; border-bottom: 1px solid #ececec;' },
+      showOrder ? h(doc, 'div', { style: 'padding: 14px 16px; border-bottom: 1px solid #ececec;' }, h(doc, 'span', { class: 'h3', text: ts('orderTitle') })) : null,
+      showOrder ? h(doc, 'div', { style: 'padding: 14px 16px; display: flex; gap: 12px; border-bottom: 1px solid #ececec;' },
         h(doc, 'span', { class: 'thumb' }),
         h(doc, 'span', { class: 'col', style: 'gap: 2px; min-width: 0;' },
           h(doc, 'span', { class: 'sm b', text: c?.itemTitle || (c?.orderId ? ts('order', { id: c.orderId }) : ts('noOrder')) }),
-          c?.orderId && c.itemTitle ? h(doc, 'span', { class: 'xs mute', text: ts('order', { id: c.orderId }) }) : null)),
+          c?.orderId && c.itemTitle ? h(doc, 'span', { class: 'xs mute', text: ts('order', { id: c.orderId }) }) : null)) : null,
       h(doc, 'div', { style: 'padding: 14px 16px 6px;' }, h(doc, 'span', { class: 'ov', text: ts('quick') })),
       h(doc, 'div', { class: 'list', style: 'padding: 0 4px; overflow: auto;' },
         active.length ? active.map((t) => h(doc, 'button', {

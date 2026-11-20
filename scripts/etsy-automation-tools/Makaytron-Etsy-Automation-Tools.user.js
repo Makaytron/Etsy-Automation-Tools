@@ -11179,6 +11179,11 @@
   // Saves a whole rule list from the workspace's word list page, by the editor's own rules.
   async function __eatSaveRules(list) {
       if (!RouteLifecycle.allowed() || activeOperation || wordlistUpdateRunning || document.getElementById(EDITOR_MODAL_ID)) return { ok: false, reason: 'busy' };
+      // A pattern is checked the way the standalone editor checks it (submitRule): a broken one is refused, not saved.
+      for (const rule of Array.isArray(list) ? list : []) {
+          if (rule?.type !== 'regex') continue;
+          try { new RegExp(String(rule.value ?? ''), 'iu'); } catch { return { ok: false, reason: 'regex', rule: String(rule.value ?? '') }; }
+      }
       const value = (Array.isArray(list) ? list : []).map((rule) => encodeEditorRule({ type: rule?.type === 'exact' ? 'exact' : rule?.type === 'regex' ? 'regex' : 'contains', value: String(rule?.value ?? ''), edited: true })).filter(Boolean).join('\n');
       if (!value) return { ok: false, reason: 'empty' };
       if (new TextEncoder().encode(value).length > MAX_WORDLIST_BYTES) return { ok: false, reason: 'too_large' };
@@ -27437,7 +27442,17 @@
               unread: item.unread, time: item.timestamp,
           };
       }) : [];
-      const context = page === 'messages' && !listPage ? (UI.state.context || MessageAdapter.context()) : null;
+      // The engine refreshes its context only while its own panel is open; the unified screens read the live
+      // conversation and, when Etsy moved to another one, drop the old draft exactly as the engine would.
+      let context = null;
+      if (page === 'messages' && !listPage) {
+          const live = MessageAdapter.context();
+          if (live.conversationId && UI.state.context && UI.messageContextChanged(live)) {
+              UI.adoptMessageContext(live);
+              UI.invalidateMessageWork();
+          }
+          context = live.conversationId && UI.state.context?.conversationId === live.conversationId ? UI.state.context : live;
+      }
       const conversation = context?.conversationId ? {
           id: context.conversationId, name: String(context.customerName || ''), orderId: String(context.orderId || ''), itemTitle: String(context.itemTitle || ''),
           messages: (context.messages || []).slice(-6).map((message) => ({ role: message.role, text: String(message.text || '') })),
@@ -39932,7 +39947,7 @@
         contains: 'Contains', exact: 'Exact', regex: 'Pattern', editRule: 'Edit the rule {rule}', deleteRule: 'Delete the rule {rule}', saveRule: 'Save', cancel: 'Cancel',
         update: 'Get the Makaytron list…', restore: 'Go back to the previous list…', fullEditor: 'Open the full editor',
         noBackup: 'No previous list yet. Updating the list keeps the current one as a backup.',
-        saved: 'The word list is saved.', saveBusy: 'A job is running; the list was not saved.', saveEmpty: 'The list needs at least one rule.', saveLarge: 'The list is too large.',
+        saved: 'The word list is saved.', saveBusy: 'A job is running; the list was not saved.', saveEmpty: 'The list needs at least one rule.', saveLarge: 'The list is too large.', saveRegex: 'The pattern {rule} is not valid; the list was not saved. Check its symbols and try again.',
         emptyTitle: 'Your word list is empty', emptyText: 'Add the words whose ad keywords should not run. On Etsy Ads, the keywords that contain them are found and turned off when you say so.',
         emptyStart: 'Add the first word', emptyMakaytron: 'Get the Makaytron list',
         how1: 'Add words', how1Text: 'Words or phrases you do not want ads for.', how2: 'Open an ad', how2Text: 'On Etsy Ads, the matching keywords are marked.', how3: 'Turn them off', how3Text: 'On this page or on every page, after you confirm.',
@@ -40049,7 +40064,7 @@
         const hereCount = (rule) => (matches?.rows ?? []).filter((m) => m.rule === rule.value && m.type === rule.type).length;
         const save = async (next) => {
           const result = await actions.saveRules(next);
-          actions.say?.(result.ok ? ts('saved') : ts({ busy: 'saveBusy', empty: 'saveEmpty', too_large: 'saveLarge' }[result.reason] ?? 'saveBusy'));
+          actions.say?.(result.ok ? ts('saved') : ts({ busy: 'saveBusy', empty: 'saveEmpty', too_large: 'saveLarge', regex: 'saveRegex' }[result.reason] ?? 'saveBusy', { rule: result.rule ?? '' }));
         };
         const word = h(doc, 'input', { class: 'input', type: 'text', id: 'eat-ads-word', name: 'ads-word', placeholder: ts('addWordPlaceholder'), autocomplete: 'off', spellcheck: 'false' });
         const how = h(doc, 'select', { class: 'input', id: 'eat-ads-how', name: 'ads-how' },
@@ -40403,7 +40418,7 @@
     }
 
     /** Research page (KW-Research / KW-Analyzing / KW-Empty). */
-    function renderKwPage(doc, { snap, data, language, actions, container }) {
+    function renderKwPage(doc, { snap, data, language, actions, container, research = true }) {
       const ts = texts(language);
       const saved = (data?.captures ?? []).slice().sort((a, b) => String(b.capturedAt ?? '').localeCompare(String(a.capturedAt ?? '')));
       const view = actions.viewState?.() ?? { query: '', selected: null };
@@ -40418,7 +40433,7 @@
         overline: 'Keyword & Market Analyzer', title: ts('title'), description: ts('description'),
         actions: [
           // Importing a Listing Analyzer research request stays possible once research is saved.
-          items.length ? h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-kw': 'import', onclick: (e) => importDialog(e.currentTarget) }, icon(doc, ICONS.upload, 16), ts('importRequest')) : null,
+          items.length && research ? h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-kw': 'import', onclick: (e) => importDialog(e.currentTarget) }, icon(doc, ICONS.upload, 16), ts('importRequest')) : null,
           h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-kw': 'export', disabled: !saved.length, onclick: () => actions.exportJson() }, icon(doc, ICONS.download, 16), ts('exportJson')),
           h(doc, 'form', { class: 'row', 'data-role': 'kw-search', onsubmit: (e) => { e.preventDefault(); actions.search(e.currentTarget.elements.keyword.value); } },
             h(doc, 'input', { class: 'input', id: 'eat-kw-keyword', name: 'keyword', type: 'search', 'aria-label': ts('keyword'), maxlength: 80, autocomplete: 'off', placeholder: ts('keyword'), value: snap.keyword ?? '', style: 'width: 200px;' }),
@@ -40433,7 +40448,7 @@
           h(doc, 'p', { class: 'ed', text: ts('emptyText') }),
           h(doc, 'div', { class: 'ea' },
             h(doc, 'a', { class: 'btn btn-p', href: '/your/shops/me/marketplace-insights', text: ts('emptyStart') }),
-            h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: (e) => importDialog(e.currentTarget), text: ts('importRequest') })),
+            research ? h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: (e) => importDialog(e.currentTarget), text: ts('importRequest') }) : null),
           h(doc, 'div', { class: 'steps' }, [1, 2, 3].map((n) => h(doc, 'div', {},
             h(doc, 'span', { class: 'n', text: String(n) }),
             h(doc, 'span', {}, h(doc, 'span', { class: 'st', text: ts(`how${n}`) }), h(doc, 'span', { class: 'sd', text: ts(`how${n}Text`) }))))))];
@@ -40619,6 +40634,11 @@
         return state.engine.snapshot();
       }
 
+      // Settings › Tools › "Keyword research into listings": when it is off, no Listing Analyzer request is shown,
+      // imported or answered from here.
+      const linked = () => state.ctx?.settings?.get().links?.kwToListing !== false;
+      const linkedData = () => (linked() || !state.data ? state.data : { ...state.data, active: null, hasResult: false });
+
       return {
         id: KW_TOOL_ID,
         name: 'Keyword & Market Analyzer',
@@ -40628,11 +40648,11 @@
         status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
         renderDrawer(ui) {
           const snap = view(ui);
-          return snap ? renderKwDrawer(ui.doc, { snap, data: state.data, language: ui.language, actions: actionsFor(ui) }) : null;
+          return snap ? renderKwDrawer(ui.doc, { snap, data: linkedData(), language: ui.language, actions: actionsFor(ui) }) : null;
         },
         renderPage(ui) {
           const snap = view(ui);
-          return snap ? renderKwPage(ui.doc, { snap, data: state.data, language: ui.language, actions: actionsFor(ui), container: ui.container }) : null;
+          return snap ? renderKwPage(ui.doc, { snap, data: linkedData(), language: ui.language, actions: actionsFor(ui), container: ui.container, research: linked() }) : null;
         },
         async mount(ctx) {
           state.ctx = ctx;
@@ -40650,2159 +40670,6 @@
       };
     }
     return Object.freeze({ KW_TOOL_ID, STANDALONE_ROOT_ID, ENGINE_ROOT_ID, createKeywordMarketAnalyzerModule });
-  })();
-
-  // ── src/modules/listing-analyzer-ui.js ──
-  const __eat_modules_listing_analyzer_ui = (() => {
-    // Listing Analyzer screens, as the design canvas draws them: the drawer
-    // section and the workspace page with Overview (LA-Overview, and LA-Scan while
-    // all pages are being read), Listings (LA-Listings), AI suggestions (LA-AI),
-    // Queue (LA-Queue), Thresholds (LA-Thresholds) and the first-use page (LA-Empty).
-    //
-    // The screens read the engine's analysed records and call its own functions:
-    // the scan, selection, the edit queue (apply in the form, publish and
-    // deactivate stay the user's clicks on Etsy, then verify), the AI request and
-    // answer, and the thresholds. A listing's history and edit plan open in the
-    // engine's own panel (LA-Detail, LA-Plan, LA-ApplyEditor).
-    //
-    // Design sources: template.primitive.card, .table, .badge, .button, .tabs,
-    // .input, .progress; shadcn.blocks.kpi-widgets for the tiles and
-    // shadcn.blocks.datatable for the listing and queue tables.
-
-    const { h, icon } = __eat_ui_dom;
-    const { ICONS } = __eat_ui_icons;
-    const { pageHead, pageTabs, alertBox, banner } = __eat_ui_controls;
-    const { interpolate } = __eat_core_i18n;
-    const { packText } = __eat_core_language_packs;
-
-    const LA_STRINGS = Object.freeze({
-      en: Object.freeze({
-        tabs: 'Listing Analyzer pages', overview: 'Overview', listings: 'Listings', ai: 'AI suggestions', queue: 'Queue', thresholds: 'Thresholds',
-        overviewText: 'Collects every listing, checks the metrics and shows what to look at first.',
-        listingsText: 'The state and suggestion of every listing, from checked data. The selection only decides what the AI suggestion and the queue cover.',
-        aiText: 'Get new title, tag and description suggestions for the listings you select.',
-        queueText: 'Applies the saved suggestions listing by listing. Before anything is published on Etsy, you are asked on each one.',
-        thresholdsText: 'Set the values at which the suggestions start, for your shop.',
-        scanningTitle: 'Collecting data', scanningText: 'Etsy’s Listings pages are opened one after another. The analysis is prepared when it ends.',
-        ready: 'Ready', collecting: 'Scanning', review: '{n} to review', stopped: 'Stopped',
-        fresh: 'Data ready · last read {when}', stale: 'Scan every page for an up-to-date analysis.',
-        scanPage: 'Scan this page', scanAll: 'Scan every page', stop: 'Stop the scan', resume: 'Continue the scan', exportData: 'Download a backup',
-        onListings: 'The scan runs on Etsy’s Listings page.', openListings: 'Open Listings',
-        tileListings: 'Listings', tileListingsHint: '{page} on this page', tileHealthy: 'Keep / watch', tileHealthyHint: 'Going well',
-        tileReview: 'To review', tileReviewHint: 'Traffic without sales, weak tags', tileDeactivate: 'Consider deactivating', tileDeactivateHint: 'No traffic for a long time',
-        tileExperiments: 'Running experiment', tileExperimentsHint: 'Waiting for the result', tileQueue: 'In the queue', tileQueueHint: 'Waiting for your approval',
-        health: 'Health distribution', healthCount: '{n} listings', bandHealthy: 'Healthy · 70+', bandWatch: 'To watch · 50–69', bandWeak: 'Weak · 30–49', bandCritical: 'Critical · below 30',
-        editThresholds: 'Edit the thresholds →', priority: 'Listings to look at first', seeAll: 'See all →', details: 'Details', plan: 'Plan',
-        noPriority: 'No listing needs a review now.', visitsSales: '{visits} visits · {sales} sales',
-        pageOf: 'Reading page {pages} of {total}', foundLine: '{found} listings collected', readPages: 'Pages read', collected: 'Listings collected', keepOpen: 'Keep the Etsy tab open.', keepOpenText: 'The pages are turned for you. You can keep working in another tab.',
-        emptyTitle: 'No listing read yet', emptyText: 'Open Listings on Etsy and scan every page. Each listing gets a health score, a suggestion and a place in the edit queue.',
-        step1: 'Open Listings', step1Text: 'Your shop’s listings page on Etsy.', step2: 'Scan every page', step2Text: 'Visits, favourites and sales are read.', step3: 'Look at the suggestions', step3Text: 'Nothing changes on Etsy without you.',
-        search: 'Search title, SKU or suggestion', allStates: 'Every suggestion · {n}', selectedCount: '{n} selected', shown: '{shown} / {total} shown',
-        colListing: 'Listing', colHealth: 'Health', colVisits: 'Visits', colFav: 'Favourites', colSales: 'Sales', colRevenue: 'Revenue', colStock: 'Stock', colSuggestion: 'Suggestion', colPlan: 'Plan',
-        planSaved: 'Saved', planNone: 'None', prev: 'Previous', next: 'Next', selectAll: 'Select the shown listings', selectRow: 'Select {title}',
-        barSelected: '{n} listings selected', barHint: 'Only listings with a saved, current plan enter the queue.', getAi: 'Get AI suggestions', buildQueue: 'Build the review queue',
-        noFresh: 'The listings are shown after a full scan.',
-        aiSelected: '{n} listings selected', aiNone: 'Select listings on the Listings page first.',
-        aiStep1: 'Copy the request', aiStep1Text: 'The selected listings and their data are copied as text for your AI tool.', copyRequest: 'Copy the request', copyTemplate: 'Copy the answer format',
-        aiStep2: 'Ask your AI tool', aiStep2Text: 'Paste it into ChatGPT, Claude or the tool you use, and ask for the answer in the same format.',
-        aiStep3: 'Paste the answer', aiStep3Text: 'The answer is checked: unknown listings, changed data and over-long fields are refused.', answer: 'AI answer', importAnswer: 'Check and save the suggestions',
-        aiPrivacy: 'Nothing is sent from here: you copy the text yourself and choose where to paste it.',
-        qInQueue: 'In the queue', qWaiting: 'Waiting for your approval', qVerified: 'Verified on Etsy', qFailed: 'Could not be verified', qFailedHint: 'Not retried automatically',
-        colChange: 'Change', colStatus: 'Status', colAction: 'Action', update: 'Title, tags or description', deactivateReview: 'Deactivation review',
-        sPending: 'Queued', sApplying: 'Applied in the form · waiting for publish', sSubmitted: 'Being verified', sVerified: 'Verified on Etsy', sDeactivated: 'Deactivated · verified', sSkipped: 'Skipped', sFailed: 'Could not be verified', sAwaitDeactivate: 'Waiting for your deactivation',
-        openNext: 'Open the next listing', stopQueue: 'Stop the queue', openListing: 'Open the listing', apply: 'Apply in the form', publishCheck: 'Publish on Etsy', skip: 'Skip', openDeactivate: 'Open deactivation', verifyDeactivate: 'I deactivated it, check', recover: 'Try again',
-        noQueue: 'No queue yet. Select listings with a saved plan on the Listings page and build the queue.',
-        queueNote: 'Etsy Automation Tools writes the change into the listing\'s edit form. Publishing asks you first, then the result is checked in the list.',
-        recovery: 'An earlier step needs checking before the queue goes on.',
-        bandsTitle: 'Suggestion rules', improve: 'Traffic without sales', improveText: 'Listings with at least this many visits and no sales are suggested for improvement.', minVisits: 'Visits, at least',
-        protect: 'Protect what works', protectText: 'Listings with this many visits that sell are kept as they are.', renewals: 'Deactivation review', renewalsText: 'Listings renewed this many times without a sale are suggested for review.', minRenewals: 'Renewals, at least',
-        decline: 'Falling traffic', declineText: 'A fall of this much in visits counts as declining.', percent: 'Fall, %',
-        range: 'Between {min} and {max}.', relation: 'The protect value must be higher than the improve value.', storage: 'The thresholds could not be saved.', savedOk: 'The thresholds are saved and the analysis is updated.',
-        impact: 'Current counts', impactNote: 'From {n} saved listings.', reset: 'Back to the defaults', cancel: 'Cancel', save: 'Save the thresholds',
-        stored: '{listings} listings saved · {page} on this page', editorLine: 'The edit queue works in this listing editor.', openDetails: 'Open details', openPanel: 'Open the panel',
-      }),
-    });
-
-    // Bundled English; other languages read the downloaded pack ("la." keys).
-    function texts(language) {
-      const lang = LA_STRINGS[language] ? language : 'en';
-      return (key, vars) => interpolate(LA_STRINGS[language]?.[key] ?? packText(language, `la.${key}`) ?? LA_STRINGS[lang][key] ?? LA_STRINGS.en[key] ?? key, vars);
-    }
-
-    const DEFAULTS = { minVisitsToImprove: 20, minVisitsToProtect: 60, minRenewalsToReview: 2, declinePercent: 35 };
-    const CODE_TONE = { improve: 'warn', declining: 'warn', deactivateReview: 'err', growing: 'ok', protected: 'out', monitor: '', waiting: '' };
-    const QUEUE_STATUS = {
-      pending: ['sPending', ''], applying: ['sApplying', 'dark'], 'awaiting-user-review': ['sApplying', 'dark'],
-      submitted: ['sSubmitted', 'warn'], 'submitted-unverified': ['sSubmitted', 'warn'], 'deactivation-submitted': ['sSubmitted', 'warn'], 'deactivation-submitted-unverified': ['sSubmitted', 'warn'],
-      verified: ['sVerified', 'ok'], 'verified-deactivated': ['sDeactivated', 'ok'], skipped: ['sSkipped', 'out'], failed: ['sFailed', 'err'], 'awaiting-user-deactivation': ['sAwaitDeactivate', 'dark'],
-    };
-    const PAGE_SIZE = 10;
-
-    const num = (language, value) => (value == null || !Number.isFinite(Number(value)) ? '—' : new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(Number(value)));
-    function money(language, value, currency) {
-      if (value == null || !Number.isFinite(Number(value))) return '—';
-      const code = /^[A-Z]{3}$/.test(currency) ? currency : null;
-      try { return code ? new Intl.NumberFormat(language, { style: 'currency', currency: code, maximumFractionDigits: 0 }).format(value) : `${currency}${num(language, value)}`; } catch { return `${currency}${num(language, value)}`; }
-    }
-    function when(language, iso) {
-      const t = Date.parse(iso);
-      if (!Number.isFinite(t)) return '—';
-      return new Intl.DateTimeFormat(language, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(t);
-    }
-    const band = (score) => (score == null ? null : score >= 70 ? 'healthy' : score >= 50 ? 'watch' : score >= 30 ? 'weak' : 'critical');
-
-    function stateBadge(doc, ts, snap) {
-      if (snap.collecting) return h(doc, 'span', { class: 'badge dark', 'data-la-state': 'collecting', text: ts('collecting') });
-      if (['error', 'blocked'].includes(snap.status.tone)) return h(doc, 'span', { class: 'badge warn', 'data-la-state': 'stopped', text: ts('stopped') });
-      if (snap.fresh && snap.needsReview) return h(doc, 'span', { class: 'badge warn', 'data-la-state': 'review', text: ts('review', { n: snap.needsReview }) });
-      return h(doc, 'span', { class: 'badge', 'data-la-state': 'ready', text: ts('ready') });
-    }
-
-    const collectionLabel = (snap) => (snap.collecting ? 'stop' : ['running', 'paused'].includes(snap.collection?.status) ? 'resume' : 'scanAll');
-
-    function healthCell(doc, score) {
-      if (score == null) return h(doc, 'span', { class: 'mute', text: '—' });
-      const color = score < 30 ? '#dc2626' : '#1f1f1f';
-      return h(doc, 'span', { class: 'hb' }, h(doc, 'i', {}, h(doc, 'b', { style: `width: ${Math.max(4, Math.min(100, score))}%; background: ${color};` })),
-        h(doc, 'span', { class: 'num b', style: score < 30 ? 'color: #b91c1c;' : null, text: String(Math.round(score)) }));
-    }
-
-    function suggestionBadge(doc, record) {
-      if (!record.assessment) return h(doc, 'span', { class: 'mute', text: '—' });
-      const tone = CODE_TONE[record.code] ?? '';
-      return h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge', title: record.reason || null, text: record.assessment });
-    }
-
-    /** Drawer section on the Listings page and in the listing editor. */
-    function renderLaDrawer(doc, { snap, language, actions }) {
-      const ts = texts(language);
-      const onListings = snap.route === 'listings';
-      const c = snap.collection;
-      return h(doc, 'div', { class: 'col', style: 'gap: 12px;', 'data-role': 'la-drawer' },
-        h(doc, 'div', { class: 'row' }, icon(doc, ICONS['listing-analyzer']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Listing Analyzer' }), stateBadge(doc, ts, snap)),
-        h(doc, 'span', { class: 'xs mute2', 'data-role': 'la-summary', text: onListings ? ts('stored', { listings: num(language, snap.listings), page: num(language, snap.pageListings) }) : ts('editorLine') }),
-        onListings && c && c.status !== 'completed' && c.total ? h(doc, 'div', { class: 'col', style: 'gap: 6px;' },
-          h(doc, 'span', { class: 'xs mute2', 'data-role': 'la-progress', text: `${ts('pageOf', { pages: c.pages, total: c.total })} · ${ts('foundLine', { found: c.found })}` }),
-          h(doc, 'div', { class: 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(c.total), 'aria-valuenow': String(c.pages) }, h(doc, 'i', { style: `width: ${Math.min(100, (c.pages / Math.max(1, c.total)) * 100)}%;` }))) : null,
-        h(doc, 'span', { class: 'xxs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
-        h(doc, 'div', { class: 'row' },
-          h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-la': 'details', onclick: () => actions.openDetails(), text: ts('openDetails') }),
-          onListings
-            ? h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-la': 'collection', onclick: () => actions.toggleCollection(), text: ts(collectionLabel(snap)) })
-            : h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-la': 'open-panel', onclick: () => actions.openPanel('queue'), text: ts('openPanel') })));
-    }
-
-    /** Workspace page with Overview, Listings, AI suggestions, Queue and Thresholds. */
-    function renderLaPage(doc, { snap, view, language, actions, tab = 'overview', onTab, local }) {
-      const ts = texts(language);
-      const current = ['overview', 'listings', 'ai', 'queue', 'thresholds'].includes(tab) ? tab : 'overview';
-      const onListings = view.route === 'listings';
-      const records = view.records;
-      const selected = records.filter((r) => r.selected);
-      const queueItems = view.queue?.items ?? [];
-      const openQueue = queueItems.filter((i) => !['verified', 'verified-deactivated', 'skipped'].includes(i.status)).length;
-      const tabs = pageTabs(doc, {
-        label: ts('tabs'), name: 'la-tab', value: current, onChange: onTab,
-        options: [{ value: 'overview', label: ts('overview') }, { value: 'listings', label: ts('listings') }, { value: 'ai', label: ts('ai') }, { value: 'queue', label: ts('queue'), count: openQueue }, { value: 'thresholds', label: ts('thresholds') }],
-      });
-      const scanButtons = () => onListings
-        ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'scan-page', disabled: snap.collecting, onclick: () => actions.scanPage(), text: ts('scanPage') }),
-          h(doc, 'button', { class: snap.collecting ? 'btn btn-o' : 'btn btn-p', type: 'button', 'data-la': 'collection', onclick: () => actions.toggleCollection() }, icon(doc, snap.collecting ? ICONS.pause : ICONS.refresh, 16), ts(collectionLabel(snap)))]
-        : [h(doc, 'a', { class: 'btn btn-o', href: 'https://www.etsy.com/your/shops/me/tools/listings', 'data-la': 'open-listings', text: ts('openListings') })];
-
-      const tile = (label, value, hint, attrs = {}) => h(doc, 'div', { class: 'tile', ...attrs },
-        h(doc, 'span', { class: 'ov', text: label }), h(doc, 'span', { class: 'v', text: value }), hint ? h(doc, 'span', { class: 'xs mute', text: hint }) : null);
-
-      const empty = () => h(doc, 'section', { class: 'card', style: 'flex: 1 1 auto; display: flex;', 'data-role': 'la-empty' },
-        h(doc, 'div', { class: 'empty' },
-          h(doc, 'span', { class: 'ei' }, icon(doc, ICONS['listing-analyzer'], 24)),
-          h(doc, 'p', { class: 'et', text: ts('emptyTitle') }), h(doc, 'p', { class: 'ed', text: ts('emptyText') }),
-          h(doc, 'div', { class: 'ea' }, ...scanButtons()),
-          h(doc, 'div', { class: 'steps' }, [['step1', 'step1Text'], ['step2', 'step2Text'], ['step3', 'step3Text']].map(([title, text], i) => h(doc, 'div', {},
-            h(doc, 'span', { class: 'n', text: String(i + 1) }), h(doc, 'span', {}, h(doc, 'span', { class: 'st', text: ts(title) }), h(doc, 'span', { class: 'sd', text: ts(text) })))))));
-
-      // ---- Overview ---------------------------------------------------------
-      const scanning = () => {
-        const c = snap.collection;
-        const total = Math.max(1, c.total || 1);
-        const pct = Math.min(100, Math.round((c.pages / total) * 100));
-        return [h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;', 'data-role': 'la-scan' },
-          h(doc, 'section', { class: 'card grow' },
-            h(doc, 'div', { class: 'card-b col', style: 'gap: 16px; padding: 22px 24px;' },
-              h(doc, 'div', { class: 'row', style: 'gap: 14px;' },
-                h(doc, 'span', { class: 'well' }, h(doc, 'span', { class: 'spin', style: 'width: 16px; height: 16px;' })),
-                h(doc, 'span', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h2', text: ts('pageOf', { pages: c.pages, total: c.total || '—' }) }), h(doc, 'span', { class: 'xs mute', text: ts('foundLine', { found: c.found }) })),
-                h(doc, 'span', { class: 'num', style: 'font-size: 28px; font-weight: 700;', text: new Intl.NumberFormat(language, { style: 'percent' }).format(pct / 100) })),
-              h(doc, 'div', { class: 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) }, h(doc, 'i', { style: `width: ${pct}%;` })),
-              h(doc, 'div', { class: 'g2' }, tile(ts('readPages'), `${c.pages} / ${c.total || '—'}`), tile(ts('collected'), num(language, c.found)))),
-            h(doc, 'div', { class: 'card-f' }, h(doc, 'span', { class: 'xs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }))),
-          h(doc, 'aside', { style: 'width: 340px; flex: none;' }, banner(doc, { iconPaths: ICONS.info, title: ts('keepOpen'), text: ts('keepOpenText') })))];
-      };
-
-      const overview = () => {
-        if (snap.collecting && snap.collection) return scanning();
-        if (!records.length) return [empty()];
-        const bands = { healthy: 0, watch: 0, weak: 0, critical: 0 };
-        for (const r of records) { const b = band(r.score); if (b) bands[b] += 1; }
-        const scored = Math.max(1, Object.values(bands).reduce((a, b) => a + b, 0));
-        const priority = records.filter((r) => ['improve', 'declining', 'deactivateReview'].includes(r.code)).sort((a, b) => (a.score ?? 101) - (b.score ?? 101)).slice(0, 5);
-        const healthRow = (key, count, color) => h(doc, 'div', { class: 'col', style: 'gap: 6px; padding: 10px 16px;' },
-          h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'sm grow', text: ts(key) }), h(doc, 'span', { class: 'num b', text: String(count) })),
-          h(doc, 'span', { class: 'bar' }, h(doc, 'i', { style: `width: ${Math.round((count / scored) * 100)}%; background: ${color};` })));
-        return [
-          view.fresh ? null : alertBox(doc, { tone: 'warn', text: ts('stale') }),
-          h(doc, 'div', { class: 'g6', style: 'display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px;' },
-            tile(ts('tileListings'), num(language, records.length), ts('tileListingsHint', { page: num(language, snap.pageListings) }), { 'data-la-tile': 'listings' }),
-            tile(ts('tileHealthy'), view.fresh ? num(language, view.counts.healthy) : '—', ts('tileHealthyHint')),
-            tile(ts('tileReview'), view.fresh ? num(language, view.counts.needsReview) : '—', ts('tileReviewHint'), { 'data-la-tile': 'review' }),
-            tile(ts('tileDeactivate'), view.fresh ? num(language, view.counts.deactivateReview) : '—', ts('tileDeactivateHint')),
-            tile(ts('tileExperiments'), view.fresh ? num(language, view.counts.experiments) : '—', ts('tileExperimentsHint')),
-            tile(ts('tileQueue'), num(language, openQueue), ts('tileQueueHint'))),
-          h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;' },
-            h(doc, 'section', { class: 'card grow', 'data-role': 'la-priority' },
-              h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('priority') }),
-                h(doc, 'button', { class: 'xs b ob-link', type: 'button', onclick: () => onTab('listings'), text: ts('seeAll') })),
-              priority.length
-                ? h(doc, 'table', { class: 'tbl tbl-tight' }, h(doc, 'tbody', {}, priority.map((r) => h(doc, 'tr', { 'data-listing': r.id },
-                  h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 12px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 32px; height: 32px;' }),
-                    h(doc, 'span', { class: 'sm b trunc', style: 'max-width: 320px;', text: r.title }), r.sku ? h(doc, 'span', { class: 'xs mute', text: `· ${r.sku}` }) : null)),
-                  h(doc, 'td', { class: 'xs mute r', text: ts('visitsSales', { visits: num(language, r.visits), sales: num(language, r.sales) }) }),
-                  h(doc, 'td', { class: 'r' }, healthCell(doc, r.score)),
-                  h(doc, 'td', {}, suggestionBadge(doc, r)),
-                  h(doc, 'td', { class: 'r' }, h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la-detail': r.id, onclick: () => actions.openRecord(r.id, 'history'), text: ts('details') }))))))
-                : h(doc, 'div', { class: 'card-b xs mute', text: ts('noPriority') })),
-            h(doc, 'aside', { class: 'card', style: 'width: 340px; flex: none;', 'data-role': 'la-health' },
-              h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('health') }), h(doc, 'span', { class: 'xs mute', text: ts('healthCount', { n: records.length }) })),
-              healthRow('bandHealthy', bands.healthy, '#1f1f1f'), healthRow('bandWatch', bands.watch, '#737373'), healthRow('bandWeak', bands.weak, '#a3a3a3'), healthRow('bandCritical', bands.critical, '#dc2626'),
-              h(doc, 'div', { class: 'card-f' }, h(doc, 'button', { class: 'xs b ob-link', type: 'button', onclick: () => onTab('thresholds'), text: ts('editThresholds') })))),
-          h(doc, 'span', { class: 'xs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
-        ];
-      };
-
-      // ---- Listings ---------------------------------------------------------
-      const listingsTab = () => {
-        if (!records.length) return [empty()];
-        const query = String(local.query ?? '').trim().toLocaleLowerCase(language);
-        const codes = [...new Set(records.map((r) => r.code).filter(Boolean))];
-        const filtered = records
-          .filter((r) => (!local.code || r.code === local.code) && (!query || `${r.title} ${r.sku} ${r.assessment}`.toLocaleLowerCase(language).includes(query)))
-          .sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
-        const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-        const page = Math.min(local.page ?? 0, pages - 1);
-        const shown = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
-        const allOn = shown.length > 0 && shown.every((r) => r.selected);
-        const box = (checked, label, onChange) => h(doc, 'input', { type: 'checkbox', checked, 'aria-label': label, style: 'width: 16px; height: 16px; accent-color: #1f1f1f;', onchange: (e) => onChange(e.target.checked) });
-        return [
-          h(doc, 'div', { class: 'row', style: 'gap: 8px;' },
-            h(doc, 'div', { class: 'search', style: 'width: 300px;' }, icon(doc, ICONS.search),
-              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), name: 'la-search', value: local.query ?? '', 'data-la': 'search', oninput: (e) => actions.setLocal({ query: e.target.value, page: 0 }) })),
-            h(doc, 'select', { class: 'input', style: 'width: 220px;', 'aria-label': ts('colSuggestion'), 'data-la': 'filter', onchange: (e) => actions.setLocal({ code: e.target.value, page: 0 }) },
-              h(doc, 'option', { value: '', selected: !local.code, text: ts('allStates', { n: records.length }) }),
-              codes.map((code) => { const r = records.find((x) => x.code === code); return h(doc, 'option', { value: code, selected: local.code === code, text: `${r.assessment} · ${records.filter((x) => x.code === code).length}` }); })),
-            h(doc, 'span', { class: 'grow' }),
-            h(doc, 'span', { class: 'xs mute2' }, h(doc, 'b', { text: ts('shown', { shown: filtered.length, total: records.length }) }), ` · ${ts('selectedCount', { n: selected.length })}`)),
-          h(doc, 'section', { class: 'card', 'data-role': 'la-listings' },
-            h(doc, 'table', { class: 'tbl lt' },
-              h(doc, 'thead', {}, h(doc, 'tr', {},
-                h(doc, 'th', { style: 'width: 36px;' }, box(allOn, ts('selectAll'), (on) => actions.select(shown.map((r) => r.id), on))),
-                h(doc, 'th', { text: ts('colListing') }), h(doc, 'th', { text: `${ts('colHealth')} ↑` }),
-                ...['colVisits', 'colFav', 'colSales', 'colRevenue', 'colStock'].map((k) => h(doc, 'th', { class: 'r', text: ts(k) })),
-                h(doc, 'th', { text: ts('colSuggestion') }), h(doc, 'th', { text: ts('colPlan') }), h(doc, 'th', { class: 'r' }))),
-              h(doc, 'tbody', {}, shown.map((r) => h(doc, 'tr', { class: r.selected ? 'sel' : null, 'data-listing': r.id },
-                h(doc, 'td', {}, box(r.selected, ts('selectRow', { title: r.title }), (on) => actions.select([r.id], on))),
-                h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 32px; height: 32px;' }),
-                  h(doc, 'span', { class: 'col', style: 'min-width: 0;' }, h(doc, 'span', { class: 'b trunc', style: 'max-width: 240px;', text: r.title }), h(doc, 'span', { class: 'sub', text: [r.sku, r.state].filter(Boolean).join(' · ') })))),
-                h(doc, 'td', {}, healthCell(doc, r.score)),
-                h(doc, 'td', { class: 'r num' }, num(language, r.visits), r.visitsDelta ? h(doc, 'span', { class: 'sub', text: `${r.visitsDelta > 0 ? '+' : ''}${num(language, r.visitsDelta)}` }) : null),
-                h(doc, 'td', { class: 'r num', text: num(language, r.favorites) }),
-                h(doc, 'td', { class: 'r num', text: num(language, r.sales) }),
-                h(doc, 'td', { class: 'r num', text: money(language, r.revenue, r.currency) }),
-                h(doc, 'td', { class: 'r num', text: num(language, r.stock) }),
-                h(doc, 'td', {}, suggestionBadge(doc, r)),
-                h(doc, 'td', {}, r.proposal ? h(doc, 'span', { class: 'badge ok', text: ts('planSaved') }) : h(doc, 'span', { class: 'xs mute', text: ts('planNone') })),
-                h(doc, 'td', { class: 'r' },
-                  h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la-plan': r.id, onclick: () => actions.openRecord(r.id, 'proposal'), text: ts('plan') }),
-                  h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la-detail': r.id, onclick: () => actions.openRecord(r.id, 'history'), text: ts('details') })))))),
-            h(doc, 'div', { class: 'card-f' },
-              h(doc, 'span', { class: 'xs mute grow', text: view.fresh ? ts('shown', { shown: shown.length, total: filtered.length }) : ts('noFresh') }),
-              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', disabled: page === 0, onclick: () => actions.setLocal({ page: page - 1 }), text: ts('prev') }),
-              h(doc, 'span', { class: 'sm num', text: `${page + 1} / ${pages}` }),
-              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', disabled: page >= pages - 1, onclick: () => actions.setLocal({ page: page + 1 }), text: ts('next') }))),
-          selected.length ? h(doc, 'div', { class: 'savebar', 'data-role': 'la-bulk' },
-            h(doc, 'span', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'sm b', text: ts('barSelected', { n: selected.length }) }), h(doc, 'span', { class: 'xs mute', text: ts('barHint') })),
-            h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'to-ai', onclick: () => onTab('ai'), text: ts('getAi') }),
-            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-la': 'build-queue', disabled: !view.fresh, onclick: async () => { if (await actions.buildQueue()) onTab('queue'); }, text: ts('buildQueue') })) : null,
-        ];
-      };
-
-      // ---- AI suggestions ---------------------------------------------------
-      const aiTab = () => {
-        const stepRow = (n, title, text, ...controls) => h(doc, 'div', { class: 'col', style: 'padding: 14px 16px; gap: 6px;' },
-          h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'stp', text: String(n) }), h(doc, 'span', { class: 'h3 grow', text: ts(title) }), ...controls),
-          h(doc, 'p', { class: 'xs mute', style: 'padding-left: 30px;', text: ts(text) }));
-        const answer = h(doc, 'textarea', { class: 'input mono', rows: '8', id: 'eat-la-ai-answer', 'data-la': 'ai-answer', placeholder: '{"schema":"makaytron-listing-ai-proposals/v1","requestId":"…","proposals":[…]}', oninput: (e) => { local.aiText = e.target.value; } }, local.aiText ?? '');
-        return [
-          selected.length ? null : alertBox(doc, { tone: 'info', text: ts('aiNone') }),
-          h(doc, 'section', { class: 'card', style: 'max-width: 860px;', 'data-role': 'la-ai' },
-            h(doc, 'div', { class: 'list' },
-              stepRow(1, 'aiStep1', 'aiStep1Text',
-                h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la': 'copy-template', onclick: () => actions.copyAiTemplate(), text: ts('copyTemplate') }),
-                h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'copy-request', disabled: !selected.length, onclick: () => actions.copyAiRequest() }, icon(doc, ICONS.copy, 14), ts('copyRequest'))),
-              stepRow(2, 'aiStep2', 'aiStep2Text'),
-              h(doc, 'div', { class: 'col', style: 'padding: 14px 16px; gap: 8px;' },
-                h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'stp', text: '3' }), h(doc, 'span', { class: 'h3 grow', text: ts('aiStep3') })),
-                h(doc, 'p', { class: 'xs mute', style: 'padding-left: 30px;', text: ts('aiStep3Text') }),
-                h(doc, 'label', { class: 'field', for: 'eat-la-ai-answer', style: 'padding-left: 30px;' }, h(doc, 'span', { class: 'label', text: ts('answer') }), answer),
-                local.aiResult ? h(doc, 'div', { style: 'padding-left: 30px;' }, alertBox(doc, { tone: local.aiResult.ok ? 'info' : 'err', text: local.aiResult.text })) : null,
-                h(doc, 'div', { class: 'row', style: 'justify-content: flex-end;' },
-                  h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'import-ai', onclick: async () => { const result = await actions.importAi(answer.value); actions.setLocal({ aiText: answer.value, aiResult: result }); }, text: ts('importAnswer') })))),
-            h(doc, 'div', { class: 'card-f' }, icon(doc, ICONS.shield, 14), h(doc, 'span', { class: 'xs mute', text: ts('aiPrivacy') }))),
-        ];
-      };
-
-      // ---- Queue ------------------------------------------------------------
-      const queueTab = () => {
-        const q = view.queue;
-        const waiting = queueItems.filter((i) => ['applying', 'awaiting-user-review', 'awaiting-user-deactivation'].includes(i.status)).length;
-        const verified = queueItems.filter((i) => ['verified', 'verified-deactivated'].includes(i.status)).length;
-        const failed = queueItems.filter((i) => i.status === 'failed').length;
-        const editingActive = q && view.editingId && view.editingId === q.active;
-        const rowAction = (item) => {
-          if (item.id !== q?.active) return null;
-          if (!editingActive) return h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-la': 'go-current', onclick: () => actions.goCurrent(), text: ts('openListing') });
-          if (item.action === 'DEACTIVATE_REVIEW') {
-            return ['awaiting-user-deactivation', 'deactivation-submitted', 'deactivation-submitted-unverified'].includes(item.status)
-              ? h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'verify-deactivate', onclick: () => actions.verifyDeactivate(), text: ts('verifyDeactivate') })
-              : [h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la': 'skip', onclick: () => actions.skip(), text: ts('skip') }),
-                h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'deactivate', onclick: () => actions.deactivate(), text: ts('openDeactivate') })];
-          }
-          if (['submitted', 'submitted-unverified'].includes(item.status)) return h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'verify-publish', onclick: () => actions.verifyPublish(), text: ts('publishCheck') });
-          return [h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la': 'skip', onclick: () => actions.skip(), text: ts('skip') }),
-            ['applying', 'awaiting-user-review'].includes(item.status)
-              ? h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'verify-publish', onclick: () => actions.publish(), text: ts('publishCheck') })
-              : h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'apply', onclick: () => actions.apply(), text: ts('apply') })];
-        };
-        return [
-          h(doc, 'div', { class: 'g4' },
-            tile(ts('qInQueue'), num(language, openQueue)), tile(ts('qWaiting'), num(language, waiting)), tile(ts('qVerified'), num(language, verified)),
-            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('qFailed') }), h(doc, 'span', { class: 'v', style: failed ? 'color: #b91c1c;' : null, text: num(language, failed) }), h(doc, 'span', { class: 'xs mute', text: ts('qFailedHint') }))),
-          q?.recovery ? h(doc, 'div', { class: 'row' }, alertBox(doc, { tone: 'warn', text: ts('recovery') }), h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-la': 'recover', onclick: () => actions.recover(), text: ts('recover') })) : null,
-          h(doc, 'section', { class: 'card', 'data-role': 'la-queue' },
-            queueItems.length
-              ? h(doc, 'table', { class: 'tbl' },
-                h(doc, 'thead', {}, h(doc, 'tr', {}, [ts('colListing'), ts('colChange'), ts('colStatus'), ts('colAction')].map((label, i) => h(doc, 'th', { class: i === 3 ? 'r' : null, text: label })))),
-                h(doc, 'tbody', {}, queueItems.map((item) => {
-                  const [label, tone] = QUEUE_STATUS[item.status] ?? QUEUE_STATUS.pending;
-                  return h(doc, 'tr', { 'data-queue-item': item.id },
-                    h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 36px; height: 36px;' }),
-                      h(doc, 'span', { class: 'col' }, h(doc, 'span', { class: 'b', text: item.title }), h(doc, 'span', { class: 'xs mute', text: item.id })))),
-                    h(doc, 'td', {}, h(doc, 'span', { class: 'badge out', text: ts(item.action === 'DEACTIVATE_REVIEW' ? 'deactivateReview' : 'update') })),
-                    h(doc, 'td', {}, h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge' }, tone ? null : h(doc, 'span', { class: 'dot soft' }), ts(label))),
-                    h(doc, 'td', { class: 'r' }, h(doc, 'span', { class: 'row', style: 'justify-content: flex-end; gap: 6px;' }, rowAction(item))));
-                })))
-              : h(doc, 'div', { class: 'card-b xs mute', text: ts('noQueue') })),
-          banner(doc, { iconPaths: ICONS.info, text: ts('queueNote') }),
-        ];
-      };
-
-      // ---- Thresholds -------------------------------------------------------
-      const thresholdsTab = () => {
-        const values = { ...view.thresholds, ...(local.thresholds ?? {}) };
-        const field = (key, label) => {
-          const limit = view.limits[key];
-          return h(doc, 'label', { class: 'field', style: 'width: 160px;' }, h(doc, 'span', { class: 'label', text: ts(label) }),
-            h(doc, 'input', { class: 'input num', type: 'number', inputmode: 'numeric', min: String(limit.min), max: String(limit.max), step: '1', value: String(values[key]), 'data-threshold': key,
-              'aria-invalid': local.thresholdError?.field === key ? 'true' : null,
-              oninput: (e) => { local.thresholds = { ...(local.thresholds ?? {}), [key]: Number(e.target.value) }; } }));
-        };
-        const rule = (title, text, ...fields) => h(doc, 'div', { class: 'li', style: 'align-items: flex-end; gap: 16px;' },
-          h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'sm b', text: ts(title) }), h(doc, 'span', { class: 'xs mute', text: ts(text) })), ...fields);
-        const err = local.thresholdError;
-        const errText = err ? (err.reason === 'range' ? ts('range', { min: err.min, max: err.max }) : err.reason === 'relationship' ? ts('relation') : ts('storage')) : '';
-        const impactRow = (label, value) => h(doc, 'div', { class: 'li' }, h(doc, 'span', { class: 'sm grow', text: ts(label) }), h(doc, 'span', { class: 'num b', text: view.fresh ? num(language, value) : '—' }));
-        return [
-          err ? alertBox(doc, { tone: 'err', text: errText }) : local.thresholdSaved ? alertBox(doc, { tone: 'info', text: ts('savedOk') }) : null,
-          h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;', 'data-role': 'la-thresholds' },
-            h(doc, 'section', { class: 'card grow' },
-              h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('bandsTitle') })),
-              h(doc, 'div', { class: 'list' },
-                rule('improve', 'improveText', field('minVisitsToImprove', 'minVisits')),
-                rule('protect', 'protectText', field('minVisitsToProtect', 'minVisits')),
-                rule('renewals', 'renewalsText', field('minRenewalsToReview', 'minRenewals')),
-                rule('decline', 'declineText', field('declinePercent', 'percent')))),
-            h(doc, 'aside', { class: 'card', style: 'width: 340px; flex: none;' },
-              h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('impact') })),
-              h(doc, 'div', { class: 'list' }, impactRow('tileHealthy', view.counts.healthy), impactRow('tileReview', view.counts.needsReview), impactRow('tileDeactivate', view.counts.deactivateReview), impactRow('tileExperiments', view.counts.experiments)),
-              h(doc, 'div', { class: 'card-f' }, h(doc, 'span', { class: 'xs mute', text: ts('impactNote', { n: records.length }) })))),
-          h(doc, 'div', { class: 'savebar' },
-            h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-la': 'thresholds-reset', onclick: () => actions.setLocal({ thresholds: { ...DEFAULTS }, thresholdError: null, thresholdSaved: false }), text: ts('reset') }),
-            h(doc, 'span', { class: 'grow' }),
-            h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: () => actions.setLocal({ thresholds: null, thresholdError: null, thresholdSaved: false }), text: ts('cancel') }),
-            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-la': 'thresholds-save', disabled: snap.collecting,
-              onclick: async () => { const result = await actions.saveThresholds({ ...view.thresholds, ...(local.thresholds ?? {}) }); actions.setLocal(result.valid ? { thresholds: null, thresholdError: null, thresholdSaved: true } : { thresholdError: result, thresholdSaved: false }); }, text: ts('save') })),
-        ];
-      };
-
-      const scanningNow = current === 'overview' && snap.collecting && snap.collection;
-      const heads = {
-        overview: scanningNow
-          ? pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('scanningTitle'), description: ts('scanningText'), actions: [h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'collection', onclick: () => actions.toggleCollection() }, icon(doc, ICONS.pause, 16), ts('stop'))] })
-          : pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('overview'), description: ts('overviewText'), actions: [
-            records.length ? h(doc, 'span', { class: view.fresh ? 'badge ok' : 'badge warn', 'data-la-fresh': String(view.fresh), text: view.fresh ? ts('fresh', { when: when(language, view.lastAt) }) : ts('stale') }) : null, ...scanButtons()] }),
-        listings: pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('listings'), description: ts('listingsText'), actions: [h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'export', onclick: () => actions.exportData() }, icon(doc, ICONS.download, 16), ts('exportData'))] }),
-        ai: pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('ai'), description: ts('aiText'), actions: [h(doc, 'span', { class: 'badge out', text: ts('aiSelected', { n: selected.length }) })] }),
-        queue: pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('queue'), description: ts('queueText'), actions: view.queue && openQueue ? [
-          h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-la': 'stop-queue', onclick: () => actions.stop(), text: ts('stopQueue') }),
-          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-la': 'open-next', onclick: () => actions.goCurrent() }, ts('openNext'), icon(doc, ICONS.arrowRight, 16))] : [] }),
-        thresholds: pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('thresholds'), description: ts('thresholdsText') }),
-      };
-      const body = { overview, listings: listingsTab, ai: aiTab, queue: queueTab, thresholds: thresholdsTab }[current]();
-      return h(doc, 'div', { style: 'display: contents;', 'data-role': 'la-page', 'data-la-tab': current }, heads[current], tabs, ...body);
-    }
-    return Object.freeze({ LA_STRINGS, renderLaDrawer, renderLaPage });
-  })();
-
-  // ── src/modules/listing-analyzer.js ──
-  const __eat_modules_listing_analyzer = (() => {
-    // Listing Analyzer inside the unified script.
-    //
-    // The engine is the standalone Listing Analyzer itself, adopted at build
-    // time (tools/Unified-Adopt-Listing-Analyzer.mjs). Its panel stays for the
-    // detailed work; the unified edge button replaces its floating launcher, and
-    // the new screens (listing-analyzer-ui.js) summarise its state, start its
-    // scan and open its panel at the right view.
-    //
-    // The engine starts after a short grace period, not at all while the
-    // standalone script runs on this page, and steps aside if that one appears.
-
-    const { createScopedGm } = __eat_core_scoped_gm;
-    const { renderLaDrawer, renderLaPage } = __eat_modules_listing_analyzer_ui;
-
-    const LA_TOOL_ID = 'listing-analyzer';
-    const STANDALONE_ROOT_ID = 'makaytron-etsy-listing-analyzer';
-    const STANDALONE_GRACE_MS = 1500;
-
-    const engineLanguage = (language) => (String(language ?? '').toLowerCase().startsWith('tr') ? 'tr' : 'en');
-
-    function createListingAnalyzerModule() {
-      const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', local: {} };
-
-      const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
-      const emit = (status) => state.ctx?.events?.emit('tool:status', { tool: LA_TOOL_ID, state: status });
-
-      function watchForStandalone(doc) {
-        if (state.observer || typeof MutationObserver !== 'function') return;
-        state.observer = new MutationObserver(() => {
-          if (!state.standalone && standalonePresent(doc)) {
-            state.standalone = true; // the engine's route gate closes and its own lifecycle suspends it
-            emit('standalone');
-          }
-        });
-        state.observer.observe(doc.documentElement, { childList: true, subtree: true });
-      }
-
-      function changed() {
-        if (!state.engine) return;
-        const text = JSON.stringify(state.engine.snapshot());
-        if (text === state.last) return;
-        state.last = text;
-        emit('running');
-      }
-
-      async function start(ctx) {
-        const doc = ctx.scope.document;
-        await new Promise((resolve) => ctx.scope.setTimeout(resolve, STANDALONE_GRACE_MS));
-        watchForStandalone(doc);
-        if (standalonePresent(doc)) {
-          state.standalone = true;
-          emit('standalone');
-          return;
-        }
-        const gm = createScopedGm({
-          gm: ctx.scope.GM, namespace: LA_TOOL_ID, doc,
-          info: { name: 'Etsy Automation Tools · Listing Analyzer', version: ctx.engines.listingAnalyzerVersion },
-          resources: { makaytronLogo: ctx.assets?.logo ?? '' },
-        });
-        state.engine = await ctx.engines.createListingAnalyzer({
-          GM: gm,
-          xmlHttpRequest: (details) => ctx.scope.GM.xmlHttpRequest(details),
-          isAllowed: () => !state.standalone && ctx.isToolEnabled(LA_TOOL_ID),
-          onChange: () => ctx.scope.setTimeout(changed, 0),
-        });
-        emit('running');
-        await state.engine.start();
-        changed();
-      }
-
-      function actionsFor(ui) {
-        const engine = state.engine;
-        const la = engine.la;
-        const run = (fn) => Promise.resolve().then(fn).catch((error) => { console.error('[Etsy Automation Tools] Listing Analyzer', error); return false; });
-        // The engine's panel opens on the page, so the drawer and workspace step out of its way.
-        const inPanel = (fn) => { ui.hide?.(); return run(fn); };
-        return {
-          openPanel: (view) => inPanel(() => engine.openPanel(view)),
-          openRecord: (id, kind) => inPanel(() => la.openRecord(id, kind)),
-          toggleCollection: () => run(() => engine.toggleCollection()),
-          scanPage: () => run(() => engine.scanPage()),
-          exportData: () => run(() => engine.exportData()),
-          openDetails: () => ui.openWorkspace?.(`tool:${LA_TOOL_ID}`),
-          select: (ids, on) => la.select(ids, on),
-          buildQueue: () => run(() => la.buildQueue()),
-          goCurrent: () => run(() => la.goCurrent()),
-          apply: () => run(() => la.apply()),
-          publish: () => run(() => la.publish()),
-          verifyPublish: () => run(() => la.verifyPublish()),
-          deactivate: () => run(() => la.deactivate()),
-          verifyDeactivate: () => run(() => la.verifyDeactivate()),
-          skip: () => run(() => la.skip()),
-          stop: () => run(() => la.stop()),
-          recover: () => run(() => la.recover()),
-          copyAiRequest: () => run(() => la.copyAiRequest()),
-          copyAiTemplate: () => run(() => la.copyAiTemplate()),
-          importAi: (text) => run(() => la.importAi(text)).then((r) => r || { ok: false, text: '' }),
-          saveThresholds: (values) => run(() => la.saveThresholds(values)).then((r) => r || { valid: false, reason: 'storage' }),
-          setLocal: (patch) => { Object.assign(state.local, patch); if (ui.onTab) ui.onTab(ui.tab); else emit('running'); },
-        };
-      }
-      function view(ui) {
-        if (state.standalone || !state.engine) return null;
-        const snap = state.engine.snapshot();
-        if (!snap.collecting) void state.engine.syncLanguage?.(engineLanguage(ui.language));
-        return snap;
-      }
-
-      return {
-        id: LA_TOOL_ID,
-        name: 'Listing Analyzer',
-        legacyScriptId: LA_TOOL_ID,
-        storageNamespace: LA_TOOL_ID,
-        migrated: true,
-        status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
-        /** Shortcut "Scan every listing page" (Settings › Shortcuts): starts or continues the scan on the Listings page. */
-        shortcut(action) {
-          if (action !== 'laScanAll' || state.standalone || !state.engine) return false;
-          const snap = state.engine.snapshot();
-          if (snap.route !== 'listings' || snap.collecting) return false;
-          void Promise.resolve(state.engine.toggleCollection()).catch(() => {});
-          return true;
-        },
-        renderDrawer(ui) {
-          const snap = view(ui);
-          return snap ? renderLaDrawer(ui.doc, { snap, language: ui.language, actions: actionsFor(ui) }) : null;
-        },
-        renderPage(ui) {
-          const snap = view(ui);
-          return snap && state.engine.la ? renderLaPage(ui.doc, { snap, view: state.engine.la.view(), language: ui.language, actions: actionsFor(ui), tab: ui.tab, onTab: ui.onTab, local: state.local }) : null;
-        },
-        async mount(ctx) {
-          state.ctx = ctx;
-          if (!state.starting && ctx.scope?.GM && ctx.engines?.createListingAnalyzer) {
-            state.starting = start(ctx).catch((error) => {
-              state.starting = null;
-              console.error('[Etsy Automation Tools] Listing Analyzer', error);
-              ctx.events?.emit('error', { code: 'module_mount' });
-            });
-          }
-        },
-        async unmount() {
-          // The engine's own route gate suspends it off its pages or when the tool is turned off.
-        },
-      };
-    }
-    return Object.freeze({ LA_TOOL_ID, STANDALONE_ROOT_ID, createListingAnalyzerModule });
-  })();
-
-  // ── src/modules/message-assistant-ui.js ──
-  const __eat_modules_message_assistant_ui = (() => {
-    // Message Assistant screens, as the design canvas draws them: the drawer
-    // section (Msg-OnEtsy) and the workspace page with Conversations (Msg-Inbox,
-    // with the Msg-Drafting and Msg-AIError states of the draft card), Quick
-    // replies (Msg-Templates) and Autopilot and reviews (Msg-Automation,
-    // Msg-AutopilotConfirm), plus the first-use page (Msg-Empty).
-    //
-    // The screens read the engine's view (conversation list, open conversation,
-    // draft, templates, campaign, reviews) and call the engine's own methods, so
-    // its checks decide: the draft belongs to the open conversation, an unsent
-    // text in Etsy's box is never overwritten, and nothing presses Etsy's Send.
-    //
-    // Design sources: template.primitive.card, .table, .badge, .button, .tabs,
-    // .input, .select, .dialog; shadcn.blocks.datatable for the autopilot table.
-
-    const { h, icon } = __eat_ui_dom;
-    const { ICONS } = __eat_ui_icons;
-    const { pageHead, pageTabs, segmented, toggle, alertBox, banner, openDialog } = __eat_ui_controls;
-    const { interpolate } = __eat_core_i18n;
-    const { packText } = __eat_core_language_packs;
-
-    const MA_STRINGS = Object.freeze({
-      en: Object.freeze({
-        tabs: 'Message Assistant pages', inbox: 'Conversations', templates: 'Quick replies', automation: 'Autopilot and reviews',
-        inboxText: 'Read messages in your own language and prepare a reply draft you check before sending.',
-        templatesText: 'Write the replies you send often once. They are translated to the buyer’s language and their variables are checked before they are added.',
-        automationText: 'The autopilot opens the selected buyers one by one, prepares each message from the quick reply and sends it on Etsy after its checks. You can pause it at any time.',
-        services: 'Translation: {translator} · AI: {ai}', noAi: 'No AI connection', startAutopilot: 'Start the autopilot', refresh: 'Refresh',
-        search: 'Search buyer or order', filter: 'Filter', unread: 'Unread · {n}', all: 'All',
-        listElsewhere: 'The conversation list is read on Etsy’s Messages list. Go back to it to see every conversation here.',
-        listEmpty: 'No conversation matches.', translatePreviews: 'Translate the previews', noOrder: 'No order', order: 'Order #{id}',
-        pick: 'Pick a conversation', pickText: 'Choose a conversation on the left. It opens on Etsy and its translation and reply tools appear here.',
-        openOrder: 'Open the order', writesIn: 'writes in {language}', translation: '{language} translation', showTranslation: 'Show in {language}',
-        draft: 'Reply draft', draftReady: 'Ready to check', draftStale: 'Conversation changed', draftNone: 'No draft yet',
-        fromTemplate: 'From the quick reply', fromAi: 'Prepared with {ai}', fromTranslate: 'Translated from your text', riskHigh: 'Needs a manual check', riskNone: 'No risk found',
-        toBuyer: 'Text for the buyer', replyLanguage: 'Reply language', buyersLanguage: '{language} · buyer’s language', inYours: 'In {language}: {text}',
-        neverSends: 'The message does not reach the buyer until you send it on Etsy.',
-        regenerate: 'Prepare again', copy: 'Copy', insert: 'Add to the message box', makeDraft: 'Prepare a draft with AI', orTemplate: 'or add a quick reply from the right.',
-        needKey: 'Connect an AI provider to prepare drafts.', connectAi: 'Connect an AI provider',
-        preparing: 'Preparing…', preparingText: 'The draft is being prepared in {language} · usually 3–5 seconds',
-        failed: 'Could not prepare', noConnection: 'No connection', errorTitle: 'The AI provider could not be reached.', errorKeep: 'The message and its translation stay as they are.',
-        errorCode: 'Error code: {code} · {version}', report: 'Report a problem', updateKey: 'Update the key', retry: 'Try again',
-        orderTitle: 'Order', quick: 'Quick replies', add: 'Add', manage: 'Manage the quick replies →', noTemplates: 'No quick reply yet.',
-        emptyTitle: 'No conversation read yet', emptyText: 'When you open Messages on Etsy, the conversations are listed here. For translation and reply drafts, connecting an AI provider is enough.',
-        openMessages: 'Open the Messages page', step1: 'Open Messages', step1Text: 'Go to Messages on Etsy.', step2: 'Read in your language', step2Text: 'Every message is translated to your language.',
-        step3: 'Check the draft', step3Text: 'No message goes out until you send it.',
-        newTemplate: 'New quick reply', searchTemplates: 'Search the quick replies', valid: 'Valid', missingVar: 'Unknown variable', archivedBadge: 'Archived',
-        name: 'Name', group: 'Group', textTr: 'Text (write in Turkish)', addVariable: 'Add a variable:', previewBuyer: 'Preview in the buyer’s language', previewLanguages: 'Preview language',
-        previewLoading: 'Translating the preview…', previewFailed: 'The preview could not be translated.',
-        checkOk: 'Checked. All {n} variables can be filled from the order.', checkNone: 'Checked. The text has no variables.', checkBad: 'Unknown variable: {list}. It stays as written in the message.',
-        archive: 'Archive the quick reply', unarchive: 'Use the quick reply again', cancel: 'Cancel', save: 'Save the quick reply', untitled: 'New quick reply',
-        autopilot: 'Autopilot', apOn: 'On · {done} of {total} buyers handled', apPaused: 'Paused · {done} of {total} buyers handled', apOff: 'No autopilot is running',
-        apOffText: 'The autopilot starts from the orders you select on Etsy’s Sold orders page, in the assistant’s Automation section.',
-        openOrders: 'Open Sold orders', openAutomation: 'Open the Automation section', pause: 'Pause the autopilot', resume: 'Continue the autopilot',
-        progress: 'Progress', colBuyer: 'Buyer', colItem: 'Item', colReply: 'Reply used', colStatus: 'Status', openConversation: 'Open the conversation',
-        sPending: 'Queued', sDraft: 'Draft ready', sInserted: 'Waiting for your approval', sSent: 'Sent', sPendingCheck: 'Checking the send', sSkipped: 'Skipped', sError: 'Left to you',
-        youApproved: 'You approved',
-        rules: 'Autopilot rules', rule1: 'How messages are sent', rule1Text: 'The autopilot sends each message itself after its checks; guided mode waits for you on every one.', always: 'Always on', rule1Off: 'Automatic sending is on in the assistant settings.',
-        rule2: 'Go on to the next buyer', rule2Text: 'After a send is confirmed, the next buyer opens.', rule3: 'Wait for the check', rule3Text: 'The next buyer starts only after Etsy shows the sent message.',
-        reviews: 'Review replies', reviewsCount: '{n} reviews on this page', reviewsElsewhere: 'Reviews are read on the shop dashboard’s reviews.', openReviews: 'Open the reviews',
-        reviewDraft: 'Prepare a draft', copyDraft: 'Copy the draft', checkRisk: 'Check: {risk}', rating: '{n} / 5',
-        confirmTitle: 'The autopilot will open {n} buyers in order', confirmText: 'For every buyer it prepares the message from the matching quick reply and sends it on Etsy.',
-        confirm1: 'Each message is sent without asking you again for that buyer.', confirm2: 'Buyers without a matching reply are left to you.', confirm3: 'You can pause at any time.',
-        close: 'Close', drawerAi: '{ai} · {model}', drawerOpen: 'Open the assistant', drawerContext: 'Open a conversation to translate it or prepare a reply.',
-        waiting: '{n} unread conversations', openWorkspace: 'Open the workspace →', draftAdded: 'Draft ready',
-      }),
-    });
-
-    // Bundled English; other languages read the downloaded pack ("ma." keys).
-    function texts(language) {
-      const lang = MA_STRINGS[language] ? language : 'en';
-      return (key, vars) => interpolate(MA_STRINGS[language]?.[key] ?? packText(language, `ma.${key}`) ?? MA_STRINGS[lang][key] ?? MA_STRINGS.en[key] ?? key, vars);
-    }
-
-    const TRANSLATORS = { google: 'Google Translate', deepl: 'DeepL' };
-    const PREVIEW_LANGUAGES = ['tr', 'en', 'de', 'fr'];
-    const STATUS = {
-      pending: ['sPending', ''], draft: ['sDraft', 'out'], inserted: ['sInserted', 'dark'], sent: ['sSent', 'ok'],
-      sent_pending_verification: ['sPendingCheck', 'warn'], skipped: ['sSkipped', 'out'], error: ['sError', 'warn'],
-    };
-
-    function languageName(code, language) {
-      if (!code) return '';
-      try { return new Intl.DisplayNames([language || 'en'], { type: 'language' }).of(code) ?? code; } catch { return code; }
-    }
-
-    const initials = (name) => String(name || '').trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase() || '·';
-
-    function servicesBadge(doc, ts, view) {
-      if (!view.ai.hasKey) return h(doc, 'span', { class: 'badge err', 'data-ma-state': 'no-key' }, h(doc, 'span', { class: 'dot', style: 'background: #b91c1c;' }), ts('noAi'));
-      return h(doc, 'span', { class: 'badge', 'data-ma-state': 'ready' }, h(doc, 'span', { class: 'dot' }), ts('services', { translator: TRANSLATORS[view.translator] ?? view.translator, ai: view.ai.name }));
-    }
-
-    function languageSelect(doc, ts, { value, languages, language, onChange, buyer }) {
-      const options = languages.length ? languages : [{ code: value || 'en' }];
-      return h(doc, 'select', { class: 'input', style: 'height: 28px; width: auto; padding: 0 8px; font-size: 12px;', 'aria-label': ts('replyLanguage'), 'data-ma': 'reply-language', onchange: (e) => onChange(e.target.value) },
-        options.map((o) => h(doc, 'option', { value: o.code, selected: o.code === value, text: o.code === buyer ? ts('buyersLanguage', { language: languageName(o.code, language) }) : languageName(o.code, language) })));
-    }
-
-    function shieldLine(doc, ts) {
-      return h(doc, 'span', { class: 'row xs mute2', style: 'gap: 6px;' }, icon(doc, ICONS.shield, 14), ts('neverSends'));
-    }
-
-    /** Drawer section on Messages, Sold orders and the shop dashboard (Msg-OnEtsy). */
-    function renderMaDrawer(doc, { snap, view, language, actions, unread = 0 }) {
-      const ts = texts(language);
-      const c = view?.conversation;
-      const active = (view?.templates ?? []).filter((t) => !t.archived);
-      const body = c
-        ? h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
-          h(doc, 'div', { class: 'row', style: 'gap: 10px;' },
-            h(doc, 'span', { class: 'av', text: initials(c.name) }),
-            h(doc, 'span', { class: 'col grow', style: 'gap: 1px; min-width: 0;' },
-              h(doc, 'span', { class: 'sm b trunc', id: 'eat-current', text: c.name || 'Message Assistant' }),
-              h(doc, 'span', { class: 'xs mute trunc', text: [c.orderId ? ts('order', { id: c.orderId }) : ts('noOrder'), c.language ? ts('writesIn', { language: languageName(c.language, language) }) : ''].filter(Boolean).join(' · ') })),
-            c.reply && c.replyCurrent ? h(doc, 'span', { class: 'badge ok', 'data-ma-state': 'draft', text: ts('draftAdded') }) : null),
-          h(doc, 'label', { class: 'row', style: 'gap: 6px;' }, h(doc, 'span', { class: 'xs mute2 grow', text: ts('replyLanguage') }),
-            languageSelect(doc, ts, { value: c.replyLanguage || c.language || 'en', languages: actions.languages(), language, buyer: c.language, onChange: (code) => actions.setReplyLanguage(code) })),
-          h(doc, 'div', { class: 'row' },
-            h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-ma': 'translate', disabled: snap.busy, onclick: () => actions.translate(), text: ts('showTranslation', { language: languageName(view.previewLanguage, language) }) }),
-            h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-ma': 'draft', disabled: snap.busy || !view.ai.hasKey, onclick: () => actions.draft(), text: ts('makeDraft') })),
-          active.length ? [h(doc, 'span', { class: 'ov', text: ts('quick') }),
-            h(doc, 'div', { class: 'list', style: 'border: 1px solid #e7e7e7; border-radius: 10.4px;' }, active.slice(0, 4).map((t) => h(doc, 'div', { class: 'li', style: 'padding: 8px 12px;' },
-              h(doc, 'span', { class: 'sm grow trunc', text: t.name }),
-              h(doc, 'button', { class: 'btn btn-g btn-sm', style: 'height: 26px;', type: 'button', 'data-ma-template': t.id, disabled: snap.busy, onclick: () => actions.useTemplate(t.id), text: ts('add') }))))] : null,
-          shieldLine(doc, ts))
-        : h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
-          h(doc, 'div', { class: 'row' }, icon(doc, ICONS['message-assistant']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Message Assistant' }), servicesBadge(doc, ts, view ?? { ai: snap.ai, translator: snap.translator })),
-          h(doc, 'span', { class: 'xs mute2', 'data-role': 'ma-context', text: ts('drawerContext') }),
-          h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'open-panel', onclick: () => actions.openPanel(), text: ts('drawerOpen') }));
-      return h(doc, 'div', { class: 'col', style: 'gap: 12px;', 'data-role': 'ma-drawer' }, body,
-        h(doc, 'div', { class: 'row', style: 'gap: 8px; padding-top: 10px; border-top: 1px solid #ececec;' },
-          h(doc, 'span', { class: 'xs mute2 grow', text: unread ? ts('waiting', { n: unread }) : '' }),
-          h(doc, 'button', { class: 'xs b ob-link', type: 'button', 'data-ma': 'details', onclick: () => actions.openDetails(), text: ts('openWorkspace') })));
-    }
-
-    /** Workspace page with Conversations, Quick replies and Autopilot and reviews. */
-    function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTab, local, container, version }) {
-      const ts = texts(language);
-      const current = ['inbox', 'templates', 'automation'].includes(tab) ? tab : 'inbox';
-      const list = local.list ?? [];
-      const unread = list.filter((item) => item.unread).length;
-      const tabs = pageTabs(doc, {
-        label: ts('tabs'), name: 'ma-tab', value: current, onChange: onTab,
-        options: [{ value: 'inbox', label: ts('inbox'), count: unread }, { value: 'templates', label: ts('templates') }, { value: 'automation', label: ts('automation') }],
-      });
-      const busy = view.busy;
-
-      // ---- Conversations ----------------------------------------------------
-      const inbox = () => {
-        const c = view.conversation;
-        if (!c && !list.length) {
-          return [h(doc, 'section', { class: 'card', style: 'flex: 1 1 auto; display: flex;', 'data-role': 'ma-empty' },
-            h(doc, 'div', { class: 'empty' },
-              h(doc, 'span', { class: 'ei' }, icon(doc, ICONS['message-assistant'], 24)),
-              h(doc, 'p', { class: 'et', text: ts('emptyTitle') }),
-              h(doc, 'p', { class: 'ed', text: ts('emptyText') }),
-              h(doc, 'div', { class: 'ea' },
-                h(doc, 'a', { class: 'btn btn-p', href: 'https://www.etsy.com/messages', 'data-ma': 'go-messages', text: ts('openMessages') }),
-                view.ai.hasKey ? null : h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-ma': 'connect-ai', onclick: () => actions.openSettings('ai'), text: ts('connectAi') })),
-              h(doc, 'div', { class: 'steps' }, [['step1', 'step1Text'], ['step2', 'step2Text'], ['step3', 'step3Text']].map(([title, text], i) => h(doc, 'div', {},
-                h(doc, 'span', { class: 'n', text: String(i + 1) }), h(doc, 'span', {}, h(doc, 'span', { class: 'st', text: ts(title) }), h(doc, 'span', { class: 'sd', text: ts(text) })))))))];
-        }
-        const query = String(local.query ?? '').trim().toLocaleLowerCase(language);
-        const shown = list.filter((item) => (local.filter !== 'unread' || item.unread)
-          && (!query || `${item.name} ${item.preview} ${item.translated}`.toLocaleLowerCase(language).includes(query)));
-        const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
-          h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec; display: flex; gap: 8px;' },
-            h(doc, 'div', { class: 'search grow' }, icon(doc, ICONS.search),
-              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), name: 'ma-search', value: local.query ?? '', 'data-ma': 'search',
-                oninput: (e) => actions.setLocal({ query: e.target.value }) }))),
-          h(doc, 'div', { style: 'padding: 8px 12px; border-bottom: 1px solid #ececec;' },
-            segmented(doc, { label: ts('filter'), name: 'ma-filter', value: local.filter === 'unread' ? 'unread' : 'all', onChange: (value) => actions.setLocal({ filter: value }),
-              options: [{ value: 'unread', label: ts('unread', { n: unread }) }, { value: 'all', label: ts('all') }] })),
-          h(doc, 'div', { style: 'flex: 1 1 auto; overflow: auto;', 'data-role': 'ma-list' },
-            shown.map((item) => h(doc, 'a', {
-              class: item.id === c?.id ? 'cv on' : 'cv', href: item.url, 'data-conversation': item.id,
-              onclick: (e) => { e.preventDefault(); actions.openConversation(item.url); },
-            }, h(doc, 'span', { class: 'av', text: initials(item.name) }),
-            h(doc, 'span', { class: 'col grow', style: 'gap: 2px; min-width: 0;' },
-              h(doc, 'span', { class: 'row' }, h(doc, 'span', { class: item.unread ? 'sm b grow trunc' : 'sm grow trunc', text: item.name }), h(doc, 'span', { class: 'xxs mute', text: item.time })),
-              h(doc, 'span', { class: 'xs trunc', text: item.translated || item.preview })))),
-            list.length && !shown.length ? h(doc, 'div', { class: 'xs mute', style: 'padding: 12px 14px;', text: ts('listEmpty') }) : null,
-            list.length ? null : h(doc, 'div', { class: 'xs mute', style: 'padding: 12px 14px;', text: ts('listElsewhere') })));
-
-        const middle = c ? conversationColumn(c) : h(doc, 'div', { class: 'grow', style: 'display: flex;' },
-          h(doc, 'div', { class: 'empty' }, h(doc, 'span', { class: 'ei' }, icon(doc, ICONS['message-assistant'], 24)),
-            h(doc, 'p', { class: 'et', text: ts('pick') }), h(doc, 'p', { class: 'ed', text: ts('pickText') })));
-
-        const active = view.templates.filter((t) => !t.archived);
-        const right = h(doc, 'aside', { style: 'width: 280px; flex: none; border-left: 1px solid #e7e7e7; display: flex; flex-direction: column;' },
-          h(doc, 'div', { style: 'padding: 14px 16px; border-bottom: 1px solid #ececec;' }, h(doc, 'span', { class: 'h3', text: ts('orderTitle') })),
-          h(doc, 'div', { style: 'padding: 14px 16px; display: flex; gap: 12px; border-bottom: 1px solid #ececec;' },
-            h(doc, 'span', { class: 'thumb' }),
-            h(doc, 'span', { class: 'col', style: 'gap: 2px; min-width: 0;' },
-              h(doc, 'span', { class: 'sm b', text: c?.itemTitle || (c?.orderId ? ts('order', { id: c.orderId }) : ts('noOrder')) }),
-              c?.orderId && c.itemTitle ? h(doc, 'span', { class: 'xs mute', text: ts('order', { id: c.orderId }) }) : null)),
-          h(doc, 'div', { style: 'padding: 14px 16px 6px;' }, h(doc, 'span', { class: 'ov', text: ts('quick') })),
-          h(doc, 'div', { class: 'list', style: 'padding: 0 4px; overflow: auto;' },
-            active.length ? active.map((t) => h(doc, 'button', {
-              class: 'li sm', type: 'button', style: 'padding: 10px 12px; width: 100%; border: none; background: transparent; text-align: start; cursor: pointer;',
-              'data-ma-template': t.id, disabled: !c || busy, onclick: () => actions.useTemplate(t.id),
-            }, h(doc, 'span', { class: 'grow trunc', text: t.name }), h(doc, 'span', { class: 'xxs mute', text: ts('add') })))
-              : h(doc, 'span', { class: 'xs mute', style: 'padding: 6px 12px;', text: ts('noTemplates') })),
-          h(doc, 'span', { class: 'grow' }),
-          h(doc, 'div', { style: 'padding: 12px 16px; border-top: 1px solid #ececec;' },
-            h(doc, 'button', { class: 'xs b ob-link', type: 'button', 'data-ma': 'manage-templates', onclick: () => onTab('templates'), text: ts('manage') })));
-
-        return [h(doc, 'div', { class: 'card', style: 'flex: 1 1 auto; min-height: 0; display: flex;', 'data-role': 'ma-inbox' }, left, middle, right)];
-      };
-
-      function conversationColumn(c) {
-        const preview = languageName(view.previewLanguage, language);
-        const customer = c.messages.filter((m) => m.role === 'customer').slice(-2);
-        const error = view.error && ['generate-reply', 'regenerate-reply', 'template-reply', 'insert-reply', 'translate-last', 'copy'].includes(view.error.action) ? view.error : null;
-        const replyLanguage = c.replyLanguage || c.language || 'en';
-        let draftCard;
-        if (busy && !c.reply) {
-          draftCard = h(doc, 'section', { class: 'card', style: 'margin-top: auto;', 'data-ma-draft': 'preparing' },
-            h(doc, 'div', { class: 'card-h' }, icon(doc, ICONS.sparkles),
-              h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h3', text: ts('draft') })),
-              h(doc, 'span', { class: 'badge', text: ts('preparing') })),
-            h(doc, 'div', { class: 'card-b col', style: 'gap: 10px;' },
-              h(doc, 'div', { class: 'ld-box', 'aria-hidden': 'true' }, h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 88%;' }), h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 74%;' }), h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 40%;' })),
-              h(doc, 'span', { class: 'row xs mute2', style: 'gap: 6px;', role: 'status' }, h(doc, 'span', { class: 'spin', style: 'width: 12px; height: 12px;' }), ts('preparingText', { language: languageName(replyLanguage, language) }))),
-            h(doc, 'div', { class: 'card-f', style: 'justify-content: flex-end;' }, h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', disabled: true }, h(doc, 'span', { class: 'spin', style: 'width: 12px; height: 12px;' }), ts('preparing'))));
-        } else if (error && !c.reply) {
-          draftCard = h(doc, 'section', { class: 'card', style: 'margin-top: auto;', 'data-ma-draft': 'error' },
-            h(doc, 'div', { class: 'card-h' },
-              h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h3', text: ts('draft') }), h(doc, 'span', { class: 'xxs mute', text: ts('failed') })),
-              h(doc, 'span', { class: 'badge err', text: ts('noConnection') })),
-            h(doc, 'div', { class: 'card-b col', style: 'gap: 12px;' },
-              alertBox(doc, { tone: 'err', title: ts('errorTitle'), text: `${error.message} ${ts('errorKeep')}` }),
-              h(doc, 'span', { class: 'mono xxs mute', 'data-role': 'ma-error-code', text: ts('errorCode', { code: `MSG-${(error.code || 'error').toUpperCase()}`, version }) })),
-            h(doc, 'div', { class: 'card-f' },
-              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'report', onclick: (e) => actions.report({ category: 'wrong-result', tool: 'message-assistant', errorCode: `ma_${error.code || 'error'}`, returnFocus: e.currentTarget }), text: ts('report') }),
-              h(doc, 'span', { class: 'grow' }),
-              h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'update-key', onclick: () => actions.openSettings('ai'), text: ts('updateKey') }),
-              h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'retry', onclick: () => actions.draft() }, icon(doc, ICONS.refresh, 14), ts('retry'))));
-        } else if (c.reply) {
-          const source = c.replyMethod === 'template' ? ts('fromTemplate') : c.replyMethod.startsWith('ai') ? ts('fromAi', { ai: view.ai.name }) : ts('fromTranslate');
-          draftCard = h(doc, 'section', { class: 'card', style: 'margin-top: auto;', 'data-ma-draft': 'ready' },
-            h(doc, 'div', { class: 'card-h' }, icon(doc, ICONS.sparkles),
-              h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h3', text: ts('draft') }),
-                h(doc, 'span', { class: 'xxs mute', text: `${source} · ${c.risk === 'high' ? ts('riskHigh') : ts('riskNone')}` })),
-              c.replyCurrent ? h(doc, 'span', { class: c.risk === 'high' ? 'badge warn' : 'badge ok', text: c.risk === 'high' ? ts('riskHigh') : ts('draftReady') }) : h(doc, 'span', { class: 'badge warn', text: ts('draftStale') })),
-            h(doc, 'div', { class: 'card-b col', style: 'gap: 10px;' },
-              h(doc, 'div', { class: 'field' },
-                h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'label grow', id: 'eat-ma-reply-label', text: ts('toBuyer') }),
-                  h(doc, 'label', { class: 'row', style: 'gap: 6px;' }, h(doc, 'span', { class: 'xs mute2', text: ts('replyLanguage') }),
-                    languageSelect(doc, ts, { value: replyLanguage, languages: actions.languages(), language, buyer: c.language, onChange: (code) => actions.setReplyLanguage(code) }))),
-                h(doc, 'textarea', { class: 'input', rows: '3', 'aria-labelledby': 'eat-ma-reply-label', 'data-ma': 'reply', oninput: (e) => actions.editReply(e.target.value) }, c.reply)),
-              c.replyTr ? h(doc, 'span', { class: 'xs mute', text: ts('inYours', { language: languageName('tr', language), text: c.replyTr }) }) : null,
-              shieldLine(doc, ts)),
-            h(doc, 'div', { class: 'card-f', style: 'flex-wrap: wrap; justify-content: flex-end;' },
-              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'regenerate', disabled: busy, onclick: () => actions.regenerate(), text: ts('regenerate') }),
-              h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'copy', disabled: busy || !c.replyCurrent, onclick: () => actions.copy(), text: ts('copy') }),
-              h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'insert', disabled: busy || !c.replyCurrent || !c.canInsert, onclick: () => actions.insert(), text: ts('insert') })));
-        } else {
-          draftCard = h(doc, 'section', { class: 'card', style: 'margin-top: auto;', 'data-ma-draft': 'none' },
-            h(doc, 'div', { class: 'card-h' }, icon(doc, ICONS.sparkles),
-              h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h3', text: ts('draft') }), h(doc, 'span', { class: 'xxs mute', text: view.ai.hasKey ? ts('orTemplate') : ts('needKey') })),
-              h(doc, 'span', { class: 'badge out', text: ts('draftNone') })),
-            h(doc, 'div', { class: 'card-f', style: 'justify-content: flex-end;' },
-              view.ai.hasKey ? null : h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'connect-ai', onclick: () => actions.openSettings('ai'), text: ts('connectAi') }),
-              h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'draft', disabled: busy || !view.ai.hasKey, onclick: () => actions.draft() }, icon(doc, ICONS.sparkles, 14), ts('makeDraft'))));
-        }
-        return h(doc, 'div', { class: 'grow', style: 'display: flex; flex-direction: column; min-height: 0; min-width: 0;', 'data-role': 'ma-conversation' },
-          h(doc, 'div', { style: 'padding: 14px 20px; border-bottom: 1px solid #ececec; display: flex; align-items: center; gap: 12px;' },
-            h(doc, 'div', { class: 'col grow', style: 'gap: 2px; min-width: 0;' },
-              h(doc, 'span', { class: 'h2', text: c.name }),
-              h(doc, 'span', { class: 'xs mute trunc', text: [c.orderId ? ts('order', { id: c.orderId }) : ts('noOrder'), c.itemTitle, c.language ? ts('writesIn', { language: languageName(c.language, language) }) : ''].filter(Boolean).join(' · ') })),
-            c.orderId ? h(doc, 'a', { class: 'btn btn-o btn-sm', href: `https://www.etsy.com/your/orders/sold?order_id=${encodeURIComponent(c.orderId)}`, target: '_blank', rel: 'noopener', text: ts('openOrder') }) : null),
-          h(doc, 'div', { style: 'flex: 1 1 auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow: auto; background: #fcfcfc;' },
-            h(doc, 'div', { style: 'max-width: 560px; display: flex; flex-direction: column; gap: 6px;' },
-              customer.map((m) => h(doc, 'div', { style: 'background: #ffffff; border: 1px solid #e7e7e7; border-radius: 12px; padding: 12px 14px;', class: 'sm', 'data-role': 'ma-message', text: m.text })),
-              c.translation
-                ? h(doc, 'div', { style: 'background: #f2f2f2; border-radius: 12px; padding: 10px 14px;', class: 'sm', 'data-role': 'ma-translation' },
-                  h(doc, 'span', { class: 'xxs mute b', style: 'display: block; margin-bottom: 2px;', text: ts('translation', { language: preview }) }), c.translation)
-                : c.last ? h(doc, 'button', { class: 'btn btn-o btn-sm', style: 'align-self: flex-start;', type: 'button', 'data-ma': 'translate', disabled: busy, onclick: () => actions.translate() }, icon(doc, ICONS.globe, 14), ts('showTranslation', { language: preview })) : null),
-            draftCard));
-      }
-
-      // ---- Quick replies ----------------------------------------------------
-      const templatesTab = () => {
-        const variables = actions.variables();
-        const all = view.templates;
-        const editing = local.template ?? all.find((t) => t.id === local.templateId) ?? all.find((t) => !t.archived) ?? null;
-        const draft = local.templateDraft && local.templateDraft.id === (editing?.id ?? '') ? local.templateDraft : editing ? { id: editing.id, name: editing.name, category: editing.category, text: editing.text } : null;
-        const query = String(local.templateQuery ?? '').trim().toLocaleLowerCase(language);
-        const shown = all.filter((t) => !query || `${t.name} ${t.category}`.toLocaleLowerCase(language).includes(query));
-        const pick = (t) => actions.setLocal({ templateId: t.id, template: null, templateDraft: null, previewText: null });
-        const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
-          h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec;' },
-            h(doc, 'div', { class: 'search' }, icon(doc, ICONS.search),
-              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('searchTemplates'), 'aria-label': ts('searchTemplates'), name: 'ma-template-search', value: local.templateQuery ?? '', oninput: (e) => actions.setLocal({ templateQuery: e.target.value }) }))),
-          h(doc, 'div', { style: 'flex: 1 1 auto; overflow: auto;', 'data-role': 'ma-templates' }, shown.map((t) => h(doc, 'a', {
-            class: t.id === draft?.id ? 'tp on' : 'tp', href: '#', 'data-template': t.id, onclick: (e) => { e.preventDefault(); pick(t); },
-          }, h(doc, 'span', { class: 'col grow', style: 'gap: 2px; min-width: 0;' }, h(doc, 'span', { class: 'sm b trunc', text: t.name }), h(doc, 'span', { class: 'xs mute', text: t.category })),
-          t.archived ? h(doc, 'span', { class: 'badge out', text: ts('archivedBadge') })
-            : t.unknown.length ? h(doc, 'span', { class: 'badge warn', text: ts('missingVar') }) : h(doc, 'span', { class: 'badge ok', text: ts('valid') })))));
-        if (!draft) return [h(doc, 'div', { class: 'card', style: 'flex: 1 1 auto; min-height: 0; display: flex;' }, left)];
-
-        // Each field merges into the latest draft, so editing the name and then the text keeps both.
-        const update = (patch) => { local.templateDraft = { ...(local.templateDraft?.id === draft.id ? local.templateDraft : draft), ...patch }; };
-        const textArea = h(doc, 'textarea', { class: 'input', rows: '4', id: 'eat-ma-tpl-text', 'data-ma': 'template-text', oninput: (e) => update({ text: e.target.value }) }, draft.text);
-        const used = [...new Set([...String(draft.text).matchAll(/{{\s*(\w+)\s*}}/g)].map((m) => m[1]))];
-        const unknown = used.filter((v) => !variables.includes(v));
-        const groups = [...new Set(all.map((t) => t.category).filter(Boolean))];
-        // Turkish needs no translation; another language is translated only when chosen.
-        const previewLanguage = local.previewLanguage ?? 'tr';
-        if (local.previewText == null && !local.previewLoading) {
-          local.previewLoading = true;
-          actions.previewTemplate(draft.text, previewLanguage).then(
-            (text) => actions.setLocal({ previewText: text, previewLoading: false }),
-            () => actions.setLocal({ previewText: '', previewError: true, previewLoading: false }));
-        }
-        const right = h(doc, 'div', { class: 'grow', style: 'padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; overflow: auto; min-width: 0;', 'data-role': 'ma-template-editor' },
-          h(doc, 'div', { class: 'g2', style: 'gap: 16px;' },
-            h(doc, 'label', { class: 'field' }, h(doc, 'span', { class: 'label', text: ts('name') }),
-              h(doc, 'input', { class: 'input', type: 'text', value: draft.name, 'data-ma': 'template-name', oninput: (e) => update({ name: e.target.value }) })),
-            h(doc, 'label', { class: 'field' }, h(doc, 'span', { class: 'label', text: ts('group') }),
-              h(doc, 'input', { class: 'input', type: 'text', value: draft.category, list: 'eat-ma-groups', 'data-ma': 'template-group', oninput: (e) => update({ category: e.target.value }) }),
-              h(doc, 'datalist', { id: 'eat-ma-groups' }, groups.map((g) => h(doc, 'option', { value: g }))))),
-          h(doc, 'label', { class: 'field', for: 'eat-ma-tpl-text' }, h(doc, 'span', { class: 'label', text: ts('textTr') }), textArea),
-          h(doc, 'div', { class: 'row', style: 'flex-wrap: wrap; gap: 6px;' },
-            h(doc, 'span', { class: 'xs mute', style: 'margin-right: 4px;', text: ts('addVariable') }),
-            variables.map((v) => h(doc, 'button', {
-              class: 'var', type: 'button', 'data-variable': v, onclick: () => {
-                const token = `{{${v}}}`;
-                const start = textArea.selectionStart ?? textArea.value.length;
-                textArea.setRangeText(token, start, textArea.selectionEnd ?? start, 'end');
-                textArea.focus();
-                update({ text: textArea.value });
-              },
-            }, `{{${v}}}`))),
-          h(doc, 'div', { class: 'field' },
-            h(doc, 'span', { class: 'label', id: 'eat-ma-preview-label', text: ts('previewBuyer') }),
-            h(doc, 'div', { class: 'row', style: 'margin-bottom: 4px;' },
-              segmented(doc, { labelledBy: 'eat-ma-preview-label', name: 'ma-preview', value: previewLanguage, options: PREVIEW_LANGUAGES.map((code) => ({ value: code, label: languageName(code, language) })),
-                onChange: (code) => actions.setLocal({ previewLanguage: code, previewText: null, previewError: false }) }),
-              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'preview-refresh', 'aria-label': ts('refresh'), onclick: () => actions.setLocal({ previewText: null, previewError: false }) }, icon(doc, ICONS.refresh, 14))),
-            h(doc, 'div', { style: 'border: 1px solid #e7e7e7; border-radius: 8.4px; background: #fafafa; padding: 12px; white-space: pre-wrap;', class: 'sm', 'data-role': 'ma-preview', 'aria-live': 'polite' },
-              local.previewText == null ? ts('previewLoading') : local.previewError ? ts('previewFailed') : local.previewText)),
-          unknown.length
-            ? banner(doc, { tone: 'warn', iconPaths: ICONS.alert, text: ts('checkBad', { list: unknown.map((v) => `{{${v}}}`).join(', ') }) })
-            : banner(doc, { tone: 'ok', iconPaths: ICONS.check, text: used.length ? ts('checkOk', { n: used.length }) : ts('checkNone') }));
-        const stored = all.find((t) => t.id === draft.id);
-        return [
-          h(doc, 'div', { class: 'card', style: 'flex: 1 1 auto; min-height: 0; display: flex;' }, left, right),
-          h(doc, 'div', { class: 'savebar', 'data-role': 'ma-template-bar' },
-            stored ? h(doc, 'button', { class: 'btn btn-g', type: 'button', style: stored.archived ? null : 'color: #b91c1c;', 'data-ma': 'template-archive', disabled: busy,
-              onclick: () => actions.archiveTemplate(stored.id, !stored.archived) }, icon(doc, stored.archived ? ICONS.refresh : ICONS.trash, 16), ts(stored.archived ? 'unarchive' : 'archive')) : null,
-            h(doc, 'span', { class: 'grow' }),
-            h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-ma': 'template-cancel', onclick: () => actions.setLocal({ template: null, templateDraft: null, previewText: null }), text: ts('cancel') }),
-            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'template-save', disabled: busy,
-              onclick: async () => { const d = local.templateDraft ?? draft; if (await actions.saveTemplate({ ...d, id: stored ? d.id : '' })) actions.setLocal({ template: null, templateDraft: null, templateId: stored ? d.id : null }); }, text: ts('save') })),
-        ];
-      };
-
-      // ---- Autopilot and reviews --------------------------------------------
-      const automationTab = () => {
-        const camp = view.campaign?.active ? view.campaign : null;
-        const items = camp?.items ?? [];
-        const done = items.filter((i) => i.status === 'sent' || i.status === 'skipped').length;
-        const running = camp?.runMode === 'autopilot' && camp.runState === 'running';
-        const templateName = (id) => view.templates.find((t) => t.id === id)?.name ?? '—';
-        const autopilot = h(doc, 'section', { class: 'card', 'data-role': 'ma-autopilot' },
-          h(doc, 'div', { class: 'card-h' },
-            h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'h2', { class: 'h2', text: ts('autopilot') }),
-              h(doc, 'span', { class: 'xs mute', text: camp ? ts(running ? 'apOn' : 'apPaused', { done, total: items.length }) : ts('apOff') })),
-            camp ? (running
-              ? h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'pause', disabled: busy, onclick: () => actions.campaignPause() }, icon(doc, ICONS.pause, 14), ts('pause'))
-              : h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'resume', disabled: busy, onclick: (e) => confirmResume(e.currentTarget, items.length - done) }, icon(doc, ICONS.play, 14), ts('resume'))) : null),
-          camp
-            ? [h(doc, 'div', { class: 'card-b col', style: 'gap: 8px;' },
-              h(doc, 'div', { class: 'row xs mute2' }, h(doc, 'span', { class: 'grow', text: ts('progress') }), h(doc, 'span', { class: 'num', text: `${done} / ${items.length}` })),
-              h(doc, 'div', { class: 'prog' }, h(doc, 'i', { style: `width: ${items.length ? Math.round((done / items.length) * 1000) / 10 : 0}%;` }))),
-            h(doc, 'table', { class: 'tbl tbl-tight' },
-              h(doc, 'thead', {}, h(doc, 'tr', {}, [ts('colBuyer'), ts('colItem'), ts('colReply'), ts('colStatus'), ''].map((label, i) => h(doc, 'th', { class: i === 4 ? 'r' : null, text: label })))),
-              h(doc, 'tbody', {}, items.map((item) => {
-                const [label, tone] = STATUS[item.status] ?? STATUS.pending;
-                const needsYou = item.status === 'error' || item.status === 'inserted' || item.status === 'sent_pending_verification';
-                return h(doc, 'tr', { 'data-order': item.orderId, style: item.status === 'error' ? 'background: #fafafa;' : null },
-                  h(doc, 'td', { class: 'b', text: item.name }),
-                  h(doc, 'td', { class: 'mute2 trunc', style: 'max-width: 200px;', text: item.itemTitle || '—' }),
-                  h(doc, 'td', { text: templateName(item.templateId) }),
-                  h(doc, 'td', {}, h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge' }, tone ? null : h(doc, 'span', { class: 'dot soft' }), ts(label))),
-                  h(doc, 'td', { class: 'r' }, item.status === 'sent' ? h(doc, 'span', { class: 'xs mute', text: ts('youApproved') })
-                    : needsYou && item.url ? h(doc, 'button', { class: item.status === 'inserted' ? 'btn btn-p btn-sm' : 'btn btn-o btn-sm', type: 'button', 'data-ma': 'open-item', onclick: () => actions.openConversation(item.url), text: ts('openConversation') }) : null));
-              })))]
-            : h(doc, 'div', { class: 'card-b col', style: 'gap: 12px;' },
-              h(doc, 'p', { class: 'sm mute2', text: ts('apOffText') }),
-              h(doc, 'div', { class: 'row' },
-                h(doc, 'a', { class: 'btn btn-o btn-sm', href: 'https://www.etsy.com/your/orders/sold/completed', text: ts('openOrders') }),
-                h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'open-automation', onclick: () => actions.openPanel('orders'), text: ts('openAutomation') }))));
-        const rules = h(doc, 'section', { class: 'card', 'data-role': 'ma-rules' },
-          h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('rules') })),
-          h(doc, 'div', { class: 'rg' },
-            // The autopilot sends by itself (the engine allows sending while it runs), so the card says so plainly.
-            h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', text: ts('rule1') }), h(doc, 'span', { class: 'xs mute', text: ts('rule1Text') })),
-            h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', id: 'eat-ma-rule2', text: ts('rule2') }), h(doc, 'span', { class: 'xs mute', text: ts('rule2Text') }),
-              toggle(doc, { name: 'ma-auto-advance', checked: view.autoAdvance, labelledBy: 'eat-ma-rule2', disabled: busy, onChange: (on) => actions.setAutoAdvance(on) })),
-            h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', text: ts('rule3') }), h(doc, 'span', { class: 'xs mute', text: ts('rule3Text') }),
-              h(doc, 'span', { class: 'badge out', style: 'align-self: flex-start;', text: ts('always') }))));
-        const reviewsOn = view.page === 'reviews';
-        const reviews = h(doc, 'aside', { class: 'card', style: 'width: 400px; flex: none;', 'data-role': 'ma-reviews' },
-          h(doc, 'div', { class: 'card-h' },
-            h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'h2', { class: 'h2', text: ts('reviews') }),
-              h(doc, 'span', { class: 'xs mute', text: reviewsOn ? ts('reviewsCount', { n: view.reviews.length }) : ts('reviewsElsewhere') })),
-            reviewsOn ? h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': ts('refresh'), 'data-ma': 'reviews-refresh', disabled: busy, onclick: () => actions.refreshReviews() }, icon(doc, ICONS.refresh)) : null),
-          reviewsOn
-            ? h(doc, 'div', { class: 'list' }, view.reviews.map((r) => h(doc, 'div', { class: 'col', style: 'padding: 14px 16px; gap: 8px;', 'data-review': r.id },
-              h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'sm b grow', text: r.name }), r.rating != null ? h(doc, 'span', { class: r.rating >= 4 ? 'badge out num' : 'badge warn num', text: ts('rating', { n: r.rating }) }) : null),
-              r.text ? h(doc, 'p', { class: 'sm mute2', text: `“${r.text}”` }) : null,
-              r.reply ? h(doc, 'div', { style: 'border: 1px solid #e7e7e7; border-radius: 8.4px; background: #fafafa; padding: 10px 12px;', class: 'sm', text: r.reply }) : null,
-              h(doc, 'div', { class: 'row' },
-                r.risk && r.risk !== 'low' ? h(doc, 'span', { class: 'badge warn', text: ts('checkRisk', { risk: r.risk }) }) : null,
-                h(doc, 'span', { class: 'grow' }),
-                h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'review-draft', disabled: busy || !view.ai.hasKey, onclick: () => actions.reviewDraft(r.id), text: r.reply ? ts('regenerate') : ts('reviewDraft') }),
-                r.reply ? h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'review-copy', disabled: busy, onclick: () => actions.reviewCopy(r.id), text: ts('copyDraft') }) : null))))
-            : h(doc, 'div', { class: 'card-b' }, h(doc, 'a', { class: 'btn btn-o btn-sm', href: 'https://www.etsy.com/your/shops/me/dashboard/activity', text: ts('openReviews') })));
-        return [h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;' }, h(doc, 'div', { class: 'col grow', style: 'gap: 16px; min-width: 0;' }, autopilot, rules), reviews)];
-      };
-
-      function confirmResume(returnFocus, remaining) {
-        openDialog(doc, container, {
-          title: ts('confirmTitle', { n: remaining }), description: ts('confirmText'), closeLabel: ts('close'), returnFocus, width: 520,
-          body: h(doc, 'div', { class: 'col', style: 'gap: 10px;' }, ['confirm1', 'confirm2', 'confirm3'].map((key) => h(doc, 'span', { class: 'row sm', style: 'gap: 8px;' }, icon(doc, ICONS.check, 16), ts(key)))),
-          footer: (close) => [
-            h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: close, text: ts('cancel') }),
-            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'confirm-resume', onclick: () => { close(); void actions.campaignResume(); }, text: ts('startAutopilot') }),
-          ],
-        });
-      }
-
-      const heads = {
-        inbox: pageHead(doc, { overline: 'MESSAGE ASSISTANT', title: ts('inbox'), description: ts('inboxText'), actions: [
-          servicesBadge(doc, ts, view),
-          h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-ma': 'start-autopilot', onclick: () => onTab('automation'), text: ts('startAutopilot') }),
-          h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-ma': 'refresh', disabled: busy, onclick: () => actions.refresh() }, icon(doc, ICONS.refresh, 16), ts('refresh'))] }),
-        templates: pageHead(doc, { overline: 'MESSAGE ASSISTANT', title: ts('templates'), description: ts('templatesText'), actions: [
-          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'template-new', onclick: () => actions.setLocal({ template: { id: '', name: ts('untitled'), category: '', text: '', unknown: [] }, templateDraft: null, previewText: null }) }, icon(doc, ICONS.plus, 16), ts('newTemplate'))] }),
-        automation: pageHead(doc, { overline: 'MESSAGE ASSISTANT', title: ts('automation'), description: ts('automationText') }),
-      };
-      const body = current === 'templates' ? templatesTab() : current === 'automation' ? automationTab() : inbox();
-      return h(doc, 'div', { style: 'display: contents;', 'data-role': 'ma-page', 'data-ma-tab': current }, heads[current], tabs, ...body);
-    }
-    return Object.freeze({ MA_STRINGS, renderMaDrawer, renderMaPage });
-  })();
-
-  // ── src/modules/message-assistant.js ──
-  const __eat_modules_message_assistant = (() => {
-    // Message Assistant inside the unified script.
-    //
-    // The engine is the standalone Message Assistant itself, adopted at build
-    // time (tools/Unified-Adopt-Message-Assistant.mjs). Its panel stays for the
-    // detailed work; the unified edge button replaces its floating launcher, and
-    // the new screens (message-assistant-ui.js) summarise its state and open its
-    // panel at the right section. Its API keys and token are kept under
-    // eat:secret: by the GM shim (core/scoped-gm.js).
-    //
-    // The engine starts after a short grace period, not at all while the
-    // standalone script runs on this page, and steps aside if that one appears.
-
-    const { createScopedGm } = __eat_core_scoped_gm;
-    const { renderMaDrawer, renderMaPage } = __eat_modules_message_assistant_ui;
-
-    const MA_TOOL_ID = 'message-assistant';
-    const STANDALONE_ROOT_ID = 'makaytron-etsy-message-assistant';
-    const STANDALONE_GRACE_MS = 1500;
-
-    function createMessageAssistantModule({ secrets }) {
-      const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', languages: null, local: { list: [], filter: 'all' } };
-
-      const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
-      const emit = (status) => state.ctx?.events?.emit('tool:status', { tool: MA_TOOL_ID, state: status });
-
-      function watchForStandalone(doc) {
-        if (state.observer || typeof MutationObserver !== 'function') return;
-        state.observer = new MutationObserver(() => {
-          if (!state.standalone && standalonePresent(doc)) {
-            state.standalone = true; // the engine's route gate closes and its own lifecycle suspends it
-            emit('standalone');
-          }
-        });
-        state.observer.observe(doc.documentElement, { childList: true, subtree: true });
-      }
-
-      function changed() {
-        if (!state.engine) return;
-        const text = JSON.stringify(state.engine.snapshot());
-        if (text === state.last) return;
-        state.last = text;
-        emit('running');
-      }
-
-      async function start(ctx) {
-        const doc = ctx.scope.document;
-        await new Promise((resolve) => ctx.scope.setTimeout(resolve, STANDALONE_GRACE_MS));
-        watchForStandalone(doc);
-        if (standalonePresent(doc)) {
-          state.standalone = true;
-          emit('standalone');
-          return;
-        }
-        const gm = createScopedGm({
-          gm: ctx.scope.GM, namespace: MA_TOOL_ID, doc,
-          info: { name: 'Etsy Automation Tools · Message Assistant', version: ctx.engines.messageAssistantVersion },
-          resources: { makaytronLogo: ctx.assets?.logo ?? '' },
-          secrets,
-        });
-        state.engine = await ctx.engines.createMessageAssistant({
-          GM: gm,
-          xmlHttpRequest: (details) => ctx.scope.GM.xmlHttpRequest(details),
-          isAllowed: () => !state.standalone && ctx.isToolEnabled(MA_TOOL_ID),
-          autoPreview: () => ctx.settings.get().ai.autoTranslate,
-          onChange: () => ctx.scope.setTimeout(changed, 0),
-        });
-        emit('running');
-        await state.engine.start();
-        // "AI and translation services" in the setup and in Settings decides the engine's automatic translation preview.
-        const applyAutoPreview = () => state.engine?.ai?.setAutoPreview?.(ctx.settings.get().ai.autoTranslate).catch(() => {});
-        await applyAutoPreview();
-        ctx.settings.subscribe?.(() => { void applyAutoPreview(); });
-        changed();
-      }
-
-      function actionsFor(ui) {
-        const engine = state.engine;
-        const m = engine.messages;
-        const run = (fn) => Promise.resolve().then(fn).catch((error) => { console.error('[Etsy Automation Tools] Message Assistant', error); return false; });
-        // The engine's panel opens on the page, so the drawer and workspace step out of its way.
-        const inPanel = (fn) => { ui.hide?.(); return run(fn); };
-        const rerender = () => (ui.onTab ? ui.onTab(ui.tab ?? 'inbox') : emit('running'));
-        return {
-          openPanel: (section) => inPanel(() => engine.openPanel(section)),
-          openDetails: () => ui.openWorkspace?.(`tool:${MA_TOOL_ID}`),
-          openSettings: (tab) => ui.openSettings?.(tab),
-          report: (options) => ui.report?.(options),
-          languages: () => (state.languages ??= m.languages()),
-          variables: () => m.variables(),
-          translate: () => run(() => m.translate()),
-          draft: () => run(() => m.draft()),
-          regenerate: () => run(() => m.regenerate()),
-          useTemplate: (id) => run(() => m.useTemplate(id)),
-          setReplyLanguage: (code) => run(() => m.setReplyLanguage(code)),
-          editReply: (text) => m.editReply(text),
-          insert: () => run(() => m.insert()),
-          copy: () => run(() => m.copy()),
-          refresh: () => run(() => (view()?.listPage ? m.translateList() : rerender())),
-          openConversation: (url) => m.openConversation(url),
-          previewTemplate: (text, language) => m.previewTemplate(text, language),
-          saveTemplate: (input) => run(() => m.saveTemplate(input)),
-          archiveTemplate: (id, archived) => run(() => m.archiveTemplate(id, archived)),
-          campaignPause: () => run(() => m.campaignPause()),
-          campaignResume: () => run(() => m.campaignResume()),
-          setAutoAdvance: (on) => run(() => m.setAutoAdvance(on)),
-          refreshReviews: () => run(() => m.refreshReviews()),
-          reviewDraft: (id) => run(() => m.reviewDraft(id)),
-          reviewCopy: (id) => run(() => m.reviewCopy(id)),
-          setLocal: (patch) => { Object.assign(state.local, patch); rerender(); },
-        };
-      }
-
-      const snapshot = () => (state.standalone || !state.engine ? null : state.engine.snapshot());
-      /** The engine's view; the conversation list is kept while a conversation is open (Etsy shows it only on the list). */
-      function view() {
-        if (state.standalone || !state.engine?.messages) return null;
-        const current = state.engine.messages.view();
-        if (current.listPage) state.local.list = current.list;
-        return current;
-      }
-      const unread = () => (state.local.list ?? []).filter((item) => item.unread).length;
-
-      return {
-        id: MA_TOOL_ID,
-        name: 'Message Assistant',
-        legacyScriptId: MA_TOOL_ID,
-        storageNamespace: MA_TOOL_ID,
-        migrated: true,
-        status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
-        /** Provider management for Settings › AI providers, while the engine runs on this page. */
-        aiProviders: () => (state.standalone ? null : state.engine?.ai ?? null),
-        /** Shortcut "Add the draft to the message box" (Settings › Shortcuts): the engine's own insert, which never sends. */
-        shortcut(action) {
-          if (action !== 'maInsertDraft' || state.standalone || !state.engine?.messages) return false;
-          const c = state.engine.messages.view().conversation;
-          if (!c?.reply || !c.replyCurrent || !c.canInsert) return false;
-          void Promise.resolve(state.engine.messages.insert()).catch(() => {});
-          return true;
-        },
-        /** Unread conversations in the last list read, for the workspace menu and the drawer. */
-        drawerCount: () => unread(),
-        renderDrawer(ui) {
-          const snap = snapshot();
-          return snap ? renderMaDrawer(ui.doc, { snap, view: view(), language: ui.language, actions: actionsFor(ui), unread: unread() }) : null;
-        },
-        renderPage(ui) {
-          const current = snapshot() ? view() : null;
-          return current ? renderMaPage(ui.doc, {
-            view: current, language: ui.language, actions: actionsFor(ui), tab: ui.tab === 'overview' ? 'inbox' : ui.tab, onTab: ui.onTab,
-            local: state.local, container: ui.container, version: state.ctx?.appVersion ?? '',
-          }) : null;
-        },
-        async mount(ctx) {
-          state.ctx = ctx;
-          if (!state.starting && ctx.scope?.GM && ctx.engines?.createMessageAssistant) {
-            state.starting = start(ctx).catch((error) => {
-              state.starting = null;
-              console.error('[Etsy Automation Tools] Message Assistant', error);
-              ctx.events?.emit('error', { code: 'module_mount' });
-            });
-          }
-        },
-        async unmount() {
-          // The engine's own route gate suspends it off its pages or when the tool is turned off.
-        },
-      };
-    }
-    return Object.freeze({ MA_TOOL_ID, STANDALONE_ROOT_ID, createMessageAssistantModule });
-  })();
-
-  // ── src/modules/sale-manager-ui.js ──
-  const __eat_modules_sale_manager_ui = (() => {
-    // Sale Manager screens, as the design canvas draws them: the drawer section
-    // (Main, Drawer-Error), the workspace page — Overview (Sale-Idle,
-    // Sale-Overview, Sale-Error), Settings (Sale-Settings), Report (Sale-Report),
-    // the first-use page (Sale-Empty) — and the start confirmation
-    // (Sale-StartConfirm).
-    //
-    // The screens only read the engine snapshot and call the engine's own actions
-    // (start, retry, skip, stop, updateConfig, downloads), so every rule of the
-    // standalone Sale Manager still decides what happens on Etsy.
-    //
-    // Design sources: template.primitive.card, .table, .badge, .progress, .button,
-    // .input, .tabs, .dialog; shadcn.blocks.kpi-widgets for the summary tiles;
-    // shadcn.blocks.datatable for the campaign and report tables.
-
-    const { h, icon } = __eat_ui_dom;
-    const { ICONS } = __eat_ui_icons;
-    const { pageHead, pageTabs, banner, alertBox, toggle, openDialog } = __eat_ui_controls;
-    const { interpolate } = __eat_core_i18n;
-    const { packText } = __eat_core_language_packs;
-
-    const SALE_STRINGS = Object.freeze({
-      en: Object.freeze({
-        running: 'Running', paused: 'Paused', stopped: 'Stopped', ready: 'Ready', completed: 'Completed',
-        campaignOf: 'Campaign {n}', series: '{count} campaigns · {start} – {end} · {discount}% off',
-        start: 'Start the series', stop: 'End the series', pause: 'Pause the series', retry: 'Continue', skip: 'Skip this day', details: 'Open details',
-        settings: 'Settings', overview: 'Overview', report: 'Report', openReport: 'Open the report', tabs: 'Sale Manager pages',
-        title: 'Campaign series', description: 'Creates campaigns one after another on Sales & Discounts and checks each one in the Etsy list.',
-        settingsTitle: 'Campaign settings', settingsText: 'Choose the series dates and the discount.',
-        reportTitle: 'Series report', reportText: 'What each campaign of the last series ended with.',
-        tileShop: 'Shop', tileRange: 'Start range', tileDiscount: 'Discount', tileProgress: 'Progress', notStarted: 'Not started yet',
-        perCampaign: 'Each campaign {days} day(s)', everywhere: 'Valid: Everywhere',
-        planned: 'Planned campaigns', count: '{count} campaigns', colCode: 'Code', colDates: 'Date', colStatus: 'Status', colCheck: 'Check', colNote: 'Note', colTime: 'Time',
-        stPlanned: 'Planned', stQueued: 'Queued', stDone: 'Created', stError: 'Not verified', stStopped: 'Stopped', stCurrent: 'Creating…',
-        checked: 'Certain', waiting: 'Waiting', failed: 'Not possible', notChecked: '—',
-        runningBanner: 'The series is running. Campaign {n} is being created.', runningText: 'Do not close this tab. If the page reloads, the series continues where it left off once you confirm.',
-        tabOwner: 'Tab owner: this tab',
-        readyBanner: 'The series is ready.', readyText: '{count} campaigns planned. Check the dates and codes before starting; this tab must stay open until the series ends.',
-        stoppedBanner: 'The series stopped. Campaign {n} could not be verified in the Etsy list.', stoppedText: 'The campaign may have been created. Search the Sales & Discounts list for {code}; if it is there, continue, if not, end the series.',
-        stepTitle: 'Current step', step1: 'The campaign form opened', step2: 'Code and discount entered', step3: 'Dates being chosen', step4: 'Save and verify in the list',
-        safety: 'If a result cannot be verified for certain, the series stops and asks you. No step is repeated on its own.',
-        lastSeries: 'Last series', noLastSeries: 'No series has run yet.',
-        emptyTitle: 'You have no campaign series yet', emptyText: 'A series creates several campaigns one after another on Sales & Discounts and verifies each in the Etsy list. You can set up your first series in a few minutes.',
-        emptyStart: 'Set up the first series', openEtsy: 'Open Sales & Discounts', howItWorks: 'How it works',
-        how1: 'Choose dates and discount', how1Text: 'First day, number of campaigns and the discount.',
-        how2: 'Check the codes', how2Text: 'Each campaign gets its own code from the date and your text.',
-        how3: 'Start and follow', how3Text: 'Campaigns are created one by one and verified in the list.',
-        confirmTitle: 'Start the series?', confirmText: '{count} campaigns will be created one after another on Sales & Discounts.',
-        confirmDiscount: '{discount}% off · Everywhere', confirmNote1: 'Each campaign is checked in the Etsy list after it is created.',
-        confirmNote2: 'At a step that cannot be verified the series stops and asks you.', confirmNote3: 'Keep this tab open until the series ends.',
-        confirmStart: 'Start {count} campaigns', cancel: 'Cancel',
-        datesTitle: 'Date and discount', fStart: 'First start date', fEnd: 'Last start date', fDuration: 'Campaign length', days: 'days', fDiscount: 'Discount percentage', fRegion: 'Valid in', fResult: 'Result',
-        resultText: '{count} campaigns · one after another, not overlapping',
-        codeTitle: 'Campaign code', codeText: 'The code is the start date, your text and the discount.', fPrefix: 'Code text', fPrefixHint: 'Letters and digits only, up to 12.',
-        codeResult: 'Code that will be created', codeLength: '{n} / 20 characters · valid', codeTooLong: '{n} / 20 characters · too long', codeRule: 'Etsy codes use letters and digits only.',
-        previewTitle: 'Preview', previewFoot: 'All {discount}% · Everywhere · codes differ from each other',
-        howTitle: 'How it runs', fResume: 'Continue after a reload', fResumeHint: 'You are asked first.', verifyEach: 'Verify after each campaign', verifyEachHint: 'Cannot be turned off.', alwaysOn: 'Always on',
-        unsaved: 'Unsaved changes', save: 'Save only', saveStart: 'Save and start the series', saved: 'Settings saved.', lockedWhileRunning: 'Settings are locked while a series runs.',
-        filterAll: 'All · {n}', filterDone: 'Created · {n}', filterError: 'Error · {n}', filterStopped: 'Stopped · {n}', filter: 'Filter by status', seriesPick: 'Series',
-        repPlanned: 'Planned', repDone: 'Created', repDoneHint: 'All verified for certain', repError: 'Error', repErrorHint: 'The series stopped safely', repStopped: 'Stopped', repStoppedHint: 'At your request',
-        noReport: 'No report yet. A report appears after the first series.', csv: 'Download CSV', excel: 'Download Excel',
-        phase: 'Step: {phase}', launcher: 'Series {done} / {total} running.',
-      }),
-    });
-
-    // Bundled English; other languages read the downloaded pack ("sale." keys).
-    function texts(language) {
-      const lang = SALE_STRINGS[language] ? language : 'en';
-      return (key, vars) => interpolate(SALE_STRINGS[language]?.[key] ?? packText(language, `sale.${key}`) ?? SALE_STRINGS[lang][key] ?? SALE_STRINGS.en[key] ?? key, vars);
-    }
-
-    const day = (iso) => { const [y, m, d] = String(iso || '').split('-').map(Number); return y ? new Date(y, m - 1, d) : null; };
-    const fmtDay = (iso, language) => { const d = day(iso); return d ? new Intl.DateTimeFormat(language, { day: 'numeric', month: 'short' }).format(d) : '—'; };
-    function fmtRange(a, b, language) {
-      const da = day(a); const db = day(b);
-      if (!da || !db) return '—';
-      try { return new Intl.DateTimeFormat(language, { day: 'numeric', month: 'short', year: 'numeric' }).formatRange(da, db); } catch { return `${fmtDay(a, language)} – ${fmtDay(b, language)}`; }
-    }
-    const pct = (n, language) => (language === 'tr' ? `%${n}` : `${n}%`);
-
-    /** Status of one planned campaign, from the engine's results. */
-    function rowStatus(plan, job) {
-      const row = (job?.results ?? []).find((r) => r.saleName === plan.saleName || r.startDate === plan.startDate);
-      if (row?.status === 'SUCCESS') return { key: 'stDone', tone: 'ok', check: row.verified ? 'checked' : 'waiting' };
-      if (row?.status === 'ERROR') return { key: 'stError', tone: 'err', check: 'failed', error: true };
-      if (row?.status === 'STOPPED') return { key: 'stStopped', tone: 'warn', check: 'notChecked' };
-      if (job?.active && job.currentDate === plan.startDate) return job.paused ? { key: 'stError', tone: 'err', check: 'failed', error: true } : { key: 'stCurrent', tone: 'dark', check: 'waiting', current: true };
-      return { key: job?.active ? 'stQueued' : 'stPlanned', tone: '', check: 'notChecked', dot: true };
-    }
-
-    function summary(snap) {
-      const done = (snap.job?.results ?? []).filter((r) => r.status === 'SUCCESS').length;
-      const total = snap.plans.length;
-      const index = Math.max(0, snap.plans.findIndex((p) => p.startDate === snap.job?.currentDate));
-      return { done, total, index };
-    }
-
-    /** 0-based index of the current step of a campaign, from the engine's phase. */
-    function stepIndex(phase) {
-      if (['verify_created', 'await_result', 'confirm_sale'].includes(phase)) return 3;
-      if (phase === 'select_listings') return 2;
-      if (phase === 'fill_form') return 1;
-      return 0;
-    }
-
-    function prog(doc, value, total, label, style = '') {
-      return h(doc, 'div', { class: 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(value), 'aria-label': label, style },
-        h(doc, 'i', { style: `width: ${total ? Math.round((value / total) * 100) : 0}%;` }));
-    }
-
-    function badge(doc, ts, st) {
-      return h(doc, 'span', { class: st.tone ? `badge ${st.tone}` : 'badge' }, st.dot ? h(doc, 'span', { class: 'dot soft' }) : null, ts(st.key));
-    }
-
-    /** Drawer section for the Sales & Discounts page (Main, Drawer-Error). */
-    function renderSaleDrawer(doc, { snap, language, actions }) {
-      const ts = texts(language);
-      const { done, total, index } = summary(snap);
-      const job = snap.job;
-      const stopped = Boolean(job?.active && job.paused);
-      const current = job?.active ? snap.plans[index] : null;
-      const state = job?.active ? (stopped ? h(doc, 'span', { class: 'badge err', text: ts('stopped') }) : h(doc, 'span', { class: 'badge dark', text: ts('running') })) : h(doc, 'span', { class: 'badge', text: ts('ready') });
-      return h(doc, 'div', { class: 'col', style: 'gap: 12px;', 'data-role': 'sale-drawer' },
-        h(doc, 'div', { class: 'row' }, icon(doc, ICONS['sale-manager']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Sale Manager' }), state),
-        stopped && job.errorReason ? alertBox(doc, { tone: 'err', title: ts('stoppedBanner', { n: index + 1 }), text: job.errorReason }) : null,
-        job?.active
-          ? h(doc, 'div', { class: 'col', style: 'gap: 6px;' },
-            h(doc, 'div', { class: 'row xs mute2' },
-              h(doc, 'span', { class: 'grow' }, `${ts('campaignOf', { n: index + 1 })}: `, h(doc, 'span', { class: 'mono b', style: 'color: var(--fg);', text: current?.saleName ?? '—' })),
-              h(doc, 'span', { class: 'num', text: `${done} / ${total}` })),
-            prog(doc, done, total, ts('tileProgress')),
-            !stopped ? h(doc, 'span', { class: 'xxs mute', text: ts(`step${stepIndex(job.phase) + 1}`) }) : null)
-          : h(doc, 'span', { class: 'xs mute2', text: total ? ts('series', { count: total, start: fmtDay(snap.plans[0].startDate, language), end: fmtDay(snap.plans[total - 1].startDate, language), discount: snap.config.discount }) : '—' }),
-        h(doc, 'div', { class: 'row' },
-          stopped
-            ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'retry', onclick: () => actions.retry() }, icon(doc, ICONS.refresh, 14), ts('retry')),
-              h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'report-problem', onclick: (e) => actions.report?.({ category: 'interrupted', tool: 'sale-manager', returnFocus: e.currentTarget }), text: actions.reportLabel ?? 'Report a problem' })]
-            : job?.active
-              ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.power ?? ICONS.close, 14), ts('stop')),
-                h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'details', onclick: () => actions.openPage(), text: ts('details') })]
-              : [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'details', onclick: () => actions.openPage(), text: ts('details') }),
-                h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'start', disabled: !snap.plans.length, onclick: (e) => actions.confirmStart(e.currentTarget), text: ts('start') })]));
-    }
-
-    /** Start confirmation (Sale-StartConfirm). */
-    function confirmSaleStart(doc, container, { snap, language, onStart, returnFocus }) {
-      const ts = texts(language);
-      const count = snap.plans.length;
-      const body = h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
-        h(doc, 'div', { class: 'row sm' }, h(doc, 'span', { class: 'badge out', text: ts('confirmDiscount', { discount: snap.config.discount }) }), h(doc, 'span', { class: 'xs mute', text: fmtRange(snap.plans[0]?.startDate, snap.plans[count - 1]?.startDate, language) })),
-        h(doc, 'div', { class: 'card', style: 'max-height: 240px; overflow-y: auto; box-shadow: none;' }, h(doc, 'table', { class: 'tbl' },
-          h(doc, 'thead', {}, h(doc, 'tr', {}, h(doc, 'th', { text: ts('colCode') }), h(doc, 'th', { text: ts('colDates') }))),
-          h(doc, 'tbody', {}, snap.plans.map((p) => h(doc, 'tr', {}, h(doc, 'td', {}, h(doc, 'span', { class: 'mono b', text: p.saleName })), h(doc, 'td', { class: 'num', text: `${fmtDay(p.startDate, language)} → ${fmtDay(p.endDate, language)}` })))))),
-        h(doc, 'ul', { class: 'sm mute2 notes' }, h(doc, 'li', { text: ts('confirmNote1') }), h(doc, 'li', { text: ts('confirmNote2') }), h(doc, 'li', { text: ts('confirmNote3') })));
-      return openDialog(doc, container, {
-        title: ts('confirmTitle'), description: ts('confirmText', { count }), body, closeLabel: ts('cancel'), returnFocus, width: 520, iconWell: ICONS.play,
-        footer: (close) => [
-          h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: close, text: ts('cancel') }),
-          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'confirm-start', onclick: () => { close(); onStart(); } }, icon(doc, ICONS.play, 14), ts('confirmStart', { count })),
-        ],
-      });
-    }
-
-    /** Workspace page with Overview, Settings and Report. */
-    function renderSalePage(doc, { snap, language, actions, tab = 'overview', onTab, message = '' }) {
-      const ts = texts(language);
-      const { done, total, index } = summary(snap);
-      const job = snap.job;
-      const running = Boolean(job?.active);
-      const stopped = running && job.paused;
-      const reportRows = snap.lastReport?.results ?? [];
-
-      // ── Overview (Sale-Idle / Sale-Overview / Sale-Error) and first use (Sale-Empty) ──
-      const tiles = () => h(doc, 'div', { class: 'g4' },
-        h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('tileShop') }), h(doc, 'span', { class: 'v trunc', style: 'font-size: 18px;', text: job?.shop?.shopName || snap.lastReport?.results?.[0]?.shopName || '—' }), h(doc, 'span', { class: 'xs mute', text: job?.shop?.shopId ? `#${job.shop.shopId}` : 'Etsy' })),
-        h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('tileRange') }), h(doc, 'span', { class: 'v', style: 'font-size: 18px;', text: total ? fmtRange(snap.plans[0].startDate, snap.plans[total - 1].startDate, language) : '—' }), h(doc, 'span', { class: 'xs mute', text: ts('perCampaign', { days: snap.config.saleDurationDays }) })),
-        h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('tileDiscount') }), h(doc, 'span', { class: 'v', style: 'font-size: 18px;', text: pct(snap.config.discount, language) }), h(doc, 'span', { class: 'xs mute', text: ts('everywhere') })),
-        h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('tileProgress') }), h(doc, 'span', { class: 'v', text: `${done} / ${total}` }), running ? prog(doc, done, total, ts('tileProgress'), 'margin-top: 4px;') : h(doc, 'span', { class: 'xs mute', text: ts('notStarted') })));
-
-      const plan = () => h(doc, 'section', { class: 'card grow', style: 'align-self: flex-start;' },
-        h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('planned') }), h(doc, 'span', { class: 'xs mute', text: ts('count', { count: total }) })),
-        h(doc, 'table', { class: 'tbl', 'data-role': 'sale-plan' },
-          h(doc, 'thead', {}, h(doc, 'tr', {}, ['#', ts('colCode'), ts('colDates'), ts('colStatus'), ts('colCheck')].map((c) => h(doc, 'th', { text: c })))),
-          h(doc, 'tbody', {}, snap.plans.map((p, i) => {
-            const st = rowStatus(p, job);
-            return h(doc, 'tr', { 'data-code': p.saleName, style: st.error ? 'background: #fef2f2;' : st.current ? 'background: var(--soft2);' : null },
-              h(doc, 'td', { class: 'mute num', text: String(i + 1) }),
-              h(doc, 'td', {}, h(doc, 'span', { class: 'mono b', text: p.saleName })),
-              h(doc, 'td', { class: 'num', text: `${fmtDay(p.startDate, language)} → ${fmtDay(p.endDate, language)}` }),
-              h(doc, 'td', {}, badge(doc, ts, st)),
-              h(doc, 'td', { class: st.check === 'checked' ? 'mute2' : st.check === 'failed' ? '' : 'mute', text: ts(st.check) }));
-          }))));
-
-      const steps = () => {
-        const current = stepIndex(job?.phase);
-        return h(doc, 'section', { class: 'card' },
-          h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('stepTitle') }), h(doc, 'span', { class: 'xs mute num', text: `${current + 1} / 4` })),
-          h(doc, 'ol', { class: 'sale-steps' }, [1, 2, 3, 4].map((n) => {
-            const i = n - 1;
-            const state = i < current ? 'done' : i === current ? 'now' : 'next';
-            return h(doc, 'li', { class: `row sm${state === 'now' ? ' b' : state === 'next' ? ' mute' : ''}` },
-              h(doc, 'span', { class: `well step-${state}` }, state === 'done' ? icon(doc, ICONS.check, 14) : null), ts(`step${n}`));
-          })));
-      };
-
-      const lastSeries = () => {
-        const by = (s) => reportRows.filter((r) => r.status === s).length;
-        return h(doc, 'section', { class: 'card' },
-          h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('lastSeries') }), reportRows[0]?.createdAt ? h(doc, 'span', { class: 'xs mute', text: new Intl.DateTimeFormat(language, { dateStyle: 'medium' }).format(new Date(reportRows[0].createdAt)) }) : null),
-          reportRows.length
-            ? h(doc, 'div', { class: 'list' },
-              h(doc, 'div', { class: 'li sm' }, h(doc, 'span', { class: 'grow', text: ts('stDone') }), h(doc, 'span', { class: 'num b', text: String(by('SUCCESS')) })),
-              h(doc, 'div', { class: 'li sm' }, h(doc, 'span', { class: 'grow', text: ts('stError') }), h(doc, 'span', { class: 'num b', style: by('ERROR') ? 'color: #b91c1c;' : null, text: String(by('ERROR')) })),
-              h(doc, 'div', { class: 'li sm' }, h(doc, 'span', { class: 'grow', text: ts('stStopped') }), h(doc, 'span', { class: 'num b', text: String(by('STOPPED')) })))
-            : h(doc, 'div', { class: 'card-b xs mute', text: ts('noLastSeries') }));
-      };
-
-      const empty = () => h(doc, 'section', { class: 'card empty', 'aria-labelledby': 'eat-sale-empty' },
-        h(doc, 'div', { class: 'ei' }, icon(doc, ICONS['sale-manager'], 24)),
-        h(doc, 'h2', { class: 'et', id: 'eat-sale-empty', text: ts('emptyTitle') }),
-        h(doc, 'p', { class: 'ed', text: ts('emptyText') }),
-        h(doc, 'div', { class: 'ea' },
-          h(doc, 'button', { class: 'btn btn-p', type: 'button', onclick: () => onTab('settings'), text: ts('emptyStart') }),
-          h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => actions.openEtsy(), text: ts('openEtsy') })),
-        h(doc, 'div', { class: 'steps', 'aria-label': ts('howItWorks') }, [1, 2, 3].map((n) => h(doc, 'div', {},
-          h(doc, 'span', { class: 'n', text: String(n) }),
-          h(doc, 'span', {}, h(doc, 'span', { class: 'st', text: ts(`how${n}`) }), h(doc, 'span', { class: 'sd', text: ts(`how${n}Text`) }))))));
-
-      const overview = () => {
-        if (!running && !total && !reportRows.length) return [empty()];
-        const current = snap.plans[index];
-        return [
-          stopped
-            ? banner(doc, { tone: 'err', iconPaths: ICONS.error, title: ts('stoppedBanner', { n: index + 1 }), text: job.errorReason || ts('stoppedText', { code: current?.saleName ?? '' }) })
-            : running
-              ? banner(doc, { iconPaths: ICONS.clock, title: ts('runningBanner', { n: index + 1 }), text: ts('runningText'), after: snap.leaseOwned ? h(doc, 'span', { class: 'badge out', text: ts('tabOwner') }) : null })
-              : banner(doc, { iconPaths: ICONS.info, title: ts('readyBanner'), text: ts('readyText', { count: total }) }),
-          tiles(),
-          h(doc, 'div', { class: 'cols' },
-            plan(),
-            h(doc, 'aside', { class: 'col', style: 'width: 340px; flex: none; gap: 16px;' },
-              running ? steps() : lastSeries(),
-              h(doc, 'div', { class: 'banner' }, icon(doc, ICONS.shield), h(doc, 'span', { text: ts('safety') })))),
-        ];
-      };
-
-      // ── Settings (Sale-Settings) ──
-      const settingsForm = () => {
-        const c = snap.config;
-        const draft = { ...c };
-        const input = (name, type, value, attrs = {}) => h(doc, 'input', { class: 'input', id: `eat-sale-${name}`, name, type, value: String(value ?? ''), disabled: running, oninput: () => mark(), ...attrs });
-        const fld = (name, label, control) => h(doc, 'div', { class: 'field' }, h(doc, 'label', { class: 'label', for: `eat-sale-${name}`, text: label }), control);
-        const codeOut = h(doc, 'span', { class: 'mono b', style: 'font-size: 20px; line-height: 26px; letter-spacing: .02em;' });
-        const codeState = h(doc, 'span', { class: 'badge ok' });
-        const unsaved = h(doc, 'span', { class: 'xs mute grow' });
-        const resumeSwitch = toggle(doc, { name: 'autoResumeOnLoad', checked: c.autoResumeOnLoad, labelledBy: 'eat-sale-resume', disabled: running, onChange: (on) => { draft.autoResumeOnLoad = on; mark(); } });
-        const form = h(doc, 'form', { class: 'sale-form', 'data-role': 'sale-settings', onsubmit: (e) => { e.preventDefault(); void save(false); } });
-        function values() {
-          const f = form.elements;
-          return {
-            batchStartDate: f.batchStartDate.value, batchEndDate: f.batchEndDate.value,
-            saleDurationDays: Number(f.saleDurationDays.value), discount: Number(f.discount.value),
-            discountName: f.discountName.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12), autoResumeOnLoad: draft.autoResumeOnLoad,
-          };
-        }
-        function mark() {
-          const v = values();
-          const first = snap.plans[0]?.saleName?.slice(0, 6) ?? String(v.batchStartDate).replace(/-/g, '').slice(2);
-          const code = `${first}${v.discountName}${v.discount}`;
-          codeOut.textContent = code;
-          codeState.className = code.length > 20 ? 'badge warn' : 'badge ok';
-          codeState.textContent = ts(code.length > 20 ? 'codeTooLong' : 'codeLength', { n: code.length });
-          const changed = Object.keys(v).some((k) => String(v[k]) !== String(c[k]));
-          unsaved.textContent = changed ? ts('unsaved') : '';
-        }
-        async function save(andStart) {
-          await actions.updateConfig(values());
-          actions.say(ts('saved'));
-          if (andStart) actions.confirmStart(null);
-        }
-        form.append(
-          h(doc, 'div', { class: 'cols' },
-            h(doc, 'div', { class: 'col grow', style: 'gap: 16px;' },
-              h(doc, 'section', { class: 'card' },
-                h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('datesTitle') })),
-                h(doc, 'div', { class: 'card-b g3', style: 'gap: 12px;' },
-                  fld('batchStartDate', ts('fStart'), input('batchStartDate', 'date', c.batchStartDate)),
-                  fld('batchEndDate', ts('fEnd'), input('batchEndDate', 'date', c.batchEndDate)),
-                  fld('saleDurationDays', ts('fDuration'), h(doc, 'span', { class: 'row' }, input('saleDurationDays', 'number', c.saleDurationDays, { min: 1, max: 30, style: 'width: 80px;' }), h(doc, 'span', { class: 'sm mute2', text: ts('days') }))),
-                  fld('discount', ts('fDiscount'), h(doc, 'span', { class: 'row' }, h(doc, 'span', { class: 'sm mute2', text: '%' }), input('discount', 'number', c.discount, { min: 1, max: 90, style: 'width: 80px;' }))),
-                  fld('region', ts('fRegion'), h(doc, 'select', { class: 'input', id: 'eat-sale-region', disabled: true }, h(doc, 'option', { text: 'Everywhere' }))),
-                  h(doc, 'div', { class: 'field' }, h(doc, 'span', { class: 'label', text: ts('fResult') }), h(doc, 'span', { class: 'sm mute2', style: 'line-height: 36px;', text: ts('resultText', { count: total }) })))),
-              h(doc, 'section', { class: 'card' },
-                h(doc, 'div', { class: 'card-h' }, h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'h2', { class: 'h2', text: ts('codeTitle') }), h(doc, 'span', { class: 'xs mute', text: ts('codeText') }))),
-                h(doc, 'div', { class: 'card-b col', style: 'gap: 12px;' },
-                  h(doc, 'div', { class: 'field' }, h(doc, 'label', { class: 'label', for: 'eat-sale-discountName', text: ts('fPrefix') }), input('discountName', 'text', c.discountName, { maxlength: 12, pattern: '[A-Za-z0-9]*', autocomplete: 'off', spellcheck: 'false', class: 'input mono', style: 'max-width: 240px;' }), h(doc, 'span', { class: 'hint', text: ts('fPrefixHint') })),
-                  h(doc, 'div', { class: 'code-out' },
-                    h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'ov grow', text: ts('codeResult') }), codeState),
-                    h(doc, 'div', { class: 'row' }, codeOut, h(doc, 'span', { class: 'grow' }), h(doc, 'span', { class: 'xs mute', text: ts('codeRule') })))))),
-            h(doc, 'aside', { class: 'col', style: 'width: 340px; flex: none; gap: 16px;' },
-              h(doc, 'section', { class: 'card' },
-                h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('previewTitle') }), h(doc, 'span', { class: 'xs mute', text: ts('count', { count: total }) })),
-                h(doc, 'div', { class: 'list' }, snap.plans.slice(0, 8).map((p) => h(doc, 'div', { class: 'li', style: 'padding: 10px 16px;' }, h(doc, 'span', { class: 'mono b grow', text: p.saleName }), h(doc, 'span', { class: 'xs mute num', text: `${fmtDay(p.startDate, language)} → ${fmtDay(p.endDate, language)}` })))),
-                h(doc, 'div', { class: 'card-f xs mute', text: ts('previewFoot', { discount: c.discount }) })),
-              h(doc, 'section', { class: 'card' },
-                h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('howTitle') })),
-                h(doc, 'div', { class: 'list' },
-                  h(doc, 'div', { class: 'li' }, h(doc, 'span', { class: 'col grow', style: 'gap: 1px;' }, h(doc, 'span', { class: 'sm b', id: 'eat-sale-resume', text: ts('fResume') }), h(doc, 'span', { class: 'xs mute', text: ts('fResumeHint') })), resumeSwitch),
-                  h(doc, 'div', { class: 'li' }, h(doc, 'span', { class: 'col grow', style: 'gap: 1px;' }, h(doc, 'span', { class: 'sm b', text: ts('verifyEach') }), h(doc, 'span', { class: 'xs mute', text: ts('verifyEachHint') })), h(doc, 'span', { class: 'badge out', text: ts('alwaysOn') })))))),
-          h(doc, 'div', { class: 'savebar' },
-            running ? h(doc, 'span', { class: 'xs mute grow', role: 'status', text: ts('lockedWhileRunning') }) : unsaved,
-            h(doc, 'button', { class: 'btn btn-g', type: 'button', disabled: running, onclick: () => onTab('settings'), text: ts('cancel') }),
-            h(doc, 'button', { class: 'btn btn-o', type: 'submit', disabled: running, 'data-sale': 'save', text: ts('save') }),
-            h(doc, 'button', { class: 'btn btn-p', type: 'button', disabled: running, 'data-sale': 'save-start', onclick: () => save(true) }, icon(doc, ICONS.play, 16), ts('saveStart'))));
-        mark();
-        return [form];
-      };
-
-      // ── Report (Sale-Report) ──
-      const report = () => {
-        if (!reportRows.length) return [h(doc, 'section', { class: 'card empty', 'data-role': 'sale-no-report' }, h(doc, 'div', { class: 'ei' }, icon(doc, ICONS.file, 24)), h(doc, 'p', { class: 'ed', text: ts('noReport') }))];
-        const filter = actions.reportFilter?.() ?? 'all';
-        const counts = { all: reportRows.length, SUCCESS: 0, ERROR: 0, STOPPED: 0 };
-        for (const r of reportRows) counts[r.status] = (counts[r.status] ?? 0) + 1;
-        const tone = { SUCCESS: ['stDone', 'ok'], ERROR: ['stError', 'err'], STOPPED: ['stStopped', 'warn'] };
-        const shown = filter === 'all' ? reportRows : reportRows.filter((r) => r.status === filter);
-        const when = reportRows[0]?.createdAt ? new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(reportRows[0].createdAt)) : '';
-        return [
-          h(doc, 'div', { class: 'row', style: 'gap: 12px;' },
-            h(doc, 'label', { class: 'field', style: 'width: 280px;' }, h(doc, 'span', { class: 'label', text: ts('seriesPick') }), h(doc, 'select', { class: 'input' }, h(doc, 'option', { text: [when, reportRows[0]?.shopName].filter(Boolean).join(' · ') || '—' }))),
-            h(doc, 'span', { class: 'grow' }),
-            h(doc, 'div', { class: 'seg', role: 'group', 'aria-label': ts('filter'), style: 'align-self: flex-end;' },
-              [['all', 'filterAll', counts.all], ['SUCCESS', 'filterDone', counts.SUCCESS], ['ERROR', 'filterError', counts.ERROR], ['STOPPED', 'filterStopped', counts.STOPPED]].map(([v, k, n]) => h(doc, 'button', { type: 'button', class: filter === v ? 'on' : null, 'aria-pressed': String(filter === v), onclick: () => actions.setReportFilter?.(v), text: ts(k, { n }) })))),
-          h(doc, 'div', { class: 'g4' },
-            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('repPlanned') }), h(doc, 'span', { class: 'v', text: String(counts.all) })),
-            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('repDone') }), h(doc, 'span', { class: 'v', text: String(counts.SUCCESS) }), h(doc, 'span', { class: 'xs mute', text: ts('repDoneHint') })),
-            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('repError') }), h(doc, 'span', { class: 'v', style: counts.ERROR ? 'color: #b91c1c;' : null, text: String(counts.ERROR) }), h(doc, 'span', { class: 'xs mute', text: ts('repErrorHint') })),
-            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('repStopped') }), h(doc, 'span', { class: 'v', text: String(counts.STOPPED) }), h(doc, 'span', { class: 'xs mute', text: ts('repStoppedHint') }))),
-          h(doc, 'section', { class: 'card' },
-            h(doc, 'table', { class: 'tbl', 'data-role': 'sale-report' },
-              h(doc, 'thead', {}, h(doc, 'tr', {}, [ts('colStatus'), ts('colCode'), ts('colDates'), ts('colCheck'), ts('colNote')].map((c) => h(doc, 'th', { text: c })), h(doc, 'th', { class: 'r', text: ts('colTime') }))),
-              h(doc, 'tbody', {}, shown.map((r) => {
-                const [key, cls] = tone[r.status] ?? ['stPlanned', ''];
-                return h(doc, 'tr', {},
-                  h(doc, 'td', {}, h(doc, 'span', { class: `badge ${cls}`, text: ts(key) })),
-                  h(doc, 'td', {}, h(doc, 'span', { class: 'mono b', text: r.saleName ?? '' }), h(doc, 'div', { class: 'xs mute', text: pct(r.discount ?? snap.config.discount, language) })),
-                  h(doc, 'td', { class: 'num', text: `${fmtDay(r.startDate, language)} → ${fmtDay(r.endDate, language)}` }),
-                  h(doc, 'td', { text: r.verified ? ts('checked') : r.status === 'ERROR' ? ts('failed') : ts('notChecked') }),
-                  h(doc, 'td', { class: 'mute2', text: r.message ?? '' }),
-                  h(doc, 'td', { class: 'r mute num', text: r.createdAt ? new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(new Date(r.createdAt)) : '' }));
-              }))),
-            h(doc, 'div', { class: 'card-f' }, h(doc, 'span', { class: 'grow' }),
-              h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', onclick: () => actions.downloadCsv() }, icon(doc, ICONS.download, 14), ts('csv')),
-              h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', onclick: () => actions.downloadExcel() }, icon(doc, ICONS.download, 14), ts('excel')))),
-        ];
-      };
-
-      const heads = {
-        overview: [ts('title'), ts('description')],
-        settings: [ts('settingsTitle'), ts('settingsText')],
-        report: [ts('reportTitle'), ts('reportText')],
-      };
-      const [title, description] = heads[tab] ?? heads.overview;
-      const headActions = tab !== 'overview' ? [] : stopped
-        ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-sale': 'skip', onclick: () => actions.skip(), text: ts('skip') }),
-          h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop(), text: ts('stop') }),
-          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'retry', onclick: () => actions.retry() }, icon(doc, ICONS.refresh, 16), ts('retry'))]
-        : running
-          ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => onTab('report') }, icon(doc, ICONS.file, 16), ts('openReport')),
-            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.power ?? ICONS.close, 16), ts('stop'))]
-          : total
-            ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => onTab('settings'), text: ts('settings') }),
-              h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'start', onclick: (e) => actions.confirmStart(e.currentTarget) }, icon(doc, ICONS.play, 16), ts('start'))]
-            : [];
-      return [
-        pageHead(doc, { overline: 'Sale Manager', title, description, actions: headActions }),
-        pageTabs(doc, { label: ts('tabs'), name: 'sale-tab', value: tab, options: [{ value: 'overview', label: ts('overview') }, { value: 'settings', label: ts('settings') }, { value: 'report', label: ts('report') }], onChange: (next) => onTab(next) }),
-        ...({ overview, settings: settingsForm, report }[tab] ?? overview)(),
-        message ? h(doc, 'p', { class: 'xs mute2', role: 'status', 'aria-live': 'polite', 'data-role': 'sale-message', text: message }) : null,
-      ];
-    }
-    return Object.freeze({ SALE_STRINGS, summary, renderSaleDrawer, confirmSaleStart, renderSalePage });
-  })();
-
-  // ── src/modules/sale-manager.js ──
-  const __eat_modules_sale_manager = (() => {
-    // Sale Manager inside the unified script.
-    //
-    // The automation engine is the standalone Sale Manager itself, adopted at
-    // build time (tools/Unified-Adopt-Sale-Manager.mjs) so its tested behaviour
-    // is unchanged: every campaign is verified in the Etsy list, an unverifiable
-    // step stops the series, and a reload resumes only with the user's consent.
-    // The new screens (sale-manager-ui.js) read the engine's snapshot and call its
-    // own actions; the engine's old panel stays hidden. Its short notices (toasts)
-    // still show, because they carry the engine's safety messages.
-    //
-    // Two engines must never create campaigns on the same page. If the
-    // standalone Sale Manager is also installed and running here, the unified
-    // engine does not start, and it steps aside if the standalone one appears.
-
-    const { createScopedGm } = __eat_core_scoped_gm;
-    const { renderSaleDrawer, renderSalePage, confirmSaleStart, summary, SALE_STRINGS } = __eat_modules_sale_manager_ui;
-    const { interpolate } = __eat_core_i18n;
-    const { packText } = __eat_core_language_packs;
-
-    const STANDALONE_ROOT_ID = 'eda-batch-root';
-    const ENGINE_ROOT_ID = 'eat-sale-batch-root';
-    const STANDALONE_GRACE_MS = 1500;
-
-    function createSaleManagerModule() {
-      const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, lastSnapshot: '', lastJob: null, reportFilter: 'all' };
-      const say = (key, vars) => { const lang = state.ctx?.settings?.get().language ?? 'en'; return interpolate(SALE_STRINGS[lang]?.[key] ?? packText(lang, `sale.${key}`) ?? SALE_STRINGS.en[key] ?? key, vars); };
-
-      const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
-
-      function watchForStandalone(doc, ctx) {
-        if (state.observer || typeof MutationObserver !== 'function') return;
-        state.observer = new MutationObserver(() => {
-          if (!state.standalone && standalonePresent(doc)) {
-            state.standalone = true; // the engine's route gate now closes and its own lifecycle suspends it
-            ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'standalone' });
-          }
-        });
-        state.observer.observe(doc.documentElement, { childList: true, subtree: true });
-      }
-
-      function onEngineChange() {
-        const ctx = state.ctx;
-        if (!state.engine || !ctx) return;
-        // Redraw only when what the screens show has changed.
-        const text = JSON.stringify(state.engine.snapshot());
-        if (text === state.lastSnapshot) return;
-        state.lastSnapshot = text;
-        announce(state.engine.snapshot());
-        ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'running' });
-      }
-
-      // Notifications: the series stopped (needs the user) or ended.
-      function announce(snap) {
-        const job = snap.job;
-        const before = state.lastJob;
-        state.lastJob = job ? { active: job.active, paused: job.paused, jobId: job.jobId } : null;
-        if (!before?.active) return;
-        const notify = state.ctx?.notify;
-        if (!notify) return;
-        const { done, total, index } = summary(snap);
-        if (job?.active && job.paused && !before.paused) {
-          void notify({ event: 'seriesStopped', tool: 'sale-manager', title: say('stoppedBanner', { n: index + 1 }), detail: snap.plans[index]?.saleName ?? '', needsAction: true, page: 'tool:sale-manager' });
-        } else if (!job?.active) {
-          void notify({ event: 'seriesDone', tool: 'sale-manager', title: say('completed'), detail: `${done} / ${total}`, page: 'tool:sale-manager' });
-        }
-      }
-
-      async function start(ctx) {
-        const doc = ctx.scope.document;
-        // Give a standalone copy, which loads at the same time, the chance to show itself first.
-        await new Promise((resolve) => ctx.scope.setTimeout(resolve, STANDALONE_GRACE_MS));
-        if (standalonePresent(doc)) {
-          state.standalone = true;
-          ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'standalone' });
-          watchForStandalone(doc, ctx);
-          return;
-        }
-        watchForStandalone(doc, ctx);
-        const gm = createScopedGm({
-          gm: ctx.scope.GM, namespace: 'sale-manager', doc,
-          info: { name: 'Etsy Automation Tools · Sale Manager', version: ctx.engines.saleManagerVersion },
-          resources: { makaytronLogo: ctx.assets?.logo ?? '' },
-        });
-        // The new screens replace the engine's own panel.
-        gm.addStyle(`#${ENGINE_ROOT_ID}{display:none!important}`);
-        state.engine = await ctx.engines.createSaleManager({
-          GM: gm,
-          isAllowed: () => !state.standalone && ctx.isToolEnabled('sale-manager'),
-          onChange: () => ctx.scope.setTimeout(onEngineChange, 0),
-        });
-        await state.engine.initialize();
-        onEngineChange();
-      }
-
-      function actionsFor(ui) {
-        const engine = state.engine;
-        const run = (fn) => Promise.resolve().then(fn).catch((error) => console.error('[Etsy Automation Tools] Sale Manager', error));
-        return {
-          retry: () => run(() => engine.retry()),
-          skip: () => run(() => engine.skip()),
-          stop: () => run(() => engine.stop()),
-          updateConfig: (patch) => run(() => engine.updateConfig(patch)),
-          downloadCsv: () => run(() => engine.downloadCsv()),
-          downloadExcel: () => run(() => engine.downloadExcel()),
-          openEtsy: () => run(() => engine.openCreateSale()),
-          openPage: () => ui.openWorkspace?.('tool:sale-manager'),
-          say: (message) => ui.say?.(message),
-          report: (options) => ui.report?.(options),
-          reportFilter: () => state.reportFilter,
-          setReportFilter: (value) => { state.reportFilter = value; ui.onTab?.('report'); },
-          confirmStart: (trigger) => confirmSaleStart(ui.doc, ui.container, {
-            snap: engine.snapshot(), language: ui.language, returnFocus: trigger, onStart: () => run(async () => { engine.closeReport?.(); await engine.start(); }),
-          }),
-        };
-      }
-
-      return {
-        id: 'sale-manager',
-        name: 'Sale Manager',
-        legacyScriptId: 'sale-manager',
-        storageNamespace: 'sale-manager',
-        migrated: true,
-        status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
-        /** Badge and tooltip line of the edge button while a series runs (Launcher-Closed). */
-        launcherStatus() {
-          const snap = !state.standalone && state.engine ? state.engine.snapshot() : null;
-          if (!snap?.job?.active) return null;
-          const { done, total } = summary(snap);
-          return { count: done, text: say('launcher', { done, total }) };
-        },
-        /** Shortcut "Pause the series" (Settings › Shortcuts). */
-        shortcut(action) {
-          if (action !== 'salePause' || !state.engine?.snapshot().job?.active) return false;
-          void Promise.resolve(state.engine.stop()).catch(() => {});
-          return true;
-        },
-        /** Drawer section; null keeps the generic status text. */
-        renderDrawer(ui) {
-          if (state.standalone || !state.engine) return null;
-          return renderSaleDrawer(ui.doc, { snap: state.engine.snapshot(), language: ui.language, actions: actionsFor(ui) });
-        },
-        /** Workspace page; null keeps the generic tool page. */
-        renderPage(ui) {
-          if (state.standalone || !state.engine) return null;
-          return renderSalePage(ui.doc, { snap: state.engine.snapshot(), language: ui.language, actions: actionsFor(ui), tab: ui.tab, onTab: ui.onTab, message: ui.message });
-        },
-        async mount(ctx) {
-          state.ctx = ctx;
-          // The engine follows Etsy navigation itself; it is created once per page load.
-          // Starting does not block the host: the drawer appears right away.
-          if (!state.starting && ctx.scope?.GM && ctx.engines?.createSaleManager) {
-            state.starting = start(ctx).catch((error) => {
-              state.starting = null;
-              console.error('[Etsy Automation Tools] Sale Manager', error);
-              ctx.events?.emit('error', { code: 'module_mount' });
-            });
-          }
-        },
-        async unmount() {
-          // Nothing to do: the engine's own route gate suspends it off its page or when the tool is turned off.
-        },
-      };
-    }
-    return Object.freeze({ STANDALONE_ROOT_ID, ENGINE_ROOT_ID, createSaleManagerModule });
-  })();
-
-  // ── src/modules/index.js ──
-  const __eat_modules_index = (() => {
-    // The five tools of the unified script.
-    //
-    // Every tool runs its standalone script as an adopted engine (see
-    // tools/Unified-Adopt*.mjs) behind the new screens. Message Assistant and
-    // Listing Analyzer keep their own panel for the detailed work.
-
-    const { createSaleManagerModule } = __eat_modules_sale_manager;
-    const { createAdsKeywordManagerModule } = __eat_modules_ads_keyword_manager;
-    const { createKeywordMarketAnalyzerModule } = __eat_modules_keyword_market_analyzer;
-    const { createMessageAssistantModule } = __eat_modules_message_assistant;
-    const { createListingAnalyzerModule } = __eat_modules_listing_analyzer;
-
-    // Credentials inside Message Assistant's stored objects; the same paths the transfer strips
-    // (shared/migration/handoff.js, kept equal by a test). They live under eat:secret:.
-    const MESSAGE_ASSISTANT_SECRETS = Object.freeze({ 'mema:settings': ['deeplApiKey', 'messageCenterAgentToken'], 'mema:providers': ['*.apiKey'] });
-
-    const TOOLS = Object.freeze([
-      createSaleManagerModule(),
-      createMessageAssistantModule({ secrets: MESSAGE_ASSISTANT_SECRETS }),
-      createAdsKeywordManagerModule(),
-      createListingAnalyzerModule(),
-      createKeywordMarketAnalyzerModule(),
-    ]);
-    return Object.freeze({ MESSAGE_ASSISTANT_SECRETS, TOOLS });
-  })();
-
-  // ── src/core/drawer-geometry.js ──
-  const __eat_core_drawer_geometry = (() => {
-    // Geometry of the edge button and the drawer.
-    //
-    // The logo button sits on one edge of the window. The drawer opens from the
-    // same side for the left and right edges; for the top and bottom edges it
-    // opens from the left, so it never covers Etsy's header or the page bottom.
-
-    const TAB_LONG = 64; // button length along the edge
-    const TAB_SHORT = 46; // button depth into the page
-    const DRAWER_WIDTH = 400; // design canvas: .dock width 400px (template.primitive.sheet adaptation)
-    const DRAWER_WIDTH_NARROW = 360;
-    const NARROW_VIEWPORT = 1100;
-    const EDGE_MARGIN = 8;
-
-    /** Side the drawer slides in from for a given button edge. */
-    function drawerSide(edge) {
-      return edge === 'right' ? 'right' : 'left';
-    }
-
-    /** Drawer width for a viewport width. */
-    function drawerWidth(viewportWidth) {
-      return viewportWidth < NARROW_VIEWPORT ? DRAWER_WIDTH_NARROW : DRAWER_WIDTH;
-    }
-
-    /**
-     * Pixel box of the edge button. `offset` (0..1) is the position along the
-     * edge; the box is clamped so it never leaves the viewport.
-     */
-    function tabRect(edge, offset, viewport) {
-      const vertical = edge === 'left' || edge === 'right';
-      const length = vertical ? viewport.height : viewport.width;
-      const span = Math.max(0, length - TAB_LONG - EDGE_MARGIN * 2);
-      const along = EDGE_MARGIN + Math.round(span * Math.min(1, Math.max(0, offset)));
-      if (vertical) {
-        return { x: edge === 'left' ? 0 : viewport.width - TAB_SHORT, y: along, width: TAB_SHORT, height: TAB_LONG };
-      }
-      return { x: along, y: edge === 'top' ? 0 : viewport.height - TAB_SHORT, width: TAB_LONG, height: TAB_SHORT };
-    }
-
-    /**
-     * Where a dragged button lands: the nearest edge to the pointer, and the
-     * pointer's position along that edge as a 0..1 offset.
-     */
-    function snapToEdge(point, viewport) {
-      const distances = {
-        left: point.x,
-        right: viewport.width - point.x,
-        top: point.y,
-        bottom: viewport.height - point.y,
-      };
-      const edge = Object.keys(distances).reduce((a, b) => (distances[b] < distances[a] ? b : a));
-      const vertical = edge === 'left' || edge === 'right';
-      const length = vertical ? viewport.height : viewport.width;
-      const coordinate = vertical ? point.y : point.x;
-      const span = Math.max(1, length - TAB_LONG - EDGE_MARGIN * 2);
-      const offset = Math.min(1, Math.max(0, (coordinate - TAB_LONG / 2 - EDGE_MARGIN) / span));
-      return { edge, offset: Math.round(offset * 1000) / 1000, side: drawerSide(edge) };
-    }
-    return Object.freeze({ TAB_LONG, TAB_SHORT, DRAWER_WIDTH, DRAWER_WIDTH_NARROW, NARROW_VIEWPORT, drawerSide, drawerWidth, tabRect, snapToEdge });
-  })();
-
-  // ── src/core/shortcuts.js ──
-  const __eat_core_shortcuts = (() => {
-    // Keyboard shortcuts (Settings › Shortcuts).
-
-    const NAMED = { ' ': 'Space', Enter: 'Enter', Escape: 'Escape', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete', ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight' };
-
-    // Combinations Etsy's seller pages or the browser already use; choosing one gets a warning.
-    const RESERVED = Object.freeze(['Ctrl+F', 'Ctrl+S', 'Ctrl+P', 'Ctrl+K', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+A', 'Ctrl+T', 'Ctrl+W', 'Ctrl+R', 'Ctrl+L', 'Ctrl+Shift+T', 'Ctrl+Shift+N', 'Ctrl+Shift+I', 'Ctrl+Shift+J', 'Ctrl+Enter']);
-
-    /** "Ctrl+Shift+M" for a keydown event, or null for a bare modifier or an unusable key. */
-    function comboFromEvent(event) {
-      const key = event.key;
-      if (['Control', 'Shift', 'Alt', 'Meta'].includes(key)) return null;
-      let name = NAMED[key] ?? null;
-      if (!name && /^F(?:[1-9]|1[0-2])$/.test(key)) name = key;
-      if (!name && /^Key[A-Z]$/.test(event.code ?? '')) name = event.code.slice(3);
-      if (!name && /^Digit\d$/.test(event.code ?? '')) name = event.code.slice(5);
-      if (!name && key.length === 1) name = key.toUpperCase();
-      if (!name) return null;
-      const mods = [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta'].filter(Boolean);
-      if (!mods.length && !/^F\d/.test(name)) return null; // a plain letter would fight with typing
-      return [...mods, name].join('+');
-    }
-
-    /** The action bound to an event, if shortcuts are on. Typing in a field never triggers one, except Ctrl+Enter style bindings. */
-    function actionForEvent(event, shortcuts) {
-      if (!shortcuts?.on) return null;
-      const combo = comboFromEvent(event);
-      if (!combo) return null;
-      const target = event.composedPath?.()[0] ?? event.target;
-      const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName ?? '') || target?.isContentEditable;
-      for (const [action, binding] of Object.entries(shortcuts.keys)) {
-        if (binding !== combo) continue;
-        if (typing && !/Enter$/.test(combo)) return null;
-        return action;
-      }
-      return null;
-    }
-    return Object.freeze({ RESERVED, comboFromEvent, actionForEvent });
-  })();
-
-  // ── src/core/diagnostics.js ──
-  const __eat_core_diagnostics = (() => {
-    // Problem reports ("Sorun bildir").
-    //
-    // A report is built from an allowlist only: product version, browser family
-    // and major version, OS family, interface language, region taken from the
-    // browser locale, the redacted route template, an error code from the known
-    // list, the problem category the user picked, and the user's own note.
-    // Shop names, customer data, URLs with identifiers, and API keys never enter a
-    // report. `buildReport` returns exactly what will be sent, so the UI can show
-    // it to the user before sending.
-
-    const { describePath } = __eat_core_routes;
-
-    const PROBLEM_CATEGORIES = Object.freeze([
-      'language-pack', 'tool-not-starting', 'interrupted', 'wrong-result', 'display', 'suggestion',
-      'etsy-page-changed', 'ai-or-translation', 'other',
-    ]);
-    /** The six choices of the report dialog (design canvas: Feedback). */
-    const DIALOG_CATEGORIES = Object.freeze(['language-pack', 'tool-not-starting', 'interrupted', 'wrong-result', 'display', 'suggestion']);
-    /** Groups of technical facts the user can leave out of a report. */
-    const REPORT_GROUPS = Object.freeze(['version', 'system', 'locale', 'page', 'error']);
-    const TOOLS = new Set(['sale-manager', 'message-assistant', 'ads-keyword-manager', 'listing-analyzer', 'keyword-market-analyzer']);
-
-    const ERROR_CODES = Object.freeze(new Set([
-      'i18n_pack_download', 'i18n_pack_format', 'i18n_pack_language', 'i18n_pack_version', 'i18n_pack_strings',
-      'i18n_pack_value', 'i18n_pack_markup', 'i18n_pack_missing', 'i18n_pack_unavailable',
-      'storage_unavailable', 'storage_quota', 'module_mount', 'module_unmount', 'route_lifecycle',
-      'etsy_session_expired', 'etsy_selector_missing',
-      'sale_form_field_missing', 'sale_verification_failed',
-      'ads_table_missing', 'ads_page_unreachable',
-      'listing_scan_interrupted', 'listing_editor_field_missing',
-      'kw_insights_table_missing',
-      'msg_ai_unauthorized', 'msg_ai_unreachable', 'msg_translation_failed',
-    ]));
-
-    const NOTE_LIMIT = 1000;
-
-    function browserInfo(userAgent = '') {
-      const ua = String(userAgent);
-      const pairs = [['Edge', /Edg\/(\d+)/], ['Opera', /OPR\/(\d+)/], ['Firefox', /Firefox\/(\d+)/], ['Chrome', /Chrome\/(\d+)/], ['Safari', /Version\/(\d+).*Safari/]];
-      let browser = { name: 'other', major: null };
-      for (const [name, re] of pairs) {
-        const m = ua.match(re);
-        if (m) { browser = { name, major: Number(m[1]) }; break; }
-      }
-      const os = /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android'
-        : /iPhone|iPad/.test(ua) ? 'iOS' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : 'other';
-      return { browser: browser.name, browserMajor: browser.major, os };
-    }
-
-    /** Removes things that look like keys, e-mail addresses, URLs and long numbers from free text. */
-    function scrubNote(text) {
-      return String(text ?? '')
-        .slice(0, NOTE_LIMIT)
-        .replace(/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}\b/g, '[key]')
-        .replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[key]')
-        .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email]')
-        .replace(/https?:\/\/\S+/g, '[link]')
-        .replace(/\b\d{6,}\b/g, '[number]')
-        .trim();
-    }
-
-    /**
-     * Builds the report payload. `env` carries runtime facts (userAgent,
-     * browser locale, pathname, interface language); only derived, allowlisted
-     * values are copied out of it.
-     */
-    function buildReport({ appVersion, category, tool = null, errorCode = null, errorAt = null, note = '', includeNote = true, omit = [] }, env) {
-      const { browser, browserMajor, os } = browserInfo(env.userAgent);
-      const locale = typeof env.locale === 'string' ? env.locale : '';
-      const region = /^[a-z]{2,3}-([A-Z]{2})$/.exec(locale)?.[1] ?? null;
-      const { routeId, template } = describePath(env.pathname);
-      const off = new Set(omit);
-      const keep = (group, value) => (off.has(group) ? null : value);
-      const offset = Number.isFinite(env.utcOffsetMinutes) ? env.utcOffsetMinutes : null;
-      const handler = typeof env.handler === 'string' && /^[A-Za-z ]{2,30} \d+(?:\.\d+){0,3}$/.test(env.handler) ? env.handler : null;
-      const code = ERROR_CODES.has(errorCode) ? errorCode : null;
-      return {
-        format: 'etsy-automation-tools-report',
-        formatVersion: 2,
-        appVersion: keep('version', appVersion),
-        handler: keep('version', handler),
-        category: PROBLEM_CATEGORIES.includes(category) ? category : 'other',
-        tool: TOOLS.has(tool) ? tool : null,
-        errorCode: keep('error', code),
-        errorAt: keep('error', code && typeof errorAt === 'string' && /^\d{2}:\d{2}$/.test(errorAt) ? errorAt : null),
-        browser: keep('system', browser),
-        browserMajor: keep('system', browserMajor),
-        os: keep('system', os),
-        uiLanguage: keep('locale', typeof env.uiLanguage === 'string' ? env.uiLanguage.slice(0, 12) : null),
-        browserLocale: keep('locale', /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(locale) ? locale : null),
-        region: keep('locale', region),
-        utcOffset: keep('locale', offset === null ? null : `UTC${offset >= 0 ? '+' : '-'}${Math.floor(Math.abs(offset) / 60)}${Math.abs(offset) % 60 ? `:${String(Math.abs(offset) % 60).padStart(2, '0')}` : ''}`),
-        routeId: keep('page', routeId),
-        routeTemplate: keep('page', template),
-        note: includeNote ? scrubNote(note) : '',
-      };
-    }
-    return Object.freeze({ PROBLEM_CATEGORIES, DIALOG_CATEGORIES, REPORT_GROUPS, ERROR_CODES, browserInfo, scrubNote, buildReport });
-  })();
-
-  // ── src/core/feedback.js ──
-  const __eat_core_feedback = (() => {
-    // Problem reports ("Sorun bildir") go to GitHub.
-    //
-    // The report is built by core/diagnostics.js from an allowlist only and is
-    // shown to the user in full first. The script sends nothing itself: it opens
-    // a prefilled, public GitHub issue that the user checks and submits there.
-
-    const FEEDBACK_ISSUE_URL = 'https://github.com/Makaytron/Etsy-Automation-Tools/issues/new';
-
-    /** A new-issue link on GitHub with the report filled in. */
-    function issueUrl(report, id = '') {
-      const body = ['```json', JSON.stringify(report, null, 2), '```'].join('\n');
-      const url = new URL(FEEDBACK_ISSUE_URL);
-      url.searchParams.set('title', `${id ? `${id} ` : ''}[${report.category}] Etsy Automation Tools ${report.appVersion}`);
-      url.searchParams.set('body', body);
-      return url.href;
-    }
-    return Object.freeze({ FEEDBACK_ISSUE_URL, issueUrl });
-  })();
-
-  // ── src/ui/feedback.js ──
-  const __eat_ui_feedback = (() => {
-    // The problem report dialog ("Sorun bildir"), as the design canvas artboard
-    // Feedback draws it: what happened (six choices), which tool, an optional
-    // note, and the technical facts — each of which the user can switch off —
-    // shown before anything leaves the browser. "Send report" opens a prefilled,
-    // public GitHub issue; the script itself sends nothing. Shop names, customer
-    // data, page addresses with ids and API keys never enter it (core/diagnostics.js).
-    //
-    // Design sources: template.primitive.dialog, template.primitive.select,
-    // template.primitive.input, template.primitive.checkbox, template.primitive.button.
-
-    const { h, icon } = __eat_ui_dom;
-    const { ICONS } = __eat_ui_icons;
-    const { openDialog } = __eat_ui_controls;
-    const { buildReport, DIALOG_CATEGORIES, PROBLEM_CATEGORIES, REPORT_GROUPS } = __eat_core_diagnostics;
-    const { issueUrl } = __eat_core_feedback;
-    const { newReportId } = __eat_core_reports;
-    const { TOOL_IDS } = __eat_core_settings;
-
-    /**
-     * @param {object} o
-     * @param {Document} o.doc
-     * @param {Element} o.container
-     * @param {object} o.text      the shell translator
-     * @param {object} o.scope     window
-     * @param {string} o.appVersion
-     * @param {object} [o.host]    to preselect the tool of this page
-     * @param {object} [o.reports] keeps the report id for Settings › Help
-     * @param {string} [o.category]
-     * @param {string} [o.errorCode]
-     * @param {string} [o.tool]
-     * @param {Element} [o.returnFocus]
-     */
-    function openFeedback({ doc, container, text, scope, appVersion, host = null, reports = null, category = 'interrupted', errorCode = null, errorAt = null, tool = null, returnFocus = null }) {
-      const { t } = text;
-      const initial = { 'etsy-page-changed': 'interrupted', 'ai-or-translation': 'wrong-result', other: 'interrupted' }[category] ?? category;
-      const draft = {
-        category: DIALOG_CATEGORIES.includes(initial) ? initial : 'interrupted',
-        tool: TOOL_IDS.includes(tool) ? tool : TOOL_IDS.includes(host?.activeTool) ? host.activeTool : '',
-        note: '',
-        omit: new Set(errorCode ? [] : ['error']),
-      };
-      const id = newReportId();
-      const minutes = -new Date().getTimezoneOffset();
-      const env = () => ({
-        userAgent: scope.navigator?.userAgent ?? '',
-        locale: scope.navigator?.language ?? '',
-        pathname: scope.location?.pathname ?? '/',
-        uiLanguage: text.language(),
-        utcOffsetMinutes: minutes,
-        handler: scope.GM?.info?.scriptHandler && scope.GM?.info?.version ? `${scope.GM.info.scriptHandler} ${scope.GM.info.version}` : null,
-      });
-      const report = () => buildReport({ appVersion, category: PROBLEM_CATEGORIES.includes(draft.category) ? draft.category : 'other', tool: draft.tool || null, errorCode, errorAt, note: draft.note, omit: [...draft.omit] }, env());
-
-      // Technical facts, one row per group (Feedback: "Raporla gönderilecek teknik bilgiler").
-      const facts = h(doc, 'div', { class: 'list', 'data-role': 'fb-preview' });
-      function renderFacts() {
-        const all = buildReport({ appVersion, category: draft.category, tool: draft.tool || null, errorCode, errorAt, note: '' }, env());
-        const value = {
-          version: [all.appVersion && `v${all.appVersion}`, all.handler].filter(Boolean).join(' · '),
-          system: [all.browser && [all.browser, all.browserMajor].filter((v) => v != null).join(' '), all.os].filter(Boolean).join(' · '),
-          locale: [all.browserLocale ?? all.uiLanguage, all.region, all.utcOffset].filter(Boolean).join(' · '),
-          page: all.routeTemplate ? `etsy.com${all.routeTemplate}` : '—',
-          error: errorCode ? [all.errorCode, all.errorAt].filter(Boolean).join(' · ') : t('fb.noError'),
-        };
-        facts.replaceChildren(...REPORT_GROUPS.map((group) => h(doc, 'label', { class: 'li fb-fact', 'data-field': group },
-          h(doc, 'input', { type: 'checkbox', class: 'chk', name: `fb-${group}`, checked: !draft.omit.has(group), disabled: group === 'error' && !errorCode, onchange: (e) => { if (e.target.checked) draft.omit.delete(group); else draft.omit.add(group); sync(); } }),
-          h(doc, 'span', { class: 'xs mute2 fb-fact-k', text: t(`fb.g.${group}`) }),
-          h(doc, 'span', { class: 'xs mono grow trunc', text: value[group] || '—' }))));
-      }
-
-      let github = null;
-      function sync() {
-        github?.setAttribute('href', issueUrl(report(), id));
-      }
-
-      const options = h(doc, 'div', { class: 'g3', style: 'gap: 6px;' });
-      function renderOptions() {
-        options.replaceChildren(...DIALOG_CATEGORIES.map((c) => h(doc, 'label', { class: draft.category === c ? 'fb-opt on' : 'fb-opt' },
-          h(doc, 'input', { type: 'radio', name: 'fb-category', value: c, checked: draft.category === c, onchange: () => { draft.category = c; renderOptions(); sync(); } }),
-          t(`fb.cat.${c}`))));
-      }
-      renderOptions();
-
-      const body = h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
-        h(doc, 'div', { class: 'field', role: 'radiogroup', 'aria-labelledby': 'eat-fb-category' }, h(doc, 'span', { class: 'label', id: 'eat-fb-category', text: t('fb.category') }), options),
-        h(doc, 'label', { class: 'field', for: 'eat-fb-tool' },
-          h(doc, 'span', { class: 'label', text: t('fb.tool') }),
-          h(doc, 'select', { class: 'input', id: 'eat-fb-tool', name: 'fb-tool', onchange: (e) => { draft.tool = e.target.value; renderFacts(); sync(); } },
-            h(doc, 'option', { value: '', text: t('fb.toolNone'), selected: !draft.tool }),
-            TOOL_IDS.map((id2) => h(doc, 'option', { value: id2, selected: draft.tool === id2, text: t(`tool.${id2}`) })))),
-        h(doc, 'label', { class: 'field', for: 'eat-fb-note' },
-          h(doc, 'span', { class: 'label' }, t('fb.note'), h(doc, 'span', { class: 'mute', style: 'font-weight: 400;', text: ` · ${t('fb.optional')}` })),
-          h(doc, 'textarea', { class: 'input', id: 'eat-fb-note', name: 'fb-note', rows: 2, maxlength: 1000, placeholder: t('fb.notePlaceholder'), oninput: (e) => { draft.note = e.currentTarget.value; sync(); } })),
-        h(doc, 'span', { class: 'hint', style: 'margin-top: -6px;', text: t('fb.noteHint') }),
-        h(doc, 'div', { class: 'fb-box' },
-          h(doc, 'div', { class: 'row fb-box-h' }, h(doc, 'span', { class: 'h3 grow', text: t('fb.preview') }), h(doc, 'span', { class: 'xs mute', text: t('fb.previewOff') })),
-          facts,
-          h(doc, 'div', { class: 'row xs mute2 fb-box-f' }, icon(doc, ICONS.shield, 14), t('fb.never'))),
-        h(doc, 'span', { class: 'hint', text: t('fb.githubHint') }));
-      renderFacts();
-
-      const dialog = openDialog(doc, container, {
-        title: t('fb.title'), description: t('fb.text'), body, closeLabel: t('fb.cancel'), returnFocus, width: 640,
-        footer: (close) => {
-          github = h(doc, 'a', {
-            class: 'btn btn-p', href: issueUrl(report(), id), target: '_blank', rel: 'noopener noreferrer', 'data-action': 'fb-github', text: t('fb.github'),
-            onclick: () => { void reports?.record({ id, category: draft.category }); scope.setTimeout?.(close, 0); },
-          });
-          return [h(doc, 'span', { class: 'xs mute grow fb-foot', text: t('fb.seeFirst') }), h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: close, text: t('fb.cancel') }), github];
-        },
-      });
-      // The dialog's footer has its own text on the left instead of a spacer.
-      dialog.dialog.querySelector('.modal-f > .grow:first-child')?.remove();
-      return dialog;
-    }
-    return Object.freeze({ openFeedback });
-  })();
-
-  // ── src/ui/format.js ──
-  const __eat_ui_format = (() => {
-    // Dates, sizes and numbers as Settings › General › Date and number format says.
-
-    const DAY_MS = 24 * 60 * 60 * 1000;
-
-    function zone(format) {
-      return format?.timezone && format.timezone !== 'browser' ? format.timezone : undefined;
-    }
-
-    /** A date (and time) in the chosen style: auto follows the interface language. */
-    function formatDate(ms, format = {}, language = 'en', { time = false } = {}) {
-      const d = new Date(ms);
-      if (Number.isNaN(d.getTime())) return '';
-      const timeZone = zone(format);
-      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map((p) => [p.type, p.value]));
-      const clock = time ? ` ${parts.hour}:${parts.minute}` : '';
-      switch (format?.date) {
-        case 'dd.mm.yyyy': return `${parts.day}.${parts.month}.${parts.year}${clock}`;
-        case 'mm/dd/yyyy': return `${parts.month}/${parts.day}/${parts.year}${clock}`;
-        case 'yyyy-mm-dd': return `${parts.year}-${parts.month}-${parts.day}${clock}`;
-        case 'd-mmm-y': return new Intl.DateTimeFormat(language, { timeZone, day: 'numeric', month: 'short', year: 'numeric', ...(time ? { hour: '2-digit', minute: '2-digit' } : {}) }).format(d);
-        default: return new Intl.DateTimeFormat(language, { timeZone, dateStyle: 'medium', ...(time ? { timeStyle: 'short' } : {}) }).format(d);
-      }
-    }
-
-    /** A number with the chosen separators: auto follows the interface language. */
-    function formatNumber(value, format = {}, language = 'en', options = {}) {
-      const locale = format?.number === 'dot' ? 'de-DE' : format?.number === 'comma' ? 'en-US' : language;
-      try { return new Intl.NumberFormat(locale, options).format(value); } catch { return String(value); }
-    }
-
-    /** "1,2 MB", "86 KB" in the interface language. */
-    function formatBytes(bytes, language = 'en') {
-      const n = Math.max(0, Number(bytes) || 0);
-      if (n < 1024 * 1024) return `${new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(Math.max(n ? 1 : 0, n / 1024))} KB`;
-      return `${new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(n / (1024 * 1024))} MB`;
-    }
-    return Object.freeze({ DAY_MS, formatDate, formatNumber, formatBytes });
   })();
 
   // ── src/ui/strings-picker.js ──
@@ -46040,6 +43907,2215 @@
       ...PACK_LANGUAGES.map((code) => Object.freeze({ code, name: PACK_NAMES[code], english: englishName(code) })),
     ]);
     return Object.freeze({ WORKSPACE_STRINGS, UI_LANGUAGES });
+  })();
+
+  // ── src/core/waiting-notices.js ──
+  const __eat_core_waiting_notices = (() => {
+    // "Waiting for you" notices (Settings › Notifications: autopilot waiting,
+    // edit queue waiting). A tool reports which of its items wait for the user;
+    // each item that starts waiting after the page loaded is announced once.
+    // Whatever already waited when the page loaded is the baseline, so reloading
+    // a page does not announce the same step again.
+
+    const { packText } = __eat_core_language_packs;
+    const { WORKSPACE_STRINGS } = __eat_ui_strings_workspace;
+
+    /** Notice title in the interface language (pack text, English fallback). */
+    function noticeTitle(language, key) {
+      return packText(language, key) ?? WORKSPACE_STRINGS.en[key] ?? key;
+    }
+
+    /**
+     * @param {object} o
+     * @param {string} o.event  notice event id (autopilotWaiting, queueWaiting)
+     * @param {string} o.tool   tool id
+     * @param {string} o.page   workspace page the notice opens
+     */
+    function createWaitingNotices({ event, tool, page }) {
+      let seen = null;
+      return {
+        /** `waiting`: [{ key, detail }] — the steps that wait for the user right now. */
+        update(waiting, { notify, language }) {
+          const keys = new Set(waiting.map((w) => w.key));
+          if (seen === null) { seen = keys; return; }
+          for (const w of waiting) {
+            if (seen.has(w.key) || !notify) continue;
+            void notify({ event, tool, title: noticeTitle(language, `nt.ev.${event}`), detail: w.detail, needsAction: true, page });
+          }
+          seen = keys;
+        },
+      };
+    }
+    return Object.freeze({ noticeTitle, createWaitingNotices });
+  })();
+
+  // ── src/modules/listing-analyzer-ui.js ──
+  const __eat_modules_listing_analyzer_ui = (() => {
+    // Listing Analyzer screens, as the design canvas draws them: the drawer
+    // section and the workspace page with Overview (LA-Overview, and LA-Scan while
+    // all pages are being read), Listings (LA-Listings), AI suggestions (LA-AI),
+    // Queue (LA-Queue), Thresholds (LA-Thresholds) and the first-use page (LA-Empty).
+    //
+    // The screens read the engine's analysed records and call its own functions:
+    // the scan, selection, the edit queue (apply in the form, publish and
+    // deactivate stay the user's clicks on Etsy, then verify), the AI request and
+    // answer, and the thresholds. A listing's history and edit plan open in the
+    // engine's own panel (LA-Detail, LA-Plan, LA-ApplyEditor).
+    //
+    // Design sources: template.primitive.card, .table, .badge, .button, .tabs,
+    // .input, .progress; shadcn.blocks.kpi-widgets for the tiles and
+    // shadcn.blocks.datatable for the listing and queue tables.
+
+    const { h, icon } = __eat_ui_dom;
+    const { ICONS } = __eat_ui_icons;
+    const { pageHead, pageTabs, alertBox, banner } = __eat_ui_controls;
+    const { interpolate } = __eat_core_i18n;
+    const { packText } = __eat_core_language_packs;
+
+    const LA_STRINGS = Object.freeze({
+      en: Object.freeze({
+        tabs: 'Listing Analyzer pages', overview: 'Overview', listings: 'Listings', ai: 'AI suggestions', queue: 'Queue', thresholds: 'Thresholds',
+        overviewText: 'Collects every listing, checks the metrics and shows what to look at first.',
+        listingsText: 'The state and suggestion of every listing, from checked data. The selection only decides what the AI suggestion and the queue cover.',
+        aiText: 'Get new title, tag and description suggestions for the listings you select.',
+        queueText: 'Applies the saved suggestions listing by listing. Before anything is published on Etsy, you are asked on each one.',
+        thresholdsText: 'Set the values at which the suggestions start, for your shop.',
+        scanningTitle: 'Collecting data', scanningText: 'Etsy’s Listings pages are opened one after another. The analysis is prepared when it ends.',
+        ready: 'Ready', collecting: 'Scanning', review: '{n} to review', stopped: 'Stopped',
+        fresh: 'Data ready · last read {when}', stale: 'Scan every page for an up-to-date analysis.',
+        scanPage: 'Scan this page', scanAll: 'Scan every page', stop: 'Stop the scan', resume: 'Continue the scan', exportData: 'Download a backup',
+        onListings: 'The scan runs on Etsy’s Listings page.', openListings: 'Open Listings',
+        tileListings: 'Listings', tileListingsHint: '{page} on this page', tileHealthy: 'Keep / watch', tileHealthyHint: 'Going well',
+        tileReview: 'To review', tileReviewHint: 'Traffic without sales, weak tags', tileDeactivate: 'Consider deactivating', tileDeactivateHint: 'No traffic for a long time',
+        tileExperiments: 'Running experiment', tileExperimentsHint: 'Waiting for the result', tileQueue: 'In the queue', tileQueueHint: 'Waiting for your approval',
+        health: 'Health distribution', healthCount: '{n} listings', bandHealthy: 'Healthy · 70+', bandWatch: 'To watch · 50–69', bandWeak: 'Weak · 30–49', bandCritical: 'Critical · below 30',
+        editThresholds: 'Edit the thresholds →', priority: 'Listings to look at first', seeAll: 'See all →', details: 'Details', plan: 'Plan',
+        noPriority: 'No listing needs a review now.', visitsSales: '{visits} visits · {sales} sales',
+        pageOf: 'Reading page {pages} of {total}', foundLine: '{found} listings collected', readPages: 'Pages read', collected: 'Listings collected', keepOpen: 'Keep the Etsy tab open.', keepOpenText: 'The pages are turned for you. You can keep working in another tab.',
+        emptyTitle: 'No listing read yet', emptyText: 'Open Listings on Etsy and scan every page. Each listing gets a health score, a suggestion and a place in the edit queue.',
+        step1: 'Open Listings', step1Text: 'Your shop’s listings page on Etsy.', step2: 'Scan every page', step2Text: 'Visits, favourites and sales are read.', step3: 'Look at the suggestions', step3Text: 'Nothing changes on Etsy without you.',
+        search: 'Search title, SKU or suggestion', allStates: 'Every suggestion · {n}', selectedCount: '{n} selected', shown: '{shown} / {total} shown',
+        colListing: 'Listing', colHealth: 'Health', colVisits: 'Visits', colFav: 'Favourites', colSales: 'Sales', colRevenue: 'Revenue', colStock: 'Stock', colSuggestion: 'Suggestion', colPlan: 'Plan',
+        planSaved: 'Saved', planNone: 'None', prev: 'Previous', next: 'Next', selectAll: 'Select the shown listings', selectRow: 'Select {title}',
+        barSelected: '{n} listings selected', barHint: 'Only listings with a saved, current plan enter the queue.', getAi: 'Get AI suggestions', buildQueue: 'Build the review queue',
+        noFresh: 'The listings are shown after a full scan.',
+        aiSelected: '{n} listings selected', aiNone: 'Select listings on the Listings page first.',
+        aiStep1: 'Copy the request', aiStep1Text: 'The selected listings and their data are copied as text for your AI tool.', copyRequest: 'Copy the request', copyTemplate: 'Copy the answer format',
+        aiStep2: 'Ask your AI tool', aiStep2Text: 'Paste it into ChatGPT, Claude or the tool you use, and ask for the answer in the same format.',
+        aiStep3: 'Paste the answer', aiStep3Text: 'The answer is checked: unknown listings, changed data and over-long fields are refused.', answer: 'AI answer', importAnswer: 'Check and save the suggestions',
+        aiPrivacy: 'Nothing is sent from here: you copy the text yourself and choose where to paste it.',
+        qInQueue: 'In the queue', qWaiting: 'Waiting for your approval', qVerified: 'Verified on Etsy', qFailed: 'Could not be verified', qFailedHint: 'Not retried automatically',
+        colChange: 'Change', colStatus: 'Status', colAction: 'Action', update: 'Title, tags or description', deactivateReview: 'Deactivation review',
+        sPending: 'Queued', sApplying: 'Applied in the form · waiting for publish', sSubmitted: 'Being verified', sVerified: 'Verified on Etsy', sDeactivated: 'Deactivated · verified', sSkipped: 'Skipped', sFailed: 'Could not be verified', sAwaitDeactivate: 'Waiting for your deactivation',
+        openNext: 'Open the next listing', stopQueue: 'Stop the queue', openListing: 'Open the listing', apply: 'Apply in the form', publishCheck: 'Publish on Etsy', skip: 'Skip', openDeactivate: 'Open deactivation', verifyDeactivate: 'I deactivated it, check', recover: 'Try again',
+        noQueue: 'No queue yet. Select listings with a saved plan on the Listings page and build the queue.',
+        queueNote: 'Etsy Automation Tools writes the change into the listing\'s edit form. Publishing asks you first, then the result is checked in the list.',
+        recovery: 'An earlier step needs checking before the queue goes on.',
+        bandsTitle: 'Suggestion rules', improve: 'Traffic without sales', improveText: 'Listings with at least this many visits and no sales are suggested for improvement.', minVisits: 'Visits, at least',
+        protect: 'Protect what works', protectText: 'Listings with this many visits that sell are kept as they are.', renewals: 'Deactivation review', renewalsText: 'Listings renewed this many times without a sale are suggested for review.', minRenewals: 'Renewals, at least',
+        decline: 'Falling traffic', declineText: 'A fall of this much in visits counts as declining.', percent: 'Fall, %',
+        range: 'Between {min} and {max}.', relation: 'The protect value must be higher than the improve value.', storage: 'The thresholds could not be saved.', savedOk: 'The thresholds are saved and the analysis is updated.',
+        impact: 'Current counts', impactNote: 'From {n} saved listings.', reset: 'Back to the defaults', cancel: 'Cancel', save: 'Save the thresholds',
+        stored: '{listings} listings saved · {page} on this page', editorLine: 'The edit queue works in this listing editor.', openDetails: 'Open details', openPanel: 'Open the panel',
+      }),
+    });
+
+    // Bundled English; other languages read the downloaded pack ("la." keys).
+    function texts(language) {
+      const lang = LA_STRINGS[language] ? language : 'en';
+      return (key, vars) => interpolate(LA_STRINGS[language]?.[key] ?? packText(language, `la.${key}`) ?? LA_STRINGS[lang][key] ?? LA_STRINGS.en[key] ?? key, vars);
+    }
+
+    const DEFAULTS = { minVisitsToImprove: 20, minVisitsToProtect: 60, minRenewalsToReview: 2, declinePercent: 35 };
+    const CODE_TONE = { improve: 'warn', declining: 'warn', deactivateReview: 'err', growing: 'ok', protected: 'out', monitor: '', waiting: '' };
+    const QUEUE_STATUS = {
+      pending: ['sPending', ''], applying: ['sApplying', 'dark'], 'awaiting-user-review': ['sApplying', 'dark'],
+      submitted: ['sSubmitted', 'warn'], 'submitted-unverified': ['sSubmitted', 'warn'], 'deactivation-submitted': ['sSubmitted', 'warn'], 'deactivation-submitted-unverified': ['sSubmitted', 'warn'],
+      verified: ['sVerified', 'ok'], 'verified-deactivated': ['sDeactivated', 'ok'], skipped: ['sSkipped', 'out'], failed: ['sFailed', 'err'], 'awaiting-user-deactivation': ['sAwaitDeactivate', 'dark'],
+    };
+    const PAGE_SIZE = 10;
+
+    const num = (language, value) => (value == null || !Number.isFinite(Number(value)) ? '—' : new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(Number(value)));
+    function money(language, value, currency) {
+      if (value == null || !Number.isFinite(Number(value))) return '—';
+      const code = /^[A-Z]{3}$/.test(currency) ? currency : null;
+      try { return code ? new Intl.NumberFormat(language, { style: 'currency', currency: code, maximumFractionDigits: 0 }).format(value) : `${currency}${num(language, value)}`; } catch { return `${currency}${num(language, value)}`; }
+    }
+    function when(language, iso) {
+      const t = Date.parse(iso);
+      if (!Number.isFinite(t)) return '—';
+      return new Intl.DateTimeFormat(language, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(t);
+    }
+    const band = (score) => (score == null ? null : score >= 70 ? 'healthy' : score >= 50 ? 'watch' : score >= 30 ? 'weak' : 'critical');
+
+    function stateBadge(doc, ts, snap) {
+      if (snap.collecting) return h(doc, 'span', { class: 'badge dark', 'data-la-state': 'collecting', text: ts('collecting') });
+      if (['error', 'blocked'].includes(snap.status.tone)) return h(doc, 'span', { class: 'badge warn', 'data-la-state': 'stopped', text: ts('stopped') });
+      if (snap.fresh && snap.needsReview) return h(doc, 'span', { class: 'badge warn', 'data-la-state': 'review', text: ts('review', { n: snap.needsReview }) });
+      return h(doc, 'span', { class: 'badge', 'data-la-state': 'ready', text: ts('ready') });
+    }
+
+    const collectionLabel = (snap) => (snap.collecting ? 'stop' : ['running', 'paused'].includes(snap.collection?.status) ? 'resume' : 'scanAll');
+
+    function healthCell(doc, score) {
+      if (score == null) return h(doc, 'span', { class: 'mute', text: '—' });
+      const color = score < 30 ? '#dc2626' : '#1f1f1f';
+      return h(doc, 'span', { class: 'hb' }, h(doc, 'i', {}, h(doc, 'b', { style: `width: ${Math.max(4, Math.min(100, score))}%; background: ${color};` })),
+        h(doc, 'span', { class: 'num b', style: score < 30 ? 'color: #b91c1c;' : null, text: String(Math.round(score)) }));
+    }
+
+    function suggestionBadge(doc, record) {
+      if (!record.assessment) return h(doc, 'span', { class: 'mute', text: '—' });
+      const tone = CODE_TONE[record.code] ?? '';
+      return h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge', title: record.reason || null, text: record.assessment });
+    }
+
+    /** Drawer section on the Listings page and in the listing editor. */
+    function renderLaDrawer(doc, { snap, language, actions }) {
+      const ts = texts(language);
+      const onListings = snap.route === 'listings';
+      const c = snap.collection;
+      return h(doc, 'div', { class: 'col', style: 'gap: 12px;', 'data-role': 'la-drawer' },
+        h(doc, 'div', { class: 'row' }, icon(doc, ICONS['listing-analyzer']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Listing Analyzer' }), stateBadge(doc, ts, snap)),
+        h(doc, 'span', { class: 'xs mute2', 'data-role': 'la-summary', text: onListings ? ts('stored', { listings: num(language, snap.listings), page: num(language, snap.pageListings) }) : ts('editorLine') }),
+        onListings && c && c.status !== 'completed' && c.total ? h(doc, 'div', { class: 'col', style: 'gap: 6px;' },
+          h(doc, 'span', { class: 'xs mute2', 'data-role': 'la-progress', text: `${ts('pageOf', { pages: c.pages, total: c.total })} · ${ts('foundLine', { found: c.found })}` }),
+          h(doc, 'div', { class: 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(c.total), 'aria-valuenow': String(c.pages) }, h(doc, 'i', { style: `width: ${Math.min(100, (c.pages / Math.max(1, c.total)) * 100)}%;` }))) : null,
+        h(doc, 'span', { class: 'xxs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
+        h(doc, 'div', { class: 'row' },
+          h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-la': 'details', onclick: () => actions.openDetails(), text: ts('openDetails') }),
+          onListings
+            ? h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-la': 'collection', onclick: () => actions.toggleCollection(), text: ts(collectionLabel(snap)) })
+            : h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-la': 'open-panel', onclick: () => actions.openPanel('queue'), text: ts('openPanel') })));
+    }
+
+    /** Workspace page with Overview, Listings, AI suggestions, Queue and Thresholds. */
+    function renderLaPage(doc, { snap, view, language, actions, tab = 'overview', onTab, local }) {
+      const ts = texts(language);
+      const current = ['overview', 'listings', 'ai', 'queue', 'thresholds'].includes(tab) ? tab : 'overview';
+      const onListings = view.route === 'listings';
+      const records = view.records;
+      const selected = records.filter((r) => r.selected);
+      const queueItems = view.queue?.items ?? [];
+      const openQueue = queueItems.filter((i) => !['verified', 'verified-deactivated', 'skipped'].includes(i.status)).length;
+      const tabs = pageTabs(doc, {
+        label: ts('tabs'), name: 'la-tab', value: current, onChange: onTab,
+        options: [{ value: 'overview', label: ts('overview') }, { value: 'listings', label: ts('listings') }, { value: 'ai', label: ts('ai') }, { value: 'queue', label: ts('queue'), count: openQueue }, { value: 'thresholds', label: ts('thresholds') }],
+      });
+      const scanButtons = () => onListings
+        ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'scan-page', disabled: snap.collecting, onclick: () => actions.scanPage(), text: ts('scanPage') }),
+          h(doc, 'button', { class: snap.collecting ? 'btn btn-o' : 'btn btn-p', type: 'button', 'data-la': 'collection', onclick: () => actions.toggleCollection() }, icon(doc, snap.collecting ? ICONS.pause : ICONS.refresh, 16), ts(collectionLabel(snap)))]
+        : [h(doc, 'a', { class: 'btn btn-o', href: 'https://www.etsy.com/your/shops/me/tools/listings', 'data-la': 'open-listings', text: ts('openListings') })];
+
+      const tile = (label, value, hint, attrs = {}) => h(doc, 'div', { class: 'tile', ...attrs },
+        h(doc, 'span', { class: 'ov', text: label }), h(doc, 'span', { class: 'v', text: value }), hint ? h(doc, 'span', { class: 'xs mute', text: hint }) : null);
+
+      const empty = () => h(doc, 'section', { class: 'card', style: 'flex: 1 1 auto; display: flex;', 'data-role': 'la-empty' },
+        h(doc, 'div', { class: 'empty' },
+          h(doc, 'span', { class: 'ei' }, icon(doc, ICONS['listing-analyzer'], 24)),
+          h(doc, 'p', { class: 'et', text: ts('emptyTitle') }), h(doc, 'p', { class: 'ed', text: ts('emptyText') }),
+          h(doc, 'div', { class: 'ea' }, ...scanButtons()),
+          h(doc, 'div', { class: 'steps' }, [['step1', 'step1Text'], ['step2', 'step2Text'], ['step3', 'step3Text']].map(([title, text], i) => h(doc, 'div', {},
+            h(doc, 'span', { class: 'n', text: String(i + 1) }), h(doc, 'span', {}, h(doc, 'span', { class: 'st', text: ts(title) }), h(doc, 'span', { class: 'sd', text: ts(text) })))))));
+
+      // ---- Overview ---------------------------------------------------------
+      const scanning = () => {
+        const c = snap.collection;
+        const total = Math.max(1, c.total || 1);
+        const pct = Math.min(100, Math.round((c.pages / total) * 100));
+        return [h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;', 'data-role': 'la-scan' },
+          h(doc, 'section', { class: 'card grow' },
+            h(doc, 'div', { class: 'card-b col', style: 'gap: 16px; padding: 22px 24px;' },
+              h(doc, 'div', { class: 'row', style: 'gap: 14px;' },
+                h(doc, 'span', { class: 'well' }, h(doc, 'span', { class: 'spin', style: 'width: 16px; height: 16px;' })),
+                h(doc, 'span', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h2', text: ts('pageOf', { pages: c.pages, total: c.total || '—' }) }), h(doc, 'span', { class: 'xs mute', text: ts('foundLine', { found: c.found }) })),
+                h(doc, 'span', { class: 'num', style: 'font-size: 28px; font-weight: 700;', text: new Intl.NumberFormat(language, { style: 'percent' }).format(pct / 100) })),
+              h(doc, 'div', { class: 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) }, h(doc, 'i', { style: `width: ${pct}%;` })),
+              h(doc, 'div', { class: 'g2' }, tile(ts('readPages'), `${c.pages} / ${c.total || '—'}`), tile(ts('collected'), num(language, c.found)))),
+            h(doc, 'div', { class: 'card-f' }, h(doc, 'span', { class: 'xs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }))),
+          h(doc, 'aside', { style: 'width: 340px; flex: none;' }, banner(doc, { iconPaths: ICONS.info, title: ts('keepOpen'), text: ts('keepOpenText') })))];
+      };
+
+      const overview = () => {
+        if (snap.collecting && snap.collection) return scanning();
+        if (!records.length) return [empty()];
+        const bands = { healthy: 0, watch: 0, weak: 0, critical: 0 };
+        for (const r of records) { const b = band(r.score); if (b) bands[b] += 1; }
+        const scored = Math.max(1, Object.values(bands).reduce((a, b) => a + b, 0));
+        const priority = records.filter((r) => ['improve', 'declining', 'deactivateReview'].includes(r.code)).sort((a, b) => (a.score ?? 101) - (b.score ?? 101)).slice(0, 5);
+        const healthRow = (key, count, color) => h(doc, 'div', { class: 'col', style: 'gap: 6px; padding: 10px 16px;' },
+          h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'sm grow', text: ts(key) }), h(doc, 'span', { class: 'num b', text: String(count) })),
+          h(doc, 'span', { class: 'bar' }, h(doc, 'i', { style: `width: ${Math.round((count / scored) * 100)}%; background: ${color};` })));
+        return [
+          view.fresh ? null : alertBox(doc, { tone: 'warn', text: ts('stale') }),
+          h(doc, 'div', { class: 'g6', style: 'display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px;' },
+            tile(ts('tileListings'), num(language, records.length), ts('tileListingsHint', { page: num(language, snap.pageListings) }), { 'data-la-tile': 'listings' }),
+            tile(ts('tileHealthy'), view.fresh ? num(language, view.counts.healthy) : '—', ts('tileHealthyHint')),
+            tile(ts('tileReview'), view.fresh ? num(language, view.counts.needsReview) : '—', ts('tileReviewHint'), { 'data-la-tile': 'review' }),
+            tile(ts('tileDeactivate'), view.fresh ? num(language, view.counts.deactivateReview) : '—', ts('tileDeactivateHint')),
+            tile(ts('tileExperiments'), view.fresh ? num(language, view.counts.experiments) : '—', ts('tileExperimentsHint')),
+            tile(ts('tileQueue'), num(language, openQueue), ts('tileQueueHint'))),
+          h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;' },
+            h(doc, 'section', { class: 'card grow', 'data-role': 'la-priority' },
+              h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('priority') }),
+                h(doc, 'button', { class: 'xs b ob-link', type: 'button', onclick: () => onTab('listings'), text: ts('seeAll') })),
+              priority.length
+                ? h(doc, 'table', { class: 'tbl tbl-tight' }, h(doc, 'tbody', {}, priority.map((r) => h(doc, 'tr', { 'data-listing': r.id },
+                  h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 12px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 32px; height: 32px;' }),
+                    h(doc, 'span', { class: 'sm b trunc', style: 'max-width: 320px;', text: r.title }), r.sku ? h(doc, 'span', { class: 'xs mute', text: `· ${r.sku}` }) : null)),
+                  h(doc, 'td', { class: 'xs mute r', text: ts('visitsSales', { visits: num(language, r.visits), sales: num(language, r.sales) }) }),
+                  h(doc, 'td', { class: 'r' }, healthCell(doc, r.score)),
+                  h(doc, 'td', {}, suggestionBadge(doc, r)),
+                  h(doc, 'td', { class: 'r' }, h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la-detail': r.id, onclick: () => actions.openRecord(r.id, 'history'), text: ts('details') }))))))
+                : h(doc, 'div', { class: 'card-b xs mute', text: ts('noPriority') })),
+            h(doc, 'aside', { class: 'card', style: 'width: 340px; flex: none;', 'data-role': 'la-health' },
+              h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('health') }), h(doc, 'span', { class: 'xs mute', text: ts('healthCount', { n: records.length }) })),
+              healthRow('bandHealthy', bands.healthy, '#1f1f1f'), healthRow('bandWatch', bands.watch, '#737373'), healthRow('bandWeak', bands.weak, '#a3a3a3'), healthRow('bandCritical', bands.critical, '#dc2626'),
+              h(doc, 'div', { class: 'card-f' }, h(doc, 'button', { class: 'xs b ob-link', type: 'button', onclick: () => onTab('thresholds'), text: ts('editThresholds') })))),
+          h(doc, 'span', { class: 'xs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
+        ];
+      };
+
+      // ---- Listings ---------------------------------------------------------
+      const listingsTab = () => {
+        if (!records.length) return [empty()];
+        const query = String(local.query ?? '').trim().toLocaleLowerCase(language);
+        const codes = [...new Set(records.map((r) => r.code).filter(Boolean))];
+        const filtered = records
+          .filter((r) => (!local.code || r.code === local.code) && (!query || `${r.title} ${r.sku} ${r.assessment}`.toLocaleLowerCase(language).includes(query)))
+          .sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
+        const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+        const page = Math.min(local.page ?? 0, pages - 1);
+        const shown = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+        const allOn = shown.length > 0 && shown.every((r) => r.selected);
+        const box = (checked, label, onChange) => h(doc, 'input', { type: 'checkbox', checked, 'aria-label': label, style: 'width: 16px; height: 16px; accent-color: #1f1f1f;', onchange: (e) => onChange(e.target.checked) });
+        return [
+          h(doc, 'div', { class: 'row', style: 'gap: 8px;' },
+            h(doc, 'div', { class: 'search', style: 'width: 300px;' }, icon(doc, ICONS.search),
+              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), name: 'la-search', value: local.query ?? '', 'data-la': 'search', oninput: (e) => actions.setLocal({ query: e.target.value, page: 0 }) })),
+            h(doc, 'select', { class: 'input', style: 'width: 220px;', 'aria-label': ts('colSuggestion'), 'data-la': 'filter', onchange: (e) => actions.setLocal({ code: e.target.value, page: 0 }) },
+              h(doc, 'option', { value: '', selected: !local.code, text: ts('allStates', { n: records.length }) }),
+              codes.map((code) => { const r = records.find((x) => x.code === code); return h(doc, 'option', { value: code, selected: local.code === code, text: `${r.assessment} · ${records.filter((x) => x.code === code).length}` }); })),
+            h(doc, 'span', { class: 'grow' }),
+            h(doc, 'span', { class: 'xs mute2' }, h(doc, 'b', { text: ts('shown', { shown: filtered.length, total: records.length }) }), ` · ${ts('selectedCount', { n: selected.length })}`)),
+          h(doc, 'section', { class: 'card', 'data-role': 'la-listings' },
+            h(doc, 'table', { class: 'tbl lt' },
+              h(doc, 'thead', {}, h(doc, 'tr', {},
+                h(doc, 'th', { style: 'width: 36px;' }, box(allOn, ts('selectAll'), (on) => actions.select(shown.map((r) => r.id), on))),
+                h(doc, 'th', { text: ts('colListing') }), h(doc, 'th', { text: `${ts('colHealth')} ↑` }),
+                ...['colVisits', 'colFav', 'colSales', 'colRevenue', 'colStock'].map((k) => h(doc, 'th', { class: 'r', text: ts(k) })),
+                h(doc, 'th', { text: ts('colSuggestion') }), h(doc, 'th', { text: ts('colPlan') }), h(doc, 'th', { class: 'r' }))),
+              h(doc, 'tbody', {}, shown.map((r) => h(doc, 'tr', { class: r.selected ? 'sel' : null, 'data-listing': r.id },
+                h(doc, 'td', {}, box(r.selected, ts('selectRow', { title: r.title }), (on) => actions.select([r.id], on))),
+                h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 32px; height: 32px;' }),
+                  h(doc, 'span', { class: 'col', style: 'min-width: 0;' }, h(doc, 'span', { class: 'b trunc', style: 'max-width: 240px;', text: r.title }), h(doc, 'span', { class: 'sub', text: [r.sku, r.state].filter(Boolean).join(' · ') })))),
+                h(doc, 'td', {}, healthCell(doc, r.score)),
+                h(doc, 'td', { class: 'r num' }, num(language, r.visits), r.visitsDelta ? h(doc, 'span', { class: 'sub', text: `${r.visitsDelta > 0 ? '+' : ''}${num(language, r.visitsDelta)}` }) : null),
+                h(doc, 'td', { class: 'r num', text: num(language, r.favorites) }),
+                h(doc, 'td', { class: 'r num', text: num(language, r.sales) }),
+                h(doc, 'td', { class: 'r num', text: money(language, r.revenue, r.currency) }),
+                h(doc, 'td', { class: 'r num', text: num(language, r.stock) }),
+                h(doc, 'td', {}, suggestionBadge(doc, r)),
+                h(doc, 'td', {}, r.proposal ? h(doc, 'span', { class: 'badge ok', text: ts('planSaved') }) : h(doc, 'span', { class: 'xs mute', text: ts('planNone') })),
+                h(doc, 'td', { class: 'r' },
+                  h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la-plan': r.id, onclick: () => actions.openRecord(r.id, 'proposal'), text: ts('plan') }),
+                  h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la-detail': r.id, onclick: () => actions.openRecord(r.id, 'history'), text: ts('details') })))))),
+            h(doc, 'div', { class: 'card-f' },
+              h(doc, 'span', { class: 'xs mute grow', text: view.fresh ? ts('shown', { shown: shown.length, total: filtered.length }) : ts('noFresh') }),
+              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', disabled: page === 0, onclick: () => actions.setLocal({ page: page - 1 }), text: ts('prev') }),
+              h(doc, 'span', { class: 'sm num', text: `${page + 1} / ${pages}` }),
+              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', disabled: page >= pages - 1, onclick: () => actions.setLocal({ page: page + 1 }), text: ts('next') }))),
+          selected.length ? h(doc, 'div', { class: 'savebar', 'data-role': 'la-bulk' },
+            h(doc, 'span', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'sm b', text: ts('barSelected', { n: selected.length }) }), h(doc, 'span', { class: 'xs mute', text: ts('barHint') })),
+            h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'to-ai', onclick: () => onTab('ai'), text: ts('getAi') }),
+            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-la': 'build-queue', disabled: !view.fresh, onclick: async () => { if (await actions.buildQueue()) onTab('queue'); }, text: ts('buildQueue') })) : null,
+        ];
+      };
+
+      // ---- AI suggestions ---------------------------------------------------
+      const aiTab = () => {
+        const stepRow = (n, title, text, ...controls) => h(doc, 'div', { class: 'col', style: 'padding: 14px 16px; gap: 6px;' },
+          h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'stp', text: String(n) }), h(doc, 'span', { class: 'h3 grow', text: ts(title) }), ...controls),
+          h(doc, 'p', { class: 'xs mute', style: 'padding-left: 30px;', text: ts(text) }));
+        const answer = h(doc, 'textarea', { class: 'input mono', rows: '8', id: 'eat-la-ai-answer', 'data-la': 'ai-answer', placeholder: '{"schema":"makaytron-listing-ai-proposals/v1","requestId":"…","proposals":[…]}', oninput: (e) => { local.aiText = e.target.value; } }, local.aiText ?? '');
+        return [
+          selected.length ? null : alertBox(doc, { tone: 'info', text: ts('aiNone') }),
+          h(doc, 'section', { class: 'card', style: 'max-width: 860px;', 'data-role': 'la-ai' },
+            h(doc, 'div', { class: 'list' },
+              stepRow(1, 'aiStep1', 'aiStep1Text',
+                h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la': 'copy-template', onclick: () => actions.copyAiTemplate(), text: ts('copyTemplate') }),
+                h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'copy-request', disabled: !selected.length, onclick: () => actions.copyAiRequest() }, icon(doc, ICONS.copy, 14), ts('copyRequest'))),
+              stepRow(2, 'aiStep2', 'aiStep2Text'),
+              h(doc, 'div', { class: 'col', style: 'padding: 14px 16px; gap: 8px;' },
+                h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'stp', text: '3' }), h(doc, 'span', { class: 'h3 grow', text: ts('aiStep3') })),
+                h(doc, 'p', { class: 'xs mute', style: 'padding-left: 30px;', text: ts('aiStep3Text') }),
+                h(doc, 'label', { class: 'field', for: 'eat-la-ai-answer', style: 'padding-left: 30px;' }, h(doc, 'span', { class: 'label', text: ts('answer') }), answer),
+                local.aiResult ? h(doc, 'div', { style: 'padding-left: 30px;' }, alertBox(doc, { tone: local.aiResult.ok ? 'info' : 'err', text: local.aiResult.text })) : null,
+                h(doc, 'div', { class: 'row', style: 'justify-content: flex-end;' },
+                  h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'import-ai', onclick: async () => { const result = await actions.importAi(answer.value); actions.setLocal({ aiText: answer.value, aiResult: result }); }, text: ts('importAnswer') })))),
+            h(doc, 'div', { class: 'card-f' }, icon(doc, ICONS.shield, 14), h(doc, 'span', { class: 'xs mute', text: ts('aiPrivacy') }))),
+        ];
+      };
+
+      // ---- Queue ------------------------------------------------------------
+      const queueTab = () => {
+        const q = view.queue;
+        const waiting = queueItems.filter((i) => ['applying', 'awaiting-user-review', 'awaiting-user-deactivation'].includes(i.status)).length;
+        const verified = queueItems.filter((i) => ['verified', 'verified-deactivated'].includes(i.status)).length;
+        const failed = queueItems.filter((i) => i.status === 'failed').length;
+        const editingActive = q && view.editingId && view.editingId === q.active;
+        const rowAction = (item) => {
+          if (item.id !== q?.active) return null;
+          if (!editingActive) return h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-la': 'go-current', onclick: () => actions.goCurrent(), text: ts('openListing') });
+          if (item.action === 'DEACTIVATE_REVIEW') {
+            return ['awaiting-user-deactivation', 'deactivation-submitted', 'deactivation-submitted-unverified'].includes(item.status)
+              ? h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'verify-deactivate', onclick: () => actions.verifyDeactivate(), text: ts('verifyDeactivate') })
+              : [h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la': 'skip', onclick: () => actions.skip(), text: ts('skip') }),
+                h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'deactivate', onclick: () => actions.deactivate(), text: ts('openDeactivate') })];
+          }
+          if (['submitted', 'submitted-unverified'].includes(item.status)) return h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'verify-publish', onclick: () => actions.verifyPublish(), text: ts('publishCheck') });
+          return [h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-la': 'skip', onclick: () => actions.skip(), text: ts('skip') }),
+            ['applying', 'awaiting-user-review'].includes(item.status)
+              ? h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'verify-publish', onclick: () => actions.publish(), text: ts('publishCheck') })
+              : h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'apply', onclick: () => actions.apply(), text: ts('apply') })];
+        };
+        return [
+          h(doc, 'div', { class: 'g4' },
+            tile(ts('qInQueue'), num(language, openQueue)), tile(ts('qWaiting'), num(language, waiting)), tile(ts('qVerified'), num(language, verified)),
+            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('qFailed') }), h(doc, 'span', { class: 'v', style: failed ? 'color: #b91c1c;' : null, text: num(language, failed) }), h(doc, 'span', { class: 'xs mute', text: ts('qFailedHint') }))),
+          q?.recovery ? h(doc, 'div', { class: 'row' }, alertBox(doc, { tone: 'warn', text: ts('recovery') }), h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-la': 'recover', onclick: () => actions.recover(), text: ts('recover') })) : null,
+          h(doc, 'section', { class: 'card', 'data-role': 'la-queue' },
+            queueItems.length
+              ? h(doc, 'table', { class: 'tbl' },
+                h(doc, 'thead', {}, h(doc, 'tr', {}, [ts('colListing'), ts('colChange'), ts('colStatus'), ts('colAction')].map((label, i) => h(doc, 'th', { class: i === 3 ? 'r' : null, text: label })))),
+                h(doc, 'tbody', {}, queueItems.map((item) => {
+                  const [label, tone] = QUEUE_STATUS[item.status] ?? QUEUE_STATUS.pending;
+                  return h(doc, 'tr', { 'data-queue-item': item.id },
+                    h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 36px; height: 36px;' }),
+                      h(doc, 'span', { class: 'col' }, h(doc, 'span', { class: 'b', text: item.title }), h(doc, 'span', { class: 'xs mute', text: item.id })))),
+                    h(doc, 'td', {}, h(doc, 'span', { class: 'badge out', text: ts(item.action === 'DEACTIVATE_REVIEW' ? 'deactivateReview' : 'update') })),
+                    h(doc, 'td', {}, h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge' }, tone ? null : h(doc, 'span', { class: 'dot soft' }), ts(label))),
+                    h(doc, 'td', { class: 'r' }, h(doc, 'span', { class: 'row', style: 'justify-content: flex-end; gap: 6px;' }, rowAction(item))));
+                })))
+              : h(doc, 'div', { class: 'card-b xs mute', text: ts('noQueue') })),
+          banner(doc, { iconPaths: ICONS.info, text: ts('queueNote') }),
+        ];
+      };
+
+      // ---- Thresholds -------------------------------------------------------
+      const thresholdsTab = () => {
+        const values = { ...view.thresholds, ...(local.thresholds ?? {}) };
+        const field = (key, label) => {
+          const limit = view.limits[key];
+          return h(doc, 'label', { class: 'field', style: 'width: 160px;' }, h(doc, 'span', { class: 'label', text: ts(label) }),
+            h(doc, 'input', { class: 'input num', type: 'number', inputmode: 'numeric', min: String(limit.min), max: String(limit.max), step: '1', value: String(values[key]), 'data-threshold': key,
+              'aria-invalid': local.thresholdError?.field === key ? 'true' : null,
+              oninput: (e) => { local.thresholds = { ...(local.thresholds ?? {}), [key]: Number(e.target.value) }; } }));
+        };
+        const rule = (title, text, ...fields) => h(doc, 'div', { class: 'li', style: 'align-items: flex-end; gap: 16px;' },
+          h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'sm b', text: ts(title) }), h(doc, 'span', { class: 'xs mute', text: ts(text) })), ...fields);
+        const err = local.thresholdError;
+        const errText = err ? (err.reason === 'range' ? ts('range', { min: err.min, max: err.max }) : err.reason === 'relationship' ? ts('relation') : ts('storage')) : '';
+        const impactRow = (label, value) => h(doc, 'div', { class: 'li' }, h(doc, 'span', { class: 'sm grow', text: ts(label) }), h(doc, 'span', { class: 'num b', text: view.fresh ? num(language, value) : '—' }));
+        return [
+          err ? alertBox(doc, { tone: 'err', text: errText }) : local.thresholdSaved ? alertBox(doc, { tone: 'info', text: ts('savedOk') }) : null,
+          h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;', 'data-role': 'la-thresholds' },
+            h(doc, 'section', { class: 'card grow' },
+              h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('bandsTitle') })),
+              h(doc, 'div', { class: 'list' },
+                rule('improve', 'improveText', field('minVisitsToImprove', 'minVisits')),
+                rule('protect', 'protectText', field('minVisitsToProtect', 'minVisits')),
+                rule('renewals', 'renewalsText', field('minRenewalsToReview', 'minRenewals')),
+                rule('decline', 'declineText', field('declinePercent', 'percent')))),
+            h(doc, 'aside', { class: 'card', style: 'width: 340px; flex: none;' },
+              h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('impact') })),
+              h(doc, 'div', { class: 'list' }, impactRow('tileHealthy', view.counts.healthy), impactRow('tileReview', view.counts.needsReview), impactRow('tileDeactivate', view.counts.deactivateReview), impactRow('tileExperiments', view.counts.experiments)),
+              h(doc, 'div', { class: 'card-f' }, h(doc, 'span', { class: 'xs mute', text: ts('impactNote', { n: records.length }) })))),
+          h(doc, 'div', { class: 'savebar' },
+            h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-la': 'thresholds-reset', onclick: () => actions.setLocal({ thresholds: { ...DEFAULTS }, thresholdError: null, thresholdSaved: false }), text: ts('reset') }),
+            h(doc, 'span', { class: 'grow' }),
+            h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: () => actions.setLocal({ thresholds: null, thresholdError: null, thresholdSaved: false }), text: ts('cancel') }),
+            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-la': 'thresholds-save', disabled: snap.collecting,
+              onclick: async () => { const result = await actions.saveThresholds({ ...view.thresholds, ...(local.thresholds ?? {}) }); actions.setLocal(result.valid ? { thresholds: null, thresholdError: null, thresholdSaved: true } : { thresholdError: result, thresholdSaved: false }); }, text: ts('save') })),
+        ];
+      };
+
+      const scanningNow = current === 'overview' && snap.collecting && snap.collection;
+      const heads = {
+        overview: scanningNow
+          ? pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('scanningTitle'), description: ts('scanningText'), actions: [h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'collection', onclick: () => actions.toggleCollection() }, icon(doc, ICONS.pause, 16), ts('stop'))] })
+          : pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('overview'), description: ts('overviewText'), actions: [
+            records.length ? h(doc, 'span', { class: view.fresh ? 'badge ok' : 'badge warn', 'data-la-fresh': String(view.fresh), text: view.fresh ? ts('fresh', { when: when(language, view.lastAt) }) : ts('stale') }) : null, ...scanButtons()] }),
+        listings: pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('listings'), description: ts('listingsText'), actions: [h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'export', onclick: () => actions.exportData() }, icon(doc, ICONS.download, 16), ts('exportData'))] }),
+        ai: pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('ai'), description: ts('aiText'), actions: [h(doc, 'span', { class: 'badge out', text: ts('aiSelected', { n: selected.length }) })] }),
+        queue: pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('queue'), description: ts('queueText'), actions: view.queue && openQueue ? [
+          h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-la': 'stop-queue', onclick: () => actions.stop(), text: ts('stopQueue') }),
+          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-la': 'open-next', onclick: () => actions.goCurrent() }, ts('openNext'), icon(doc, ICONS.arrowRight, 16))] : [] }),
+        thresholds: pageHead(doc, { overline: 'LISTING ANALYZER', title: ts('thresholds'), description: ts('thresholdsText') }),
+      };
+      const body = { overview, listings: listingsTab, ai: aiTab, queue: queueTab, thresholds: thresholdsTab }[current]();
+      return h(doc, 'div', { style: 'display: contents;', 'data-role': 'la-page', 'data-la-tab': current }, heads[current], tabs, ...body);
+    }
+    return Object.freeze({ LA_STRINGS, renderLaDrawer, renderLaPage });
+  })();
+
+  // ── src/modules/listing-analyzer.js ──
+  const __eat_modules_listing_analyzer = (() => {
+    // Listing Analyzer inside the unified script.
+    //
+    // The engine is the standalone Listing Analyzer itself, adopted at build
+    // time (tools/Unified-Adopt-Listing-Analyzer.mjs). Its panel stays for the
+    // detailed work; the unified edge button replaces its floating launcher, and
+    // the new screens (listing-analyzer-ui.js) summarise its state, start its
+    // scan and open its panel at the right view.
+    //
+    // The engine starts after a short grace period, not at all while the
+    // standalone script runs on this page, and steps aside if that one appears.
+
+    const { createScopedGm } = __eat_core_scoped_gm;
+    const { renderLaDrawer, renderLaPage } = __eat_modules_listing_analyzer_ui;
+    const { createWaitingNotices } = __eat_core_waiting_notices;
+
+    const LA_TOOL_ID = 'listing-analyzer';
+    const STANDALONE_ROOT_ID = 'makaytron-etsy-listing-analyzer';
+    const STANDALONE_GRACE_MS = 1500;
+
+    const engineLanguage = (language) => (String(language ?? '').toLowerCase().startsWith('tr') ? 'tr' : 'en');
+
+    function createListingAnalyzerModule() {
+      const waiting = createWaitingNotices({ event: 'queueWaiting', tool: LA_TOOL_ID, page: `tool:${LA_TOOL_ID}` });
+      const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', local: {} };
+
+      const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
+      const emit = (status) => state.ctx?.events?.emit('tool:status', { tool: LA_TOOL_ID, state: status });
+
+      function watchForStandalone(doc) {
+        if (state.observer || typeof MutationObserver !== 'function') return;
+        state.observer = new MutationObserver(() => {
+          if (!state.standalone && standalonePresent(doc)) {
+            state.standalone = true; // the engine's route gate closes and its own lifecycle suspends it
+            emit('standalone');
+          }
+        });
+        state.observer.observe(doc.documentElement, { childList: true, subtree: true });
+      }
+
+      function changed() {
+        if (!state.engine) return;
+        const text = JSON.stringify(state.engine.snapshot());
+        if (text === state.last) return;
+        state.last = text;
+        emit('running');
+        // The edit queue's current listing waiting for the user (publish, deactivation or a check) is announced once.
+        const q = state.engine.la?.view().queue;
+        const item = q?.items.find((i) => i.id === q.active);
+        const waits = item && (q.recovery || ['applying', 'awaiting-user-review', 'awaiting-user-deactivation'].includes(item.status));
+        waiting.update(waits ? [{ key: `${item.id}:${q.recovery ? 'recovery' : item.status}`, detail: item.title }] : [],
+          { notify: state.ctx?.notify, language: state.ctx?.settings?.get().language });
+      }
+
+      async function start(ctx) {
+        const doc = ctx.scope.document;
+        await new Promise((resolve) => ctx.scope.setTimeout(resolve, STANDALONE_GRACE_MS));
+        watchForStandalone(doc);
+        if (standalonePresent(doc)) {
+          state.standalone = true;
+          emit('standalone');
+          return;
+        }
+        const gm = createScopedGm({
+          gm: ctx.scope.GM, namespace: LA_TOOL_ID, doc,
+          info: { name: 'Etsy Automation Tools · Listing Analyzer', version: ctx.engines.listingAnalyzerVersion },
+          resources: { makaytronLogo: ctx.assets?.logo ?? '' },
+        });
+        state.engine = await ctx.engines.createListingAnalyzer({
+          GM: gm,
+          xmlHttpRequest: (details) => ctx.scope.GM.xmlHttpRequest(details),
+          isAllowed: () => !state.standalone && ctx.isToolEnabled(LA_TOOL_ID),
+          onChange: () => ctx.scope.setTimeout(changed, 0),
+        });
+        emit('running');
+        await state.engine.start();
+        changed();
+      }
+
+      function actionsFor(ui) {
+        const engine = state.engine;
+        const la = engine.la;
+        const run = (fn) => Promise.resolve().then(fn).catch((error) => { console.error('[Etsy Automation Tools] Listing Analyzer', error); return false; });
+        // The engine's panel opens on the page, so the drawer and workspace step out of its way.
+        const inPanel = (fn) => { ui.hide?.(); return run(fn); };
+        return {
+          openPanel: (view) => inPanel(() => engine.openPanel(view)),
+          openRecord: (id, kind) => inPanel(() => la.openRecord(id, kind)),
+          toggleCollection: () => run(() => engine.toggleCollection()),
+          scanPage: () => run(() => engine.scanPage()),
+          exportData: () => run(() => engine.exportData()),
+          openDetails: () => ui.openWorkspace?.(`tool:${LA_TOOL_ID}`),
+          select: (ids, on) => la.select(ids, on),
+          buildQueue: () => run(() => la.buildQueue()),
+          goCurrent: () => run(() => la.goCurrent()),
+          apply: () => run(() => la.apply()),
+          publish: () => run(() => la.publish()),
+          verifyPublish: () => run(() => la.verifyPublish()),
+          deactivate: () => run(() => la.deactivate()),
+          verifyDeactivate: () => run(() => la.verifyDeactivate()),
+          skip: () => run(() => la.skip()),
+          stop: () => run(() => la.stop()),
+          recover: () => run(() => la.recover()),
+          copyAiRequest: () => run(() => la.copyAiRequest()),
+          copyAiTemplate: () => run(() => la.copyAiTemplate()),
+          importAi: (text) => run(() => la.importAi(text)).then((r) => r || { ok: false, text: '' }),
+          saveThresholds: (values) => run(() => la.saveThresholds(values)).then((r) => r || { valid: false, reason: 'storage' }),
+          setLocal: (patch) => { Object.assign(state.local, patch); if (ui.onTab) ui.onTab(ui.tab); else emit('running'); },
+        };
+      }
+      function view(ui) {
+        if (state.standalone || !state.engine) return null;
+        const snap = state.engine.snapshot();
+        if (!snap.collecting) void state.engine.syncLanguage?.(engineLanguage(ui.language));
+        return snap;
+      }
+
+      return {
+        id: LA_TOOL_ID,
+        name: 'Listing Analyzer',
+        legacyScriptId: LA_TOOL_ID,
+        storageNamespace: LA_TOOL_ID,
+        migrated: true,
+        status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+        /** Shortcut "Scan every listing page" (Settings › Shortcuts): starts or continues the scan on the Listings page. */
+        shortcut(action) {
+          if (action !== 'laScanAll' || state.standalone || !state.engine) return false;
+          const snap = state.engine.snapshot();
+          if (snap.route !== 'listings' || snap.collecting) return false;
+          void Promise.resolve(state.engine.toggleCollection()).catch(() => {});
+          return true;
+        },
+        renderDrawer(ui) {
+          const snap = view(ui);
+          return snap ? renderLaDrawer(ui.doc, { snap, language: ui.language, actions: actionsFor(ui) }) : null;
+        },
+        renderPage(ui) {
+          const snap = view(ui);
+          return snap && state.engine.la ? renderLaPage(ui.doc, { snap, view: state.engine.la.view(), language: ui.language, actions: actionsFor(ui), tab: ui.tab, onTab: ui.onTab, local: state.local }) : null;
+        },
+        async mount(ctx) {
+          state.ctx = ctx;
+          if (!state.starting && ctx.scope?.GM && ctx.engines?.createListingAnalyzer) {
+            state.starting = start(ctx).catch((error) => {
+              state.starting = null;
+              console.error('[Etsy Automation Tools] Listing Analyzer', error);
+              ctx.events?.emit('error', { code: 'module_mount' });
+            });
+          }
+        },
+        async unmount() {
+          // The engine's own route gate suspends it off its pages or when the tool is turned off.
+        },
+      };
+    }
+    return Object.freeze({ LA_TOOL_ID, STANDALONE_ROOT_ID, createListingAnalyzerModule });
+  })();
+
+  // ── src/modules/message-assistant-ui.js ──
+  const __eat_modules_message_assistant_ui = (() => {
+    // Message Assistant screens, as the design canvas draws them: the drawer
+    // section (Msg-OnEtsy) and the workspace page with Conversations (Msg-Inbox,
+    // with the Msg-Drafting and Msg-AIError states of the draft card), Quick
+    // replies (Msg-Templates) and Autopilot and reviews (Msg-Automation,
+    // Msg-AutopilotConfirm), plus the first-use page (Msg-Empty).
+    //
+    // The screens read the engine's view (conversation list, open conversation,
+    // draft, templates, campaign, reviews) and call the engine's own methods, so
+    // its checks decide: the draft belongs to the open conversation, an unsent
+    // text in Etsy's box is never overwritten, and nothing presses Etsy's Send.
+    //
+    // Design sources: template.primitive.card, .table, .badge, .button, .tabs,
+    // .input, .select, .dialog; shadcn.blocks.datatable for the autopilot table.
+
+    const { h, icon } = __eat_ui_dom;
+    const { ICONS } = __eat_ui_icons;
+    const { pageHead, pageTabs, segmented, toggle, alertBox, banner, openDialog } = __eat_ui_controls;
+    const { interpolate } = __eat_core_i18n;
+    const { packText } = __eat_core_language_packs;
+
+    const MA_STRINGS = Object.freeze({
+      en: Object.freeze({
+        tabs: 'Message Assistant pages', inbox: 'Conversations', templates: 'Quick replies', automation: 'Autopilot and reviews',
+        inboxText: 'Read messages in your own language and prepare a reply draft you check before sending.',
+        templatesText: 'Write the replies you send often once. They are translated to the buyer’s language and their variables are checked before they are added.',
+        automationText: 'The autopilot opens the selected buyers one by one, prepares each message from the quick reply and sends it on Etsy after its checks. You can pause it at any time.',
+        services: 'Translation: {translator} · AI: {ai}', noAi: 'No AI connection', startAutopilot: 'Start the autopilot', refresh: 'Refresh',
+        search: 'Search buyer or order', filter: 'Filter', unread: 'Unread · {n}', all: 'All',
+        listElsewhere: 'The conversation list is read on Etsy’s Messages list. Go back to it to see every conversation here.',
+        listEmpty: 'No conversation matches.', translatePreviews: 'Translate the previews', noOrder: 'No order', order: 'Order #{id}',
+        pick: 'Pick a conversation', pickText: 'Choose a conversation on the left. It opens on Etsy and its translation and reply tools appear here.',
+        openOrder: 'Open the order', writesIn: 'writes in {language}', translation: '{language} translation', showTranslation: 'Show in {language}',
+        draft: 'Reply draft', draftReady: 'Ready to check', draftStale: 'Conversation changed', draftNone: 'No draft yet',
+        fromTemplate: 'From the quick reply', fromAi: 'Prepared with {ai}', fromTranslate: 'Translated from your text', riskHigh: 'Needs a manual check', riskNone: 'No risk found',
+        toBuyer: 'Text for the buyer', replyLanguage: 'Reply language', buyersLanguage: '{language} · buyer’s language', inYours: 'In {language}: {text}',
+        neverSends: 'The message does not reach the buyer until you send it on Etsy.',
+        regenerate: 'Prepare again', copy: 'Copy', insert: 'Add to the message box', makeDraft: 'Prepare a draft with AI', orTemplate: 'or add a quick reply from the right.',
+        needKey: 'Connect an AI provider to prepare drafts.', connectAi: 'Connect an AI provider',
+        preparing: 'Preparing…', preparingText: 'The draft is being prepared in {language} · usually 3–5 seconds',
+        failed: 'Could not prepare', noConnection: 'No connection', errorTitle: 'The AI provider could not be reached.', errorKeep: 'The message and its translation stay as they are.',
+        errorCode: 'Error code: {code} · {version}', report: 'Report a problem', updateKey: 'Update the key', retry: 'Try again',
+        orderTitle: 'Order', quick: 'Quick replies', add: 'Add', manage: 'Manage the quick replies →', noTemplates: 'No quick reply yet.',
+        emptyTitle: 'No conversation read yet', emptyText: 'When you open Messages on Etsy, the conversations are listed here. For translation and reply drafts, connecting an AI provider is enough.',
+        openMessages: 'Open the Messages page', step1: 'Open Messages', step1Text: 'Go to Messages on Etsy.', step2: 'Read in your language', step2Text: 'Every message is translated to your language.',
+        step3: 'Check the draft', step3Text: 'No message goes out until you send it.',
+        newTemplate: 'New quick reply', searchTemplates: 'Search the quick replies', valid: 'Valid', missingVar: 'Unknown variable', archivedBadge: 'Archived',
+        name: 'Name', group: 'Group', textTr: 'Text (write in Turkish)', addVariable: 'Add a variable:', previewBuyer: 'Preview in the buyer’s language', previewLanguages: 'Preview language',
+        previewLoading: 'Translating the preview…', previewFailed: 'The preview could not be translated.',
+        checkOk: 'Checked. All {n} variables can be filled from the order.', checkNone: 'Checked. The text has no variables.', checkBad: 'Unknown variable: {list}. It stays as written in the message.',
+        archive: 'Archive the quick reply', unarchive: 'Use the quick reply again', cancel: 'Cancel', save: 'Save the quick reply', untitled: 'New quick reply',
+        autopilot: 'Autopilot', apOn: 'On · {done} of {total} buyers handled', apPaused: 'Paused · {done} of {total} buyers handled', apOff: 'No autopilot is running',
+        apOffText: 'The autopilot starts from the orders you select on Etsy’s Sold orders page, in the assistant’s Automation section.',
+        openOrders: 'Open Sold orders', openAutomation: 'Open the Automation section', pause: 'Pause the autopilot', resume: 'Continue the autopilot',
+        progress: 'Progress', colBuyer: 'Buyer', colItem: 'Item', colReply: 'Reply used', colStatus: 'Status', openConversation: 'Open the conversation',
+        sPending: 'Queued', sDraft: 'Draft ready', sInserted: 'Waiting for your approval', sSent: 'Sent', sPendingCheck: 'Checking the send', sSkipped: 'Skipped', sError: 'Left to you',
+        youApproved: 'You approved',
+        rules: 'Autopilot rules', rule1: 'How messages are sent', rule1Text: 'The autopilot sends each message itself after its checks; guided mode waits for you on every one.', always: 'Always on', rule1Off: 'Automatic sending is on in the assistant settings.',
+        rule2: 'Go on to the next buyer', rule2Text: 'After a send is confirmed, the next buyer opens.', rule3: 'Wait for the check', rule3Text: 'The next buyer starts only after Etsy shows the sent message.',
+        reviews: 'Review replies', reviewsCount: '{n} reviews on this page', reviewsElsewhere: 'Reviews are read on the shop dashboard’s reviews.', openReviews: 'Open the reviews',
+        reviewDraft: 'Prepare a draft', copyDraft: 'Copy the draft', checkRisk: 'Check: {risk}', rating: '{n} / 5',
+        confirmTitle: 'The autopilot will open {n} buyers in order', confirmText: 'For every buyer it prepares the message from the matching quick reply and sends it on Etsy.',
+        confirm1: 'Each message is sent without asking you again for that buyer.', confirm2: 'Buyers without a matching reply are left to you.', confirm3: 'You can pause at any time.',
+        close: 'Close', drawerAi: '{ai} · {model}', drawerOpen: 'Open the assistant', drawerContext: 'Open a conversation to translate it or prepare a reply.',
+        waiting: '{n} unread conversations', openWorkspace: 'Open the workspace →', draftAdded: 'Draft ready',
+      }),
+    });
+
+    // Bundled English; other languages read the downloaded pack ("ma." keys).
+    function texts(language) {
+      const lang = MA_STRINGS[language] ? language : 'en';
+      return (key, vars) => interpolate(MA_STRINGS[language]?.[key] ?? packText(language, `ma.${key}`) ?? MA_STRINGS[lang][key] ?? MA_STRINGS.en[key] ?? key, vars);
+    }
+
+    const TRANSLATORS = { google: 'Google Translate', deepl: 'DeepL' };
+    const PREVIEW_LANGUAGES = ['tr', 'en', 'de', 'fr'];
+    const STATUS = {
+      pending: ['sPending', ''], draft: ['sDraft', 'out'], inserted: ['sInserted', 'dark'], sent: ['sSent', 'ok'],
+      sent_pending_verification: ['sPendingCheck', 'warn'], skipped: ['sSkipped', 'out'], error: ['sError', 'warn'],
+    };
+
+    function languageName(code, language) {
+      if (!code) return '';
+      try { return new Intl.DisplayNames([language || 'en'], { type: 'language' }).of(code) ?? code; } catch { return code; }
+    }
+
+    const initials = (name) => String(name || '').trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase() || '·';
+
+    function servicesBadge(doc, ts, view) {
+      if (!view.ai.hasKey) return h(doc, 'span', { class: 'badge err', 'data-ma-state': 'no-key' }, h(doc, 'span', { class: 'dot', style: 'background: #b91c1c;' }), ts('noAi'));
+      return h(doc, 'span', { class: 'badge', 'data-ma-state': 'ready' }, h(doc, 'span', { class: 'dot' }), ts('services', { translator: TRANSLATORS[view.translator] ?? view.translator, ai: view.ai.name }));
+    }
+
+    function languageSelect(doc, ts, { value, languages, language, onChange, buyer }) {
+      const options = languages.length ? languages : [{ code: value || 'en' }];
+      return h(doc, 'select', { class: 'input', style: 'height: 28px; width: auto; padding: 0 8px; font-size: 12px;', 'aria-label': ts('replyLanguage'), 'data-ma': 'reply-language', onchange: (e) => onChange(e.target.value) },
+        options.map((o) => h(doc, 'option', { value: o.code, selected: o.code === value, text: o.code === buyer ? ts('buyersLanguage', { language: languageName(o.code, language) }) : languageName(o.code, language) })));
+    }
+
+    function shieldLine(doc, ts) {
+      return h(doc, 'span', { class: 'row xs mute2', style: 'gap: 6px;' }, icon(doc, ICONS.shield, 14), ts('neverSends'));
+    }
+
+    /** Drawer section on Messages, Sold orders and the shop dashboard (Msg-OnEtsy). */
+    function renderMaDrawer(doc, { snap, view, language, actions, unread = 0 }) {
+      const ts = texts(language);
+      const c = view?.conversation;
+      const active = (view?.templates ?? []).filter((t) => !t.archived);
+      const body = c
+        ? h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
+          h(doc, 'div', { class: 'row', style: 'gap: 10px;' },
+            h(doc, 'span', { class: 'av', text: initials(c.name) }),
+            h(doc, 'span', { class: 'col grow', style: 'gap: 1px; min-width: 0;' },
+              h(doc, 'span', { class: 'sm b trunc', id: 'eat-current', text: c.name || 'Message Assistant' }),
+              h(doc, 'span', { class: 'xs mute trunc', text: [c.orderId ? ts('order', { id: c.orderId }) : ts('noOrder'), c.language ? ts('writesIn', { language: languageName(c.language, language) }) : ''].filter(Boolean).join(' · ') })),
+            c.reply && c.replyCurrent ? h(doc, 'span', { class: 'badge ok', 'data-ma-state': 'draft', text: ts('draftAdded') }) : null),
+          h(doc, 'label', { class: 'row', style: 'gap: 6px;' }, h(doc, 'span', { class: 'xs mute2 grow', text: ts('replyLanguage') }),
+            languageSelect(doc, ts, { value: c.replyLanguage || c.language || 'en', languages: actions.languages(), language, buyer: c.language, onChange: (code) => actions.setReplyLanguage(code) })),
+          h(doc, 'div', { class: 'row' },
+            h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-ma': 'translate', disabled: snap.busy, onclick: () => actions.translate(), text: ts('showTranslation', { language: languageName(view.previewLanguage, language) }) }),
+            h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-ma': 'draft', disabled: snap.busy || !view.ai.hasKey, onclick: () => actions.draft(), text: ts('makeDraft') })),
+          active.length ? [h(doc, 'span', { class: 'ov', text: ts('quick') }),
+            h(doc, 'div', { class: 'list', style: 'border: 1px solid #e7e7e7; border-radius: 10.4px;' }, active.slice(0, 4).map((t) => h(doc, 'div', { class: 'li', style: 'padding: 8px 12px;' },
+              h(doc, 'span', { class: 'sm grow trunc', text: t.name }),
+              h(doc, 'button', { class: 'btn btn-g btn-sm', style: 'height: 26px;', type: 'button', 'data-ma-template': t.id, disabled: snap.busy, onclick: () => actions.useTemplate(t.id), text: ts('add') }))))] : null,
+          shieldLine(doc, ts))
+        : h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
+          h(doc, 'div', { class: 'row' }, icon(doc, ICONS['message-assistant']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Message Assistant' }), servicesBadge(doc, ts, view ?? { ai: snap.ai, translator: snap.translator })),
+          h(doc, 'span', { class: 'xs mute2', 'data-role': 'ma-context', text: ts('drawerContext') }),
+          h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'open-panel', onclick: () => actions.openPanel(), text: ts('drawerOpen') }));
+      return h(doc, 'div', { class: 'col', style: 'gap: 12px;', 'data-role': 'ma-drawer' }, body,
+        h(doc, 'div', { class: 'row', style: 'gap: 8px; padding-top: 10px; border-top: 1px solid #ececec;' },
+          h(doc, 'span', { class: 'xs mute2 grow', text: unread ? ts('waiting', { n: unread }) : '' }),
+          h(doc, 'button', { class: 'xs b ob-link', type: 'button', 'data-ma': 'details', onclick: () => actions.openDetails(), text: ts('openWorkspace') })));
+    }
+
+    /** Workspace page with Conversations, Quick replies and Autopilot and reviews. */
+    function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTab, local, container, version, showOrder = true }) {
+      const ts = texts(language);
+      const current = ['inbox', 'templates', 'automation'].includes(tab) ? tab : 'inbox';
+      const list = local.list ?? [];
+      const unread = list.filter((item) => item.unread).length;
+      const tabs = pageTabs(doc, {
+        label: ts('tabs'), name: 'ma-tab', value: current, onChange: onTab,
+        options: [{ value: 'inbox', label: ts('inbox'), count: unread }, { value: 'templates', label: ts('templates') }, { value: 'automation', label: ts('automation') }],
+      });
+      const busy = view.busy;
+
+      // ---- Conversations ----------------------------------------------------
+      const inbox = () => {
+        const c = view.conversation;
+        if (!c && !list.length) {
+          return [h(doc, 'section', { class: 'card', style: 'flex: 1 1 auto; display: flex;', 'data-role': 'ma-empty' },
+            h(doc, 'div', { class: 'empty' },
+              h(doc, 'span', { class: 'ei' }, icon(doc, ICONS['message-assistant'], 24)),
+              h(doc, 'p', { class: 'et', text: ts('emptyTitle') }),
+              h(doc, 'p', { class: 'ed', text: ts('emptyText') }),
+              h(doc, 'div', { class: 'ea' },
+                h(doc, 'a', { class: 'btn btn-p', href: 'https://www.etsy.com/messages', 'data-ma': 'go-messages', text: ts('openMessages') }),
+                view.ai.hasKey ? null : h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-ma': 'connect-ai', onclick: () => actions.openSettings('ai'), text: ts('connectAi') })),
+              h(doc, 'div', { class: 'steps' }, [['step1', 'step1Text'], ['step2', 'step2Text'], ['step3', 'step3Text']].map(([title, text], i) => h(doc, 'div', {},
+                h(doc, 'span', { class: 'n', text: String(i + 1) }), h(doc, 'span', {}, h(doc, 'span', { class: 'st', text: ts(title) }), h(doc, 'span', { class: 'sd', text: ts(text) })))))))];
+        }
+        const query = String(local.query ?? '').trim().toLocaleLowerCase(language);
+        const shown = list.filter((item) => (local.filter !== 'unread' || item.unread)
+          && (!query || `${item.name} ${item.preview} ${item.translated}`.toLocaleLowerCase(language).includes(query)));
+        const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
+          h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec; display: flex; gap: 8px;' },
+            h(doc, 'div', { class: 'search grow' }, icon(doc, ICONS.search),
+              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), name: 'ma-search', value: local.query ?? '', 'data-ma': 'search',
+                oninput: (e) => actions.setLocal({ query: e.target.value }) }))),
+          h(doc, 'div', { style: 'padding: 8px 12px; border-bottom: 1px solid #ececec;' },
+            segmented(doc, { label: ts('filter'), name: 'ma-filter', value: local.filter === 'unread' ? 'unread' : 'all', onChange: (value) => actions.setLocal({ filter: value }),
+              options: [{ value: 'unread', label: ts('unread', { n: unread }) }, { value: 'all', label: ts('all') }] })),
+          h(doc, 'div', { style: 'flex: 1 1 auto; overflow: auto;', 'data-role': 'ma-list' },
+            shown.map((item) => h(doc, 'a', {
+              class: item.id === c?.id ? 'cv on' : 'cv', href: item.url, 'data-conversation': item.id,
+              onclick: (e) => { e.preventDefault(); actions.openConversation(item.url); },
+            }, h(doc, 'span', { class: 'av', text: initials(item.name) }),
+            h(doc, 'span', { class: 'col grow', style: 'gap: 2px; min-width: 0;' },
+              h(doc, 'span', { class: 'row' }, h(doc, 'span', { class: item.unread ? 'sm b grow trunc' : 'sm grow trunc', text: item.name }), h(doc, 'span', { class: 'xxs mute', text: item.time })),
+              h(doc, 'span', { class: 'xs trunc', text: item.translated || item.preview })))),
+            list.length && !shown.length ? h(doc, 'div', { class: 'xs mute', style: 'padding: 12px 14px;', text: ts('listEmpty') }) : null,
+            list.length ? null : h(doc, 'div', { class: 'xs mute', style: 'padding: 12px 14px;', text: ts('listElsewhere') })));
+
+        const middle = c ? conversationColumn(c) : h(doc, 'div', { class: 'grow', style: 'display: flex;' },
+          h(doc, 'div', { class: 'empty' }, h(doc, 'span', { class: 'ei' }, icon(doc, ICONS['message-assistant'], 24)),
+            h(doc, 'p', { class: 'et', text: ts('pick') }), h(doc, 'p', { class: 'ed', text: ts('pickText') })));
+
+        const active = view.templates.filter((t) => !t.archived);
+        const right = h(doc, 'aside', { style: 'width: 280px; flex: none; border-left: 1px solid #e7e7e7; display: flex; flex-direction: column;' },
+          showOrder ? h(doc, 'div', { style: 'padding: 14px 16px; border-bottom: 1px solid #ececec;' }, h(doc, 'span', { class: 'h3', text: ts('orderTitle') })) : null,
+          showOrder ? h(doc, 'div', { style: 'padding: 14px 16px; display: flex; gap: 12px; border-bottom: 1px solid #ececec;' },
+            h(doc, 'span', { class: 'thumb' }),
+            h(doc, 'span', { class: 'col', style: 'gap: 2px; min-width: 0;' },
+              h(doc, 'span', { class: 'sm b', text: c?.itemTitle || (c?.orderId ? ts('order', { id: c.orderId }) : ts('noOrder')) }),
+              c?.orderId && c.itemTitle ? h(doc, 'span', { class: 'xs mute', text: ts('order', { id: c.orderId }) }) : null)) : null,
+          h(doc, 'div', { style: 'padding: 14px 16px 6px;' }, h(doc, 'span', { class: 'ov', text: ts('quick') })),
+          h(doc, 'div', { class: 'list', style: 'padding: 0 4px; overflow: auto;' },
+            active.length ? active.map((t) => h(doc, 'button', {
+              class: 'li sm', type: 'button', style: 'padding: 10px 12px; width: 100%; border: none; background: transparent; text-align: start; cursor: pointer;',
+              'data-ma-template': t.id, disabled: !c || busy, onclick: () => actions.useTemplate(t.id),
+            }, h(doc, 'span', { class: 'grow trunc', text: t.name }), h(doc, 'span', { class: 'xxs mute', text: ts('add') })))
+              : h(doc, 'span', { class: 'xs mute', style: 'padding: 6px 12px;', text: ts('noTemplates') })),
+          h(doc, 'span', { class: 'grow' }),
+          h(doc, 'div', { style: 'padding: 12px 16px; border-top: 1px solid #ececec;' },
+            h(doc, 'button', { class: 'xs b ob-link', type: 'button', 'data-ma': 'manage-templates', onclick: () => onTab('templates'), text: ts('manage') })));
+
+        return [h(doc, 'div', { class: 'card', style: 'flex: 1 1 auto; min-height: 0; display: flex;', 'data-role': 'ma-inbox' }, left, middle, right)];
+      };
+
+      function conversationColumn(c) {
+        const preview = languageName(view.previewLanguage, language);
+        const customer = c.messages.filter((m) => m.role === 'customer').slice(-2);
+        const error = view.error && ['generate-reply', 'regenerate-reply', 'template-reply', 'insert-reply', 'translate-last', 'copy'].includes(view.error.action) ? view.error : null;
+        const replyLanguage = c.replyLanguage || c.language || 'en';
+        let draftCard;
+        if (busy && !c.reply) {
+          draftCard = h(doc, 'section', { class: 'card', style: 'margin-top: auto;', 'data-ma-draft': 'preparing' },
+            h(doc, 'div', { class: 'card-h' }, icon(doc, ICONS.sparkles),
+              h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h3', text: ts('draft') })),
+              h(doc, 'span', { class: 'badge', text: ts('preparing') })),
+            h(doc, 'div', { class: 'card-b col', style: 'gap: 10px;' },
+              h(doc, 'div', { class: 'ld-box', 'aria-hidden': 'true' }, h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 88%;' }), h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 74%;' }), h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 40%;' })),
+              h(doc, 'span', { class: 'row xs mute2', style: 'gap: 6px;', role: 'status' }, h(doc, 'span', { class: 'spin', style: 'width: 12px; height: 12px;' }), ts('preparingText', { language: languageName(replyLanguage, language) }))),
+            h(doc, 'div', { class: 'card-f', style: 'justify-content: flex-end;' }, h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', disabled: true }, h(doc, 'span', { class: 'spin', style: 'width: 12px; height: 12px;' }), ts('preparing'))));
+        } else if (error && !c.reply) {
+          draftCard = h(doc, 'section', { class: 'card', style: 'margin-top: auto;', 'data-ma-draft': 'error' },
+            h(doc, 'div', { class: 'card-h' },
+              h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h3', text: ts('draft') }), h(doc, 'span', { class: 'xxs mute', text: ts('failed') })),
+              h(doc, 'span', { class: 'badge err', text: ts('noConnection') })),
+            h(doc, 'div', { class: 'card-b col', style: 'gap: 12px;' },
+              alertBox(doc, { tone: 'err', title: ts('errorTitle'), text: `${error.message} ${ts('errorKeep')}` }),
+              h(doc, 'span', { class: 'mono xxs mute', 'data-role': 'ma-error-code', text: ts('errorCode', { code: `MSG-${(error.code || 'error').toUpperCase()}`, version }) })),
+            h(doc, 'div', { class: 'card-f' },
+              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'report', onclick: (e) => actions.report({ category: 'wrong-result', tool: 'message-assistant', errorCode: `ma_${error.code || 'error'}`, returnFocus: e.currentTarget }), text: ts('report') }),
+              h(doc, 'span', { class: 'grow' }),
+              h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'update-key', onclick: () => actions.openSettings('ai'), text: ts('updateKey') }),
+              h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'retry', onclick: () => actions.draft() }, icon(doc, ICONS.refresh, 14), ts('retry'))));
+        } else if (c.reply) {
+          const source = c.replyMethod === 'template' ? ts('fromTemplate') : c.replyMethod.startsWith('ai') ? ts('fromAi', { ai: view.ai.name }) : ts('fromTranslate');
+          draftCard = h(doc, 'section', { class: 'card', style: 'margin-top: auto;', 'data-ma-draft': 'ready' },
+            h(doc, 'div', { class: 'card-h' }, icon(doc, ICONS.sparkles),
+              h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h3', text: ts('draft') }),
+                h(doc, 'span', { class: 'xxs mute', text: `${source} · ${c.risk === 'high' ? ts('riskHigh') : ts('riskNone')}` })),
+              c.replyCurrent ? h(doc, 'span', { class: c.risk === 'high' ? 'badge warn' : 'badge ok', text: c.risk === 'high' ? ts('riskHigh') : ts('draftReady') }) : h(doc, 'span', { class: 'badge warn', text: ts('draftStale') })),
+            h(doc, 'div', { class: 'card-b col', style: 'gap: 10px;' },
+              h(doc, 'div', { class: 'field' },
+                h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'label grow', id: 'eat-ma-reply-label', text: ts('toBuyer') }),
+                  h(doc, 'label', { class: 'row', style: 'gap: 6px;' }, h(doc, 'span', { class: 'xs mute2', text: ts('replyLanguage') }),
+                    languageSelect(doc, ts, { value: replyLanguage, languages: actions.languages(), language, buyer: c.language, onChange: (code) => actions.setReplyLanguage(code) }))),
+                h(doc, 'textarea', { class: 'input', rows: '3', 'aria-labelledby': 'eat-ma-reply-label', 'data-ma': 'reply', oninput: (e) => actions.editReply(e.target.value) }, c.reply)),
+              c.replyTr ? h(doc, 'span', { class: 'xs mute', text: ts('inYours', { language: languageName('tr', language), text: c.replyTr }) }) : null,
+              shieldLine(doc, ts)),
+            h(doc, 'div', { class: 'card-f', style: 'flex-wrap: wrap; justify-content: flex-end;' },
+              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'regenerate', disabled: busy, onclick: () => actions.regenerate(), text: ts('regenerate') }),
+              h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'copy', disabled: busy || !c.replyCurrent, onclick: () => actions.copy(), text: ts('copy') }),
+              h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'insert', disabled: busy || !c.replyCurrent || !c.canInsert, onclick: () => actions.insert(), text: ts('insert') })));
+        } else {
+          draftCard = h(doc, 'section', { class: 'card', style: 'margin-top: auto;', 'data-ma-draft': 'none' },
+            h(doc, 'div', { class: 'card-h' }, icon(doc, ICONS.sparkles),
+              h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h3', text: ts('draft') }), h(doc, 'span', { class: 'xxs mute', text: view.ai.hasKey ? ts('orTemplate') : ts('needKey') })),
+              h(doc, 'span', { class: 'badge out', text: ts('draftNone') })),
+            h(doc, 'div', { class: 'card-f', style: 'justify-content: flex-end;' },
+              view.ai.hasKey ? null : h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'connect-ai', onclick: () => actions.openSettings('ai'), text: ts('connectAi') }),
+              h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'draft', disabled: busy || !view.ai.hasKey, onclick: () => actions.draft() }, icon(doc, ICONS.sparkles, 14), ts('makeDraft'))));
+        }
+        return h(doc, 'div', { class: 'grow', style: 'display: flex; flex-direction: column; min-height: 0; min-width: 0;', 'data-role': 'ma-conversation' },
+          h(doc, 'div', { style: 'padding: 14px 20px; border-bottom: 1px solid #ececec; display: flex; align-items: center; gap: 12px;' },
+            h(doc, 'div', { class: 'col grow', style: 'gap: 2px; min-width: 0;' },
+              h(doc, 'span', { class: 'h2', text: c.name }),
+              h(doc, 'span', { class: 'xs mute trunc', text: [c.orderId ? ts('order', { id: c.orderId }) : ts('noOrder'), c.itemTitle, c.language ? ts('writesIn', { language: languageName(c.language, language) }) : ''].filter(Boolean).join(' · ') })),
+            c.orderId ? h(doc, 'a', { class: 'btn btn-o btn-sm', href: `https://www.etsy.com/your/orders/sold?order_id=${encodeURIComponent(c.orderId)}`, target: '_blank', rel: 'noopener', text: ts('openOrder') }) : null),
+          h(doc, 'div', { style: 'flex: 1 1 auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow: auto; background: #fcfcfc;' },
+            h(doc, 'div', { style: 'max-width: 560px; display: flex; flex-direction: column; gap: 6px;' },
+              customer.map((m) => h(doc, 'div', { style: 'background: #ffffff; border: 1px solid #e7e7e7; border-radius: 12px; padding: 12px 14px;', class: 'sm', 'data-role': 'ma-message', text: m.text })),
+              c.translation
+                ? h(doc, 'div', { style: 'background: #f2f2f2; border-radius: 12px; padding: 10px 14px;', class: 'sm', 'data-role': 'ma-translation' },
+                  h(doc, 'span', { class: 'xxs mute b', style: 'display: block; margin-bottom: 2px;', text: ts('translation', { language: preview }) }), c.translation)
+                : c.last ? h(doc, 'button', { class: 'btn btn-o btn-sm', style: 'align-self: flex-start;', type: 'button', 'data-ma': 'translate', disabled: busy, onclick: () => actions.translate() }, icon(doc, ICONS.globe, 14), ts('showTranslation', { language: preview })) : null),
+            draftCard));
+      }
+
+      // ---- Quick replies ----------------------------------------------------
+      const templatesTab = () => {
+        const variables = actions.variables();
+        const all = view.templates;
+        const editing = local.template ?? all.find((t) => t.id === local.templateId) ?? all.find((t) => !t.archived) ?? null;
+        const draft = local.templateDraft && local.templateDraft.id === (editing?.id ?? '') ? local.templateDraft : editing ? { id: editing.id, name: editing.name, category: editing.category, text: editing.text } : null;
+        const query = String(local.templateQuery ?? '').trim().toLocaleLowerCase(language);
+        const shown = all.filter((t) => !query || `${t.name} ${t.category}`.toLocaleLowerCase(language).includes(query));
+        const pick = (t) => actions.setLocal({ templateId: t.id, template: null, templateDraft: null, previewText: null });
+        const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
+          h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec;' },
+            h(doc, 'div', { class: 'search' }, icon(doc, ICONS.search),
+              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('searchTemplates'), 'aria-label': ts('searchTemplates'), name: 'ma-template-search', value: local.templateQuery ?? '', oninput: (e) => actions.setLocal({ templateQuery: e.target.value }) }))),
+          h(doc, 'div', { style: 'flex: 1 1 auto; overflow: auto;', 'data-role': 'ma-templates' }, shown.map((t) => h(doc, 'a', {
+            class: t.id === draft?.id ? 'tp on' : 'tp', href: '#', 'data-template': t.id, onclick: (e) => { e.preventDefault(); pick(t); },
+          }, h(doc, 'span', { class: 'col grow', style: 'gap: 2px; min-width: 0;' }, h(doc, 'span', { class: 'sm b trunc', text: t.name }), h(doc, 'span', { class: 'xs mute', text: t.category })),
+          t.archived ? h(doc, 'span', { class: 'badge out', text: ts('archivedBadge') })
+            : t.unknown.length ? h(doc, 'span', { class: 'badge warn', text: ts('missingVar') }) : h(doc, 'span', { class: 'badge ok', text: ts('valid') })))));
+        if (!draft) return [h(doc, 'div', { class: 'card', style: 'flex: 1 1 auto; min-height: 0; display: flex;' }, left)];
+
+        // Each field merges into the latest draft, so editing the name and then the text keeps both.
+        const update = (patch) => { local.templateDraft = { ...(local.templateDraft?.id === draft.id ? local.templateDraft : draft), ...patch }; };
+        const textArea = h(doc, 'textarea', { class: 'input', rows: '4', id: 'eat-ma-tpl-text', 'data-ma': 'template-text', oninput: (e) => update({ text: e.target.value }) }, draft.text);
+        const used = [...new Set([...String(draft.text).matchAll(/{{\s*(\w+)\s*}}/g)].map((m) => m[1]))];
+        const unknown = used.filter((v) => !variables.includes(v));
+        const groups = [...new Set(all.map((t) => t.category).filter(Boolean))];
+        // Turkish needs no translation; another language is translated only when chosen.
+        const previewLanguage = local.previewLanguage ?? 'tr';
+        if (local.previewText == null && !local.previewLoading) {
+          local.previewLoading = true;
+          actions.previewTemplate(draft.text, previewLanguage).then(
+            (text) => actions.setLocal({ previewText: text, previewLoading: false }),
+            () => actions.setLocal({ previewText: '', previewError: true, previewLoading: false }));
+        }
+        const right = h(doc, 'div', { class: 'grow', style: 'padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; overflow: auto; min-width: 0;', 'data-role': 'ma-template-editor' },
+          h(doc, 'div', { class: 'g2', style: 'gap: 16px;' },
+            h(doc, 'label', { class: 'field' }, h(doc, 'span', { class: 'label', text: ts('name') }),
+              h(doc, 'input', { class: 'input', type: 'text', value: draft.name, 'data-ma': 'template-name', oninput: (e) => update({ name: e.target.value }) })),
+            h(doc, 'label', { class: 'field' }, h(doc, 'span', { class: 'label', text: ts('group') }),
+              h(doc, 'input', { class: 'input', type: 'text', value: draft.category, list: 'eat-ma-groups', 'data-ma': 'template-group', oninput: (e) => update({ category: e.target.value }) }),
+              h(doc, 'datalist', { id: 'eat-ma-groups' }, groups.map((g) => h(doc, 'option', { value: g }))))),
+          h(doc, 'label', { class: 'field', for: 'eat-ma-tpl-text' }, h(doc, 'span', { class: 'label', text: ts('textTr') }), textArea),
+          h(doc, 'div', { class: 'row', style: 'flex-wrap: wrap; gap: 6px;' },
+            h(doc, 'span', { class: 'xs mute', style: 'margin-right: 4px;', text: ts('addVariable') }),
+            variables.map((v) => h(doc, 'button', {
+              class: 'var', type: 'button', 'data-variable': v, onclick: () => {
+                const token = `{{${v}}}`;
+                const start = textArea.selectionStart ?? textArea.value.length;
+                textArea.setRangeText(token, start, textArea.selectionEnd ?? start, 'end');
+                textArea.focus();
+                update({ text: textArea.value });
+              },
+            }, `{{${v}}}`))),
+          h(doc, 'div', { class: 'field' },
+            h(doc, 'span', { class: 'label', id: 'eat-ma-preview-label', text: ts('previewBuyer') }),
+            h(doc, 'div', { class: 'row', style: 'margin-bottom: 4px;' },
+              segmented(doc, { labelledBy: 'eat-ma-preview-label', name: 'ma-preview', value: previewLanguage, options: PREVIEW_LANGUAGES.map((code) => ({ value: code, label: languageName(code, language) })),
+                onChange: (code) => actions.setLocal({ previewLanguage: code, previewText: null, previewError: false }) }),
+              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'preview-refresh', 'aria-label': ts('refresh'), onclick: () => actions.setLocal({ previewText: null, previewError: false }) }, icon(doc, ICONS.refresh, 14))),
+            h(doc, 'div', { style: 'border: 1px solid #e7e7e7; border-radius: 8.4px; background: #fafafa; padding: 12px; white-space: pre-wrap;', class: 'sm', 'data-role': 'ma-preview', 'aria-live': 'polite' },
+              local.previewText == null ? ts('previewLoading') : local.previewError ? ts('previewFailed') : local.previewText)),
+          unknown.length
+            ? banner(doc, { tone: 'warn', iconPaths: ICONS.alert, text: ts('checkBad', { list: unknown.map((v) => `{{${v}}}`).join(', ') }) })
+            : banner(doc, { tone: 'ok', iconPaths: ICONS.check, text: used.length ? ts('checkOk', { n: used.length }) : ts('checkNone') }));
+        const stored = all.find((t) => t.id === draft.id);
+        return [
+          h(doc, 'div', { class: 'card', style: 'flex: 1 1 auto; min-height: 0; display: flex;' }, left, right),
+          h(doc, 'div', { class: 'savebar', 'data-role': 'ma-template-bar' },
+            stored ? h(doc, 'button', { class: 'btn btn-g', type: 'button', style: stored.archived ? null : 'color: #b91c1c;', 'data-ma': 'template-archive', disabled: busy,
+              onclick: () => actions.archiveTemplate(stored.id, !stored.archived) }, icon(doc, stored.archived ? ICONS.refresh : ICONS.trash, 16), ts(stored.archived ? 'unarchive' : 'archive')) : null,
+            h(doc, 'span', { class: 'grow' }),
+            h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-ma': 'template-cancel', onclick: () => actions.setLocal({ template: null, templateDraft: null, previewText: null }), text: ts('cancel') }),
+            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'template-save', disabled: busy,
+              onclick: async () => { const d = local.templateDraft ?? draft; if (await actions.saveTemplate({ ...d, id: stored ? d.id : '' })) actions.setLocal({ template: null, templateDraft: null, templateId: stored ? d.id : null }); }, text: ts('save') })),
+        ];
+      };
+
+      // ---- Autopilot and reviews --------------------------------------------
+      const automationTab = () => {
+        const camp = view.campaign?.active ? view.campaign : null;
+        const items = camp?.items ?? [];
+        const done = items.filter((i) => i.status === 'sent' || i.status === 'skipped').length;
+        const running = camp?.runMode === 'autopilot' && camp.runState === 'running';
+        const templateName = (id) => view.templates.find((t) => t.id === id)?.name ?? '—';
+        const autopilot = h(doc, 'section', { class: 'card', 'data-role': 'ma-autopilot' },
+          h(doc, 'div', { class: 'card-h' },
+            h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'h2', { class: 'h2', text: ts('autopilot') }),
+              h(doc, 'span', { class: 'xs mute', text: camp ? ts(running ? 'apOn' : 'apPaused', { done, total: items.length }) : ts('apOff') })),
+            camp ? (running
+              ? h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'pause', disabled: busy, onclick: () => actions.campaignPause() }, icon(doc, ICONS.pause, 14), ts('pause'))
+              : h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'resume', disabled: busy, onclick: (e) => confirmResume(e.currentTarget, items.length - done) }, icon(doc, ICONS.play, 14), ts('resume'))) : null),
+          camp
+            ? [h(doc, 'div', { class: 'card-b col', style: 'gap: 8px;' },
+              h(doc, 'div', { class: 'row xs mute2' }, h(doc, 'span', { class: 'grow', text: ts('progress') }), h(doc, 'span', { class: 'num', text: `${done} / ${items.length}` })),
+              h(doc, 'div', { class: 'prog' }, h(doc, 'i', { style: `width: ${items.length ? Math.round((done / items.length) * 1000) / 10 : 0}%;` }))),
+            h(doc, 'table', { class: 'tbl tbl-tight' },
+              h(doc, 'thead', {}, h(doc, 'tr', {}, [ts('colBuyer'), ts('colItem'), ts('colReply'), ts('colStatus'), ''].map((label, i) => h(doc, 'th', { class: i === 4 ? 'r' : null, text: label })))),
+              h(doc, 'tbody', {}, items.map((item) => {
+                const [label, tone] = STATUS[item.status] ?? STATUS.pending;
+                const needsYou = item.status === 'error' || item.status === 'inserted' || item.status === 'sent_pending_verification';
+                return h(doc, 'tr', { 'data-order': item.orderId, style: item.status === 'error' ? 'background: #fafafa;' : null },
+                  h(doc, 'td', { class: 'b', text: item.name }),
+                  h(doc, 'td', { class: 'mute2 trunc', style: 'max-width: 200px;', text: item.itemTitle || '—' }),
+                  h(doc, 'td', { text: templateName(item.templateId) }),
+                  h(doc, 'td', {}, h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge' }, tone ? null : h(doc, 'span', { class: 'dot soft' }), ts(label))),
+                  h(doc, 'td', { class: 'r' }, item.status === 'sent' ? h(doc, 'span', { class: 'xs mute', text: ts('youApproved') })
+                    : needsYou && item.url ? h(doc, 'button', { class: item.status === 'inserted' ? 'btn btn-p btn-sm' : 'btn btn-o btn-sm', type: 'button', 'data-ma': 'open-item', onclick: () => actions.openConversation(item.url), text: ts('openConversation') }) : null));
+              })))]
+            : h(doc, 'div', { class: 'card-b col', style: 'gap: 12px;' },
+              h(doc, 'p', { class: 'sm mute2', text: ts('apOffText') }),
+              h(doc, 'div', { class: 'row' },
+                h(doc, 'a', { class: 'btn btn-o btn-sm', href: 'https://www.etsy.com/your/orders/sold/completed', text: ts('openOrders') }),
+                h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'open-automation', onclick: () => actions.openPanel('orders'), text: ts('openAutomation') }))));
+        const rules = h(doc, 'section', { class: 'card', 'data-role': 'ma-rules' },
+          h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('rules') })),
+          h(doc, 'div', { class: 'rg' },
+            // The autopilot sends by itself (the engine allows sending while it runs), so the card says so plainly.
+            h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', text: ts('rule1') }), h(doc, 'span', { class: 'xs mute', text: ts('rule1Text') })),
+            h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', id: 'eat-ma-rule2', text: ts('rule2') }), h(doc, 'span', { class: 'xs mute', text: ts('rule2Text') }),
+              toggle(doc, { name: 'ma-auto-advance', checked: view.autoAdvance, labelledBy: 'eat-ma-rule2', disabled: busy, onChange: (on) => actions.setAutoAdvance(on) })),
+            h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', text: ts('rule3') }), h(doc, 'span', { class: 'xs mute', text: ts('rule3Text') }),
+              h(doc, 'span', { class: 'badge out', style: 'align-self: flex-start;', text: ts('always') }))));
+        const reviewsOn = view.page === 'reviews';
+        const reviews = h(doc, 'aside', { class: 'card', style: 'width: 400px; flex: none;', 'data-role': 'ma-reviews' },
+          h(doc, 'div', { class: 'card-h' },
+            h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'h2', { class: 'h2', text: ts('reviews') }),
+              h(doc, 'span', { class: 'xs mute', text: reviewsOn ? ts('reviewsCount', { n: view.reviews.length }) : ts('reviewsElsewhere') })),
+            reviewsOn ? h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': ts('refresh'), 'data-ma': 'reviews-refresh', disabled: busy, onclick: () => actions.refreshReviews() }, icon(doc, ICONS.refresh)) : null),
+          reviewsOn
+            ? h(doc, 'div', { class: 'list' }, view.reviews.map((r) => h(doc, 'div', { class: 'col', style: 'padding: 14px 16px; gap: 8px;', 'data-review': r.id },
+              h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'sm b grow', text: r.name }), r.rating != null ? h(doc, 'span', { class: r.rating >= 4 ? 'badge out num' : 'badge warn num', text: ts('rating', { n: r.rating }) }) : null),
+              r.text ? h(doc, 'p', { class: 'sm mute2', text: `“${r.text}”` }) : null,
+              r.reply ? h(doc, 'div', { style: 'border: 1px solid #e7e7e7; border-radius: 8.4px; background: #fafafa; padding: 10px 12px;', class: 'sm', text: r.reply }) : null,
+              h(doc, 'div', { class: 'row' },
+                r.risk && r.risk !== 'low' ? h(doc, 'span', { class: 'badge warn', text: ts('checkRisk', { risk: r.risk }) }) : null,
+                h(doc, 'span', { class: 'grow' }),
+                h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'review-draft', disabled: busy || !view.ai.hasKey, onclick: () => actions.reviewDraft(r.id), text: r.reply ? ts('regenerate') : ts('reviewDraft') }),
+                r.reply ? h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'review-copy', disabled: busy, onclick: () => actions.reviewCopy(r.id), text: ts('copyDraft') }) : null))))
+            : h(doc, 'div', { class: 'card-b' }, h(doc, 'a', { class: 'btn btn-o btn-sm', href: 'https://www.etsy.com/your/shops/me/dashboard/activity', text: ts('openReviews') })));
+        return [h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;' }, h(doc, 'div', { class: 'col grow', style: 'gap: 16px; min-width: 0;' }, autopilot, rules), reviews)];
+      };
+
+      function confirmResume(returnFocus, remaining) {
+        openDialog(doc, container, {
+          title: ts('confirmTitle', { n: remaining }), description: ts('confirmText'), closeLabel: ts('close'), returnFocus, width: 520,
+          body: h(doc, 'div', { class: 'col', style: 'gap: 10px;' }, ['confirm1', 'confirm2', 'confirm3'].map((key) => h(doc, 'span', { class: 'row sm', style: 'gap: 8px;' }, icon(doc, ICONS.check, 16), ts(key)))),
+          footer: (close) => [
+            h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: close, text: ts('cancel') }),
+            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'confirm-resume', onclick: () => { close(); void actions.campaignResume(); }, text: ts('startAutopilot') }),
+          ],
+        });
+      }
+
+      const heads = {
+        inbox: pageHead(doc, { overline: 'MESSAGE ASSISTANT', title: ts('inbox'), description: ts('inboxText'), actions: [
+          servicesBadge(doc, ts, view),
+          h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-ma': 'start-autopilot', onclick: () => onTab('automation'), text: ts('startAutopilot') }),
+          h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-ma': 'refresh', disabled: busy, onclick: () => actions.refresh() }, icon(doc, ICONS.refresh, 16), ts('refresh'))] }),
+        templates: pageHead(doc, { overline: 'MESSAGE ASSISTANT', title: ts('templates'), description: ts('templatesText'), actions: [
+          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'template-new', onclick: () => actions.setLocal({ template: { id: '', name: ts('untitled'), category: '', text: '', unknown: [] }, templateDraft: null, previewText: null }) }, icon(doc, ICONS.plus, 16), ts('newTemplate'))] }),
+        automation: pageHead(doc, { overline: 'MESSAGE ASSISTANT', title: ts('automation'), description: ts('automationText') }),
+      };
+      const body = current === 'templates' ? templatesTab() : current === 'automation' ? automationTab() : inbox();
+      return h(doc, 'div', { style: 'display: contents;', 'data-role': 'ma-page', 'data-ma-tab': current }, heads[current], tabs, ...body);
+    }
+    return Object.freeze({ MA_STRINGS, renderMaDrawer, renderMaPage });
+  })();
+
+  // ── src/modules/message-assistant.js ──
+  const __eat_modules_message_assistant = (() => {
+    // Message Assistant inside the unified script.
+    //
+    // The engine is the standalone Message Assistant itself, adopted at build
+    // time (tools/Unified-Adopt-Message-Assistant.mjs). Its panel stays for the
+    // detailed work; the unified edge button replaces its floating launcher, and
+    // the new screens (message-assistant-ui.js) summarise its state and open its
+    // panel at the right section. Its API keys and token are kept under
+    // eat:secret: by the GM shim (core/scoped-gm.js).
+    //
+    // The engine starts after a short grace period, not at all while the
+    // standalone script runs on this page, and steps aside if that one appears.
+
+    const { createScopedGm } = __eat_core_scoped_gm;
+    const { renderMaDrawer, renderMaPage } = __eat_modules_message_assistant_ui;
+    const { createWaitingNotices } = __eat_core_waiting_notices;
+
+    const MA_TOOL_ID = 'message-assistant';
+    const STANDALONE_ROOT_ID = 'makaytron-etsy-message-assistant';
+    const STANDALONE_GRACE_MS = 1500;
+
+    function createMessageAssistantModule({ secrets }) {
+      const waiting = createWaitingNotices({ event: 'autopilotWaiting', tool: MA_TOOL_ID, page: `tool:${MA_TOOL_ID}` });
+      const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', languages: null, local: { list: [], filter: 'all' } };
+
+      const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
+      const emit = (status) => state.ctx?.events?.emit('tool:status', { tool: MA_TOOL_ID, state: status });
+
+      function watchForStandalone(doc) {
+        if (state.observer || typeof MutationObserver !== 'function') return;
+        state.observer = new MutationObserver(() => {
+          if (!state.standalone && standalonePresent(doc)) {
+            state.standalone = true; // the engine's route gate closes and its own lifecycle suspends it
+            emit('standalone');
+          }
+        });
+        state.observer.observe(doc.documentElement, { childList: true, subtree: true });
+      }
+
+      function changed() {
+        if (!state.engine) return;
+        const text = JSON.stringify(state.engine.snapshot());
+        if (text === state.last) return;
+        state.last = text;
+        emit('running');
+        // An autopilot or guided step that now waits for the user (send to confirm, result to check) is announced once.
+        const camp = state.engine.messages?.view().campaign;
+        waiting.update((camp?.active ? camp.items : []).filter((i) => ['inserted', 'sent_pending_verification'].includes(i.status)).map((i) => ({ key: `${i.id}:${i.status}`, detail: i.name })),
+          { notify: state.ctx?.notify, language: state.ctx?.settings?.get().language });
+      }
+
+      async function start(ctx) {
+        const doc = ctx.scope.document;
+        await new Promise((resolve) => ctx.scope.setTimeout(resolve, STANDALONE_GRACE_MS));
+        watchForStandalone(doc);
+        if (standalonePresent(doc)) {
+          state.standalone = true;
+          emit('standalone');
+          return;
+        }
+        const gm = createScopedGm({
+          gm: ctx.scope.GM, namespace: MA_TOOL_ID, doc,
+          info: { name: 'Etsy Automation Tools · Message Assistant', version: ctx.engines.messageAssistantVersion },
+          resources: { makaytronLogo: ctx.assets?.logo ?? '' },
+          secrets,
+        });
+        state.engine = await ctx.engines.createMessageAssistant({
+          GM: gm,
+          xmlHttpRequest: (details) => ctx.scope.GM.xmlHttpRequest(details),
+          isAllowed: () => !state.standalone && ctx.isToolEnabled(MA_TOOL_ID),
+          autoPreview: () => ctx.settings.get().ai.autoTranslate,
+          onChange: () => ctx.scope.setTimeout(changed, 0),
+        });
+        emit('running');
+        await state.engine.start();
+        // "AI and translation services" in the setup and in Settings decides the engine's automatic translation preview.
+        const applyAutoPreview = () => state.engine?.ai?.setAutoPreview?.(ctx.settings.get().ai.autoTranslate).catch(() => {});
+        await applyAutoPreview();
+        ctx.settings.subscribe?.(() => { void applyAutoPreview(); });
+        changed();
+      }
+
+      function actionsFor(ui) {
+        const engine = state.engine;
+        const m = engine.messages;
+        const run = (fn) => Promise.resolve().then(fn).catch((error) => { console.error('[Etsy Automation Tools] Message Assistant', error); return false; });
+        // The engine's panel opens on the page, so the drawer and workspace step out of its way.
+        const inPanel = (fn) => { ui.hide?.(); return run(fn); };
+        const rerender = () => (ui.onTab ? ui.onTab(ui.tab ?? 'inbox') : emit('running'));
+        return {
+          openPanel: (section) => inPanel(() => engine.openPanel(section)),
+          openDetails: () => ui.openWorkspace?.(`tool:${MA_TOOL_ID}`),
+          openSettings: (tab) => ui.openSettings?.(tab),
+          report: (options) => ui.report?.(options),
+          languages: () => (state.languages ??= m.languages()),
+          variables: () => m.variables(),
+          translate: () => run(() => m.translate()),
+          draft: () => run(() => m.draft()),
+          regenerate: () => run(() => m.regenerate()),
+          useTemplate: (id) => run(() => m.useTemplate(id)),
+          setReplyLanguage: (code) => run(() => m.setReplyLanguage(code)),
+          editReply: (text) => m.editReply(text),
+          insert: () => run(() => m.insert()),
+          copy: () => run(() => m.copy()),
+          refresh: () => run(() => (view()?.listPage ? m.translateList() : rerender())),
+          openConversation: (url) => m.openConversation(url),
+          previewTemplate: (text, language) => m.previewTemplate(text, language),
+          saveTemplate: (input) => run(() => m.saveTemplate(input)),
+          archiveTemplate: (id, archived) => run(() => m.archiveTemplate(id, archived)),
+          campaignPause: () => run(() => m.campaignPause()),
+          campaignResume: () => run(() => m.campaignResume()),
+          setAutoAdvance: (on) => run(() => m.setAutoAdvance(on)),
+          refreshReviews: () => run(() => m.refreshReviews()),
+          reviewDraft: (id) => run(() => m.reviewDraft(id)),
+          reviewCopy: (id) => run(() => m.reviewCopy(id)),
+          setLocal: (patch) => { Object.assign(state.local, patch); rerender(); },
+        };
+      }
+
+      const snapshot = () => (state.standalone || !state.engine ? null : state.engine.snapshot());
+      /** The engine's view; the conversation list is kept while a conversation is open (Etsy shows it only on the list). */
+      function view() {
+        if (state.standalone || !state.engine?.messages) return null;
+        const current = state.engine.messages.view();
+        if (current.listPage) state.local.list = current.list;
+        return current;
+      }
+      const unread = () => (state.local.list ?? []).filter((item) => item.unread).length;
+
+      return {
+        id: MA_TOOL_ID,
+        name: 'Message Assistant',
+        legacyScriptId: MA_TOOL_ID,
+        storageNamespace: MA_TOOL_ID,
+        migrated: true,
+        status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+        /** Provider management for Settings › AI providers, while the engine runs on this page. */
+        aiProviders: () => (state.standalone ? null : state.engine?.ai ?? null),
+        /** Shortcut "Add the draft to the message box" (Settings › Shortcuts): the engine's own insert, which never sends. */
+        shortcut(action) {
+          if (action !== 'maInsertDraft' || state.standalone || !state.engine?.messages) return false;
+          const c = state.engine.messages.view().conversation;
+          if (!c?.reply || !c.replyCurrent || !c.canInsert) return false;
+          void Promise.resolve(state.engine.messages.insert()).catch(() => {});
+          return true;
+        },
+        /** Unread conversations in the last list read, for the workspace menu and the drawer. */
+        drawerCount: () => unread(),
+        renderDrawer(ui) {
+          const snap = snapshot();
+          return snap ? renderMaDrawer(ui.doc, { snap, view: view(), language: ui.language, actions: actionsFor(ui), unread: unread() }) : null;
+        },
+        renderPage(ui) {
+          const current = snapshot() ? view() : null;
+          return current ? renderMaPage(ui.doc, {
+            view: current, language: ui.language, actions: actionsFor(ui), tab: ui.tab === 'overview' ? 'inbox' : ui.tab, onTab: ui.onTab,
+            local: state.local, container: ui.container, version: state.ctx?.appVersion ?? '',
+            // Settings › Tools › "Order details in messages".
+            showOrder: state.ctx?.settings?.get().links?.orderInfoInMessages !== false,
+          }) : null;
+        },
+        async mount(ctx) {
+          state.ctx = ctx;
+          if (!state.starting && ctx.scope?.GM && ctx.engines?.createMessageAssistant) {
+            state.starting = start(ctx).catch((error) => {
+              state.starting = null;
+              console.error('[Etsy Automation Tools] Message Assistant', error);
+              ctx.events?.emit('error', { code: 'module_mount' });
+            });
+          }
+        },
+        async unmount() {
+          // The engine's own route gate suspends it off its pages or when the tool is turned off.
+        },
+      };
+    }
+    return Object.freeze({ MA_TOOL_ID, STANDALONE_ROOT_ID, createMessageAssistantModule });
+  })();
+
+  // ── src/modules/sale-manager-ui.js ──
+  const __eat_modules_sale_manager_ui = (() => {
+    // Sale Manager screens, as the design canvas draws them: the drawer section
+    // (Main, Drawer-Error), the workspace page — Overview (Sale-Idle,
+    // Sale-Overview, Sale-Error), Settings (Sale-Settings), Report (Sale-Report),
+    // the first-use page (Sale-Empty) — and the start confirmation
+    // (Sale-StartConfirm).
+    //
+    // The screens only read the engine snapshot and call the engine's own actions
+    // (start, retry, skip, stop, updateConfig, downloads), so every rule of the
+    // standalone Sale Manager still decides what happens on Etsy.
+    //
+    // Design sources: template.primitive.card, .table, .badge, .progress, .button,
+    // .input, .tabs, .dialog; shadcn.blocks.kpi-widgets for the summary tiles;
+    // shadcn.blocks.datatable for the campaign and report tables.
+
+    const { h, icon } = __eat_ui_dom;
+    const { ICONS } = __eat_ui_icons;
+    const { pageHead, pageTabs, banner, alertBox, toggle, openDialog } = __eat_ui_controls;
+    const { interpolate } = __eat_core_i18n;
+    const { packText } = __eat_core_language_packs;
+
+    const SALE_STRINGS = Object.freeze({
+      en: Object.freeze({
+        running: 'Running', paused: 'Paused', stopped: 'Stopped', ready: 'Ready', completed: 'Completed',
+        campaignOf: 'Campaign {n}', series: '{count} campaigns · {start} – {end} · {discount}% off',
+        start: 'Start the series', stop: 'End the series', pause: 'Pause the series', retry: 'Continue', skip: 'Skip this day', details: 'Open details',
+        settings: 'Settings', overview: 'Overview', report: 'Report', openReport: 'Open the report', tabs: 'Sale Manager pages',
+        title: 'Campaign series', description: 'Creates campaigns one after another on Sales & Discounts and checks each one in the Etsy list.',
+        settingsTitle: 'Campaign settings', settingsText: 'Choose the series dates and the discount.',
+        reportTitle: 'Series report', reportText: 'What each campaign of the last series ended with.',
+        tileShop: 'Shop', tileRange: 'Start range', tileDiscount: 'Discount', tileProgress: 'Progress', notStarted: 'Not started yet',
+        perCampaign: 'Each campaign {days} day(s)', everywhere: 'Valid: Everywhere',
+        planned: 'Planned campaigns', count: '{count} campaigns', colCode: 'Code', colDates: 'Date', colStatus: 'Status', colCheck: 'Check', colNote: 'Note', colTime: 'Time',
+        stPlanned: 'Planned', stQueued: 'Queued', stDone: 'Created', stError: 'Not verified', stStopped: 'Stopped', stCurrent: 'Creating…',
+        checked: 'Certain', waiting: 'Waiting', failed: 'Not possible', notChecked: '—',
+        runningBanner: 'The series is running. Campaign {n} is being created.', runningText: 'Do not close this tab. If the page reloads, the series continues where it left off once you confirm.',
+        tabOwner: 'Tab owner: this tab',
+        readyBanner: 'The series is ready.', readyText: '{count} campaigns planned. Check the dates and codes before starting; this tab must stay open until the series ends.',
+        stoppedBanner: 'The series stopped. Campaign {n} could not be verified in the Etsy list.', stoppedText: 'The campaign may have been created. Search the Sales & Discounts list for {code}; if it is there, continue, if not, end the series.',
+        stepTitle: 'Current step', step1: 'The campaign form opened', step2: 'Code and discount entered', step3: 'Dates being chosen', step4: 'Save and verify in the list',
+        safety: 'If a result cannot be verified for certain, the series stops and asks you. No step is repeated on its own.',
+        lastSeries: 'Last series', noLastSeries: 'No series has run yet.',
+        emptyTitle: 'You have no campaign series yet', emptyText: 'A series creates several campaigns one after another on Sales & Discounts and verifies each in the Etsy list. You can set up your first series in a few minutes.',
+        emptyStart: 'Set up the first series', openEtsy: 'Open Sales & Discounts', howItWorks: 'How it works',
+        how1: 'Choose dates and discount', how1Text: 'First day, number of campaigns and the discount.',
+        how2: 'Check the codes', how2Text: 'Each campaign gets its own code from the date and your text.',
+        how3: 'Start and follow', how3Text: 'Campaigns are created one by one and verified in the list.',
+        confirmTitle: 'Start the series?', confirmText: '{count} campaigns will be created one after another on Sales & Discounts.',
+        confirmDiscount: '{discount}% off · Everywhere', confirmNote1: 'Each campaign is checked in the Etsy list after it is created.',
+        confirmNote2: 'At a step that cannot be verified the series stops and asks you.', confirmNote3: 'Keep this tab open until the series ends.',
+        confirmStart: 'Start {count} campaigns', cancel: 'Cancel',
+        datesTitle: 'Date and discount', fStart: 'First start date', fEnd: 'Last start date', fDuration: 'Campaign length', days: 'days', fDiscount: 'Discount percentage', fRegion: 'Valid in', fResult: 'Result',
+        resultText: '{count} campaigns · one after another, not overlapping',
+        codeTitle: 'Campaign code', codeText: 'The code is the start date, your text and the discount.', fPrefix: 'Code text', fPrefixHint: 'Letters and digits only, up to 12.',
+        codeResult: 'Code that will be created', codeLength: '{n} / 20 characters · valid', codeTooLong: '{n} / 20 characters · too long', codeRule: 'Etsy codes use letters and digits only.',
+        previewTitle: 'Preview', previewFoot: 'All {discount}% · Everywhere · codes differ from each other',
+        howTitle: 'How it runs', fResume: 'Continue after a reload', fResumeHint: 'You are asked first.', verifyEach: 'Verify after each campaign', verifyEachHint: 'Cannot be turned off.', alwaysOn: 'Always on',
+        unsaved: 'Unsaved changes', save: 'Save only', saveStart: 'Save and start the series', saved: 'Settings saved.', lockedWhileRunning: 'Settings are locked while a series runs.',
+        filterAll: 'All · {n}', filterDone: 'Created · {n}', filterError: 'Error · {n}', filterStopped: 'Stopped · {n}', filter: 'Filter by status', seriesPick: 'Series',
+        repPlanned: 'Planned', repDone: 'Created', repDoneHint: 'All verified for certain', repError: 'Error', repErrorHint: 'The series stopped safely', repStopped: 'Stopped', repStoppedHint: 'At your request',
+        noReport: 'No report yet. A report appears after the first series.', csv: 'Download CSV', excel: 'Download Excel',
+        phase: 'Step: {phase}', launcher: 'Series {done} / {total} running.',
+      }),
+    });
+
+    // Bundled English; other languages read the downloaded pack ("sale." keys).
+    function texts(language) {
+      const lang = SALE_STRINGS[language] ? language : 'en';
+      return (key, vars) => interpolate(SALE_STRINGS[language]?.[key] ?? packText(language, `sale.${key}`) ?? SALE_STRINGS[lang][key] ?? SALE_STRINGS.en[key] ?? key, vars);
+    }
+
+    const day = (iso) => { const [y, m, d] = String(iso || '').split('-').map(Number); return y ? new Date(y, m - 1, d) : null; };
+    const fmtDay = (iso, language) => { const d = day(iso); return d ? new Intl.DateTimeFormat(language, { day: 'numeric', month: 'short' }).format(d) : '—'; };
+    function fmtRange(a, b, language) {
+      const da = day(a); const db = day(b);
+      if (!da || !db) return '—';
+      try { return new Intl.DateTimeFormat(language, { day: 'numeric', month: 'short', year: 'numeric' }).formatRange(da, db); } catch { return `${fmtDay(a, language)} – ${fmtDay(b, language)}`; }
+    }
+    const pct = (n, language) => (language === 'tr' ? `%${n}` : `${n}%`);
+
+    /** Status of one planned campaign, from the engine's results. */
+    function rowStatus(plan, job) {
+      const row = (job?.results ?? []).find((r) => r.saleName === plan.saleName || r.startDate === plan.startDate);
+      if (row?.status === 'SUCCESS') return { key: 'stDone', tone: 'ok', check: row.verified ? 'checked' : 'waiting' };
+      if (row?.status === 'ERROR') return { key: 'stError', tone: 'err', check: 'failed', error: true };
+      if (row?.status === 'STOPPED') return { key: 'stStopped', tone: 'warn', check: 'notChecked' };
+      if (job?.active && job.currentDate === plan.startDate) return job.paused ? { key: 'stError', tone: 'err', check: 'failed', error: true } : { key: 'stCurrent', tone: 'dark', check: 'waiting', current: true };
+      return { key: job?.active ? 'stQueued' : 'stPlanned', tone: '', check: 'notChecked', dot: true };
+    }
+
+    function summary(snap) {
+      const done = (snap.job?.results ?? []).filter((r) => r.status === 'SUCCESS').length;
+      const total = snap.plans.length;
+      const index = Math.max(0, snap.plans.findIndex((p) => p.startDate === snap.job?.currentDate));
+      return { done, total, index };
+    }
+
+    /** 0-based index of the current step of a campaign, from the engine's phase. */
+    function stepIndex(phase) {
+      if (['verify_created', 'await_result', 'confirm_sale'].includes(phase)) return 3;
+      if (phase === 'select_listings') return 2;
+      if (phase === 'fill_form') return 1;
+      return 0;
+    }
+
+    function prog(doc, value, total, label, style = '') {
+      return h(doc, 'div', { class: 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(total), 'aria-valuenow': String(value), 'aria-label': label, style },
+        h(doc, 'i', { style: `width: ${total ? Math.round((value / total) * 100) : 0}%;` }));
+    }
+
+    function badge(doc, ts, st) {
+      return h(doc, 'span', { class: st.tone ? `badge ${st.tone}` : 'badge' }, st.dot ? h(doc, 'span', { class: 'dot soft' }) : null, ts(st.key));
+    }
+
+    /** Drawer section for the Sales & Discounts page (Main, Drawer-Error). */
+    function renderSaleDrawer(doc, { snap, language, actions }) {
+      const ts = texts(language);
+      const { done, total, index } = summary(snap);
+      const job = snap.job;
+      const stopped = Boolean(job?.active && job.paused);
+      const current = job?.active ? snap.plans[index] : null;
+      const state = job?.active ? (stopped ? h(doc, 'span', { class: 'badge err', text: ts('stopped') }) : h(doc, 'span', { class: 'badge dark', text: ts('running') })) : h(doc, 'span', { class: 'badge', text: ts('ready') });
+      return h(doc, 'div', { class: 'col', style: 'gap: 12px;', 'data-role': 'sale-drawer' },
+        h(doc, 'div', { class: 'row' }, icon(doc, ICONS['sale-manager']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Sale Manager' }), state),
+        stopped && job.errorReason ? alertBox(doc, { tone: 'err', title: ts('stoppedBanner', { n: index + 1 }), text: job.errorReason }) : null,
+        job?.active
+          ? h(doc, 'div', { class: 'col', style: 'gap: 6px;' },
+            h(doc, 'div', { class: 'row xs mute2' },
+              h(doc, 'span', { class: 'grow' }, `${ts('campaignOf', { n: index + 1 })}: `, h(doc, 'span', { class: 'mono b', style: 'color: var(--fg);', text: current?.saleName ?? '—' })),
+              h(doc, 'span', { class: 'num', text: `${done} / ${total}` })),
+            prog(doc, done, total, ts('tileProgress')),
+            !stopped ? h(doc, 'span', { class: 'xxs mute', text: ts(`step${stepIndex(job.phase) + 1}`) }) : null)
+          : h(doc, 'span', { class: 'xs mute2', text: total ? ts('series', { count: total, start: fmtDay(snap.plans[0].startDate, language), end: fmtDay(snap.plans[total - 1].startDate, language), discount: snap.config.discount }) : '—' }),
+        h(doc, 'div', { class: 'row' },
+          stopped
+            ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'retry', onclick: () => actions.retry() }, icon(doc, ICONS.refresh, 14), ts('retry')),
+              h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'report-problem', onclick: (e) => actions.report?.({ category: 'interrupted', tool: 'sale-manager', returnFocus: e.currentTarget }), text: actions.reportLabel ?? 'Report a problem' })]
+            : job?.active
+              ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.power ?? ICONS.close, 14), ts('stop')),
+                h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'details', onclick: () => actions.openPage(), text: ts('details') })]
+              : [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'details', onclick: () => actions.openPage(), text: ts('details') }),
+                h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'start', disabled: !snap.plans.length, onclick: (e) => actions.confirmStart(e.currentTarget), text: ts('start') })]));
+    }
+
+    /** Start confirmation (Sale-StartConfirm). */
+    function confirmSaleStart(doc, container, { snap, language, onStart, returnFocus }) {
+      const ts = texts(language);
+      const count = snap.plans.length;
+      const body = h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
+        h(doc, 'div', { class: 'row sm' }, h(doc, 'span', { class: 'badge out', text: ts('confirmDiscount', { discount: snap.config.discount }) }), h(doc, 'span', { class: 'xs mute', text: fmtRange(snap.plans[0]?.startDate, snap.plans[count - 1]?.startDate, language) })),
+        h(doc, 'div', { class: 'card', style: 'max-height: 240px; overflow-y: auto; box-shadow: none;' }, h(doc, 'table', { class: 'tbl' },
+          h(doc, 'thead', {}, h(doc, 'tr', {}, h(doc, 'th', { text: ts('colCode') }), h(doc, 'th', { text: ts('colDates') }))),
+          h(doc, 'tbody', {}, snap.plans.map((p) => h(doc, 'tr', {}, h(doc, 'td', {}, h(doc, 'span', { class: 'mono b', text: p.saleName })), h(doc, 'td', { class: 'num', text: `${fmtDay(p.startDate, language)} → ${fmtDay(p.endDate, language)}` })))))),
+        h(doc, 'ul', { class: 'sm mute2 notes' }, h(doc, 'li', { text: ts('confirmNote1') }), h(doc, 'li', { text: ts('confirmNote2') }), h(doc, 'li', { text: ts('confirmNote3') })));
+      return openDialog(doc, container, {
+        title: ts('confirmTitle'), description: ts('confirmText', { count }), body, closeLabel: ts('cancel'), returnFocus, width: 520, iconWell: ICONS.play,
+        footer: (close) => [
+          h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: close, text: ts('cancel') }),
+          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'confirm-start', onclick: () => { close(); onStart(); } }, icon(doc, ICONS.play, 14), ts('confirmStart', { count })),
+        ],
+      });
+    }
+
+    /** Workspace page with Overview, Settings and Report. */
+    function renderSalePage(doc, { snap, language, actions, tab = 'overview', onTab, message = '' }) {
+      const ts = texts(language);
+      const { done, total, index } = summary(snap);
+      const job = snap.job;
+      const running = Boolean(job?.active);
+      const stopped = running && job.paused;
+      const reportRows = snap.lastReport?.results ?? [];
+
+      // ── Overview (Sale-Idle / Sale-Overview / Sale-Error) and first use (Sale-Empty) ──
+      const tiles = () => h(doc, 'div', { class: 'g4' },
+        h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('tileShop') }), h(doc, 'span', { class: 'v trunc', style: 'font-size: 18px;', text: job?.shop?.shopName || snap.lastReport?.results?.[0]?.shopName || '—' }), h(doc, 'span', { class: 'xs mute', text: job?.shop?.shopId ? `#${job.shop.shopId}` : 'Etsy' })),
+        h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('tileRange') }), h(doc, 'span', { class: 'v', style: 'font-size: 18px;', text: total ? fmtRange(snap.plans[0].startDate, snap.plans[total - 1].startDate, language) : '—' }), h(doc, 'span', { class: 'xs mute', text: ts('perCampaign', { days: snap.config.saleDurationDays }) })),
+        h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('tileDiscount') }), h(doc, 'span', { class: 'v', style: 'font-size: 18px;', text: pct(snap.config.discount, language) }), h(doc, 'span', { class: 'xs mute', text: ts('everywhere') })),
+        h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('tileProgress') }), h(doc, 'span', { class: 'v', text: `${done} / ${total}` }), running ? prog(doc, done, total, ts('tileProgress'), 'margin-top: 4px;') : h(doc, 'span', { class: 'xs mute', text: ts('notStarted') })));
+
+      const plan = () => h(doc, 'section', { class: 'card grow', style: 'align-self: flex-start;' },
+        h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('planned') }), h(doc, 'span', { class: 'xs mute', text: ts('count', { count: total }) })),
+        h(doc, 'table', { class: 'tbl', 'data-role': 'sale-plan' },
+          h(doc, 'thead', {}, h(doc, 'tr', {}, ['#', ts('colCode'), ts('colDates'), ts('colStatus'), ts('colCheck')].map((c) => h(doc, 'th', { text: c })))),
+          h(doc, 'tbody', {}, snap.plans.map((p, i) => {
+            const st = rowStatus(p, job);
+            return h(doc, 'tr', { 'data-code': p.saleName, style: st.error ? 'background: #fef2f2;' : st.current ? 'background: var(--soft2);' : null },
+              h(doc, 'td', { class: 'mute num', text: String(i + 1) }),
+              h(doc, 'td', {}, h(doc, 'span', { class: 'mono b', text: p.saleName })),
+              h(doc, 'td', { class: 'num', text: `${fmtDay(p.startDate, language)} → ${fmtDay(p.endDate, language)}` }),
+              h(doc, 'td', {}, badge(doc, ts, st)),
+              h(doc, 'td', { class: st.check === 'checked' ? 'mute2' : st.check === 'failed' ? '' : 'mute', text: ts(st.check) }));
+          }))));
+
+      const steps = () => {
+        const current = stepIndex(job?.phase);
+        return h(doc, 'section', { class: 'card' },
+          h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('stepTitle') }), h(doc, 'span', { class: 'xs mute num', text: `${current + 1} / 4` })),
+          h(doc, 'ol', { class: 'sale-steps' }, [1, 2, 3, 4].map((n) => {
+            const i = n - 1;
+            const state = i < current ? 'done' : i === current ? 'now' : 'next';
+            return h(doc, 'li', { class: `row sm${state === 'now' ? ' b' : state === 'next' ? ' mute' : ''}` },
+              h(doc, 'span', { class: `well step-${state}` }, state === 'done' ? icon(doc, ICONS.check, 14) : null), ts(`step${n}`));
+          })));
+      };
+
+      const lastSeries = () => {
+        const by = (s) => reportRows.filter((r) => r.status === s).length;
+        return h(doc, 'section', { class: 'card' },
+          h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('lastSeries') }), reportRows[0]?.createdAt ? h(doc, 'span', { class: 'xs mute', text: new Intl.DateTimeFormat(language, { dateStyle: 'medium' }).format(new Date(reportRows[0].createdAt)) }) : null),
+          reportRows.length
+            ? h(doc, 'div', { class: 'list' },
+              h(doc, 'div', { class: 'li sm' }, h(doc, 'span', { class: 'grow', text: ts('stDone') }), h(doc, 'span', { class: 'num b', text: String(by('SUCCESS')) })),
+              h(doc, 'div', { class: 'li sm' }, h(doc, 'span', { class: 'grow', text: ts('stError') }), h(doc, 'span', { class: 'num b', style: by('ERROR') ? 'color: #b91c1c;' : null, text: String(by('ERROR')) })),
+              h(doc, 'div', { class: 'li sm' }, h(doc, 'span', { class: 'grow', text: ts('stStopped') }), h(doc, 'span', { class: 'num b', text: String(by('STOPPED')) })))
+            : h(doc, 'div', { class: 'card-b xs mute', text: ts('noLastSeries') }));
+      };
+
+      const empty = () => h(doc, 'section', { class: 'card empty', 'aria-labelledby': 'eat-sale-empty' },
+        h(doc, 'div', { class: 'ei' }, icon(doc, ICONS['sale-manager'], 24)),
+        h(doc, 'h2', { class: 'et', id: 'eat-sale-empty', text: ts('emptyTitle') }),
+        h(doc, 'p', { class: 'ed', text: ts('emptyText') }),
+        h(doc, 'div', { class: 'ea' },
+          h(doc, 'button', { class: 'btn btn-p', type: 'button', onclick: () => onTab('settings'), text: ts('emptyStart') }),
+          h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => actions.openEtsy(), text: ts('openEtsy') })),
+        h(doc, 'div', { class: 'steps', 'aria-label': ts('howItWorks') }, [1, 2, 3].map((n) => h(doc, 'div', {},
+          h(doc, 'span', { class: 'n', text: String(n) }),
+          h(doc, 'span', {}, h(doc, 'span', { class: 'st', text: ts(`how${n}`) }), h(doc, 'span', { class: 'sd', text: ts(`how${n}Text`) }))))));
+
+      const overview = () => {
+        if (!running && !total && !reportRows.length) return [empty()];
+        const current = snap.plans[index];
+        return [
+          stopped
+            ? banner(doc, { tone: 'err', iconPaths: ICONS.error, title: ts('stoppedBanner', { n: index + 1 }), text: job.errorReason || ts('stoppedText', { code: current?.saleName ?? '' }) })
+            : running
+              ? banner(doc, { iconPaths: ICONS.clock, title: ts('runningBanner', { n: index + 1 }), text: ts('runningText'), after: snap.leaseOwned ? h(doc, 'span', { class: 'badge out', text: ts('tabOwner') }) : null })
+              : banner(doc, { iconPaths: ICONS.info, title: ts('readyBanner'), text: ts('readyText', { count: total }) }),
+          tiles(),
+          h(doc, 'div', { class: 'cols' },
+            plan(),
+            h(doc, 'aside', { class: 'col', style: 'width: 340px; flex: none; gap: 16px;' },
+              running ? steps() : lastSeries(),
+              h(doc, 'div', { class: 'banner' }, icon(doc, ICONS.shield), h(doc, 'span', { text: ts('safety') })))),
+        ];
+      };
+
+      // ── Settings (Sale-Settings) ──
+      const settingsForm = () => {
+        const c = snap.config;
+        const draft = { ...c };
+        const input = (name, type, value, attrs = {}) => h(doc, 'input', { class: 'input', id: `eat-sale-${name}`, name, type, value: String(value ?? ''), disabled: running, oninput: () => mark(), ...attrs });
+        const fld = (name, label, control) => h(doc, 'div', { class: 'field' }, h(doc, 'label', { class: 'label', for: `eat-sale-${name}`, text: label }), control);
+        const codeOut = h(doc, 'span', { class: 'mono b', style: 'font-size: 20px; line-height: 26px; letter-spacing: .02em;' });
+        const codeState = h(doc, 'span', { class: 'badge ok' });
+        const unsaved = h(doc, 'span', { class: 'xs mute grow' });
+        const resumeSwitch = toggle(doc, { name: 'autoResumeOnLoad', checked: c.autoResumeOnLoad, labelledBy: 'eat-sale-resume', disabled: running, onChange: (on) => { draft.autoResumeOnLoad = on; mark(); } });
+        const form = h(doc, 'form', { class: 'sale-form', 'data-role': 'sale-settings', onsubmit: (e) => { e.preventDefault(); void save(false); } });
+        function values() {
+          const f = form.elements;
+          return {
+            batchStartDate: f.batchStartDate.value, batchEndDate: f.batchEndDate.value,
+            saleDurationDays: Number(f.saleDurationDays.value), discount: Number(f.discount.value),
+            discountName: f.discountName.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().slice(0, 12), autoResumeOnLoad: draft.autoResumeOnLoad,
+          };
+        }
+        function mark() {
+          const v = values();
+          const first = snap.plans[0]?.saleName?.slice(0, 6) ?? String(v.batchStartDate).replace(/-/g, '').slice(2);
+          const code = `${first}${v.discountName}${v.discount}`;
+          codeOut.textContent = code;
+          codeState.className = code.length > 20 ? 'badge warn' : 'badge ok';
+          codeState.textContent = ts(code.length > 20 ? 'codeTooLong' : 'codeLength', { n: code.length });
+          const changed = Object.keys(v).some((k) => String(v[k]) !== String(c[k]));
+          unsaved.textContent = changed ? ts('unsaved') : '';
+        }
+        async function save(andStart) {
+          await actions.updateConfig(values());
+          actions.say(ts('saved'));
+          if (andStart) actions.confirmStart(null);
+        }
+        form.append(
+          h(doc, 'div', { class: 'cols' },
+            h(doc, 'div', { class: 'col grow', style: 'gap: 16px;' },
+              h(doc, 'section', { class: 'card' },
+                h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('datesTitle') })),
+                h(doc, 'div', { class: 'card-b g3', style: 'gap: 12px;' },
+                  fld('batchStartDate', ts('fStart'), input('batchStartDate', 'date', c.batchStartDate)),
+                  fld('batchEndDate', ts('fEnd'), input('batchEndDate', 'date', c.batchEndDate)),
+                  fld('saleDurationDays', ts('fDuration'), h(doc, 'span', { class: 'row' }, input('saleDurationDays', 'number', c.saleDurationDays, { min: 1, max: 30, style: 'width: 80px;' }), h(doc, 'span', { class: 'sm mute2', text: ts('days') }))),
+                  fld('discount', ts('fDiscount'), h(doc, 'span', { class: 'row' }, h(doc, 'span', { class: 'sm mute2', text: '%' }), input('discount', 'number', c.discount, { min: 1, max: 90, style: 'width: 80px;' }))),
+                  fld('region', ts('fRegion'), h(doc, 'select', { class: 'input', id: 'eat-sale-region', disabled: true }, h(doc, 'option', { text: 'Everywhere' }))),
+                  h(doc, 'div', { class: 'field' }, h(doc, 'span', { class: 'label', text: ts('fResult') }), h(doc, 'span', { class: 'sm mute2', style: 'line-height: 36px;', text: ts('resultText', { count: total }) })))),
+              h(doc, 'section', { class: 'card' },
+                h(doc, 'div', { class: 'card-h' }, h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'h2', { class: 'h2', text: ts('codeTitle') }), h(doc, 'span', { class: 'xs mute', text: ts('codeText') }))),
+                h(doc, 'div', { class: 'card-b col', style: 'gap: 12px;' },
+                  h(doc, 'div', { class: 'field' }, h(doc, 'label', { class: 'label', for: 'eat-sale-discountName', text: ts('fPrefix') }), input('discountName', 'text', c.discountName, { maxlength: 12, pattern: '[A-Za-z0-9]*', autocomplete: 'off', spellcheck: 'false', class: 'input mono', style: 'max-width: 240px;' }), h(doc, 'span', { class: 'hint', text: ts('fPrefixHint') })),
+                  h(doc, 'div', { class: 'code-out' },
+                    h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'ov grow', text: ts('codeResult') }), codeState),
+                    h(doc, 'div', { class: 'row' }, codeOut, h(doc, 'span', { class: 'grow' }), h(doc, 'span', { class: 'xs mute', text: ts('codeRule') })))))),
+            h(doc, 'aside', { class: 'col', style: 'width: 340px; flex: none; gap: 16px;' },
+              h(doc, 'section', { class: 'card' },
+                h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2 grow', text: ts('previewTitle') }), h(doc, 'span', { class: 'xs mute', text: ts('count', { count: total }) })),
+                h(doc, 'div', { class: 'list' }, snap.plans.slice(0, 8).map((p) => h(doc, 'div', { class: 'li', style: 'padding: 10px 16px;' }, h(doc, 'span', { class: 'mono b grow', text: p.saleName }), h(doc, 'span', { class: 'xs mute num', text: `${fmtDay(p.startDate, language)} → ${fmtDay(p.endDate, language)}` })))),
+                h(doc, 'div', { class: 'card-f xs mute', text: ts('previewFoot', { discount: c.discount }) })),
+              h(doc, 'section', { class: 'card' },
+                h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('howTitle') })),
+                h(doc, 'div', { class: 'list' },
+                  h(doc, 'div', { class: 'li' }, h(doc, 'span', { class: 'col grow', style: 'gap: 1px;' }, h(doc, 'span', { class: 'sm b', id: 'eat-sale-resume', text: ts('fResume') }), h(doc, 'span', { class: 'xs mute', text: ts('fResumeHint') })), resumeSwitch),
+                  h(doc, 'div', { class: 'li' }, h(doc, 'span', { class: 'col grow', style: 'gap: 1px;' }, h(doc, 'span', { class: 'sm b', text: ts('verifyEach') }), h(doc, 'span', { class: 'xs mute', text: ts('verifyEachHint') })), h(doc, 'span', { class: 'badge out', text: ts('alwaysOn') })))))),
+          h(doc, 'div', { class: 'savebar' },
+            running ? h(doc, 'span', { class: 'xs mute grow', role: 'status', text: ts('lockedWhileRunning') }) : unsaved,
+            h(doc, 'button', { class: 'btn btn-g', type: 'button', disabled: running, onclick: () => onTab('settings'), text: ts('cancel') }),
+            h(doc, 'button', { class: 'btn btn-o', type: 'submit', disabled: running, 'data-sale': 'save', text: ts('save') }),
+            h(doc, 'button', { class: 'btn btn-p', type: 'button', disabled: running, 'data-sale': 'save-start', onclick: () => save(true) }, icon(doc, ICONS.play, 16), ts('saveStart'))));
+        mark();
+        return [form];
+      };
+
+      // ── Report (Sale-Report) ──
+      const report = () => {
+        if (!reportRows.length) return [h(doc, 'section', { class: 'card empty', 'data-role': 'sale-no-report' }, h(doc, 'div', { class: 'ei' }, icon(doc, ICONS.file, 24)), h(doc, 'p', { class: 'ed', text: ts('noReport') }))];
+        const filter = actions.reportFilter?.() ?? 'all';
+        const counts = { all: reportRows.length, SUCCESS: 0, ERROR: 0, STOPPED: 0 };
+        for (const r of reportRows) counts[r.status] = (counts[r.status] ?? 0) + 1;
+        const tone = { SUCCESS: ['stDone', 'ok'], ERROR: ['stError', 'err'], STOPPED: ['stStopped', 'warn'] };
+        const shown = filter === 'all' ? reportRows : reportRows.filter((r) => r.status === filter);
+        const when = reportRows[0]?.createdAt ? new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(reportRows[0].createdAt)) : '';
+        return [
+          h(doc, 'div', { class: 'row', style: 'gap: 12px;' },
+            h(doc, 'label', { class: 'field', style: 'width: 280px;' }, h(doc, 'span', { class: 'label', text: ts('seriesPick') }), h(doc, 'select', { class: 'input' }, h(doc, 'option', { text: [when, reportRows[0]?.shopName].filter(Boolean).join(' · ') || '—' }))),
+            h(doc, 'span', { class: 'grow' }),
+            h(doc, 'div', { class: 'seg', role: 'group', 'aria-label': ts('filter'), style: 'align-self: flex-end;' },
+              [['all', 'filterAll', counts.all], ['SUCCESS', 'filterDone', counts.SUCCESS], ['ERROR', 'filterError', counts.ERROR], ['STOPPED', 'filterStopped', counts.STOPPED]].map(([v, k, n]) => h(doc, 'button', { type: 'button', class: filter === v ? 'on' : null, 'aria-pressed': String(filter === v), onclick: () => actions.setReportFilter?.(v), text: ts(k, { n }) })))),
+          h(doc, 'div', { class: 'g4' },
+            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('repPlanned') }), h(doc, 'span', { class: 'v', text: String(counts.all) })),
+            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('repDone') }), h(doc, 'span', { class: 'v', text: String(counts.SUCCESS) }), h(doc, 'span', { class: 'xs mute', text: ts('repDoneHint') })),
+            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('repError') }), h(doc, 'span', { class: 'v', style: counts.ERROR ? 'color: #b91c1c;' : null, text: String(counts.ERROR) }), h(doc, 'span', { class: 'xs mute', text: ts('repErrorHint') })),
+            h(doc, 'div', { class: 'tile' }, h(doc, 'span', { class: 'ov', text: ts('repStopped') }), h(doc, 'span', { class: 'v', text: String(counts.STOPPED) }), h(doc, 'span', { class: 'xs mute', text: ts('repStoppedHint') }))),
+          h(doc, 'section', { class: 'card' },
+            h(doc, 'table', { class: 'tbl', 'data-role': 'sale-report' },
+              h(doc, 'thead', {}, h(doc, 'tr', {}, [ts('colStatus'), ts('colCode'), ts('colDates'), ts('colCheck'), ts('colNote')].map((c) => h(doc, 'th', { text: c })), h(doc, 'th', { class: 'r', text: ts('colTime') }))),
+              h(doc, 'tbody', {}, shown.map((r) => {
+                const [key, cls] = tone[r.status] ?? ['stPlanned', ''];
+                return h(doc, 'tr', {},
+                  h(doc, 'td', {}, h(doc, 'span', { class: `badge ${cls}`, text: ts(key) })),
+                  h(doc, 'td', {}, h(doc, 'span', { class: 'mono b', text: r.saleName ?? '' }), h(doc, 'div', { class: 'xs mute', text: pct(r.discount ?? snap.config.discount, language) })),
+                  h(doc, 'td', { class: 'num', text: `${fmtDay(r.startDate, language)} → ${fmtDay(r.endDate, language)}` }),
+                  h(doc, 'td', { text: r.verified ? ts('checked') : r.status === 'ERROR' ? ts('failed') : ts('notChecked') }),
+                  h(doc, 'td', { class: 'mute2', text: r.message ?? '' }),
+                  h(doc, 'td', { class: 'r mute num', text: r.createdAt ? new Intl.DateTimeFormat(language, { timeStyle: 'short' }).format(new Date(r.createdAt)) : '' }));
+              }))),
+            h(doc, 'div', { class: 'card-f' }, h(doc, 'span', { class: 'grow' }),
+              h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', onclick: () => actions.downloadCsv() }, icon(doc, ICONS.download, 14), ts('csv')),
+              h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', onclick: () => actions.downloadExcel() }, icon(doc, ICONS.download, 14), ts('excel')))),
+        ];
+      };
+
+      const heads = {
+        overview: [ts('title'), ts('description')],
+        settings: [ts('settingsTitle'), ts('settingsText')],
+        report: [ts('reportTitle'), ts('reportText')],
+      };
+      const [title, description] = heads[tab] ?? heads.overview;
+      const headActions = tab !== 'overview' ? [] : stopped
+        ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-sale': 'skip', onclick: () => actions.skip(), text: ts('skip') }),
+          h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop(), text: ts('stop') }),
+          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'retry', onclick: () => actions.retry() }, icon(doc, ICONS.refresh, 16), ts('retry'))]
+        : running
+          ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => onTab('report') }, icon(doc, ICONS.file, 16), ts('openReport')),
+            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.power ?? ICONS.close, 16), ts('stop'))]
+          : total
+            ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => onTab('settings'), text: ts('settings') }),
+              h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'start', onclick: (e) => actions.confirmStart(e.currentTarget) }, icon(doc, ICONS.play, 16), ts('start'))]
+            : [];
+      return [
+        pageHead(doc, { overline: 'Sale Manager', title, description, actions: headActions }),
+        pageTabs(doc, { label: ts('tabs'), name: 'sale-tab', value: tab, options: [{ value: 'overview', label: ts('overview') }, { value: 'settings', label: ts('settings') }, { value: 'report', label: ts('report') }], onChange: (next) => onTab(next) }),
+        ...({ overview, settings: settingsForm, report }[tab] ?? overview)(),
+        message ? h(doc, 'p', { class: 'xs mute2', role: 'status', 'aria-live': 'polite', 'data-role': 'sale-message', text: message }) : null,
+      ];
+    }
+    return Object.freeze({ SALE_STRINGS, summary, renderSaleDrawer, confirmSaleStart, renderSalePage });
+  })();
+
+  // ── src/modules/sale-manager.js ──
+  const __eat_modules_sale_manager = (() => {
+    // Sale Manager inside the unified script.
+    //
+    // The automation engine is the standalone Sale Manager itself, adopted at
+    // build time (tools/Unified-Adopt-Sale-Manager.mjs) so its tested behaviour
+    // is unchanged: every campaign is verified in the Etsy list, an unverifiable
+    // step stops the series, and a reload resumes only with the user's consent.
+    // The new screens (sale-manager-ui.js) read the engine's snapshot and call its
+    // own actions; the engine's old panel stays hidden. Its short notices (toasts)
+    // still show, because they carry the engine's safety messages.
+    //
+    // Two engines must never create campaigns on the same page. If the
+    // standalone Sale Manager is also installed and running here, the unified
+    // engine does not start, and it steps aside if the standalone one appears.
+
+    const { createScopedGm } = __eat_core_scoped_gm;
+    const { renderSaleDrawer, renderSalePage, confirmSaleStart, summary, SALE_STRINGS } = __eat_modules_sale_manager_ui;
+    const { interpolate } = __eat_core_i18n;
+    const { packText } = __eat_core_language_packs;
+
+    const STANDALONE_ROOT_ID = 'eda-batch-root';
+    const ENGINE_ROOT_ID = 'eat-sale-batch-root';
+    const STANDALONE_GRACE_MS = 1500;
+
+    function createSaleManagerModule() {
+      const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, lastSnapshot: '', lastJob: null, reportFilter: 'all' };
+      const say = (key, vars) => { const lang = state.ctx?.settings?.get().language ?? 'en'; return interpolate(SALE_STRINGS[lang]?.[key] ?? packText(lang, `sale.${key}`) ?? SALE_STRINGS.en[key] ?? key, vars); };
+
+      const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
+
+      function watchForStandalone(doc, ctx) {
+        if (state.observer || typeof MutationObserver !== 'function') return;
+        state.observer = new MutationObserver(() => {
+          if (!state.standalone && standalonePresent(doc)) {
+            state.standalone = true; // the engine's route gate now closes and its own lifecycle suspends it
+            ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'standalone' });
+          }
+        });
+        state.observer.observe(doc.documentElement, { childList: true, subtree: true });
+      }
+
+      function onEngineChange() {
+        const ctx = state.ctx;
+        if (!state.engine || !ctx) return;
+        // Redraw only when what the screens show has changed.
+        const text = JSON.stringify(state.engine.snapshot());
+        if (text === state.lastSnapshot) return;
+        state.lastSnapshot = text;
+        announce(state.engine.snapshot());
+        ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'running' });
+      }
+
+      // Notifications: the series stopped (needs the user) or ended.
+      function announce(snap) {
+        const job = snap.job;
+        const before = state.lastJob;
+        state.lastJob = job ? { active: job.active, paused: job.paused, jobId: job.jobId } : null;
+        if (!before?.active) return;
+        const notify = state.ctx?.notify;
+        if (!notify) return;
+        const { done, total, index } = summary(snap);
+        if (job?.active && job.paused && !before.paused) {
+          void notify({ event: 'seriesStopped', tool: 'sale-manager', title: say('stoppedBanner', { n: index + 1 }), detail: snap.plans[index]?.saleName ?? '', needsAction: true, page: 'tool:sale-manager' });
+        } else if (!job?.active) {
+          void notify({ event: 'seriesDone', tool: 'sale-manager', title: say('completed'), detail: `${done} / ${total}`, page: 'tool:sale-manager' });
+        }
+      }
+
+      async function start(ctx) {
+        const doc = ctx.scope.document;
+        // Give a standalone copy, which loads at the same time, the chance to show itself first.
+        await new Promise((resolve) => ctx.scope.setTimeout(resolve, STANDALONE_GRACE_MS));
+        if (standalonePresent(doc)) {
+          state.standalone = true;
+          ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'standalone' });
+          watchForStandalone(doc, ctx);
+          return;
+        }
+        watchForStandalone(doc, ctx);
+        const gm = createScopedGm({
+          gm: ctx.scope.GM, namespace: 'sale-manager', doc,
+          info: { name: 'Etsy Automation Tools · Sale Manager', version: ctx.engines.saleManagerVersion },
+          resources: { makaytronLogo: ctx.assets?.logo ?? '' },
+        });
+        // The new screens replace the engine's own panel.
+        gm.addStyle(`#${ENGINE_ROOT_ID}{display:none!important}`);
+        state.engine = await ctx.engines.createSaleManager({
+          GM: gm,
+          isAllowed: () => !state.standalone && ctx.isToolEnabled('sale-manager'),
+          onChange: () => ctx.scope.setTimeout(onEngineChange, 0),
+        });
+        await state.engine.initialize();
+        onEngineChange();
+      }
+
+      function actionsFor(ui) {
+        const engine = state.engine;
+        const run = (fn) => Promise.resolve().then(fn).catch((error) => console.error('[Etsy Automation Tools] Sale Manager', error));
+        return {
+          retry: () => run(() => engine.retry()),
+          skip: () => run(() => engine.skip()),
+          stop: () => run(() => engine.stop()),
+          updateConfig: (patch) => run(() => engine.updateConfig(patch)),
+          downloadCsv: () => run(() => engine.downloadCsv()),
+          downloadExcel: () => run(() => engine.downloadExcel()),
+          openEtsy: () => run(() => engine.openCreateSale()),
+          openPage: () => ui.openWorkspace?.('tool:sale-manager'),
+          say: (message) => ui.say?.(message),
+          report: (options) => ui.report?.(options),
+          reportFilter: () => state.reportFilter,
+          setReportFilter: (value) => { state.reportFilter = value; ui.onTab?.('report'); },
+          confirmStart: (trigger) => confirmSaleStart(ui.doc, ui.container, {
+            snap: engine.snapshot(), language: ui.language, returnFocus: trigger, onStart: () => run(async () => { engine.closeReport?.(); await engine.start(); }),
+          }),
+        };
+      }
+
+      return {
+        id: 'sale-manager',
+        name: 'Sale Manager',
+        legacyScriptId: 'sale-manager',
+        storageNamespace: 'sale-manager',
+        migrated: true,
+        status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+        /** Badge and tooltip line of the edge button while a series runs (Launcher-Closed). */
+        launcherStatus() {
+          const snap = !state.standalone && state.engine ? state.engine.snapshot() : null;
+          if (!snap?.job?.active) return null;
+          const { done, total } = summary(snap);
+          return { count: done, text: say('launcher', { done, total }) };
+        },
+        /** Shortcut "Pause the series" (Settings › Shortcuts). */
+        shortcut(action) {
+          if (action !== 'salePause' || !state.engine?.snapshot().job?.active) return false;
+          void Promise.resolve(state.engine.stop()).catch(() => {});
+          return true;
+        },
+        /** Drawer section; null keeps the generic status text. */
+        renderDrawer(ui) {
+          if (state.standalone || !state.engine) return null;
+          return renderSaleDrawer(ui.doc, { snap: state.engine.snapshot(), language: ui.language, actions: actionsFor(ui) });
+        },
+        /** Workspace page; null keeps the generic tool page. */
+        renderPage(ui) {
+          if (state.standalone || !state.engine) return null;
+          return renderSalePage(ui.doc, { snap: state.engine.snapshot(), language: ui.language, actions: actionsFor(ui), tab: ui.tab, onTab: ui.onTab, message: ui.message });
+        },
+        async mount(ctx) {
+          state.ctx = ctx;
+          // The engine follows Etsy navigation itself; it is created once per page load.
+          // Starting does not block the host: the drawer appears right away.
+          if (!state.starting && ctx.scope?.GM && ctx.engines?.createSaleManager) {
+            state.starting = start(ctx).catch((error) => {
+              state.starting = null;
+              console.error('[Etsy Automation Tools] Sale Manager', error);
+              ctx.events?.emit('error', { code: 'module_mount' });
+            });
+          }
+        },
+        async unmount() {
+          // Nothing to do: the engine's own route gate suspends it off its page or when the tool is turned off.
+        },
+      };
+    }
+    return Object.freeze({ STANDALONE_ROOT_ID, ENGINE_ROOT_ID, createSaleManagerModule });
+  })();
+
+  // ── src/modules/index.js ──
+  const __eat_modules_index = (() => {
+    // The five tools of the unified script.
+    //
+    // Every tool runs its standalone script as an adopted engine (see
+    // tools/Unified-Adopt*.mjs) behind the new screens. Message Assistant and
+    // Listing Analyzer keep their own panel for the detailed work.
+
+    const { createSaleManagerModule } = __eat_modules_sale_manager;
+    const { createAdsKeywordManagerModule } = __eat_modules_ads_keyword_manager;
+    const { createKeywordMarketAnalyzerModule } = __eat_modules_keyword_market_analyzer;
+    const { createMessageAssistantModule } = __eat_modules_message_assistant;
+    const { createListingAnalyzerModule } = __eat_modules_listing_analyzer;
+
+    // Credentials inside Message Assistant's stored objects; the same paths the transfer strips
+    // (shared/migration/handoff.js, kept equal by a test). They live under eat:secret:.
+    const MESSAGE_ASSISTANT_SECRETS = Object.freeze({ 'mema:settings': ['deeplApiKey', 'messageCenterAgentToken'], 'mema:providers': ['*.apiKey'] });
+
+    const TOOLS = Object.freeze([
+      createSaleManagerModule(),
+      createMessageAssistantModule({ secrets: MESSAGE_ASSISTANT_SECRETS }),
+      createAdsKeywordManagerModule(),
+      createListingAnalyzerModule(),
+      createKeywordMarketAnalyzerModule(),
+    ]);
+    return Object.freeze({ MESSAGE_ASSISTANT_SECRETS, TOOLS });
+  })();
+
+  // ── src/core/drawer-geometry.js ──
+  const __eat_core_drawer_geometry = (() => {
+    // Geometry of the edge button and the drawer.
+    //
+    // The logo button sits on one edge of the window. The drawer opens from the
+    // same side for the left and right edges; for the top and bottom edges it
+    // opens from the left, so it never covers Etsy's header or the page bottom.
+
+    const TAB_LONG = 64; // button length along the edge
+    const TAB_SHORT = 46; // button depth into the page
+    const DRAWER_WIDTH = 400; // design canvas: .dock width 400px (template.primitive.sheet adaptation)
+    const DRAWER_WIDTH_NARROW = 360;
+    const NARROW_VIEWPORT = 1100;
+    const EDGE_MARGIN = 8;
+
+    /** Side the drawer slides in from for a given button edge. */
+    function drawerSide(edge) {
+      return edge === 'right' ? 'right' : 'left';
+    }
+
+    /** Drawer width for a viewport width. */
+    function drawerWidth(viewportWidth) {
+      return viewportWidth < NARROW_VIEWPORT ? DRAWER_WIDTH_NARROW : DRAWER_WIDTH;
+    }
+
+    /**
+     * Pixel box of the edge button. `offset` (0..1) is the position along the
+     * edge; the box is clamped so it never leaves the viewport.
+     */
+    function tabRect(edge, offset, viewport) {
+      const vertical = edge === 'left' || edge === 'right';
+      const length = vertical ? viewport.height : viewport.width;
+      const span = Math.max(0, length - TAB_LONG - EDGE_MARGIN * 2);
+      const along = EDGE_MARGIN + Math.round(span * Math.min(1, Math.max(0, offset)));
+      if (vertical) {
+        return { x: edge === 'left' ? 0 : viewport.width - TAB_SHORT, y: along, width: TAB_SHORT, height: TAB_LONG };
+      }
+      return { x: along, y: edge === 'top' ? 0 : viewport.height - TAB_SHORT, width: TAB_LONG, height: TAB_SHORT };
+    }
+
+    /**
+     * Where a dragged button lands: the nearest edge to the pointer, and the
+     * pointer's position along that edge as a 0..1 offset.
+     */
+    function snapToEdge(point, viewport) {
+      const distances = {
+        left: point.x,
+        right: viewport.width - point.x,
+        top: point.y,
+        bottom: viewport.height - point.y,
+      };
+      const edge = Object.keys(distances).reduce((a, b) => (distances[b] < distances[a] ? b : a));
+      const vertical = edge === 'left' || edge === 'right';
+      const length = vertical ? viewport.height : viewport.width;
+      const coordinate = vertical ? point.y : point.x;
+      const span = Math.max(1, length - TAB_LONG - EDGE_MARGIN * 2);
+      const offset = Math.min(1, Math.max(0, (coordinate - TAB_LONG / 2 - EDGE_MARGIN) / span));
+      return { edge, offset: Math.round(offset * 1000) / 1000, side: drawerSide(edge) };
+    }
+    return Object.freeze({ TAB_LONG, TAB_SHORT, DRAWER_WIDTH, DRAWER_WIDTH_NARROW, NARROW_VIEWPORT, drawerSide, drawerWidth, tabRect, snapToEdge });
+  })();
+
+  // ── src/core/shortcuts.js ──
+  const __eat_core_shortcuts = (() => {
+    // Keyboard shortcuts (Settings › Shortcuts).
+
+    const NAMED = { ' ': 'Space', Enter: 'Enter', Escape: 'Escape', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete', ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight' };
+
+    // Combinations Etsy's seller pages or the browser already use; choosing one gets a warning.
+    const RESERVED = Object.freeze(['Ctrl+F', 'Ctrl+S', 'Ctrl+P', 'Ctrl+K', 'Ctrl+Z', 'Ctrl+Y', 'Ctrl+C', 'Ctrl+V', 'Ctrl+X', 'Ctrl+A', 'Ctrl+T', 'Ctrl+W', 'Ctrl+R', 'Ctrl+L', 'Ctrl+Shift+T', 'Ctrl+Shift+N', 'Ctrl+Shift+I', 'Ctrl+Shift+J', 'Ctrl+Enter']);
+
+    /** "Ctrl+Shift+M" for a keydown event, or null for a bare modifier or an unusable key. */
+    function comboFromEvent(event) {
+      const key = event.key;
+      if (['Control', 'Shift', 'Alt', 'Meta'].includes(key)) return null;
+      let name = NAMED[key] ?? null;
+      if (!name && /^F(?:[1-9]|1[0-2])$/.test(key)) name = key;
+      if (!name && /^Key[A-Z]$/.test(event.code ?? '')) name = event.code.slice(3);
+      if (!name && /^Digit\d$/.test(event.code ?? '')) name = event.code.slice(5);
+      if (!name && key.length === 1) name = key.toUpperCase();
+      if (!name) return null;
+      const mods = [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Meta'].filter(Boolean);
+      if (!mods.length && !/^F\d/.test(name)) return null; // a plain letter would fight with typing
+      return [...mods, name].join('+');
+    }
+
+    /** The action bound to an event, if shortcuts are on. Typing in a field never triggers one, except Ctrl+Enter style bindings. */
+    function actionForEvent(event, shortcuts) {
+      if (!shortcuts?.on) return null;
+      const combo = comboFromEvent(event);
+      if (!combo) return null;
+      const target = event.composedPath?.()[0] ?? event.target;
+      const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName ?? '') || target?.isContentEditable;
+      for (const [action, binding] of Object.entries(shortcuts.keys)) {
+        if (binding !== combo) continue;
+        if (typing && !/Enter$/.test(combo)) return null;
+        return action;
+      }
+      return null;
+    }
+    return Object.freeze({ RESERVED, comboFromEvent, actionForEvent });
+  })();
+
+  // ── src/core/diagnostics.js ──
+  const __eat_core_diagnostics = (() => {
+    // Problem reports ("Sorun bildir").
+    //
+    // A report is built from an allowlist only: product version, browser family
+    // and major version, OS family, interface language, region taken from the
+    // browser locale, the redacted route template, an error code from the known
+    // list, the problem category the user picked, and the user's own note.
+    // Shop names, customer data, URLs with identifiers, and API keys never enter a
+    // report. `buildReport` returns exactly what will be sent, so the UI can show
+    // it to the user before sending.
+
+    const { describePath } = __eat_core_routes;
+
+    const PROBLEM_CATEGORIES = Object.freeze([
+      'language-pack', 'tool-not-starting', 'interrupted', 'wrong-result', 'display', 'suggestion',
+      'etsy-page-changed', 'ai-or-translation', 'other',
+    ]);
+    /** The six choices of the report dialog (design canvas: Feedback). */
+    const DIALOG_CATEGORIES = Object.freeze(['language-pack', 'tool-not-starting', 'interrupted', 'wrong-result', 'display', 'suggestion']);
+    /** Groups of technical facts the user can leave out of a report. */
+    const REPORT_GROUPS = Object.freeze(['version', 'system', 'locale', 'page', 'error']);
+    const TOOLS = new Set(['sale-manager', 'message-assistant', 'ads-keyword-manager', 'listing-analyzer', 'keyword-market-analyzer']);
+
+    const ERROR_CODES = Object.freeze(new Set([
+      'i18n_pack_download', 'i18n_pack_format', 'i18n_pack_language', 'i18n_pack_version', 'i18n_pack_strings',
+      'i18n_pack_value', 'i18n_pack_markup', 'i18n_pack_missing', 'i18n_pack_unavailable',
+      'storage_unavailable', 'storage_quota', 'module_mount', 'module_unmount', 'route_lifecycle',
+      'etsy_session_expired', 'etsy_selector_missing',
+      'sale_form_field_missing', 'sale_verification_failed',
+      'ads_table_missing', 'ads_page_unreachable',
+      'listing_scan_interrupted', 'listing_editor_field_missing',
+      'kw_insights_table_missing',
+      'msg_ai_unauthorized', 'msg_ai_unreachable', 'msg_translation_failed',
+    ]));
+
+    const NOTE_LIMIT = 1000;
+
+    function browserInfo(userAgent = '') {
+      const ua = String(userAgent);
+      const pairs = [['Edge', /Edg\/(\d+)/], ['Opera', /OPR\/(\d+)/], ['Firefox', /Firefox\/(\d+)/], ['Chrome', /Chrome\/(\d+)/], ['Safari', /Version\/(\d+).*Safari/]];
+      let browser = { name: 'other', major: null };
+      for (const [name, re] of pairs) {
+        const m = ua.match(re);
+        if (m) { browser = { name, major: Number(m[1]) }; break; }
+      }
+      const os = /Windows/.test(ua) ? 'Windows' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Android/.test(ua) ? 'Android'
+        : /iPhone|iPad/.test(ua) ? 'iOS' : /CrOS/.test(ua) ? 'ChromeOS' : /Linux/.test(ua) ? 'Linux' : 'other';
+      return { browser: browser.name, browserMajor: browser.major, os };
+    }
+
+    /** Removes things that look like keys, e-mail addresses, URLs and long numbers from free text. */
+    function scrubNote(text) {
+      return String(text ?? '')
+        .slice(0, NOTE_LIMIT)
+        .replace(/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{8,}\b/g, '[key]')
+        .replace(/\b[A-Za-z0-9_-]{32,}\b/g, '[key]')
+        .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '[email]')
+        .replace(/https?:\/\/\S+/g, '[link]')
+        .replace(/\b\d{6,}\b/g, '[number]')
+        .trim();
+    }
+
+    /**
+     * Builds the report payload. `env` carries runtime facts (userAgent,
+     * browser locale, pathname, interface language); only derived, allowlisted
+     * values are copied out of it.
+     */
+    function buildReport({ appVersion, category, tool = null, errorCode = null, errorAt = null, note = '', includeNote = true, omit = [] }, env) {
+      const { browser, browserMajor, os } = browserInfo(env.userAgent);
+      const locale = typeof env.locale === 'string' ? env.locale : '';
+      const region = /^[a-z]{2,3}-([A-Z]{2})$/.exec(locale)?.[1] ?? null;
+      const { routeId, template } = describePath(env.pathname);
+      const off = new Set(omit);
+      const keep = (group, value) => (off.has(group) ? null : value);
+      const offset = Number.isFinite(env.utcOffsetMinutes) ? env.utcOffsetMinutes : null;
+      const handler = typeof env.handler === 'string' && /^[A-Za-z ]{2,30} \d+(?:\.\d+){0,3}$/.test(env.handler) ? env.handler : null;
+      const code = ERROR_CODES.has(errorCode) ? errorCode : null;
+      return {
+        format: 'etsy-automation-tools-report',
+        formatVersion: 2,
+        appVersion: keep('version', appVersion),
+        handler: keep('version', handler),
+        category: PROBLEM_CATEGORIES.includes(category) ? category : 'other',
+        tool: TOOLS.has(tool) ? tool : null,
+        errorCode: keep('error', code),
+        errorAt: keep('error', code && typeof errorAt === 'string' && /^\d{2}:\d{2}$/.test(errorAt) ? errorAt : null),
+        browser: keep('system', browser),
+        browserMajor: keep('system', browserMajor),
+        os: keep('system', os),
+        uiLanguage: keep('locale', typeof env.uiLanguage === 'string' ? env.uiLanguage.slice(0, 12) : null),
+        browserLocale: keep('locale', /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(locale) ? locale : null),
+        region: keep('locale', region),
+        utcOffset: keep('locale', offset === null ? null : `UTC${offset >= 0 ? '+' : '-'}${Math.floor(Math.abs(offset) / 60)}${Math.abs(offset) % 60 ? `:${String(Math.abs(offset) % 60).padStart(2, '0')}` : ''}`),
+        routeId: keep('page', routeId),
+        routeTemplate: keep('page', template),
+        note: includeNote ? scrubNote(note) : '',
+      };
+    }
+    return Object.freeze({ PROBLEM_CATEGORIES, DIALOG_CATEGORIES, REPORT_GROUPS, ERROR_CODES, browserInfo, scrubNote, buildReport });
+  })();
+
+  // ── src/core/feedback.js ──
+  const __eat_core_feedback = (() => {
+    // Problem reports ("Sorun bildir") go to GitHub.
+    //
+    // The report is built by core/diagnostics.js from an allowlist only and is
+    // shown to the user in full first. The script sends nothing itself: it opens
+    // a prefilled, public GitHub issue that the user checks and submits there.
+
+    const FEEDBACK_ISSUE_URL = 'https://github.com/Makaytron/Etsy-Automation-Tools/issues/new';
+
+    /** A new-issue link on GitHub with the report filled in. */
+    function issueUrl(report, id = '') {
+      const body = ['```json', JSON.stringify(report, null, 2), '```'].join('\n');
+      const url = new URL(FEEDBACK_ISSUE_URL);
+      url.searchParams.set('title', `${id ? `${id} ` : ''}[${report.category}] Etsy Automation Tools ${report.appVersion}`);
+      url.searchParams.set('body', body);
+      return url.href;
+    }
+    return Object.freeze({ FEEDBACK_ISSUE_URL, issueUrl });
+  })();
+
+  // ── src/ui/feedback.js ──
+  const __eat_ui_feedback = (() => {
+    // The problem report dialog ("Sorun bildir"), as the design canvas artboard
+    // Feedback draws it: what happened (six choices), which tool, an optional
+    // note, and the technical facts — each of which the user can switch off —
+    // shown before anything leaves the browser. "Send report" opens a prefilled,
+    // public GitHub issue; the script itself sends nothing. Shop names, customer
+    // data, page addresses with ids and API keys never enter it (core/diagnostics.js).
+    //
+    // Design sources: template.primitive.dialog, template.primitive.select,
+    // template.primitive.input, template.primitive.checkbox, template.primitive.button.
+
+    const { h, icon } = __eat_ui_dom;
+    const { ICONS } = __eat_ui_icons;
+    const { openDialog } = __eat_ui_controls;
+    const { buildReport, DIALOG_CATEGORIES, PROBLEM_CATEGORIES, REPORT_GROUPS } = __eat_core_diagnostics;
+    const { issueUrl } = __eat_core_feedback;
+    const { newReportId } = __eat_core_reports;
+    const { TOOL_IDS } = __eat_core_settings;
+
+    /**
+     * @param {object} o
+     * @param {Document} o.doc
+     * @param {Element} o.container
+     * @param {object} o.text      the shell translator
+     * @param {object} o.scope     window
+     * @param {string} o.appVersion
+     * @param {object} [o.host]    to preselect the tool of this page
+     * @param {object} [o.reports] keeps the report id for Settings › Help
+     * @param {string} [o.category]
+     * @param {string} [o.errorCode]
+     * @param {string} [o.tool]
+     * @param {Element} [o.returnFocus]
+     */
+    function openFeedback({ doc, container, text, scope, appVersion, host = null, reports = null, category = 'interrupted', errorCode = null, errorAt = null, tool = null, returnFocus = null }) {
+      const { t } = text;
+      const initial = { 'etsy-page-changed': 'interrupted', 'ai-or-translation': 'wrong-result', other: 'interrupted' }[category] ?? category;
+      const draft = {
+        category: DIALOG_CATEGORIES.includes(initial) ? initial : 'interrupted',
+        tool: TOOL_IDS.includes(tool) ? tool : TOOL_IDS.includes(host?.activeTool) ? host.activeTool : '',
+        note: '',
+        omit: new Set(errorCode ? [] : ['error']),
+      };
+      const id = newReportId();
+      const minutes = -new Date().getTimezoneOffset();
+      const env = () => ({
+        userAgent: scope.navigator?.userAgent ?? '',
+        locale: scope.navigator?.language ?? '',
+        pathname: scope.location?.pathname ?? '/',
+        uiLanguage: text.language(),
+        utcOffsetMinutes: minutes,
+        handler: scope.GM?.info?.scriptHandler && scope.GM?.info?.version ? `${scope.GM.info.scriptHandler} ${scope.GM.info.version}` : null,
+      });
+      const report = () => buildReport({ appVersion, category: PROBLEM_CATEGORIES.includes(draft.category) ? draft.category : 'other', tool: draft.tool || null, errorCode, errorAt, note: draft.note, omit: [...draft.omit] }, env());
+
+      // Technical facts, one row per group (Feedback: "Raporla gönderilecek teknik bilgiler").
+      const facts = h(doc, 'div', { class: 'list', 'data-role': 'fb-preview' });
+      function renderFacts() {
+        const all = buildReport({ appVersion, category: draft.category, tool: draft.tool || null, errorCode, errorAt, note: '' }, env());
+        const value = {
+          version: [all.appVersion && `v${all.appVersion}`, all.handler].filter(Boolean).join(' · '),
+          system: [all.browser && [all.browser, all.browserMajor].filter((v) => v != null).join(' '), all.os].filter(Boolean).join(' · '),
+          locale: [all.browserLocale ?? all.uiLanguage, all.region, all.utcOffset].filter(Boolean).join(' · '),
+          page: all.routeTemplate ? `etsy.com${all.routeTemplate}` : '—',
+          error: errorCode ? [all.errorCode, all.errorAt].filter(Boolean).join(' · ') : t('fb.noError'),
+        };
+        facts.replaceChildren(...REPORT_GROUPS.map((group) => h(doc, 'label', { class: 'li fb-fact', 'data-field': group },
+          h(doc, 'input', { type: 'checkbox', class: 'chk', name: `fb-${group}`, checked: !draft.omit.has(group), disabled: group === 'error' && !errorCode, onchange: (e) => { if (e.target.checked) draft.omit.delete(group); else draft.omit.add(group); sync(); } }),
+          h(doc, 'span', { class: 'xs mute2 fb-fact-k', text: t(`fb.g.${group}`) }),
+          h(doc, 'span', { class: 'xs mono grow trunc', text: value[group] || '—' }))));
+      }
+
+      let github = null;
+      function sync() {
+        github?.setAttribute('href', issueUrl(report(), id));
+      }
+
+      const options = h(doc, 'div', { class: 'g3', style: 'gap: 6px;' });
+      function renderOptions() {
+        options.replaceChildren(...DIALOG_CATEGORIES.map((c) => h(doc, 'label', { class: draft.category === c ? 'fb-opt on' : 'fb-opt' },
+          h(doc, 'input', { type: 'radio', name: 'fb-category', value: c, checked: draft.category === c, onchange: () => { draft.category = c; renderOptions(); sync(); } }),
+          t(`fb.cat.${c}`))));
+      }
+      renderOptions();
+
+      const body = h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
+        h(doc, 'div', { class: 'field', role: 'radiogroup', 'aria-labelledby': 'eat-fb-category' }, h(doc, 'span', { class: 'label', id: 'eat-fb-category', text: t('fb.category') }), options),
+        h(doc, 'label', { class: 'field', for: 'eat-fb-tool' },
+          h(doc, 'span', { class: 'label', text: t('fb.tool') }),
+          h(doc, 'select', { class: 'input', id: 'eat-fb-tool', name: 'fb-tool', onchange: (e) => { draft.tool = e.target.value; renderFacts(); sync(); } },
+            h(doc, 'option', { value: '', text: t('fb.toolNone'), selected: !draft.tool }),
+            TOOL_IDS.map((id2) => h(doc, 'option', { value: id2, selected: draft.tool === id2, text: t(`tool.${id2}`) })))),
+        h(doc, 'label', { class: 'field', for: 'eat-fb-note' },
+          h(doc, 'span', { class: 'label' }, t('fb.note'), h(doc, 'span', { class: 'mute', style: 'font-weight: 400;', text: ` · ${t('fb.optional')}` })),
+          h(doc, 'textarea', { class: 'input', id: 'eat-fb-note', name: 'fb-note', rows: 2, maxlength: 1000, placeholder: t('fb.notePlaceholder'), oninput: (e) => { draft.note = e.currentTarget.value; sync(); } })),
+        h(doc, 'span', { class: 'hint', style: 'margin-top: -6px;', text: t('fb.noteHint') }),
+        h(doc, 'div', { class: 'fb-box' },
+          h(doc, 'div', { class: 'row fb-box-h' }, h(doc, 'span', { class: 'h3 grow', text: t('fb.preview') }), h(doc, 'span', { class: 'xs mute', text: t('fb.previewOff') })),
+          facts,
+          h(doc, 'div', { class: 'row xs mute2 fb-box-f' }, icon(doc, ICONS.shield, 14), t('fb.never'))),
+        h(doc, 'span', { class: 'hint', text: t('fb.githubHint') }));
+      renderFacts();
+
+      const dialog = openDialog(doc, container, {
+        title: t('fb.title'), description: t('fb.text'), body, closeLabel: t('fb.cancel'), returnFocus, width: 640,
+        footer: (close) => {
+          github = h(doc, 'a', {
+            class: 'btn btn-p', href: issueUrl(report(), id), target: '_blank', rel: 'noopener noreferrer', 'data-action': 'fb-github', text: t('fb.github'),
+            onclick: () => { void reports?.record({ id, category: draft.category }); scope.setTimeout?.(close, 0); },
+          });
+          return [h(doc, 'span', { class: 'xs mute grow fb-foot', text: t('fb.seeFirst') }), h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: close, text: t('fb.cancel') }), github];
+        },
+      });
+      // The dialog's footer has its own text on the left instead of a spacer.
+      dialog.dialog.querySelector('.modal-f > .grow:first-child')?.remove();
+      return dialog;
+    }
+    return Object.freeze({ openFeedback });
+  })();
+
+  // ── src/ui/format.js ──
+  const __eat_ui_format = (() => {
+    // Dates, sizes and numbers as Settings › General › Date and number format says.
+
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    function zone(format) {
+      return format?.timezone && format.timezone !== 'browser' ? format.timezone : undefined;
+    }
+
+    /** A date (and time) in the chosen style: auto follows the interface language. */
+    function formatDate(ms, format = {}, language = 'en', { time = false } = {}) {
+      const d = new Date(ms);
+      if (Number.isNaN(d.getTime())) return '';
+      const timeZone = zone(format);
+      const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d).map((p) => [p.type, p.value]));
+      const clock = time ? ` ${parts.hour}:${parts.minute}` : '';
+      switch (format?.date) {
+        case 'dd.mm.yyyy': return `${parts.day}.${parts.month}.${parts.year}${clock}`;
+        case 'mm/dd/yyyy': return `${parts.month}/${parts.day}/${parts.year}${clock}`;
+        case 'yyyy-mm-dd': return `${parts.year}-${parts.month}-${parts.day}${clock}`;
+        case 'd-mmm-y': return new Intl.DateTimeFormat(language, { timeZone, day: 'numeric', month: 'short', year: 'numeric', ...(time ? { hour: '2-digit', minute: '2-digit' } : {}) }).format(d);
+        default: return new Intl.DateTimeFormat(language, { timeZone, dateStyle: 'medium', ...(time ? { timeStyle: 'short' } : {}) }).format(d);
+      }
+    }
+
+    /** A number with the chosen separators: auto follows the interface language. */
+    function formatNumber(value, format = {}, language = 'en', options = {}) {
+      const locale = format?.number === 'dot' ? 'de-DE' : format?.number === 'comma' ? 'en-US' : language;
+      try { return new Intl.NumberFormat(locale, options).format(value); } catch { return String(value); }
+    }
+
+    /** "1,2 MB", "86 KB" in the interface language. */
+    function formatBytes(bytes, language = 'en') {
+      const n = Math.max(0, Number(bytes) || 0);
+      if (n < 1024 * 1024) return `${new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(Math.max(n ? 1 : 0, n / 1024))} KB`;
+      return `${new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(n / (1024 * 1024))} MB`;
+    }
+    return Object.freeze({ DAY_MS, formatDate, formatNumber, formatBytes });
   })();
 
   // ── src/ui/onboarding.js ──

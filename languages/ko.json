@@ -644,6 +644,7 @@
     "ads.saveBusy": "작업이 실행 중이라 목록을 저장하지 않았습니다.",
     "ads.saveEmpty": "목록에는 규칙이 하나 이상 있어야 합니다.",
     "ads.saveLarge": "목록이 너무 큽니다.",
+    "ads.saveRegex": "{rule} 패턴이 올바르지 않아 목록을 저장하지 않았습니다. 기호를 확인하고 다시 시도하세요.",
     "ads.emptyTitle": "단어 목록이 비어 있습니다",
     "ads.emptyText": "광고 키워드로 실행되지 않아야 할 단어를 추가하세요. Etsy Ads에서 이 단어가 포함된 키워드를 찾아, 요청하면 끕니다.",
     "ads.emptyStart": "첫 단어 추가",

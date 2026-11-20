@@ -644,6 +644,7 @@
     "ads.saveBusy": "Rulează o sarcină; lista nu a fost salvată.",
     "ads.saveEmpty": "Lista are nevoie de cel puțin o regulă.",
     "ads.saveLarge": "Lista este prea mare.",
+    "ads.saveRegex": "Modelul {rule} nu este valid; lista nu a fost salvată. Verifică simbolurile și încearcă din nou.",
     "ads.emptyTitle": "Lista ta de cuvinte este goală",
     "ads.emptyText": "Adaugă cuvintele pentru care cuvintele cheie din reclame nu trebuie să ruleze. În Etsy Ads, cuvintele cheie care le conțin sunt găsite și dezactivate când spui tu.",
     "ads.emptyStart": "Adaugă primul cuvânt",

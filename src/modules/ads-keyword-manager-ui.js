@@ -41,7 +41,7 @@ export const ADS_STRINGS = Object.freeze({
     contains: 'Contains', exact: 'Exact', regex: 'Pattern', editRule: 'Edit the rule {rule}', deleteRule: 'Delete the rule {rule}', saveRule: 'Save', cancel: 'Cancel',
     update: 'Get the Makaytron list…', restore: 'Go back to the previous list…', fullEditor: 'Open the full editor',
     noBackup: 'No previous list yet. Updating the list keeps the current one as a backup.',
-    saved: 'The word list is saved.', saveBusy: 'A job is running; the list was not saved.', saveEmpty: 'The list needs at least one rule.', saveLarge: 'The list is too large.',
+    saved: 'The word list is saved.', saveBusy: 'A job is running; the list was not saved.', saveEmpty: 'The list needs at least one rule.', saveLarge: 'The list is too large.', saveRegex: 'The pattern {rule} is not valid; the list was not saved. Check its symbols and try again.',
     emptyTitle: 'Your word list is empty', emptyText: 'Add the words whose ad keywords should not run. On Etsy Ads, the keywords that contain them are found and turned off when you say so.',
     emptyStart: 'Add the first word', emptyMakaytron: 'Get the Makaytron list',
     how1: 'Add words', how1Text: 'Words or phrases you do not want ads for.', how2: 'Open an ad', how2Text: 'On Etsy Ads, the matching keywords are marked.', how3: 'Turn them off', how3Text: 'On this page or on every page, after you confirm.',
@@ -158,7 +158,7 @@ export function renderAdsPage(doc, { snap, rules, matches, language, actions, ta
     const hereCount = (rule) => (matches?.rows ?? []).filter((m) => m.rule === rule.value && m.type === rule.type).length;
     const save = async (next) => {
       const result = await actions.saveRules(next);
-      actions.say?.(result.ok ? ts('saved') : ts({ busy: 'saveBusy', empty: 'saveEmpty', too_large: 'saveLarge' }[result.reason] ?? 'saveBusy'));
+      actions.say?.(result.ok ? ts('saved') : ts({ busy: 'saveBusy', empty: 'saveEmpty', too_large: 'saveLarge', regex: 'saveRegex' }[result.reason] ?? 'saveBusy', { rule: result.rule ?? '' }));
     };
     const word = h(doc, 'input', { class: 'input', type: 'text', id: 'eat-ads-word', name: 'ads-word', placeholder: ts('addWordPlaceholder'), autocomplete: 'off', spellcheck: 'false' });
     const how = h(doc, 'select', { class: 'input', id: 'eat-ads-how', name: 'ads-how' },

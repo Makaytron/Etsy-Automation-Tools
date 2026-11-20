@@ -644,6 +644,7 @@
     "ads.saveBusy": "Há uma tarefa em andamento; a lista não foi salva.",
     "ads.saveEmpty": "A lista precisa de pelo menos uma regra.",
     "ads.saveLarge": "A lista é grande demais.",
+    "ads.saveRegex": "O padrão {rule} não é válido; a lista não foi salva. Verifique os símbolos e tente de novo.",
     "ads.emptyTitle": "Sua lista de palavras está vazia",
     "ads.emptyText": "Adicione as palavras cujas palavras-chave de anúncio não devem rodar. No Etsy Ads, as palavras-chave que as contêm são encontradas e desativadas quando você mandar.",
     "ads.emptyStart": "Adicionar a primeira palavra",

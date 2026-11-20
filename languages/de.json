@@ -644,6 +644,7 @@
     "ads.saveBusy": "Eine Aufgabe läuft; die Liste wurde nicht gespeichert.",
     "ads.saveEmpty": "Die Liste braucht mindestens eine Regel.",
     "ads.saveLarge": "Die Liste ist zu groß.",
+    "ads.saveRegex": "Das Muster {rule} ist ungültig; die Liste wurde nicht gespeichert. Prüfen Sie die Zeichen und versuchen Sie es erneut.",
     "ads.emptyTitle": "Ihre Wortliste ist leer",
     "ads.emptyText": "Fügen Sie die Wörter hinzu, für die keine Werbe-Keywords laufen sollen. In Etsy Ads werden die Keywords, die sie enthalten, gefunden und auf Ihr Kommando ausgeschaltet.",
     "ads.emptyStart": "Erstes Wort hinzufügen",

@@ -644,6 +644,7 @@
     "ads.saveBusy": "Ett jobb körs; listan sparades inte.",
     "ads.saveEmpty": "Listan behöver minst en regel.",
     "ads.saveLarge": "Listan är för stor.",
+    "ads.saveRegex": "Mönstret {rule} är ogiltigt; listan sparades inte. Kontrollera tecknen och försök igen.",
     "ads.emptyTitle": "Din ordlista är tom",
     "ads.emptyText": "Lägg till de ord som annonssökord inte ska köras för. I Etsy Ads hittas sökorden som innehåller dem och stängs av när du säger till.",
     "ads.emptyStart": "Lägg till det första ordet",

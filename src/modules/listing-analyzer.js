@@ -11,6 +11,7 @@
 
 import { createScopedGm } from '../core/scoped-gm.js';
 import { renderLaDrawer, renderLaPage } from './listing-analyzer-ui.js';
+import { createWaitingNotices } from '../core/waiting-notices.js';
 
 export const LA_TOOL_ID = 'listing-analyzer';
 export const STANDALONE_ROOT_ID = 'makaytron-etsy-listing-analyzer';
@@ -19,6 +20,7 @@ const STANDALONE_GRACE_MS = 1500;
 const engineLanguage = (language) => (String(language ?? '').toLowerCase().startsWith('tr') ? 'tr' : 'en');
 
 export function createListingAnalyzerModule() {
+  const waiting = createWaitingNotices({ event: 'queueWaiting', tool: LA_TOOL_ID, page: `tool:${LA_TOOL_ID}` });
   const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', local: {} };
 
   const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
@@ -41,6 +43,12 @@ export function createListingAnalyzerModule() {
     if (text === state.last) return;
     state.last = text;
     emit('running');
+    // The edit queue's current listing waiting for the user (publish, deactivation or a check) is announced once.
+    const q = state.engine.la?.view().queue;
+    const item = q?.items.find((i) => i.id === q.active);
+    const waits = item && (q.recovery || ['applying', 'awaiting-user-review', 'awaiting-user-deactivation'].includes(item.status));
+    waiting.update(waits ? [{ key: `${item.id}:${q.recovery ? 'recovery' : item.status}`, detail: item.title }] : [],
+      { notify: state.ctx?.notify, language: state.ctx?.settings?.get().language });
   }
 
   async function start(ctx) {

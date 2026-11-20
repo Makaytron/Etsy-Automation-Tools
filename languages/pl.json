@@ -644,6 +644,7 @@
     "ads.saveBusy": "Trwa zadanie; lista nie została zapisana.",
     "ads.saveEmpty": "Lista musi mieć co najmniej jedną regułę.",
     "ads.saveLarge": "Lista jest za duża.",
+    "ads.saveRegex": "Wzorzec {rule} jest nieprawidłowy; lista nie została zapisana. Sprawdź znaki i spróbuj ponownie.",
     "ads.emptyTitle": "Twoja lista słów jest pusta",
     "ads.emptyText": "Dodaj słowa, dla których reklamowe słowa kluczowe nie powinny działać. W Etsy Ads słowa kluczowe, które je zawierają, są znajdowane i wyłączane, gdy tego zechcesz.",
     "ads.emptyStart": "Dodaj pierwsze słowo",

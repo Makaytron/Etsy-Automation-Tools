@@ -114,6 +114,11 @@ export function createKeywordMarketAnalyzerModule() {
     return state.engine.snapshot();
   }
 
+  // Settings › Tools › "Keyword research into listings": when it is off, no Listing Analyzer request is shown,
+  // imported or answered from here.
+  const linked = () => state.ctx?.settings?.get().links?.kwToListing !== false;
+  const linkedData = () => (linked() || !state.data ? state.data : { ...state.data, active: null, hasResult: false });
+
   return {
     id: KW_TOOL_ID,
     name: 'Keyword & Market Analyzer',
@@ -123,11 +128,11 @@ export function createKeywordMarketAnalyzerModule() {
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
     renderDrawer(ui) {
       const snap = view(ui);
-      return snap ? renderKwDrawer(ui.doc, { snap, data: state.data, language: ui.language, actions: actionsFor(ui) }) : null;
+      return snap ? renderKwDrawer(ui.doc, { snap, data: linkedData(), language: ui.language, actions: actionsFor(ui) }) : null;
     },
     renderPage(ui) {
       const snap = view(ui);
-      return snap ? renderKwPage(ui.doc, { snap, data: state.data, language: ui.language, actions: actionsFor(ui), container: ui.container }) : null;
+      return snap ? renderKwPage(ui.doc, { snap, data: linkedData(), language: ui.language, actions: actionsFor(ui), container: ui.container, research: linked() }) : null;
     },
     async mount(ctx) {
       state.ctx = ctx;

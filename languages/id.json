@@ -644,6 +644,7 @@
     "ads.saveBusy": "Ada pekerjaan yang berjalan; daftar tidak disimpan.",
     "ads.saveEmpty": "Daftar memerlukan setidaknya satu aturan.",
     "ads.saveLarge": "Daftar terlalu besar.",
+    "ads.saveRegex": "Pola {rule} tidak valid; daftar tidak disimpan. Periksa simbolnya lalu coba lagi.",
     "ads.emptyTitle": "Daftar kata Anda kosong",
     "ads.emptyText": "Tambahkan kata yang kata kunci iklannya tidak boleh berjalan. Di Etsy Ads, kata kunci yang mengandungnya ditemukan dan dimatikan saat Anda memintanya.",
     "ads.emptyStart": "Tambah kata pertama",

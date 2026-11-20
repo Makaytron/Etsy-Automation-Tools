@@ -156,7 +156,17 @@ const EPILOGUE = `
                 unread: item.unread, time: item.timestamp,
             };
         }) : [];
-        const context = page === 'messages' && !listPage ? (UI.state.context || MessageAdapter.context()) : null;
+        // The engine refreshes its context only while its own panel is open; the unified screens read the live
+        // conversation and, when Etsy moved to another one, drop the old draft exactly as the engine would.
+        let context = null;
+        if (page === 'messages' && !listPage) {
+            const live = MessageAdapter.context();
+            if (live.conversationId && UI.state.context && UI.messageContextChanged(live)) {
+                UI.adoptMessageContext(live);
+                UI.invalidateMessageWork();
+            }
+            context = live.conversationId && UI.state.context?.conversationId === live.conversationId ? UI.state.context : live;
+        }
         const conversation = context?.conversationId ? {
             id: context.conversationId, name: String(context.customerName || ''), orderId: String(context.orderId || ''), itemTitle: String(context.itemTitle || ''),
             messages: (context.messages || []).slice(-6).map((message) => ({ role: message.role, text: String(message.text || '') })),

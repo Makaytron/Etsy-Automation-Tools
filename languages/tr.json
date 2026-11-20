@@ -644,6 +644,7 @@
     "ads.saveBusy": "Bir iş çalışıyor; liste kaydedilmedi.",
     "ads.saveEmpty": "Listede en az bir kural olmalı.",
     "ads.saveLarge": "Liste çok büyük.",
+    "ads.saveRegex": "{rule} kalıbı geçerli değil; liste kaydedilmedi. İşaretlerini kontrol edip yeniden deneyin.",
     "ads.emptyTitle": "Kelime listeniz boş",
     "ads.emptyText": "Reklam anahtar kelimelerinin çalışmasını istemediğiniz kelimeleri ekleyin. Etsy Ads'te bunları içeren anahtar kelimeler bulunur ve siz deyince kapatılır.",
     "ads.emptyStart": "İlk kelimeyi ekle",

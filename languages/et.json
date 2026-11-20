@@ -644,6 +644,7 @@
     "ads.saveBusy": "Töö käib; loendit ei salvestatud.",
     "ads.saveEmpty": "Loendis peab olema vähemalt üks reegel.",
     "ads.saveLarge": "Loend on liiga suur.",
+    "ads.saveRegex": "Muster {rule} ei sobi, loendit ei salvestatud. Kontrolli märke ja proovi uuesti.",
     "ads.emptyTitle": "Sinu sõnaloend on tühi",
     "ads.emptyText": "Lisa sõnad, mille puhul reklaami märksõnad ei tohi töötada. Etsy Adsis leitakse neid sisaldavad märksõnad ja lülitatakse välja, kui sa seda ütled.",
     "ads.emptyStart": "Lisa esimene sõna",

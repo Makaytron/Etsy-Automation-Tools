@@ -112,6 +112,11 @@ const ENGINE_API = `
     // Saves a whole rule list from the workspace's word list page, by the editor's own rules.
     async function __eatSaveRules(list) {
         if (!RouteLifecycle.allowed() || activeOperation || wordlistUpdateRunning || document.getElementById(EDITOR_MODAL_ID)) return { ok: false, reason: 'busy' };
+        // A pattern is checked the way the standalone editor checks it (submitRule): a broken one is refused, not saved.
+        for (const rule of Array.isArray(list) ? list : []) {
+            if (rule?.type !== 'regex') continue;
+            try { new RegExp(String(rule.value ?? ''), 'iu'); } catch { return { ok: false, reason: 'regex', rule: String(rule.value ?? '') }; }
+        }
         const value = (Array.isArray(list) ? list : []).map((rule) => encodeEditorRule({ type: rule?.type === 'exact' ? 'exact' : rule?.type === 'regex' ? 'regex' : 'contains', value: String(rule?.value ?? ''), edited: true })).filter(Boolean).join('\\n');
         if (!value) return { ok: false, reason: 'empty' };
         if (new TextEncoder().encode(value).length > MAX_WORDLIST_BYTES) return { ok: false, reason: 'too_large' };

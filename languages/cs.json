@@ -644,6 +644,7 @@
     "ads.saveBusy": "Probíhá úloha; seznam nebyl uložen.",
     "ads.saveEmpty": "Seznam musí obsahovat alespoň jedno pravidlo.",
     "ads.saveLarge": "Seznam je příliš velký.",
+    "ads.saveRegex": "Vzor {rule} není platný; seznam nebyl uložen. Zkontrolujte znaky a zkuste to znovu.",
     "ads.emptyTitle": "Váš seznam slov je prázdný",
     "ads.emptyText": "Přidejte slova, pro která by reklamní klíčová slova neměla běžet. V Etsy Ads se klíčová slova, která je obsahují, najdou a vypnou, až řeknete.",
     "ads.emptyStart": "Přidat první slovo",

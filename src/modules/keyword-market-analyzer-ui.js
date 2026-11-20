@@ -93,7 +93,7 @@ export function renderKwDrawer(doc, { snap, data, language, actions }) {
 }
 
 /** Research page (KW-Research / KW-Analyzing / KW-Empty). */
-export function renderKwPage(doc, { snap, data, language, actions, container }) {
+export function renderKwPage(doc, { snap, data, language, actions, container, research = true }) {
   const ts = texts(language);
   const saved = (data?.captures ?? []).slice().sort((a, b) => String(b.capturedAt ?? '').localeCompare(String(a.capturedAt ?? '')));
   const view = actions.viewState?.() ?? { query: '', selected: null };
@@ -108,7 +108,7 @@ export function renderKwPage(doc, { snap, data, language, actions, container }) 
     overline: 'Keyword & Market Analyzer', title: ts('title'), description: ts('description'),
     actions: [
       // Importing a Listing Analyzer research request stays possible once research is saved.
-      items.length ? h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-kw': 'import', onclick: (e) => importDialog(e.currentTarget) }, icon(doc, ICONS.upload, 16), ts('importRequest')) : null,
+      items.length && research ? h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-kw': 'import', onclick: (e) => importDialog(e.currentTarget) }, icon(doc, ICONS.upload, 16), ts('importRequest')) : null,
       h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-kw': 'export', disabled: !saved.length, onclick: () => actions.exportJson() }, icon(doc, ICONS.download, 16), ts('exportJson')),
       h(doc, 'form', { class: 'row', 'data-role': 'kw-search', onsubmit: (e) => { e.preventDefault(); actions.search(e.currentTarget.elements.keyword.value); } },
         h(doc, 'input', { class: 'input', id: 'eat-kw-keyword', name: 'keyword', type: 'search', 'aria-label': ts('keyword'), maxlength: 80, autocomplete: 'off', placeholder: ts('keyword'), value: snap.keyword ?? '', style: 'width: 200px;' }),
@@ -123,7 +123,7 @@ export function renderKwPage(doc, { snap, data, language, actions, container }) 
       h(doc, 'p', { class: 'ed', text: ts('emptyText') }),
       h(doc, 'div', { class: 'ea' },
         h(doc, 'a', { class: 'btn btn-p', href: '/your/shops/me/marketplace-insights', text: ts('emptyStart') }),
-        h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: (e) => importDialog(e.currentTarget), text: ts('importRequest') })),
+        research ? h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: (e) => importDialog(e.currentTarget), text: ts('importRequest') }) : null),
       h(doc, 'div', { class: 'steps' }, [1, 2, 3].map((n) => h(doc, 'div', {},
         h(doc, 'span', { class: 'n', text: String(n) }),
         h(doc, 'span', {}, h(doc, 'span', { class: 'st', text: ts(`how${n}`) }), h(doc, 'span', { class: 'sd', text: ts(`how${n}Text`) }))))))];

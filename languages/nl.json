@@ -644,6 +644,7 @@
     "ads.saveBusy": "Er loopt een taak; de lijst is niet opgeslagen.",
     "ads.saveEmpty": "De lijst heeft minstens één regel nodig.",
     "ads.saveLarge": "De lijst is te groot.",
+    "ads.saveRegex": "Het patroon {rule} is ongeldig; de lijst is niet opgeslagen. Controleer de tekens en probeer het opnieuw.",
     "ads.emptyTitle": "Je woordenlijst is leeg",
     "ads.emptyText": "Voeg de woorden toe waarvoor geen advertentiezoekwoorden mogen lopen. In Etsy Ads worden de zoekwoorden die ze bevatten gevonden en uitgezet wanneer jij dat zegt.",
     "ads.emptyStart": "Eerste woord toevoegen",

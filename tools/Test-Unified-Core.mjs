@@ -11,6 +11,7 @@ import { detectLanguage, textDirection, createI18n, validatePack, interpolate } 
 import { buildReport, scrubNote, browserInfo } from '../src/core/diagnostics.js';
 import { createHost } from '../src/core/host.js';
 import { createNotices } from '../src/core/notices.js';
+import { createWaitingNotices } from '../src/core/waiting-notices.js';
 import { TOOLS } from '../src/modules/index.js';
 
 // ── Routes ──────────────────────────────────────────────────────────────
@@ -283,4 +284,14 @@ test('notices from two Etsy tabs sharing one store are merged, not overwritten',
   await adsTab.add({ event: 'scanDone', title: 'Another scan' });
   await both.load();
   assert.deepEqual(both.list().map((n) => [n.title, n.read]), [['Another scan', false], ['Scan finished', true], ['Series stopped', true]], 'read state from one tab survives a later add in another');
+});
+test('a step that starts waiting is announced once; what already waited at load is not', () => {
+  const sent = [];
+  const notify = (n) => sent.push(n);
+  const w = createWaitingNotices({ event: 'queueWaiting', tool: 'listing-analyzer', page: 'tool:listing-analyzer' });
+  w.update([{ key: 'a:applying', detail: 'Old' }], { notify, language: 'en' });
+  assert.equal(sent.length, 0, 'the baseline at page load');
+  w.update([{ key: 'a:applying', detail: 'Old' }, { key: 'b:applying', detail: 'Mug' }], { notify, language: 'en' });
+  w.update([{ key: 'b:applying', detail: 'Mug' }], { notify, language: 'en' });
+  assert.deepEqual(sent.map((n) => [n.event, n.detail, n.needsAction, n.title]), [['queueWaiting', 'Mug', true, 'The edit queue waits for you']]);
 });

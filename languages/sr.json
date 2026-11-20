@@ -644,6 +644,7 @@
     "ads.saveBusy": "Posao je u toku; lista nije sačuvana.",
     "ads.saveEmpty": "Lista mora imati bar jedno pravilo.",
     "ads.saveLarge": "Lista je prevelika.",
+    "ads.saveRegex": "Obrazac {rule} nije ispravan; lista nije sačuvana. Proverite znakove i pokušajte ponovo.",
     "ads.emptyTitle": "Vaša lista reči je prazna",
     "ads.emptyText": "Dodajte reči za koje oglasne ključne reči ne treba da rade. U Etsy Ads se ključne reči koje ih sadrže pronalaze i isključuju kada vi kažete.",
     "ads.emptyStart": "Dodajte prvu reč",
