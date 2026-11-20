@@ -6,7 +6,7 @@ import { UI_LANGUAGES } from './strings-workspace.js';
 import { languageStatus } from './language-status.js';
 import { TOOL_IDS } from '../core/settings.js';
 
-export function renderSettingsPage(doc, { t, text, language, settings, storage, appVersion, scope, container, tab = 'general', onTab, message = '', say, migration, migrationState = {}, runMigration }) {
+export function renderSettingsPage(doc, { t, text, language, settings, storage, appVersion, scope, container, tab = 'general', onTab, message = '', say, migration, migrationState = {}, runMigration, onDataDeleted }) {
   const s = settings.get();
   const notice = h(doc, 'p', { class: 'notice', role: 'status', 'aria-live': 'polite', text: message });
 
@@ -92,6 +92,7 @@ export function renderSettingsPage(doc, { t, text, language, settings, storage, 
       await storage.clear({ includeSecrets: keys });
       await settings.load();
       await settings.update({});
+      onDataDeleted?.(); // transfer records went with the data: the card must not say "transferred before"
       close();
       say(t('dlg.deleted'));
     });

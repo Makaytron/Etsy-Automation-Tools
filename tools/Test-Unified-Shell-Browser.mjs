@@ -233,12 +233,14 @@ const scenarios = {
     out.savedAds = window.__values.get('eat:v1:core:settings').tools['ads-keyword-manager'];
     out.menuAfterOff = [...S().querySelectorAll('.ws-menu-button')].map((b) => b.dataset.page).filter(Boolean);
     await press('[data-name="settings-tab"][data-value="privacy"]');
+    out.migDoneBeforeDelete = Boolean(q('[data-role="mig-done"]'));
     await press('[data-action="delete-data"]');
     out.dialog = Boolean(q('[role="alertdialog"]')); out.confirmDisabledAtStart = q('[data-action="confirm-delete"]').disabled;
     const input = q('#eat-confirm'); input.value = 'sil'; input.dispatchEvent(new Event('input', { bubbles: true })); await wait(20);
     out.confirmEnabledAfterTyping = !q('[data-action="confirm-delete"]').disabled;
     await press('[data-action="confirm-delete"]'); await wait(200);
     out.keysAfterDelete = [...window.__values.keys()].sort();
+    out.migDoneAfterDelete = Boolean(q('[data-role="mig-done"]'));
     out.notice = q('.notice')?.textContent ?? null;
     q('#eat-workspace').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
     await wait(120);
@@ -585,7 +587,7 @@ const PAGES = {
   '/your/shops/me/sales-discounts': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.sellerPage },
   '/c/jewelry': { settings: { onboarded: true, language: 'tr' }, scenario: scenarios.shoppingPage },
   '/your/shops/me/stats': { settings: { onboarded: true, language: 'tr', theme: 'dark', drawer: { openOnLoad: true } }, scenario: scenarios.darkOpen },
-  '/your/shops/me/tools/listings': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.workspace },
+  '/your/shops/me/tools/listings': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.workspace, preload: { 'eat:v1:core:migration.sale-manager': { tool: 'sale-manager', at: '2026-11-19T00:00:00.000Z', keys: 1 } } },
   '/your/shops/me/orders': { settings: null, scenario: scenarios.onboarding },
   '/your/shops/me/advertising': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
   '/your/shops/me/sales-discounts/engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.saleEngine, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 33, discountName: 'WINTER' } } },
@@ -749,6 +751,8 @@ test('workspace: navigation, settings, deleting local data, Escape back to the d
   assert.ok(!r.keysAfterDelete.includes('eat:v1:sale-manager:legacy.eda-batch-config-v4'), 'tool data deleted');
   assert.ok(r.keysAfterDelete.includes('eat:secret:openai'), 'API keys stay unless ticked');
   assert.ok(r.notice && r.notice.length > 0, 'deletion is confirmed on the page');
+  assert.equal(r.migDoneBeforeDelete, true, 'the transfer card listed the earlier transfer');
+  assert.equal(r.migDoneAfterDelete, false, 'and drops it as soon as the data is deleted');
   assert.equal(r.wsAfterEscape, false);
   assert.equal(r.tabBack, true);
   assert.equal(r.drawerBack, true, 'Escape returns to the drawer');

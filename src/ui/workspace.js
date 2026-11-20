@@ -93,6 +93,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
         tab: state.tab, onTab: (tab) => { state.tab = tab; state.message = ''; render(); },
         message: state.message, say: (message) => { state.message = message; render(); },
         migration, migrationState: state.migration, runMigration,
+        onDataDeleted: () => { state.migration = { running: false, results: null, done: [] }; },
       })
       : toolPage(state.page.slice(5));
 
