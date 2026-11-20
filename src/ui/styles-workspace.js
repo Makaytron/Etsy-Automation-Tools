@@ -14,7 +14,7 @@
 // - template.primitive.input     same frame as select
 // - template.primitive.dialog    overlay black/50; content centered max-w-lg rounded-lg border p-6 shadow-lg gap-4;
 //                                title text-lg semibold; footer row justify-end gap-2
-// - shadcn.blocks.application-shell, block "App Shell 2": the sidebar collapses to a 3rem icon rail on narrow windows.
+// - shadcn.blocks.application-shell, block "App Shell 2": the sidebar collapses to a 48px icon rail on narrow windows.
 // Design gap (recorded, not invented): the registry has no switch or slider, so on/off settings use the checkbox
 // and the position along the edge is set by dragging the button.
 
