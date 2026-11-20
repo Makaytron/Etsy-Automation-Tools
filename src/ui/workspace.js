@@ -54,6 +54,19 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
       openWorkspace: (page) => go(page), hide: () => close(false),
     });
     if (custom) return custom;
+    const module = host.module?.(id);
+    if (module?.migrated) {
+      // The tool is here but has no screen right now: its standalone script runs on this page, or this is not its page.
+      const tool = t(`tool.${id}`);
+      const standalone = module.status?.() === 'standalone';
+      return h(doc, 'div', { style: 'display:contents' },
+        h(doc, 'div', { class: 'page-head' }, h(doc, 'h1', { class: 'page-title', text: tool })),
+        h(doc, 'section', { class: 'card', 'data-role': standalone ? 'tool-standalone' : 'tool-elsewhere' },
+          h(doc, 'div', { class: 'card-header' },
+            h(doc, 'p', { class: 'card-description', text: standalone ? t('drawer.standaloneActive', { tool }) : t('tool.openOnPage', { tool }) })),
+          standalone ? null : h(doc, 'div', { class: 'card-content' },
+            h(doc, 'div', {}, h(doc, 'a', { class: 'btn btn-default btn-sm', href: TOOL_HOME[id], text: t('tool.goToPage') })))));
+    }
     return h(doc, 'div', { style: 'display:contents' },
       h(doc, 'div', { class: 'page-head' },
         h(doc, 'h1', { class: 'page-title', text: t(`tool.${id}`) })),
@@ -70,8 +83,8 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     const keep = focusKey(root?.getRootNode?.().activeElement);
     root?.remove();
     const s = settings.get();
-    const active = host.activeTool;
     const enabled = TOOL_IDS.filter((id) => s.tools[id] !== false);
+    const active = enabled.includes(host.activeTool) ? host.activeTool : null;
     if (state.page.startsWith('tool:') && !enabled.includes(state.page.slice(5))) state.page = 'settings';
 
     const page = state.page === 'settings'
@@ -123,7 +136,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
   }
 
   function open({ page, tab, returnFocus } = {}) {
-    const active = host.activeTool;
+    const active = settings.get().tools[host.activeTool] !== false ? host.activeTool : null;
     state.page = page ?? (active ? `tool:${active}` : 'settings');
     if (tab) state.tab = tab;
     state.returnFocus = returnFocus ?? null;

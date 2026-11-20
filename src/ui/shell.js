@@ -110,8 +110,9 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
   function render() {
     sheet?.remove();
     const s = settings.get();
-    const active = host.activeTool;
     const enabled = TOOL_IDS.filter((id) => s.tools[id] !== false);
+    // A turned-off tool stays out of the drawer, even on its own page.
+    const active = enabled.includes(host.activeTool) ? host.activeTool : null;
     const toolLink = (id) => h(doc, 'li', {},
       h(doc, 'a', { class: 'tool', href: TOOL_HOME[id], 'aria-current': id === active ? 'page' : null },
         icon(doc, ICONS[id]),

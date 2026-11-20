@@ -18,7 +18,7 @@ export const UI_STRINGS = Object.freeze({
     'drawer.notMigrated': 'This tool has not moved into Etsy Automation Tools yet. Keep using its standalone script for now.',
     'drawer.engineRunning': '{tool} runs on this page in its own panel. Its new screens come in a later version.',
     'drawer.engineStarting': '{tool} is starting…',
-    'drawer.standaloneActive': 'The standalone {tool} script is also running on this page. So that the two never create campaigns at the same time, Etsy Automation Tools waits here. Turn one of them off in Tampermonkey.',
+    'drawer.standaloneActive': 'The standalone {tool} script is also running on this page. So that the two never work at the same time, Etsy Automation Tools waits here. Turn one of them off in Tampermonkey.',
     'drawer.pro': 'Drafts, mockups and a publishing queue in',
     'drawer.proLink': 'Makaytron Pro',
     'drawer.hidePro': 'Hide this suggestion',

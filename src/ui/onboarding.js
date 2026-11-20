@@ -16,6 +16,8 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
   const { t } = text;
   const draft = { step: 1, language: text.language(), tools: { ...settings.get().tools } };
   const detected = (scope.navigator?.languages ?? [])[0] ?? '';
+  // The opening sentence says the language came from the browser; once the user picks another one it no longer does.
+  const openedIn = draft.language;
   let overlay = null;
 
   function progress(n, total) {
@@ -29,7 +31,7 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
     return [
       h(doc, 'div', { class: 'dialog-header' },
         h(doc, 'h2', { class: 'dialog-title', id: 'eat-ob-title', text: t('ob.langTitle') }),
-        h(doc, 'p', { class: 'dialog-description', text: t('ob.langText') })),
+        h(doc, 'p', { class: 'dialog-description', text: t(draft.language === openedIn ? 'ob.langText' : 'ob.langTextChosen') })),
       progress(1, 2),
       h(doc, 'div', { class: 'field', style: 'align-items:center' },
         select(doc, {

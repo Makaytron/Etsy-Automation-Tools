@@ -21,7 +21,7 @@
 export const WORKSPACE_CSS = `
 .ws { pointer-events: auto; position: fixed; inset: 0; display: flex; background: var(--mk-bg); color: var(--mk-fg); font-family: var(--mk-font); }
 .ws[hidden] { display: none; }
-.ws-sidebar { width: 16rem; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--mk-surface); border-right: 1px solid var(--mk-border); overflow-y: auto; }
+.ws-sidebar { width: 256px; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--mk-surface); border-right: 1px solid var(--mk-border); overflow-y: auto; }
 [dir="rtl"] .ws-sidebar { border-right: none; border-left: 1px solid var(--mk-border); }
 .ws-brand { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: var(--mk-radius-sm); text-decoration: none; color: inherit; }
 .ws-brand:hover { background: var(--mk-muted); }
@@ -38,7 +38,7 @@ export const WORKSPACE_CSS = `
 .ws-menu-button:hover { background: var(--mk-muted); }
 .ws-menu-button[aria-current="page"] { background: var(--mk-muted); font-weight: 500; }
 .ws-menu-button svg { flex: none; color: var(--mk-muted-fg); }
-.ws-menu-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-menu-button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
 .ws-sidebar-footer { margin-top: auto; display: flex; gap: 8px; padding: 8px; font-size: 12px; color: var(--mk-muted-fg); }
 .ws-sidebar-footer a { color: inherit; }
 .ws-link { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; }
@@ -86,7 +86,7 @@ export const WORKSPACE_CSS = `
 
 /* Dialog */
 .overlay { pointer-events: auto; position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.dialog { position: relative; width: 100%; max-width: 32rem; display: grid; gap: 16px; padding: 24px; border: 1px solid var(--mk-border); border-radius: var(--mk-radius-md); background: var(--mk-surface); color: var(--mk-fg); box-shadow: var(--mk-shadow-modal); font-family: var(--mk-font); }
+.dialog { position: relative; width: 100%; max-width: 512px; max-height: calc(100vh - 32px); overflow-y: auto; display: grid; gap: 16px; padding: 24px; border: 1px solid var(--mk-border); border-radius: var(--mk-radius-md); background: var(--mk-surface); color: var(--mk-fg); box-shadow: var(--mk-shadow-modal); font-family: var(--mk-font); }
 .dialog-header { display: flex; flex-direction: column; gap: 8px; }
 .dialog-title { margin: 0; font-size: 18px; line-height: 1; font-weight: 600; }
 .dialog-description { margin: 0; font-size: 14px; color: var(--mk-muted-fg); }
@@ -113,8 +113,13 @@ export const WORKSPACE_CSS = `
 .table td { padding: 8px 8px 8px 12px; border-bottom: 1px solid var(--mk-border); }
 .table tr:last-child td { border-bottom: none; }
 .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-weight: 700; letter-spacing: .08em; }
+/* Busy state (template.primitive.loading-spinner) */
+.busy { display: flex; align-items: center; gap: 8px; }
+.spinner { flex: none; width: 16px; height: 16px; border: 2px solid currentColor; border-inline-end-color: transparent; border-radius: 50%; animation: eat-spin .75s linear infinite; }
+@keyframes eat-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.5s; } }
 .steps-list { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
-.onboarding { max-width: 30rem; }
+.onboarding { max-width: 480px; }
 
 /* Tool screens: KPI tiles (shadcn.blocks.kpi-widgets), stacks, code text */
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
@@ -141,7 +146,7 @@ export const WORKSPACE_CSS = `
 
 /* Narrow windows: App Shell 2 icon rail */
 @media (max-width: 1100px) {
-  .ws-sidebar { width: 3rem; padding: 8px 4px; }
+  .ws-sidebar { width: 48px; padding: 8px 4px; }
   .ws-brand-text, .ws-group-label, .ws-menu-button span, .ws-sidebar-footer { display: none; }
   .ws-brand, .ws-menu-button { justify-content: center; padding: 8px 0; }
   .cards { grid-template-columns: minmax(0, 1fr); }

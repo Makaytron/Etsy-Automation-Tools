@@ -157,6 +157,9 @@ const HELPERS = `
 const ADS_TABLE = `<section id="listing-detail-targeted-keywords-accordion"><table><thead><tr><th>Keyword</th><th>Clicks</th><th>Orders</th></tr></thead><tbody>
 ${[['bts sticker', 4, 1], ['army gift', 30, 0], ['kpop poster', 2, 1], ['wedding card', 3, 1]].map(([w, c, o]) => `<tr class="wt-table__row"><th class="wt-table__row__cell"><p>${w}</p></th><td><span>${c}</span></td><td><span>${o}</span></td></tr>`).join('')}
 </tbody></table><nav><button aria-current="true">1</button></nav></section>`;
+// Etsy now loads that section collapsed: its rows exist only after the toggle opens it.
+const ADS_TABLE_COLLAPSED = `<button type="button" id="kw-toggle" aria-controls="listing-detail-targeted-keywords-accordion" aria-expanded="false">Targeted keywords (4)</button>
+<script>document.getElementById('kw-toggle').addEventListener('click', function () { this.setAttribute('aria-expanded', 'true'); this.insertAdjacentHTML('afterend', ${JSON.stringify(ADS_TABLE)}); }, { once: true });</script>`;
 const ADS_RULES = ['bts', '=army gift', '/^kpop/'].join(String.fromCharCode(10));
 
 // A small Marketplace Insights result for "bts sticker" with two similar search terms.
@@ -593,6 +596,7 @@ const PAGES = {
   '/your/shops/me/advertising/listings/123': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsEngine },
   '/your/shops/me/advertising/listings/456': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsEngine, extra: '<div id="makaytron-ad-wordlist">standalone Ads Keyword Manager</div>' },
   '/your/shops/me/advertising/listings/ui': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsScreens, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
+  '/your/shops/me/advertising/listings/collapsed': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"], [data-ads-state="error"]')); return { state: window.__shadow.querySelector('[data-ads-state]')?.dataset.adsState, expanded: document.getElementById('kw-toggle').getAttribute('aria-expanded') }; }`, extra: ADS_TABLE_COLLAPSED, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/drawer-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/page-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/rules-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="ads-tab"][data-value="wordlist"]').click(); await until(() => window.__shadow.querySelector('[data-role="ads-rules"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
@@ -811,6 +815,12 @@ test('Ads Keyword Manager screens show the engine counts and open its own rule e
   assert.equal(r.workspaceClosed, true, 'the workspace steps out of the way of the editor');
   assert.deepEqual(r.foreignKeys, []);
   assert.deepEqual(r.requests, [], 'a stored word list needs no download');
+});
+
+test('Ads Keyword Manager opens the collapsed targeted-keywords section and reads its rows', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising/listings/collapsed');
+  assert.equal(r.expanded, 'true', 'the engine opened the section');
+  assert.equal(r.state, 'warning', 'three of the four rows match the word list');
 });
 
 test('Ads Keyword Manager steps aside when the standalone script runs on the same page', async () => {

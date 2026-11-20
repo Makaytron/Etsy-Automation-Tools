@@ -124,3 +124,11 @@ test('the production build carries the canonical update URLs and a synchronized 
   const strip = (text) => text.split('\n').filter((l) => !/^\/\/ @(updateURL|downloadURL)\b/.test(l) && !/^\/\/ (Etsy Automation Tools\. Generated|Development build)/.test(l)).join('\n');
   assert.equal(strip(production), strip(development));
 });
+
+test('interface styles avoid rem units, which follow the Etsy page root font size inside shadow DOM', async () => {
+  // Etsy sets <html> to about 10.7px, so 32rem became ~341px and the dialogs and sidebar were squeezed.
+  for (const file of ['../src/ui/styles.js', '../src/ui/styles-workspace.js']) {
+    const css = fs.readFileSync(new URL(file, import.meta.url), 'utf8').split('\n').filter((line) => !line.trim().startsWith('//')).join('\n');
+    assert.doesNotMatch(css, /\d(?:\.\d+)?rem\b/, `${file} uses rem`);
+  }
+});
