@@ -276,6 +276,8 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
 
   // ── Keyboard shortcuts (Settings › Shortcuts) ───────────────────────
   function onShortcut(event) {
+    // While Settings › Shortcuts records a new binding, the keys belong to the recorder, not to the bindings.
+    if (workspace?.capturing) return;
     const action = actionForEvent(event, settings.get().shortcuts);
     if (!action) return;
     if (action === 'drawer') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); setOpen(!state.open); return; }

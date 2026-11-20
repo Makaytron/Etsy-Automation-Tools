@@ -237,5 +237,5 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
   const unsubscribe = settings.subscribe(() => render());
   const offNotices = notices?.subscribe?.(() => render()) ?? (() => {});
 
-  return { open, close: () => close(false), refresh: render, dispose: () => { unsubscribe(); offNotices(); }, get isOpen() { return state.open; } };
+  return { open, close: () => close(false), refresh: render, dispose: () => { unsubscribe(); offNotices(); }, get isOpen() { return state.open; }, get capturing() { return Boolean(state.capturing); } };
 }

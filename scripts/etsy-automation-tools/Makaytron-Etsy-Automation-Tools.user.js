@@ -39555,6 +39555,9 @@
      * @param {string} o.appVersion
      * @param {Function} [o.onChange] called whenever a pack's state changes
      */
+    /** Keys that only packs of the current catalog carry; a cached pack without them is refreshed. */
+    const PACK_CURRENT_KEYS = Object.freeze(['ma.inbox', 'la.overview', 'set.tab.ai']);
+
     function createLanguagePacks({ gm, cache, appVersion, onChange = () => {} }) {
       const states = new Map(); // code -> { status: 'loading' | 'ready' | 'error', code? }
       const pending = new Map();
@@ -39565,7 +39568,8 @@
         const cached = await cache?.get(`pack.${language}`, null).catch(() => null);
         if (cached) {
           try {
-            loaded.set(language, validatePack(cached, { language, appVersion }));
+            // A pack kept from an older catalog lacks the newer screens' keys: download the current one instead.
+            loaded.set(language, validatePack(cached, { language, appVersion, requiredKeys: PACK_CURRENT_KEYS }));
             return;
           } catch { /* an old or damaged pack: download it again */ }
         }
@@ -39610,7 +39614,7 @@
 
       return { ensure, retry, state, size };
     }
-    return Object.freeze({ PACK_LANGUAGES, PACK_MIN_APP_VERSION, PACK_BASE_URL, packStrings, packText, createLanguagePacks });
+    return Object.freeze({ PACK_LANGUAGES, PACK_MIN_APP_VERSION, PACK_BASE_URL, packStrings, packText, PACK_CURRENT_KEYS, createLanguagePacks });
   })();
 
   // ── src/ui/dom.js ──
@@ -40706,9 +40710,9 @@
         qInQueue: 'In the queue', qWaiting: 'Waiting for your approval', qVerified: 'Verified on Etsy', qFailed: 'Could not be verified', qFailedHint: 'Not retried automatically',
         colChange: 'Change', colStatus: 'Status', colAction: 'Action', update: 'Title, tags or description', deactivateReview: 'Deactivation review',
         sPending: 'Queued', sApplying: 'Applied in the form · waiting for publish', sSubmitted: 'Being verified', sVerified: 'Verified on Etsy', sDeactivated: 'Deactivated · verified', sSkipped: 'Skipped', sFailed: 'Could not be verified', sAwaitDeactivate: 'Waiting for your deactivation',
-        openNext: 'Open the next listing', stopQueue: 'Stop the queue', openListing: 'Open the listing', apply: 'Apply in the form', publishCheck: 'I published it, check', skip: 'Skip', openDeactivate: 'Open deactivation', verifyDeactivate: 'I deactivated it, check', recover: 'Try again',
+        openNext: 'Open the next listing', stopQueue: 'Stop the queue', openListing: 'Open the listing', apply: 'Apply in the form', publishCheck: 'Publish on Etsy', skip: 'Skip', openDeactivate: 'Open deactivation', verifyDeactivate: 'I deactivated it, check', recover: 'Try again',
         noQueue: 'No queue yet. Select listings with a saved plan on the Listings page and build the queue.',
-        queueNote: 'Etsy Automation Tools only writes the change into the listing’s edit form. You press Publish on Etsy, then the result is checked in the list.',
+        queueNote: 'Etsy Automation Tools writes the change into the listing\'s edit form. Publishing asks you first, then the result is checked in the list.',
         recovery: 'An earlier step needs checking before the queue goes on.',
         bandsTitle: 'Suggestion rules', improve: 'Traffic without sales', improveText: 'Listings with at least this many visits and no sales are suggested for improvement.', minVisits: 'Visits, at least',
         protect: 'Protect what works', protectText: 'Listings with this many visits that sell are kept as they are.', renewals: 'Deactivation review', renewalsText: 'Listings renewed this many times without a sale are suggested for review.', minRenewals: 'Renewals, at least',
@@ -41236,7 +41240,7 @@
         tabs: 'Message Assistant pages', inbox: 'Conversations', templates: 'Quick replies', automation: 'Autopilot and reviews',
         inboxText: 'Read messages in your own language and prepare a reply draft you check before sending.',
         templatesText: 'Write the replies you send often once. They are translated to the buyer’s language and their variables are checked before they are added.',
-        automationText: 'The autopilot opens waiting buyers one by one and prepares a draft. No message is sent without your approval.',
+        automationText: 'The autopilot opens the selected buyers one by one, prepares each message from the quick reply and sends it on Etsy after its checks. You can pause it at any time.',
         services: 'Translation: {translator} · AI: {ai}', noAi: 'No AI connection', startAutopilot: 'Start the autopilot', refresh: 'Refresh',
         search: 'Search buyer or order', filter: 'Filter', unread: 'Unread · {n}', all: 'All',
         listElsewhere: 'The conversation list is read on Etsy’s Messages list. Go back to it to see every conversation here.',
@@ -41267,12 +41271,12 @@
         progress: 'Progress', colBuyer: 'Buyer', colItem: 'Item', colReply: 'Reply used', colStatus: 'Status', openConversation: 'Open the conversation',
         sPending: 'Queued', sDraft: 'Draft ready', sInserted: 'Waiting for your approval', sSent: 'Sent', sPendingCheck: 'Checking the send', sSkipped: 'Skipped', sError: 'Left to you',
         youApproved: 'You approved',
-        rules: 'Autopilot rules', rule1: 'Ask me before every message', rule1Text: 'The autopilot only prepares drafts.', always: 'Always on', rule1Off: 'Automatic sending is on in the assistant settings.',
+        rules: 'Autopilot rules', rule1: 'How messages are sent', rule1Text: 'The autopilot sends each message itself after its checks; guided mode waits for you on every one.', always: 'Always on', rule1Off: 'Automatic sending is on in the assistant settings.',
         rule2: 'Go on to the next buyer', rule2Text: 'After a send is confirmed, the next buyer opens.', rule3: 'Wait for the check', rule3Text: 'The next buyer starts only after Etsy shows the sent message.',
         reviews: 'Review replies', reviewsCount: '{n} reviews on this page', reviewsElsewhere: 'Reviews are read on the shop dashboard’s reviews.', openReviews: 'Open the reviews',
         reviewDraft: 'Prepare a draft', copyDraft: 'Copy the draft', checkRisk: 'Check: {risk}', rating: '{n} / 5',
-        confirmTitle: 'The autopilot will open {n} buyers in order', confirmText: 'For every buyer it prepares a draft from the matching quick reply.',
-        confirm1: 'No message is sent without your approval.', confirm2: 'Buyers without a matching reply are left to you.', confirm3: 'You can pause at any time.',
+        confirmTitle: 'The autopilot will open {n} buyers in order', confirmText: 'For every buyer it prepares the message from the matching quick reply and sends it on Etsy.',
+        confirm1: 'Each message is sent without asking you again for that buyer.', confirm2: 'Buyers without a matching reply are left to you.', confirm3: 'You can pause at any time.',
         close: 'Close', drawerAi: '{ai} · {model}', drawerOpen: 'Open the assistant', drawerContext: 'Open a conversation to translate it or prepare a reply.',
         waiting: '{n} unread conversations', openWorkspace: 'Open the workspace →', draftAdded: 'Draft ready',
       }),
@@ -41609,8 +41613,8 @@
         const rules = h(doc, 'section', { class: 'card', 'data-role': 'ma-rules' },
           h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('rules') })),
           h(doc, 'div', { class: 'rg' },
-            h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', text: ts('rule1') }), h(doc, 'span', { class: 'xs mute', text: view.autoSend ? ts('rule1Off') : ts('rule1Text') }),
-              view.autoSend ? null : h(doc, 'span', { class: 'badge out', style: 'align-self: flex-start;', text: ts('always') })),
+            // The autopilot sends by itself (the engine allows sending while it runs), so the card says so plainly.
+            h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', text: ts('rule1') }), h(doc, 'span', { class: 'xs mute', text: ts('rule1Text') })),
             h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', id: 'eat-ma-rule2', text: ts('rule2') }), h(doc, 'span', { class: 'xs mute', text: ts('rule2Text') }),
               toggle(doc, { name: 'ma-auto-advance', checked: view.autoAdvance, labelledBy: 'eat-ma-rule2', disabled: busy, onChange: (on) => actions.setAutoAdvance(on) })),
             h(doc, 'div', {}, h(doc, 'span', { class: 'sm b', text: ts('rule3') }), h(doc, 'span', { class: 'xs mute', text: ts('rule3Text') }),
@@ -47272,7 +47276,8 @@
     let open = null;
 
     function toggleNotifications({ doc, root, anchor, text, notices, onSettings, onChange, now = () => Date.now() }) {
-      if (open) { close(); return; }
+      // A second press on the bell closes the open popover through its own cleanup.
+      if (open) { open.close(); return; }
       if (!notices) return;
       const { t } = text;
       let filter = 'all';
@@ -47345,7 +47350,7 @@
       Object.assign(el.style, { top: `${r.bottom + 8}px`, right: `${Math.max(16, doc.defaultView.innerWidth - r.right - 16)}px` });
       root.append(el);
       anchor.setAttribute('aria-expanded', 'true');
-      open = { el, anchor };
+      open = { el, anchor, close };
       shadow.addEventListener?.('pointerdown', onInside);
       doc.addEventListener('pointerdown', onOutside);
       el.querySelector('button')?.focus({ preventScroll: true });
@@ -48149,7 +48154,7 @@
       const unsubscribe = settings.subscribe(() => render());
       const offNotices = notices?.subscribe?.(() => render()) ?? (() => {});
 
-      return { open, close: () => close(false), refresh: render, dispose: () => { unsubscribe(); offNotices(); }, get isOpen() { return state.open; } };
+      return { open, close: () => close(false), refresh: render, dispose: () => { unsubscribe(); offNotices(); }, get isOpen() { return state.open; }, get capturing() { return Boolean(state.capturing); } };
     }
     return Object.freeze({ createWorkspace });
   })();
@@ -48434,6 +48439,8 @@
 
       // ── Keyboard shortcuts (Settings › Shortcuts) ───────────────────────
       function onShortcut(event) {
+        // While Settings › Shortcuts records a new binding, the keys belong to the recorder, not to the bindings.
+        if (workspace?.capturing) return;
         const action = actionForEvent(event, settings.get().shortcuts);
         if (!action) return;
         if (action === 'drawer') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); setOpen(!state.open); return; }

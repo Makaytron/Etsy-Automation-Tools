@@ -52,6 +52,9 @@ function download(gm, url, onProgress = null) {
  * @param {string} o.appVersion
  * @param {Function} [o.onChange] called whenever a pack's state changes
  */
+/** Keys that only packs of the current catalog carry; a cached pack without them is refreshed. */
+export const PACK_CURRENT_KEYS = Object.freeze(['ma.inbox', 'la.overview', 'set.tab.ai']);
+
 export function createLanguagePacks({ gm, cache, appVersion, onChange = () => {} }) {
   const states = new Map(); // code -> { status: 'loading' | 'ready' | 'error', code? }
   const pending = new Map();
@@ -62,7 +65,8 @@ export function createLanguagePacks({ gm, cache, appVersion, onChange = () => {}
     const cached = await cache?.get(`pack.${language}`, null).catch(() => null);
     if (cached) {
       try {
-        loaded.set(language, validatePack(cached, { language, appVersion }));
+        // A pack kept from an older catalog lacks the newer screens' keys: download the current one instead.
+        loaded.set(language, validatePack(cached, { language, appVersion, requiredKeys: PACK_CURRENT_KEYS }));
         return;
       } catch { /* an old or damaged pack: download it again */ }
     }

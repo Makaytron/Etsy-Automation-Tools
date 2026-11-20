@@ -21,7 +21,8 @@ export function relativeTime(at, now, language, t) {
 let open = null;
 
 export function toggleNotifications({ doc, root, anchor, text, notices, onSettings, onChange, now = () => Date.now() }) {
-  if (open) { close(); return; }
+  // A second press on the bell closes the open popover through its own cleanup.
+  if (open) { open.close(); return; }
   if (!notices) return;
   const { t } = text;
   let filter = 'all';
@@ -94,7 +95,7 @@ export function toggleNotifications({ doc, root, anchor, text, notices, onSettin
   Object.assign(el.style, { top: `${r.bottom + 8}px`, right: `${Math.max(16, doc.defaultView.innerWidth - r.right - 16)}px` });
   root.append(el);
   anchor.setAttribute('aria-expanded', 'true');
-  open = { el, anchor };
+  open = { el, anchor, close };
   shadow.addEventListener?.('pointerdown', onInside);
   doc.addEventListener('pointerdown', onOutside);
   el.querySelector('button')?.focus({ preventScroll: true });
