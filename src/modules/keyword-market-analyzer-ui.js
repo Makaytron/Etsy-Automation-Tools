@@ -82,9 +82,9 @@ export function renderKwDrawer(doc, { snap, data, language, actions }) {
     data?.active ? h(doc, 'div', { class: 'al info' }, icon(doc, ICONS['listing-analyzer']), h(doc, 'span', {}, h(doc, 'b', { text: ts('drawerRequest') }), ' ', ts('drawerRequestText', { seeds: data.active.seeds }))) : null,
     capture
       ? h(doc, 'div', { class: 'g3', style: 'gap: 8px;' },
-        h(doc, 'div', { class: 'tile', style: 'padding: 10px 12px;' }, h(doc, 'span', { class: 'ov', text: ts('tileRows') }), h(doc, 'span', { class: 'b', style: 'font-size: 15px;', text: String(rows) })),
+        h(doc, 'div', { class: 'tile', style: 'padding: 10px 12px;', 'data-kw-tile': 'rows' }, h(doc, 'span', { class: 'ov', text: ts('tileRows') }), h(doc, 'span', { class: 'b', style: 'font-size: 15px;', text: String(rows) })),
         h(doc, 'div', { class: 'tile', style: 'padding: 10px 12px;' }, h(doc, 'span', { class: 'ov', text: ts('tileAnnotated') }), h(doc, 'span', { class: 'b', style: 'font-size: 15px;', text: String(rows) })),
-        h(doc, 'div', { class: 'tile', style: 'padding: 10px 12px;' }, h(doc, 'span', { class: 'ov', text: ts('tileSaved') }), h(doc, 'span', { class: 'b', style: 'font-size: 15px;', text: String(data?.captures?.length ?? 0) })))
+        h(doc, 'div', { class: 'tile', style: 'padding: 10px 12px;', 'data-kw-tile': 'saved' }, h(doc, 'span', { class: 'ov', text: ts('tileSaved') }), h(doc, 'span', { class: 'b', style: 'font-size: 15px;', text: String(data?.captures?.length ?? 0) })))
       : h(doc, 'span', { class: 'xs mute2', 'data-role': 'kw-summary', text: ts('noResult') }),
     h(doc, 'span', { class: 'xxs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'kw-status', text: snap.status }),
     h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-kw': 'save', disabled: !capture, onclick: () => actions.capture(), text: ts('saveThis') }),
@@ -98,7 +98,8 @@ export function renderKwPage(doc, { snap, data, language, actions, container }) 
   const saved = (data?.captures ?? []).slice().sort((a, b) => String(b.capturedAt ?? '').localeCompare(String(a.capturedAt ?? '')));
   const view = actions.viewState?.() ?? { query: '', selected: null };
   const items = [
-    ...(snap.capture && !saved.some((c) => c.capturedAt === snap.capture.capturedAt && c.main?.keyword === snap.capture.main?.keyword) ? [{ ...snap.capture, live: true }] : []),
+    // The page being read is listed unsaved until a saved copy of the same search (same keyword and numbers) exists.
+    ...(snap.capture && !saved.some((c) => c.main?.keyword === snap.capture.main?.keyword && c.main?.searches30d === snap.capture.main?.searches30d && c.main?.searchResults === snap.capture.main?.searchResults) ? [{ ...snap.capture, live: true }] : []),
     ...saved,
   ];
   const keyOf = (c) => `${c.main?.keyword ?? ''}|${c.capturedAt ?? ''}`;

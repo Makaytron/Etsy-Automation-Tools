@@ -375,6 +375,6 @@ export function renderSalePage(doc, { snap, language, actions, tab = 'overview',
     pageHead(doc, { overline: 'Sale Manager', title, description, actions: headActions }),
     pageTabs(doc, { label: ts('tabs'), name: 'sale-tab', value: tab, options: [{ value: 'overview', label: ts('overview') }, { value: 'settings', label: ts('settings') }, { value: 'report', label: ts('report') }], onChange: (next) => onTab(next) }),
     ...({ overview, settings: settingsForm, report }[tab] ?? overview)(),
-    message ? h(doc, 'p', { class: 'xs mute2', role: 'status', 'aria-live': 'polite', text: message }) : null,
+    message ? h(doc, 'p', { class: 'xs mute2', role: 'status', 'aria-live': 'polite', 'data-role': 'sale-message', text: message }) : null,
   ];
 }

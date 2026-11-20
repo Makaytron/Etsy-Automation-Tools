@@ -306,7 +306,7 @@ export function renderSettingsPage(doc, ctx) {
       h(doc, 'div', { class: 'li', 'data-role': 'migration' },
         h(doc, 'span', { class: 'col grow', style: 'gap: 1px;' },
           h(doc, 'span', { class: 'sm b', text: t('mig.title') }),
-          h(doc, 'span', { class: 'xs mute', text: done.length ? t('mig.done', { tools: done.map((id) => t(`tool.${id}`)).join(', ') }) : t('mig.text') })),
+          h(doc, 'span', { class: 'xs mute', 'data-role': done.length ? 'mig-done' : null, text: done.length ? t('mig.done', { tools: done.map((id) => t(`tool.${id}`)).join(', ') }) : t('mig.text') })),
         h(doc, 'button', { class: done.length ? 'btn btn-g btn-sm' : 'btn btn-o btn-sm', type: 'button', 'data-action': 'start-migration', disabled: Boolean(running) || !migration, onclick: () => runMigration?.() },
           running ? h(doc, 'span', { class: 'spin', style: 'width: 14px; height: 14px;' }) : null,
           running ? t('mig.running') : done.length ? t('mig.again') : t('mig.start'))),
@@ -425,7 +425,8 @@ export function renderSettingsPage(doc, ctx) {
       actions: upToDate ? [h(doc, 'span', { class: 'badge ok', text: t('set.versionBadge', { version: appVersion }) })] : [],
     }),
     pageTabs(doc, { label: t('set.sections'), name: 'settings-tab', value: tab, options: TABS.map((v) => ({ value: v, label: t(`set.tab.${v}`) })), onChange: (next) => onTab(next) }),
-    (pages[tab] ?? general)(),
+    // A tab returns one node or a list of cards; both go into one column.
+    h(doc, 'div', { class: 'col', style: 'gap: 16px;', 'data-role': 'settings-body', 'data-tab': tab }, ...[(pages[tab] ?? general)()].flat(Infinity)),
     note,
   ];
 }
