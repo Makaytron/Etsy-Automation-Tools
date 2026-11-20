@@ -21,7 +21,7 @@ const STANDALONE_GRACE_MS = 1500;
 const engineLanguage = (language) => (String(language ?? '').toLowerCase().startsWith('tr') ? 'tr' : 'en');
 
 export function createKeywordMarketAnalyzerModule() {
-  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', data: null, loading: null, reload: false };
+  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', data: null, loading: null, reload: false, view: { query: '', selected: null }, wasActive: false };
 
   const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
   const emit = (status) => state.ctx?.events?.emit('tool:status', { tool: KW_TOOL_ID, state: status });
@@ -103,6 +103,8 @@ export function createKeywordMarketAnalyzerModule() {
       cancel: () => run(() => engine.cancel()),
       clearData: () => run(() => engine.clearData()),
       openDetails: () => ui.openWorkspace?.(`tool:${KW_TOOL_ID}`),
+      viewState: () => state.view,
+      setViewState: (patch) => { state.view = { ...state.view, ...patch }; ui.onTab?.(ui.tab ?? 'overview'); },
     };
   }
 
@@ -111,6 +113,11 @@ export function createKeywordMarketAnalyzerModule() {
     void state.engine.syncLanguage?.(engineLanguage(ui.language));
     return state.engine.snapshot();
   }
+
+  // Settings › Tools › "Keyword research into listings": when it is off, no Listing Analyzer request is shown,
+  // imported or answered from here.
+  const linked = () => state.ctx?.settings?.get().links?.kwToListing !== false;
+  const linkedData = () => (linked() || !state.data ? state.data : { ...state.data, active: null, hasResult: false });
 
   return {
     id: KW_TOOL_ID,
@@ -121,11 +128,11 @@ export function createKeywordMarketAnalyzerModule() {
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
     renderDrawer(ui) {
       const snap = view(ui);
-      return snap ? renderKwDrawer(ui.doc, { snap, data: state.data, language: ui.language, actions: actionsFor(ui) }) : null;
+      return snap ? renderKwDrawer(ui.doc, { snap, data: linkedData(), language: ui.language, actions: actionsFor(ui) }) : null;
     },
     renderPage(ui) {
       const snap = view(ui);
-      return snap ? renderKwPage(ui.doc, { snap, data: state.data, language: ui.language, actions: actionsFor(ui), tab: ui.tab, onTab: ui.onTab }) : null;
+      return snap ? renderKwPage(ui.doc, { snap, data: linkedData(), language: ui.language, actions: actionsFor(ui), container: ui.container, research: linked() }) : null;
     },
     async mount(ctx) {
       state.ctx = ctx;

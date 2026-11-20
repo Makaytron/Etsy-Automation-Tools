@@ -42,7 +42,7 @@ test('the unified screens get a read-only snapshot and the engine actions', () =
   assert.match(adopted, /updateList: ensureWord, restoreBackup: restoreWordlistBackup, editRules: openWordlistEditor,/);
   assert.match(adopted, /snapshot: __eatSnapshot, rules: __eatRules, syncLanguage: __eatSyncLanguage,/);
   // The screens hear about counts, status and busy changes.
-  assert.equal(adopted.split('__env.onChange?.();').length - 1, 3);
+  assert.equal(adopted.split('__env.onChange?.();').length - 1, 5); // three engine hooks, plus the single-row switch and the word list save
   assert.match(adopted, /__eatStats = \{ \.\.\.values \};\n {8}__env\.onChange\?\.\(\);/);
   // The language sync never runs during a job.
   assert.match(adopted, /if \(activeOperation \|\| wordlistUpdateRunning \|\| languageChangePromise\) return null;/);

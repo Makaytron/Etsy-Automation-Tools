@@ -10,6 +10,9 @@ import { drawerSide, tabRect, snapToEdge, drawerWidth } from '../src/core/drawer
 import { detectLanguage, textDirection, createI18n, validatePack, interpolate } from '../src/core/i18n.js';
 import { buildReport, scrubNote, browserInfo } from '../src/core/diagnostics.js';
 import { createHost } from '../src/core/host.js';
+import { createNotices } from '../src/core/notices.js';
+import { createWaitingNotices } from '../src/core/waiting-notices.js';
+import { actionForEvent } from '../src/core/shortcuts.js';
 import { TOOLS } from '../src/modules/index.js';
 
 // ── Routes ──────────────────────────────────────────────────────────────
@@ -124,7 +127,7 @@ test('drawer opens from the button side, from the left for top and bottom', () =
   assert.equal(drawerSide('top'), 'left');
   assert.equal(drawerSide('bottom'), 'left');
   assert.equal(drawerWidth(1024), 360);
-  assert.equal(drawerWidth(1440), 384);
+  assert.equal(drawerWidth(1440), 400);
 });
 
 test('edge button stays inside the viewport and snaps to the nearest edge', () => {
@@ -183,7 +186,7 @@ test('problem reports carry only allowlisted, redacted fields', () => {
     { appVersion: '2.0.0', category: 'language-pack', errorCode: 'i18n_pack_download', note: 'Shop MyShop, key sk-ant-abcdefghijkl, mail a@b.co, see https://etsy.com/x order 123456789' },
     { userAgent: 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/131.0 Safari/537.36', locale: 'tr-TR', pathname: '/your/shops/MyShop/tools/listings', uiLanguage: 'tr' },
   );
-  assert.deepEqual(Object.keys(report).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorCode', 'format', 'formatVersion', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'uiLanguage']);
+  assert.deepEqual(Object.keys(report).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorAt', 'errorCode', 'format', 'formatVersion', 'handler', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'tool', 'uiLanguage', 'utcOffset']);
   assert.equal(report.browser, 'Chrome');
   assert.equal(report.os, 'Windows');
   assert.equal(report.region, 'TR');
@@ -262,4 +265,41 @@ test('every routed tool is declared once', () => {
   const ids = TOOLS.map((t) => t.id);
   assert.equal(new Set(ids).size, ids.length);
   for (const route of ROUTES) assert.ok(ids.includes(route.module), route.id);
+});
+
+test('notices from two Etsy tabs sharing one store are merged, not overwritten', async () => {
+  const core = createStorage(createMemoryStore()).namespace('core');
+  const settings = { get: () => ({ notify: { events: {}, quiet: { on: false }, sound: false } }) };
+  let clock = 1_800_000_000_000;
+  const now = () => (clock += 1000);
+  const saleTab = createNotices({ store: core, settings, scope: {}, now });
+  const adsTab = createNotices({ store: core, settings, scope: {}, now });
+  await saleTab.load();
+  await adsTab.load();
+  await saleTab.add({ event: 'seriesStopped', tool: 'sale-manager', title: 'Series stopped' });
+  await adsTab.add({ event: 'scanDone', tool: 'ads-keyword-manager', title: 'Scan finished' });
+  const both = createNotices({ store: core, settings, scope: {}, now });
+  await both.load();
+  assert.deepEqual(both.list().map((n) => n.title), ['Scan finished', 'Series stopped'], 'the second tab keeps the first tab\'s notice');
+  await saleTab.markAllRead();
+  await adsTab.add({ event: 'scanDone', title: 'Another scan' });
+  await both.load();
+  assert.deepEqual(both.list().map((n) => [n.title, n.read]), [['Another scan', false], ['Scan finished', true], ['Series stopped', true]], 'read state from one tab survives a later add in another');
+});
+test('a step that starts waiting is announced once; what already waited at load is not', () => {
+  const sent = [];
+  const notify = (n) => sent.push(n);
+  const w = createWaitingNotices({ event: 'queueWaiting', tool: 'listing-analyzer', page: 'tool:listing-analyzer' });
+  w.update([{ key: 'a:applying', detail: 'Old' }], { notify, language: 'en' });
+  assert.equal(sent.length, 0, 'the baseline at page load');
+  w.update([{ key: 'a:applying', detail: 'Old' }, { key: 'b:applying', detail: 'Mug' }], { notify, language: 'en' });
+  w.update([{ key: 'b:applying', detail: 'Mug' }], { notify, language: 'en' });
+  assert.deepEqual(sent.map((n) => [n.event, n.detail, n.needsAction, n.title]), [['queueWaiting', 'Mug', true, 'The edit queue waits for you']]);
+});
+test('a shortcut does not fire while typing in a field inside the closed shadow root', () => {
+  const shortcuts = { on: true, keys: { adsClosePage: 'Ctrl+Space' } };
+  const host = { tagName: 'DIV' };
+  const event = { key: ' ', code: 'Space', ctrlKey: true, composedPath: () => [host], target: host };
+  assert.equal(actionForEvent(event, shortcuts), 'adsClosePage', 'on the page itself it fires');
+  assert.equal(actionForEvent(event, shortcuts, { focused: { tagName: 'INPUT' } }), null, 'not while a workspace field has focus');
 });

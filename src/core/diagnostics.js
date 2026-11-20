@@ -11,8 +11,14 @@
 import { describePath } from './routes.js';
 
 export const PROBLEM_CATEGORIES = Object.freeze([
-  'language-pack', 'tool-not-starting', 'etsy-page-changed', 'wrong-result', 'ai-or-translation', 'display', 'other',
+  'language-pack', 'tool-not-starting', 'interrupted', 'wrong-result', 'display', 'suggestion',
+  'etsy-page-changed', 'ai-or-translation', 'other',
 ]);
+/** The six choices of the report dialog (design canvas: Feedback). */
+export const DIALOG_CATEGORIES = Object.freeze(['language-pack', 'tool-not-starting', 'interrupted', 'wrong-result', 'display', 'suggestion']);
+/** Groups of technical facts the user can leave out of a report. */
+export const REPORT_GROUPS = Object.freeze(['version', 'system', 'locale', 'page', 'error']);
+const TOOLS = new Set(['sale-manager', 'message-assistant', 'ads-keyword-manager', 'listing-analyzer', 'keyword-market-analyzer']);
 
 export const ERROR_CODES = Object.freeze(new Set([
   'i18n_pack_download', 'i18n_pack_format', 'i18n_pack_language', 'i18n_pack_version', 'i18n_pack_strings',
@@ -58,25 +64,34 @@ export function scrubNote(text) {
  * browser locale, pathname, interface language); only derived, allowlisted
  * values are copied out of it.
  */
-export function buildReport({ appVersion, category, errorCode = null, note = '', includeNote = true }, env) {
+export function buildReport({ appVersion, category, tool = null, errorCode = null, errorAt = null, note = '', includeNote = true, omit = [] }, env) {
   const { browser, browserMajor, os } = browserInfo(env.userAgent);
   const locale = typeof env.locale === 'string' ? env.locale : '';
   const region = /^[a-z]{2,3}-([A-Z]{2})$/.exec(locale)?.[1] ?? null;
   const { routeId, template } = describePath(env.pathname);
+  const off = new Set(omit);
+  const keep = (group, value) => (off.has(group) ? null : value);
+  const offset = Number.isFinite(env.utcOffsetMinutes) ? env.utcOffsetMinutes : null;
+  const handler = typeof env.handler === 'string' && /^[A-Za-z ]{2,30} \d+(?:\.\d+){0,3}$/.test(env.handler) ? env.handler : null;
+  const code = ERROR_CODES.has(errorCode) ? errorCode : null;
   return {
     format: 'etsy-automation-tools-report',
-    formatVersion: 1,
-    appVersion,
+    formatVersion: 2,
+    appVersion: keep('version', appVersion),
+    handler: keep('version', handler),
     category: PROBLEM_CATEGORIES.includes(category) ? category : 'other',
-    errorCode: ERROR_CODES.has(errorCode) ? errorCode : null,
-    browser,
-    browserMajor,
-    os,
-    uiLanguage: typeof env.uiLanguage === 'string' ? env.uiLanguage.slice(0, 12) : null,
-    browserLocale: /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(locale) ? locale : null,
-    region,
-    routeId,
-    routeTemplate: template,
+    tool: TOOLS.has(tool) ? tool : null,
+    errorCode: keep('error', code),
+    errorAt: keep('error', code && typeof errorAt === 'string' && /^\d{2}:\d{2}$/.test(errorAt) ? errorAt : null),
+    browser: keep('system', browser),
+    browserMajor: keep('system', browserMajor),
+    os: keep('system', os),
+    uiLanguage: keep('locale', typeof env.uiLanguage === 'string' ? env.uiLanguage.slice(0, 12) : null),
+    browserLocale: keep('locale', /^[a-z]{2,3}(?:-[A-Z]{2})?$/.test(locale) ? locale : null),
+    region: keep('locale', region),
+    utcOffset: keep('locale', offset === null ? null : `UTC${offset >= 0 ? '+' : '-'}${Math.floor(Math.abs(offset) / 60)}${Math.abs(offset) % 60 ? `:${String(Math.abs(offset) % 60).padStart(2, '0')}` : ''}`),
+    routeId: keep('page', routeId),
+    routeTemplate: keep('page', template),
     note: includeNote ? scrubNote(note) : '',
   };
 }

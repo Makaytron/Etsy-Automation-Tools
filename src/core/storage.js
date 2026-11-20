@@ -90,5 +90,21 @@ export function createStorage(store) {
     return removed;
   }
 
-  return { namespace, secrets, exportBackup, importBackup, clear };
+  /** Bytes kept per namespace (UTF-8 of each stored JSON value); secrets are counted apart. */
+  async function usage() {
+    const bytes = {};
+    let secretsBytes = 0;
+    const size = (value) => new TextEncoder().encode(JSON.stringify(value ?? null)).length;
+    for (const key of await store.keys()) {
+      if (key.startsWith(KEY_PREFIX)) {
+        const ns = key.slice(KEY_PREFIX.length).split(':')[0];
+        bytes[ns] = (bytes[ns] ?? 0) + size(await store.get(key, null)) + key.length;
+      } else if (key.startsWith(SECRET_PREFIX)) {
+        secretsBytes += size(await store.get(key, null)) + key.length;
+      }
+    }
+    return { bytes, secrets: secretsBytes, total: Object.values(bytes).reduce((a, b) => a + b, 0) };
+  }
+
+  return { namespace, secrets, exportBackup, importBackup, clear, usage };
 }

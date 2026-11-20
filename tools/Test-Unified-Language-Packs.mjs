@@ -112,3 +112,16 @@ test('browser language tags find the right pack', async () => {
   assert.equal(pick(['xx-YY']), 'en', 'an unknown language falls back to English');
   for (const code of PACK_LANGUAGES) assert.equal(pick([code]), code, code);
 });
+
+test('a pack cached from an older catalog is downloaded again', async () => {
+  const cache = createStorage(createMemoryStore()).namespace('core');
+  const current = pack('nl');
+  const old = structuredClone(current);
+  for (const key of Object.keys(old.strings)) if (key.startsWith('ma.') || key.startsWith('la.') || key.startsWith('set.tab.')) delete old.strings[key];
+  await cache.set('pack.nl', old);
+  const gm = fakeGm((d) => d.onload({ status: 200, responseText: JSON.stringify(current) }));
+  const packs = createLanguagePacks({ gm, cache, appVersion: META.version });
+  assert.deepEqual(await packs.ensure('nl'), { status: 'ready' });
+  assert.deepEqual(gm.requests, [`${PACK_BASE_URL}nl.json`], 'the stale cached pack is replaced by a download');
+  assert.equal(typeof (await cache.get('pack.nl')).strings['ma.inbox'], 'string');
+});

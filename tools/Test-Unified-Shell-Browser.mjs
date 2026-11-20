@@ -80,7 +80,10 @@ const safe = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/
 // Turkish comes as a pack; most pages start as if it had been downloaded on an earlier visit.
 const PACK_TR = JSON.parse(fs.readFileSync(new URL('../languages/tr.json', import.meta.url), 'utf8'));
 
-function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, trCached = true }) {
+// Pages start as if this version had already been seen, so the "What's new" dialog stays out of the way unless a page asks for it.
+const APP_VERSION = /version:\s*'([^']+)'/.exec(fs.readFileSync(new URL('../src/meta.js', import.meta.url), 'utf8'))[1];
+
+function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, trCached = true, seen = APP_VERSION }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Etsy fixture</title>
 <style>body{margin:0;font:16px Georgia,serif;background:#f5f5f5} button.probe{font:13px Georgia,serif}</style></head>
 <body><header style="height:56px;background:#fff;border-bottom:1px solid #ddd"></header>
@@ -89,6 +92,7 @@ function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, tr
 (() => {
   const values = new Map();
   ${settings ? `values.set('eat:v1:core:settings', ${safe(settings)});` : ''}
+  ${seen ? `values.set('eat:v1:core:seenVersion', ${safe(seen)});` : ''}
   values.set('eat:v1:sale-manager:legacy.eda-batch-config-v4', { discount: 25 });
   values.set('eat:secret:openai', 'fixture-placeholder');
   ${trCached ? `values.set('eat:v1:core:pack.tr', ${safe(PACK_TR)});` : ''}
@@ -141,14 +145,14 @@ ${extra}
 // Scenario helpers run inside the page.
 const HELPERS = `
   const S = () => window.__shadow;
-  const tab = () => S().querySelector('.tab');
-  const sheet = () => S().querySelector('.sheet');
+  const tab = () => S().querySelector('.etab:not(.ghost)');
+  const sheet = () => S().querySelector('.dock');
   const rect = (el) => { const r = el.getBoundingClientRect(); return { left: Math.round(r.left), right: Math.round(r.right), top: Math.round(r.top), bottom: Math.round(r.bottom), width: Math.round(r.width) }; };
   const pointer = (type, x, y) => tab().dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, composed: true, pointerId: 1, button: 0, buttons: type === 'pointerup' ? 0 : 1, clientX: x, clientY: y, pointerType: 'mouse' }));
   const center = () => { const r = tab().getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
   const click = async () => { const [x, y] = center(); pointer('pointerdown', x, y); pointer('pointerup', x, y); await wait(400); };
   const drag = async (x, y) => { const [x0, y0] = center(); pointer('pointerdown', x0, y0); pointer('pointermove', x0 + 10, y0 + 10); pointer('pointermove', x, y); await wait(50);
-    const during = { zoneOn: S().querySelector('.zone[data-on]')?.dataset.edge ?? null, chip: S().querySelector('.chip')?.textContent ?? '' };
+    const during = { zoneOn: S().querySelector('.zone[data-on]')?.dataset.edge ?? null, chip: S().querySelector('.drop-chip')?.textContent ?? '' };
     pointer('pointerup', x, y); await wait(400); return during; };
   const saved = () => window.__values.get('eat:v1:core:settings')?.drawer ?? null;
 `;
@@ -180,7 +184,9 @@ const scenarios = {
   sellerPage: `async ({ wait }) => {${HELPERS}
     const out = {};
     out.hostCount = document.querySelectorAll('#makaytron-eat-root').length;
-    out.documentStyles = document.querySelectorAll('style').length;
+    out.documentStyles = [...document.querySelectorAll('style')].filter((s) => s.id !== 'makaytron-eat-root-fonts').length;
+    const fontStyle = document.getElementById('makaytron-eat-root-fonts');
+    out.fontStyleOnlyFaces = fontStyle ? fontStyle.textContent.split('}').filter((part) => part.trim()).every((part) => part.trim().startsWith('@font-face')) : null;
     out.probeFont = getComputedStyle(document.querySelector('button.probe')).fontFamily;
     out.tabStart = rect(tab());
     out.innerWidth = innerWidth; out.innerHeight = innerHeight;
@@ -189,8 +195,8 @@ const scenarios = {
     out.openHidden = sheet().hidden; out.openSide = sheet().dataset.side; out.openWidth = rect(sheet()).width; out.openRight = rect(sheet()).right;
     out.expanded = tab().getAttribute('aria-expanded');
     out.tabWhenOpen = rect(tab());
-    out.current = S().querySelector('.current')?.textContent ?? null;
-    out.otherTools = [...S().querySelectorAll('.tool-name')].map((n) => n.textContent);
+    out.current = S().querySelector('#eat-current')?.textContent ?? null;
+    out.otherTools = [...S().querySelectorAll('[data-role="tool-name"]')].map((n) => n.textContent);
     out.focusOnClose = S().activeElement?.getAttribute('aria-label') ?? null;
     S().activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
     await wait(50);
@@ -211,15 +217,15 @@ const scenarios = {
   workspace: `async ({ wait }) => {${HELPERS}
     const out = {};
     const q = (sel) => S().querySelector(sel);
-    const press = async (sel) => { q(sel).click(); await wait(120); };
+    const press = async (sel) => { const el = q(sel); if (!el) throw new Error('missing ' + sel); el.click(); await wait(120); };
     await click();
     await press('[data-action="open-workspace"]');
     out.wsVisible = Boolean(q('#eat-workspace')); out.tabHidden = tab().hidden; out.sheetHidden = sheet().hidden;
     out.wsModal = q('#eat-workspace').getAttribute('aria-modal');
-    out.firstPage = q('[aria-current="page"]')?.dataset.page; out.firstTitle = q('.page-title')?.textContent;
+    out.firstPage = q('[aria-current="page"]')?.dataset.page; out.firstTitle = q('.ph .h1')?.textContent;
     out.focusStart = S().activeElement?.dataset.page ?? null;
     await press('[data-page="settings"]');
-    out.settingsTitle = q('.page-title')?.textContent;
+    out.settingsTitle = q('.ph .h1')?.textContent;
     await press('[data-name="theme"][data-value="dark"]');
     out.themeAfter = q('.mkui-root').dataset.theme; out.savedTheme = window.__values.get('eat:v1:core:settings').theme;
     out.focusAfterTheme = S().activeElement?.dataset.value ?? null;
@@ -229,9 +235,9 @@ const scenarios = {
     await press('[data-name="edge"][data-value="left"]');
     out.savedEdge = window.__values.get('eat:v1:core:settings').drawer.edge;
     await press('[data-name="settings-tab"][data-value="tools"]');
-    const ads = q('input[name="tool-ads-keyword-manager"]'); ads.click(); await wait(120);
+    const ads = q('button[data-name="tool-ads-keyword-manager"]'); ads.click(); await wait(120);
     out.savedAds = window.__values.get('eat:v1:core:settings').tools['ads-keyword-manager'];
-    out.menuAfterOff = [...S().querySelectorAll('.ws-menu-button')].map((b) => b.dataset.page).filter(Boolean);
+    out.menuAfterOff = [...S().querySelectorAll('.nv')].map((b) => b.dataset.page).filter(Boolean);
     await press('[data-name="settings-tab"][data-value="privacy"]');
     out.migDoneBeforeDelete = Boolean(q('[data-role="mig-done"]'));
     await press('[data-action="delete-data"]');
@@ -241,7 +247,7 @@ const scenarios = {
     await press('[data-action="confirm-delete"]'); await wait(200);
     out.keysAfterDelete = [...window.__values.keys()].sort();
     out.migDoneAfterDelete = Boolean(q('[data-role="mig-done"]'));
-    out.notice = q('.notice')?.textContent ?? null;
+    out.notice = q('[data-role="settings-message"]')?.textContent ?? null;
     q('#eat-workspace').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
     await wait(120);
     out.wsAfterEscape = Boolean(q('#eat-workspace')); out.tabBack = !tab().hidden; out.drawerBack = !sheet().hidden;
@@ -249,8 +255,8 @@ const scenarios = {
   }`,
   onboarding: `async ({ wait }) => {${HELPERS}
     const q = (sel) => S().querySelector(sel);
-    const out = { title1: q('#eat-ob-title')?.textContent, modal: q('.onboarding')?.getAttribute('aria-modal'), focus: S().activeElement?.getAttribute('name') };
-    const sel = q('select[name="ob-language"]'); sel.value = 'tr'; sel.dispatchEvent(new Event('change', { bubbles: true })); await wait(150);
+    const out = { title1: q('#eat-ob-title')?.textContent, modal: q('.ob-panel')?.getAttribute('aria-modal'), focus: S().activeElement?.getAttribute('name') };
+    q('input[name="ob-language"][value="tr"]').click(); await wait(150);
     out.title1Tr = q('#eat-ob-title')?.textContent;
     out.progress1 = q('[role="progressbar"]')?.getAttribute('aria-valuenow');
     q('[data-action="ob-continue"]').click(); await wait(150);
@@ -260,7 +266,7 @@ const scenarios = {
     q('[data-action="ob-finish"]').click(); await wait(200);
     const stored = window.__values.get('eat:v1:core:settings');
     out.saved = { onboarded: stored.onboarded, language: stored.language, ma: stored.tools['message-assistant'], sale: stored.tools['sale-manager'] };
-    out.dialogGone = !q('.onboarding');
+    out.dialogGone = !q('.ob-panel');
     out.tabFocused = S().activeElement === tab();
     return out;
   }`,
@@ -321,15 +327,15 @@ const scenarios = {
     // A report left open from an earlier series would hold the engine back, hidden behind the new screens.
     document.body.insertAdjacentHTML('beforeend', '<div class="eda-report-backdrop" id="left-report"></div>');
     q('[data-sale="start"]').click(); await wait(100);
-    out.confirmTitle = q('.dialog-title')?.textContent ?? null;
-    out.confirmCodes = [...S().querySelectorAll('.dialog .mono-code')].map((n) => n.textContent);
+    out.confirmTitle = q('.modal-title')?.textContent ?? null;
+    out.confirmCodes = [...S().querySelectorAll('.modal td .mono')].map((n) => n.textContent);
     q('[data-sale="confirm-start"]').click();
     await until(() => document.getElementById('eat-sale-batch-toast-root')?.textContent);
     out.engineToast = document.getElementById('eat-sale-batch-toast-root')?.textContent ?? null;
     out.leftReportClosed = !document.getElementById('left-report');
     out.jobAfterStart = window.__values.get('eat:v1:sale-manager:legacy.eda-batch-job-v4') ?? null;
     q('[data-sale="details"]').click(); await wait(150);
-    out.pageTitle = q('.page-title')?.textContent ?? null;
+    out.pageTitle = q('.ph .h1')?.textContent ?? null;
     out.planRows = S().querySelectorAll('[data-role="sale-plan"] tbody tr').length;
     q('[data-name="sale-tab"][data-value="settings"]').click(); await wait(100);
     const form = q('[data-role="sale-settings"]');
@@ -337,7 +343,7 @@ const scenarios = {
     form.requestSubmit(); await until(() => window.__values.get('eat:v1:sale-manager:legacy.eda-batch-config-v4')?.discount === 30); await wait(150);
     const cfg = window.__values.get('eat:v1:sale-manager:legacy.eda-batch-config-v4');
     out.savedConfig = { discount: cfg.discount, discountName: cfg.discountName };
-    out.notice = q('.notice')?.textContent ?? null;
+    out.notice = q('[data-role="sale-message"]')?.textContent ?? null;
     q('[data-name="sale-tab"][data-value="overview"]').click(); await wait(100);
     out.firstCode = q('[data-role="sale-plan"] tbody tr')?.dataset.code ?? null;
     q('[data-name="sale-tab"][data-value="report"]').click(); await wait(100);
@@ -373,13 +379,13 @@ const scenarios = {
     out.status = q('[data-role="ads-status"]')?.textContent ?? null;
     out.closeEnabled = q('[data-ads="close-page"]')?.disabled === false;
     q('[data-ads="details"]').click(); await wait(150);
-    out.pageTitle = q('.page-title')?.textContent ?? null;
-    out.tiles = { rows: q('[data-ads-tile="rows"] .tile-value')?.textContent, matches: q('[data-ads-tile="matches"] .tile-value')?.textContent };
+    out.pageTitle = q('.ph .h1')?.textContent ?? null;
+    out.tiles = { rows: q('[data-ads-tile="rows"] .v')?.textContent, matches: q('[data-ads-tile="matches"] .v')?.textContent };
     q('[data-name="ads-tab"][data-value="wordlist"]').click(); await wait(100);
     await until(() => q('[data-role="ads-rules"]'));
-    out.rules = [...S().querySelectorAll('[data-role="ads-rules"] tbody tr')].map((tr) => [tr.children[1].textContent, tr.children[2].textContent]);
+    out.rules = [...S().querySelectorAll('[data-role="ads-rules"] tbody tr')].map((tr) => [tr.children[0].textContent, tr.children[1].textContent]);
     out.restoreDisabled = q('[data-ads="restore"]')?.disabled === true;
-    out.noBackup = Boolean(q('[data-role="ads-no-backup"]'));
+    out.noBackup = Boolean(q('[data-ads="restore"]')?.title);
     q('[data-ads="edit"]').click();
     await until(() => document.getElementById('eat-ads-wordlist-editor'));
     out.editorOpen = Boolean(document.getElementById('eat-ads-wordlist-editor'));
@@ -396,22 +402,19 @@ const scenarios = {
     const out = {};
     const engineRoot = document.getElementById('eat-kw-market-analyzer');
     out.enginePanelHidden = engineRoot ? getComputedStyle(engineRoot).display === 'none' : null;
-    out.summary = q('[data-role="kw-summary"]')?.textContent ?? null;
+    out.drawerTiles = { rows: q('[data-kw-tile="rows"] .b')?.textContent, saved: q('[data-kw-tile="saved"] .b')?.textContent };
     out.inlineBadges = document.querySelectorAll('[data-ekma-inline]').length;
     q('[data-kw="save"]').click();
     await until(() => (window.__values.get('${KW_SAVED_KEY}') || []).length === 1);
     await until(() => q('[data-role="kw-status"]')?.textContent.includes('kaydedildi'));
     out.savedStatus = q('[data-role="kw-status"]')?.textContent ?? null;
     q('[data-kw="details"]').click(); await wait(150);
-    out.pageTitle = q('.page-title')?.textContent ?? null;
-    out.tiles = { searches: q('[data-kw-tile="searches"] .tile-value')?.textContent, results: q('[data-kw-tile="results"] .tile-value')?.textContent };
+    out.pageTitle = q('.ph .h1')?.textContent ?? null;
     out.related = [...S().querySelectorAll('[data-role="kw-related"] tbody tr')].map((tr) => tr.children[0].textContent);
-    q('[data-name="kw-tab"][data-value="saved"]').click(); await wait(100);
-    await until(() => q('[data-role="kw-saved"]'));
+    out.relatedSearches = [...S().querySelectorAll('[data-role="kw-related"] tbody tr')].map((tr) => tr.children[1].textContent);
     out.saved = [...S().querySelectorAll('[data-role="kw-saved"] tbody tr')].map((tr) => tr.children[0].textContent);
-    q('[data-name="kw-tab"][data-value="research"]').click(); await wait(100);
-    out.noResearch = Boolean(q('[data-role="kw-none"]'));
-    out.copyDisabled = q('[data-kw="copy-result"]')?.disabled === true;
+    out.noResearch = !q('[data-role="kw-related"]')?.closest('section')?.querySelector('.banner');
+    out.copyDisabled = !q('[data-kw="copy-result"]') || q('[data-kw="copy-result"]').disabled === true;
     out.foreignKeys = [...window.__values.keys()].filter((k) => !k.startsWith('eat:'));
     out.foreignReads = window.__reads.filter((k) => !k.startsWith('eat:'));
     out.requests = window.__requests || [];
@@ -451,16 +454,22 @@ const scenarios = {
     const M = window.__maShadow;
     out.launcherHidden = getComputedStyle(M.querySelector('.ma-launcher')).display === 'none';
     out.state = q('[data-ma-state]')?.dataset.maState ?? null;
-    out.ai = q('[data-role="ma-ai"]')?.textContent ?? null;
-    out.context = q('[data-role="ma-context"]')?.textContent ?? null;
+    out.context = Boolean(q('[data-role="ma-context"]')?.textContent);
     q('[data-ma="details"]').click(); await wait(150);
-    out.pageTitle = q('.page-title')?.textContent ?? null;
-    out.sections = [...S().querySelectorAll('[data-role="ma-sections"] tbody tr')].map((tr) => tr.dataset.section);
-    q('[data-ma-open="templates"]').click();
+    out.tab = q('[data-role="ma-page"]')?.dataset.maTab ?? null;
+    out.empty = Boolean(q('[data-role="ma-empty"]'));
+    q('[data-name="ma-tab"][data-value="templates"]').click();
+    await until(() => q('[data-role="ma-template-editor"]'));
+    out.templates = S().querySelectorAll('[data-role="ma-templates"] [data-template]').length;
+    out.preview = q('[data-role="ma-preview"]')?.textContent ?? '';
+    q('[data-name="ma-tab"][data-value="automation"]').click();
+    await until(() => q('[data-role="ma-autopilot"]'));
+    out.autopilot = Boolean(q('[data-role="ma-autopilot"]')) && Boolean(q('[data-role="ma-rules"]')) && Boolean(q('[data-role="ma-reviews"]'));
+    q('[data-ma="open-automation"]').click();
     await until(() => !M.querySelector('.ma-app').classList.contains('ma-hidden'));
     out.panelOpen = !M.querySelector('.ma-app').classList.contains('ma-hidden');
     out.panelSection = M.querySelector('[data-page].is-active')?.dataset.page ?? null;
-    out.workspaceClosed = !q('.workspace') || q('.workspace').hidden || getComputedStyle(q('.workspace')).display === 'none';
+    out.workspaceClosed = !q('.win') || getComputedStyle(q('.win')).display === 'none';
     out.requests = window.__requests || [];
     return out;
   }`,
@@ -494,47 +503,50 @@ const scenarios = {
     out.summary = q('[data-role="la-summary"]')?.textContent ?? null;
     out.collectionButton = q('[data-la="collection"]')?.textContent ?? null;
     q('[data-la="details"]').click(); await wait(150);
-    out.pageTitle = q('.page-title')?.textContent ?? null;
-    out.notFresh = Boolean(q('[data-role="la-not-fresh"]'));
-    out.views = [...S().querySelectorAll('[data-role="la-views"] tbody tr')].map((tr) => tr.dataset.view);
-    q('[data-la-open="queue"]').click();
-    await until(() => !L.querySelector('.meli-panel').hidden && L.querySelector('.meli-nav-btn.is-active')?.dataset.view === 'queue');
-    out.panelOpen = !L.querySelector('.meli-panel').hidden;
-    out.panelView = L.querySelector('.meli-nav-btn.is-active')?.dataset.view ?? null;
-    out.workspaceClosed = !q('.workspace') || q('.workspace').hidden || getComputedStyle(q('.workspace')).display === 'none';
+    out.tab = q('[data-role="la-page"]')?.dataset.laTab ?? null;
+    out.empty = Boolean(q('[data-role="la-empty"]'));
+    q('[data-name="la-tab"][data-value="thresholds"]').click();
+    await until(() => q('[data-role="la-thresholds"]'));
+    out.thresholds = S().querySelectorAll('[data-threshold]').length;
+    q('[data-name="la-tab"][data-value="queue"]').click();
+    await until(() => q('[data-role="la-queue"]'));
+    out.queue = Boolean(q('[data-role="la-queue"]'));
+    q('[data-name="la-tab"][data-value="ai"]').click();
+    await until(() => q('[data-role="la-ai"]'));
+    out.aiCopyDisabled = q('[data-la="copy-request"]').disabled;
     out.requests = window.__requests || [];
     return out;
   }`,
   packReady: `async ({ wait }) => {${HELPERS}
     const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
-    await until(() => S().querySelector('.sheet')?.textContent.includes('Auf dieser Seite läuft kein Werkzeug'));
+    await until(() => S().querySelector('.dock')?.textContent.includes('Auf dieser Seite läuft kein Werkzeug'));
     return {
       lang: S().querySelector('.mkui-root')?.getAttribute('lang') ?? null,
-      drawerText: S().querySelector('.sheet')?.textContent ?? '',
+      drawerText: S().querySelector('.dock')?.textContent ?? '',
       stored: Boolean(window.__values.get('eat:v1:core:pack.de')),
       requests: window.__requests || [],
     };
   }`,
   packRtl: `async ({ wait }) => {${HELPERS}
     const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
-    await until(() => S().querySelector('.sheet')?.textContent.includes('אין כלי שפועל בדף הזה'));
+    await until(() => S().querySelector('.dock')?.textContent.includes('אין כלי שפועל בדף הזה'));
     return {
       lang: S().querySelector('.mkui-root')?.getAttribute('lang') ?? null,
       dir: S().querySelector('[dir]')?.getAttribute('dir') ?? null,
-      drawerText: S().querySelector('.sheet')?.textContent ?? '',
+      drawerText: S().querySelector('.dock')?.textContent ?? '',
     };
   }`,
   packFailed: `async ({ wait }) => {${HELPERS}
     const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
     await until(() => S().querySelector('[data-role="lang-status"][data-state="error"]'));
     const status = S().querySelector('[data-role="lang-status"]');
-    const out = { title: S().querySelector('.dialog-title')?.textContent ?? null, failed: status?.textContent ?? null, requests: (window.__requests || []).length, continueDisabled: S().querySelector('[data-action="ob-continue"]')?.disabled === true };
-    status.querySelector('[data-action="lang-report"]').click(); await wait(80);
-    out.reportCategory = S().querySelector('[data-name="fb-category"]')?.value ?? S().querySelector('select[name="fb-category"]')?.value ?? null;
-    out.reportCode = [...S().querySelectorAll('[data-role="fb-preview"] tr')].find((tr) => tr.dataset.field === 'errorCode')?.children[1].textContent ?? null;
+    const out = { title: S().querySelector('#eat-ob-title')?.textContent ?? null, failed: status?.textContent ?? null, problem: S().querySelector('[data-action="ob-report"]')?.textContent ?? null, requests: (window.__requests || []).length, continueDisabled: S().querySelector('[data-action="ob-continue"]')?.disabled === true };
+    S().querySelector('[data-action="ob-report"]').click(); await wait(80);
+    out.reportCategory = S().querySelector('input[name="fb-category"]:checked')?.value ?? null;
+    out.reportCode = S().querySelector('[data-role="fb-preview"] [data-field="error"] .mono')?.textContent ?? null;
     S().querySelectorAll('.overlay')[S().querySelectorAll('.overlay').length - 1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await wait(50);
-    status.querySelector('[data-action="lang-retry"]').click();
+    S().querySelector('[data-action="lang-retry"]').click();
     await until(() => (window.__requests || []).length > out.requests);
     out.retried = (window.__requests || []).length > out.requests;
     return out;
@@ -569,10 +581,10 @@ const scenarios = {
     const q = (sel) => S().querySelector(sel);
     await click(); q('[data-action="open-workspace"]').click(); await wait(120);
     q('[data-action="report-problem"]').click(); await wait(100);
-    const out = { title: q('.dialog-title')?.textContent ?? null };
+    const out = { title: q('.modal-title')?.textContent ?? null };
     const note = q('#eat-fb-note');
     note.value = 'Shop https://www.etsy.com/shop/MyShop 1234567890 mail me@example.com'; note.dispatchEvent(new Event('input', { bubbles: true }));
-    out.preview = Object.fromEntries([...S().querySelectorAll('[data-role="fb-preview"] tr')].map((tr) => [tr.dataset.field, tr.children[1].textContent]));
+    out.preview = Object.fromEntries([...S().querySelectorAll('[data-role="fb-preview"] [data-field]')].map((row) => [row.dataset.field, row.querySelector('.mono')?.textContent ?? '']));
     out.github = q('[data-action="fb-github"]')?.getAttribute('href') ?? '';
     out.target = q('[data-action="fb-github"]')?.getAttribute('target') ?? null;
     const body = new URL(out.github).searchParams.get('body') ?? '';
@@ -582,10 +594,12 @@ const scenarios = {
   }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
   darkOpen: `async ({ wait }) => {${HELPERS}
-    return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('.empty strong')?.textContent ?? null };
+    return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('[data-role="no-tool"]')?.textContent ?? null };
   }`,
 };
 
+// An open Etsy conversation, reduced to what the Message Assistant engine reads.
+const MA_CONVERSATION = '<div id="dg-tabs-preact__tab-1--default_wt_tab_panel" role="tabpanel" data-conversation-id="1234567890"><div class="wt-grid"><div class="wt-rounded wt-text-body-01 wt-display-inline-block wt-break-word" data-message-direction="incoming">Hi! I just placed my order. Could the name be changed from Emma to Olivia?</div></div><textarea class="new-message-textarea-min-height" placeholder="Reply"></textarea></div>';
 const PAGES = {
   '/your/shops/me/sales-discounts': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.sellerPage },
   '/c/jewelry': { settings: { onboarded: true, language: 'tr' }, scenario: scenarios.shoppingPage },
@@ -612,6 +626,11 @@ const PAGES = {
   '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { ${KW_WAIT} window.__shadow.querySelector('[data-kw="save"]').click(); await until(() => (window.__values.get('${KW_SAVED_KEY}') || []).length); window.__shadow.querySelector('[data-kw="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="kw-tab"][data-value="saved"]').click(); await until(() => window.__shadow.querySelector('[data-role="kw-saved"]')); return { ok: true }; }`, extra: KW_RESULT },
   '/messages/eat-engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maEngine },
   '/messages/eat-screens': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maScreens },
+  '/messages/1234567890': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); return { ok: true }; }`, extra: MA_CONVERSATION },
+  '/messages/1234567890?shot=page': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); window.__shadow.querySelector('[data-ma="details"]').click(); await wait(200); return { ok: true }; }`, extra: MA_CONVERSATION },
+  '/messages/eat-shot-templates': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); window.__shadow.querySelector('[data-ma="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="ma-tab"][data-value="templates"]').click(); await wait(200); return { ok: true }; }` },
+  '/messages/eat-shot-automation': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); window.__shadow.querySelector('[data-ma="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="ma-tab"][data-value="automation"]').click(); await wait(200); return { ok: true }; }` },
+  '/messages/eat-shot-inbox': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); window.__shadow.querySelector('[data-ma="details"]').click(); await wait(200); return { ok: true }; }` },
   '/messages/eat-standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maEngine, extra: '<div id="makaytron-etsy-message-assistant">standalone Message Assistant</div>' },
   '/your/shops/me/tools/listings?eat=engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laEngine },
   '/your/shops/me/tools/listings?eat=screens': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laScreens },
@@ -620,6 +639,9 @@ const PAGES = {
   '/your/shops/me/stats/pack-he': { settings: { onboarded: true, language: 'he', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packRtl, packs: { he: PACK_HE } },
   '/your/shops/me/stats/pack-fr': { settings: { onboarded: false, language: 'fr', theme: 'light' }, scenario: scenarios.packFailed },
   '/your/shops/me/advertising/listings/transfer': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.realTransfer, extra: REAL_STANDALONE_ADS },
+  '/your/shops/me/stats/whats-new': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.0.0', scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(500); await until(() => window.__shadow.querySelector('[data-role="whats-new"]')); const S = window.__shadow; const out = { title: S.querySelector('.modal-title')?.textContent ?? null, items: S.querySelectorAll('[data-role="whats-new"] .li').length, seen: window.__values.get('eat:v1:core:seenVersion') }; S.querySelector('[data-action="wn-ok"]').click(); await wait(50); out.closed = !S.querySelector('[data-role="whats-new"]'); return out; }` },
+  '/your/shops/me/stats/whats-new-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.0.0', scenario: `async ({ wait }) => { await wait(1200); return { ok: true }; }` },
+  '/your/shops/me/stats/first-visit': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.1.0', scenario: `async ({ wait }) => { await wait(800); return { shown: Boolean(window.__shadow.querySelector('[data-role="whats-new"]')) }; }` },
   '/your/shops/me/stats/feedback': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.feedback },
   // Screenshot-only pages.
   '/your/shops/me/stats/feedback-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: `async ({ wait }) => { ${HELPERS} await click(); S().querySelector('[data-action="open-workspace"]').click(); await wait(120); S().querySelector('[data-action="report-problem"]').click(); await wait(150); return { ok: true }; }` },
@@ -672,6 +694,7 @@ async function visit(chrome, base, pathname) {
   assert.ok(encoded, `No result from ${pathname}. DOM tail:\n${dom.slice(-1200)}`);
   const result = JSON.parse(decodeURIComponent(encoded.replaceAll('&amp;', '&')));
   assert.equal(result.ok, true, result.error);
+  if (process.env.EAT_DUMP) console.log(`RESULT ${pathname} ${JSON.stringify(result)}`);
   return result;
 }
 
@@ -683,32 +706,33 @@ test.after(() => server.close());
 test('seller page: edge button, drawer, Escape and dragging to other edges', async () => {
   const r = await visit(chrome, base, '/your/shops/me/sales-discounts');
   assert.equal(r.hostCount, 1);
-  assert.equal(r.documentStyles, 1, 'no styles added to the Etsy document');
+  assert.equal(r.documentStyles, 1, 'no styles added to the Etsy document but the fonts');
+  assert.equal(r.fontStyleOnlyFaces, true, 'the one document style only registers the embedded fonts (@font-face does not work inside a shadow root)');
   assert.match(r.probeFont, /Georgia/, 'Etsy controls keep their own font');
   assert.equal(r.tabStart.right, r.innerWidth, 'starts on the right edge');
   assert.equal(r.closedLabel, 'Makaytron çekmecesini aç');
 
   assert.equal(r.openHidden, false);
   assert.equal(r.openSide, 'right');
-  assert.equal(r.openWidth, 384);
+  assert.equal(r.openWidth, 400);
   assert.equal(r.openRight, r.innerWidth);
   assert.equal(r.expanded, 'true');
-  assert.equal(r.tabWhenOpen.right, r.innerWidth - 384, 'button rides on the drawer edge');
+  assert.equal(r.tabWhenOpen.right, r.innerWidth - 400, 'button rides on the drawer edge');
   assert.equal(r.current, 'Sale Manager');
   assert.ok(!r.otherTools.includes('Sale Manager') && r.otherTools.length === 4, r.otherTools.join(','));
   assert.equal(r.focusOnClose, 'Makaytron çekmecesini kapat', 'focus moves into the drawer');
   assert.equal(r.afterEscapeHidden, true, 'Escape closes the drawer');
 
   assert.equal(r.dragLeft.zoneOn, 'left');
-  assert.match(r.dragLeft.chip, /sol kenar · Çekmece soldan açılır/);
+  assert.match(r.dragLeft.chip, /sol kenar\s*Çekmece soldan açılır/);
   assert.equal(r.savedLeft.edge, 'left');
   assert.equal(r.tabLeft.left, 0);
   assert.equal(r.leftSide, 'left');
   assert.equal(r.leftSheet.left, 0);
-  assert.equal(r.tabLeftOpen.left, 384);
+  assert.equal(r.tabLeftOpen.left, 400);
 
   assert.equal(r.dragTop.zoneOn, 'top');
-  assert.match(r.dragTop.chip, /üst kenar · Çekmece soldan açılır/);
+  assert.match(r.dragTop.chip, /üst kenar\s*Çekmece soldan açılır/);
   assert.equal(r.savedTop.edge, 'top');
   assert.equal(r.tabTop.top, 0);
   assert.equal(r.topSide, 'left', 'top edge opens from the left');
@@ -727,7 +751,7 @@ test('dark theme and open-on-load on a seller page without a tool', async () => 
   const r = await visit(chrome, base, '/your/shops/me/stats');
   assert.equal(r.theme, 'dark');
   assert.equal(r.hidden, false);
-  assert.equal(r.bg, 'rgb(23, 23, 23)');
+  assert.equal(r.bg, 'rgb(26, 26, 26)', 'the design canvas dark drawer (#1a1a1a)');
   assert.equal(r.noTool, 'Bu sayfada çalışan bir araç yok');
 });
 
@@ -784,7 +808,7 @@ test('Sale Manager screens drive the engine without bypassing its safety checks'
   const r = await visit(chrome, base, '/your/shops/me/sales-discounts/ui');
   assert.equal(r.enginePanelHidden, true, 'the old panel is replaced by the new screens');
   assert.match(r.drawerText, /5 kampanya/);
-  assert.equal(r.confirmTitle, '5 kampanya sırayla oluşturulacak');
+  assert.equal(r.confirmTitle, 'Seri başlatılsın mı?');
   assert.deepEqual(r.confirmCodes, ['261207WINTER25', '261208WINTER25', '261209WINTER25', '261210WINTER25', '261211WINTER25']);
   assert.match(r.engineToast, /mağaza kimliği okunamadı/, 'the engine refuses to start without a verified shop');
   assert.equal(r.jobAfterStart, null, 'no job was created');
@@ -814,7 +838,7 @@ test('Ads Keyword Manager screens show the engine counts and open its own rule e
   assert.equal(r.summary, 'Bu sayfada 4 kelime · 3 tanesi listenizle eşleşiyor');
   assert.match(r.status, /4 satır/, 'the engine status follows the Turkish interface');
   assert.equal(r.closeEnabled, true);
-  assert.equal(r.pageTitle, 'Anahtar kelime temizliği');
+  assert.equal(r.pageTitle, 'Reklam anahtar kelimeleri');
   assert.deepEqual(r.tiles, { rows: '4', matches: '3' });
   assert.deepEqual(r.rules, [['bts', 'İçerir'], ['army gift', 'Tam'], ['^kpop', 'Desen']]);
   assert.equal(r.restoreDisabled, true, 'no previous list to go back to');
@@ -842,12 +866,12 @@ test('Ads Keyword Manager steps aside when the standalone script runs on the sam
 test('Keyword & Market Analyzer screens read the Insights page and save research under eat:', async () => {
   const r = await visit(chrome, base, '/your/shops/me/marketplace-insights/search?query=bts%20sticker');
   assert.equal(r.enginePanelHidden, true, 'the old panel is replaced by the new screens');
-  assert.match(r.summary, /^“bts sticker” · 12\.400 arama · 3\.210 sonuç · fırsat \d+$/);
+  assert.deepEqual(r.drawerTiles, { rows: '3', saved: '0' }, 'the drawer counts the rows read from the page');
   assert.ok(r.inlineBadges > 0, 'the engine still marks the keywords on the Etsy page');
   assert.match(r.savedStatus, /Analiz kaydedildi/);
-  assert.equal(r.pageTitle, 'Anahtar kelime araştırması');
-  assert.deepEqual(r.tiles, { searches: '12.400', results: '3.210' });
-  assert.deepEqual(r.related, ['bts gift', 'kpop sticker']);
+  assert.equal(r.pageTitle, 'Araştırmalar');
+  assert.deepEqual(r.related, ['bts sticker', 'bts gift', 'kpop sticker'], 'the main keyword and its similar terms');
+  assert.deepEqual(r.relatedSearches.slice(0, 2), ['12.400', '8.100']);
   assert.deepEqual(r.saved, ['bts sticker']);
   assert.equal(r.noResearch, true);
   assert.equal(r.copyDisabled, true);
@@ -873,16 +897,18 @@ test('Message Assistant engine runs inside the unified script, isolated from a s
   assert.equal(r.maDrawer, true, 'the drawer shows the new Message Assistant screen');
 });
 
-test('Message Assistant screens summarise the engine and open its panel at a section', async () => {
+test('Message Assistant screens show the engine data and open its panel at a section', async () => {
   const r = await visit(chrome, base, '/messages/eat-screens');
   assert.equal(r.launcherHidden, true, 'the edge button replaces the floating launcher');
   assert.equal(r.state, 'no-key');
-  assert.match(r.ai, /AI sağlayıcı anahtarınızı girin/);
-  assert.equal(r.context, 'Çevirmek veya cevap hazırlamak için bir konuşma açın.');
-  assert.equal(r.pageTitle, 'Müşteri mesajları');
-  assert.deepEqual(r.sections, ['messages', 'orders', 'reviews', 'templates', 'history', 'settings']);
+  assert.equal(r.context, true, 'without an open conversation the drawer says what to do');
+  assert.equal(r.tab, 'inbox');
+  assert.equal(r.empty, true, 'no conversation read yet: the first-use page');
+  assert.ok(r.templates >= 3, 'the engine templates are listed');
+  assert.ok(r.preview.length > 0, 'the Turkish preview needs no translation');
+  assert.equal(r.autopilot, true);
   assert.equal(r.panelOpen, true, 'the engine panel opens');
-  assert.equal(r.panelSection, 'templates');
+  assert.equal(r.panelSection, 'orders');
   assert.equal(r.workspaceClosed, true);
   assert.deepEqual(r.requests, []);
 });
@@ -904,18 +930,17 @@ test('Listing Analyzer engine runs inside the unified script, isolated from a st
   assert.equal(r.laDrawer, true, 'the drawer shows the new Listing Analyzer screen');
 });
 
-test('Listing Analyzer screens summarise the engine and open its panel at a view', async () => {
+test('Listing Analyzer screens show the engine data on every tab', async () => {
   const r = await visit(chrome, base, '/your/shops/me/tools/listings?eat=screens');
   assert.equal(r.launcherHidden, true, 'the edge button replaces the floating launcher');
   assert.ok(['ready', 'stopped'].includes(r.state), r.state);
   assert.equal(r.summary, '0 listing kayıtlı · bu sayfada 0');
   assert.equal(r.collectionButton, 'Tüm sayfaları tara');
-  assert.equal(r.pageTitle, 'Listing performansı');
-  assert.equal(r.notFresh, true);
-  assert.deepEqual(r.views, ['overview', 'analysis', 'ai', 'queue', 'settings']);
-  assert.equal(r.panelOpen, true, 'the engine panel opens');
-  assert.equal(r.panelView, 'queue');
-  assert.equal(r.workspaceClosed, true);
+  assert.equal(r.tab, 'overview');
+  assert.equal(r.empty, true, 'nothing read yet: the first-use page');
+  assert.equal(r.thresholds, 4, 'the four engine thresholds');
+  assert.equal(r.queue, true);
+  assert.equal(r.aiCopyDisabled, true, 'no AI request without a selection');
   assert.deepEqual(r.requests, []);
 });
 
@@ -946,11 +971,11 @@ test('a failed language pack keeps English, says so in the chosen language and c
   assert.equal(r.title, 'Choisissez votre langue', 'the first screen is bundled in every language');
   assert.match(r.failed, /Le pack de langue n’a pas pu être téléchargé/);
   assert.match(r.failed, /Réessayer/);
-  assert.match(r.failed, /Signaler un problème/);
+  assert.match(r.problem, /Signal/, 'the report link is in the chosen language too');
   assert.equal(r.retried, true);
   assert.equal(r.continueDisabled, true, 'the setup waits for the chosen language');
   assert.equal(r.reportCategory, 'language-pack');
-  assert.equal(r.reportCode, 'i18n_pack_download');
+  assert.match(r.reportCode, /^i18n_pack_download/);
 });
 
 test('the real standalone script hands its data over from its notice, with the same check code on both sides', async () => {
@@ -964,17 +989,27 @@ test('the real standalone script hands its data over from its notice, with the s
   assert.equal(r.standaloneKept, 'bts\nkpop poster', 'the standalone script keeps its own data');
 });
 
+test("the What's new dialog shows once after an update, in the interface language", async () => {
+  const r = await visit(chrome, base, '/your/shops/me/stats/whats-new');
+  assert.match(r.title, /Yenilikler · 2\.1\.0/);
+  assert.equal(r.items, 3);
+  assert.equal(r.seen, '2.1.0', 'the version is recorded, so it does not open again');
+  assert.equal(r.closed, true);
+  const again = await visit(chrome, base, '/your/shops/me/stats/first-visit');
+  assert.equal(again.shown, false, 'nothing to show for a version already seen');
+});
+
 test('a problem report shows everything, never shop data, and opens a prefilled GitHub issue without sending anything', async () => {
   const r = await visit(chrome, base, '/your/shops/me/stats/feedback');
   assert.equal(r.title, 'Sorun bildir');
-  assert.equal(r.preview.region, 'US');
-  assert.equal(r.preview.browserLocale, 'en-US');
-  assert.equal(r.preview.uiLanguage, 'tr');
-  assert.equal(r.preview.note, 'Shop [link] [number] mail [email]');
+  assert.deepEqual(Object.keys(r.preview), ['version', 'system', 'locale', 'page', 'error'], 'every group of facts is shown before sending');
+  assert.match(r.preview.locale, /en-US/);
+  assert.match(r.preview.locale, /US/);
+  assert.equal(r.payload.note, 'Shop [link] [number] mail [email]', 'links, numbers and e-mail addresses are masked');
   assert.match(r.github, /^https:\/\/github\.com\/Makaytron\/Etsy-Automation-Tools\/issues\/new\?/);
   assert.equal(r.target, '_blank');
   assert.deepEqual(r.requests, [], 'the script itself sends nothing');
-  assert.deepEqual(Object.keys(r.payload).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorCode', 'format', 'formatVersion', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'uiLanguage']);
+  assert.deepEqual(Object.keys(r.payload).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorAt', 'errorCode', 'format', 'formatVersion', 'handler', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'tool', 'uiLanguage', 'utcOffset']);
   assert.doesNotMatch(JSON.stringify(r.payload), /MyShop|1234567890|example\.com/);
 });
 
@@ -982,10 +1017,10 @@ test('first run: setup opens in the browser language, switches to Turkish, saves
   const r = await visit(chrome, base, '/your/shops/me/orders');
   assert.equal(r.title1, 'Choose your language', 'Chrome runs with --lang=en-US, so the setup opens in English');
   assert.equal(r.modal, 'true');
-  assert.equal(r.focus, 'ob-language');
+  assert.equal(r.focus, 'ob-search', 'focus starts in the language search');
   assert.equal(r.title1Tr, 'Dilinizi seçin');
   assert.equal(r.progress1, '1');
-  assert.equal(r.title2, 'Hangi araçları istiyorsunuz?');
+  assert.equal(r.title2, 'Hoş geldiniz');
   assert.equal(r.progress2, '2');
   assert.deepEqual(r.saved, { onboarded: true, language: 'tr', ma: false, sale: true });
   assert.equal(r.dialogGone, true);
@@ -1007,7 +1042,8 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['feedback', '/your/shops/me/stats/feedback-shot'], ['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-he-rtl', '/your/shops/me/stats/pack-he'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
-    await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
+  for (const [name, pathname, width] of [['feedback', '/your/shops/me/stats/feedback-shot'], ['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-he-rtl', '/your/shops/me/stats/pack-he'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['ma-conv-drawer', '/messages/1234567890'], ['ma-conv-page', '/messages/1234567890?shot=page'], ['ma-inbox-empty', '/messages/eat-shot-inbox'], ['ma-templates', '/messages/eat-shot-templates'], ['ma-automation', '/messages/eat-shot-automation'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases'], ['whats-new', '/your/shops/me/stats/whats-new-shot'], ['ws-narrow', '/your/account', 1000], ['ws-narrow-rtl', '/your/shops/me/stats/pack-he', 1000]]) {
+    // A third value is a narrower window width (the design's narrow-window layout).
+    await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`, ...(width ? [`--window-size=${width},800`] : [])]);
   }
 });

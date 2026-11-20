@@ -71,7 +71,9 @@ export async function checkPack(code, pack, source) {
  * them in their own language.
  */
 export const PICKER_KEYS = Object.freeze(['ob.label', 'ob.step', 'ob.langTitle', 'ob.langText', 'ob.langTextChosen', 'ob.detected', 'ob.continue', 'ob.privacy',
-  'set.language', 'lang.loading', 'lang.failed', 'lang.retry', 'ws.report']);
+  'set.language', 'lang.loading', 'lang.failed', 'lang.retry', 'ws.report',
+  // The redesigned language step (AR-Onboarding-Language) shows these before any pack is there.
+  'ob.setup', 'ob.search', 'ob.suggested', 'ob.later2', 'ob.problem', 'ob.useEnglish', 'ob.packFailedTitle', 'ob.packRest', 'ob.continueIn', 'set.packLoading']);
 const PICKER_PREFIXES = Object.freeze(['fb.']);
 export const PICKER_FILE = path.join(repoRoot, 'src', 'ui', 'strings-picker.js');
 

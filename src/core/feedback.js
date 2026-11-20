@@ -7,10 +7,10 @@
 export const FEEDBACK_ISSUE_URL = 'https://github.com/Makaytron/Etsy-Automation-Tools/issues/new';
 
 /** A new-issue link on GitHub with the report filled in. */
-export function issueUrl(report) {
+export function issueUrl(report, id = '') {
   const body = ['```json', JSON.stringify(report, null, 2), '```'].join('\n');
   const url = new URL(FEEDBACK_ISSUE_URL);
-  url.searchParams.set('title', `[${report.category}] Etsy Automation Tools ${report.appVersion}`);
+  url.searchParams.set('title', `${id ? `${id} ` : ''}[${report.category}] Etsy Automation Tools ${report.appVersion}`);
   url.searchParams.set('body', body);
   return url.href;
 }

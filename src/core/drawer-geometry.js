@@ -6,7 +6,7 @@
 
 export const TAB_LONG = 64; // button length along the edge
 export const TAB_SHORT = 46; // button depth into the page
-export const DRAWER_WIDTH = 384; // template.primitive.sheet: sm:max-w-sm
+export const DRAWER_WIDTH = 400; // design canvas: .dock width 400px (template.primitive.sheet adaptation)
 export const DRAWER_WIDTH_NARROW = 360;
 export const NARROW_VIEWPORT = 1100;
 const EDGE_MARGIN = 8;

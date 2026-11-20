@@ -1,22 +1,20 @@
-// The problem report dialog ("Sorun bildir").
-//
-// The user picks what went wrong and may add a note. The dialog shows every
-// field of the report (version, browser, OS, interface language, browser
-// locale and country, the page template, the error code). "Report on GitHub"
-// opens a prefilled public issue; the script itself sends nothing. Shop
-// names, customer data, page addresses with ids and API keys never enter it
-// (core/diagnostics.js).
+// The problem report dialog ("Sorun bildir"), as the design canvas artboard
+// Feedback draws it: what happened (six choices), which tool, an optional
+// note, and the technical facts — each of which the user can switch off —
+// shown before anything leaves the browser. "Send report" opens a prefilled,
+// public GitHub issue; the script itself sends nothing. Shop names, customer
+// data, page addresses with ids and API keys never enter it (core/diagnostics.js).
 //
 // Design sources: template.primitive.dialog, template.primitive.select,
-// template.primitive.input, template.primitive.table, template.primitive.button.
-// The registry has no textarea, so the note is a one-line input.
+// template.primitive.input, template.primitive.checkbox, template.primitive.button.
 
-import { h } from './dom.js';
-import { openDialog, select } from './controls.js';
-import { buildReport, PROBLEM_CATEGORIES } from '../core/diagnostics.js';
+import { h, icon } from './dom.js';
+import { ICONS } from './icons.js';
+import { openDialog } from './controls.js';
+import { buildReport, DIALOG_CATEGORIES, PROBLEM_CATEGORIES, REPORT_GROUPS } from '../core/diagnostics.js';
 import { issueUrl } from '../core/feedback.js';
-
-const PREVIEW_FIELDS = ['category', 'errorCode', 'appVersion', 'browser', 'os', 'uiLanguage', 'browserLocale', 'region', 'routeTemplate', 'note'];
+import { newReportId } from '../core/reports.js';
+import { TOOL_IDS } from '../core/settings.js';
 
 /**
  * @param {object} o
@@ -25,59 +23,93 @@ const PREVIEW_FIELDS = ['category', 'errorCode', 'appVersion', 'browser', 'os', 
  * @param {object} o.text      the shell translator
  * @param {object} o.scope     window
  * @param {string} o.appVersion
+ * @param {object} [o.host]    to preselect the tool of this page
+ * @param {object} [o.reports] keeps the report id for Settings › Help
  * @param {string} [o.category]
  * @param {string} [o.errorCode]
+ * @param {string} [o.tool]
  * @param {Element} [o.returnFocus]
  */
-export function openFeedback({ doc, container, text, scope, appVersion, category = 'other', errorCode = null, returnFocus = null }) {
+export function openFeedback({ doc, container, text, scope, appVersion, host = null, reports = null, category = 'interrupted', errorCode = null, errorAt = null, tool = null, returnFocus = null }) {
   const { t } = text;
-  const draft = { category: PROBLEM_CATEGORIES.includes(category) ? category : 'other', note: '' };
+  const initial = { 'etsy-page-changed': 'interrupted', 'ai-or-translation': 'wrong-result', other: 'interrupted' }[category] ?? category;
+  const draft = {
+    category: DIALOG_CATEGORIES.includes(initial) ? initial : 'interrupted',
+    tool: TOOL_IDS.includes(tool) ? tool : TOOL_IDS.includes(host?.activeTool) ? host.activeTool : '',
+    note: '',
+    omit: new Set(errorCode ? [] : ['error']),
+  };
+  const id = newReportId();
+  const minutes = -new Date().getTimezoneOffset();
   const env = () => ({
     userAgent: scope.navigator?.userAgent ?? '',
     locale: scope.navigator?.language ?? '',
     pathname: scope.location?.pathname ?? '/',
     uiLanguage: text.language(),
+    utcOffsetMinutes: minutes,
+    handler: scope.GM?.info?.scriptHandler && scope.GM?.info?.version ? `${scope.GM.info.scriptHandler} ${scope.GM.info.version}` : null,
   });
-  const report = () => buildReport({ appVersion, category: draft.category, errorCode, note: draft.note }, env());
+  const report = () => buildReport({ appVersion, category: PROBLEM_CATEGORIES.includes(draft.category) ? draft.category : 'other', tool: draft.tool || null, errorCode, errorAt, note: draft.note, omit: [...draft.omit] }, env());
 
-  const previewBody = h(doc, 'tbody', {});
-  let github = null;
-
-  function renderPreview() {
-    const r = report();
-    github?.setAttribute('href', issueUrl(r));
-    previewBody.replaceChildren(...PREVIEW_FIELDS.map((field) => {
-      const value = field === 'browser' ? [r.browser, r.browserMajor].filter((v) => v != null).join(' ') : r[field];
-      const shown = field === 'category' ? t(`fb.cat.${r.category}`) : (value === null || value === '' || value === undefined ? '—' : String(value));
-      return h(doc, 'tr', { 'data-field': field }, h(doc, 'th', { text: t(`fb.f.${field}`) }), h(doc, 'td', { text: shown }));
-    }));
+  // Technical facts, one row per group (Feedback: "Raporla gönderilecek teknik bilgiler").
+  const facts = h(doc, 'div', { class: 'list', 'data-role': 'fb-preview' });
+  function renderFacts() {
+    const all = buildReport({ appVersion, category: draft.category, tool: draft.tool || null, errorCode, errorAt, note: '' }, env());
+    const value = {
+      version: [all.appVersion && `v${all.appVersion}`, all.handler].filter(Boolean).join(' · '),
+      system: [all.browser && [all.browser, all.browserMajor].filter((v) => v != null).join(' '), all.os].filter(Boolean).join(' · '),
+      locale: [all.browserLocale ?? all.uiLanguage, all.region, all.utcOffset].filter(Boolean).join(' · '),
+      page: all.routeTemplate ? `etsy.com${all.routeTemplate}` : '—',
+      error: errorCode ? [all.errorCode, all.errorAt].filter(Boolean).join(' · ') : t('fb.noError'),
+    };
+    facts.replaceChildren(...REPORT_GROUPS.map((group) => h(doc, 'label', { class: 'li fb-fact', 'data-field': group },
+      h(doc, 'input', { type: 'checkbox', class: 'chk', name: `fb-${group}`, checked: !draft.omit.has(group), disabled: group === 'error' && !errorCode, onchange: (e) => { if (e.target.checked) draft.omit.delete(group); else draft.omit.add(group); sync(); } }),
+      h(doc, 'span', { class: 'xs mute2 fb-fact-k', text: t(`fb.g.${group}`) }),
+      h(doc, 'span', { class: 'xs mono grow trunc', text: value[group] || '—' }))));
   }
 
-  const body = h(doc, 'div', { class: 'stack' },
-    h(doc, 'div', { class: 'field-col' },
-      h(doc, 'span', { class: 'label', id: 'eat-fb-category', text: t('fb.category') }),
-      select(doc, {
-        labelledBy: 'eat-fb-category', name: 'fb-category', value: draft.category,
-        options: PROBLEM_CATEGORIES.map((c) => ({ value: c, label: t(`fb.cat.${c}`) })),
-        onChange: (value) => { draft.category = value; renderPreview(); },
-      })),
-    h(doc, 'div', { class: 'field-col' },
-      h(doc, 'label', { class: 'label', for: 'eat-fb-note', text: t('fb.note') }),
-      h(doc, 'input', { class: 'input', id: 'eat-fb-note', name: 'fb-note', type: 'text', maxlength: 1000, autocomplete: 'off', placeholder: t('fb.notePlaceholder'),
-        oninput: (e) => { draft.note = e.currentTarget.value; renderPreview(); } }),
-      h(doc, 'span', { class: 'field-hint', text: t('fb.noteHint') })),
-    h(doc, 'div', { class: 'stack' },
-      h(doc, 'span', { class: 'label', text: t('fb.preview') }),
-      h(doc, 'div', { class: 'table-wrap' }, h(doc, 'table', { class: 'table', 'data-role': 'fb-preview' }, previewBody)),
-      h(doc, 'span', { class: 'field-hint', text: t('fb.githubHint') })));
-  renderPreview();
+  let github = null;
+  function sync() {
+    github?.setAttribute('href', issueUrl(report(), id));
+  }
+
+  const options = h(doc, 'div', { class: 'g3', style: 'gap: 6px;' });
+  function renderOptions() {
+    options.replaceChildren(...DIALOG_CATEGORIES.map((c) => h(doc, 'label', { class: draft.category === c ? 'fb-opt on' : 'fb-opt' },
+      h(doc, 'input', { type: 'radio', name: 'fb-category', value: c, checked: draft.category === c, onchange: () => { draft.category = c; renderOptions(); sync(); } }),
+      t(`fb.cat.${c}`))));
+  }
+  renderOptions();
+
+  const body = h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
+    h(doc, 'div', { class: 'field', role: 'radiogroup', 'aria-labelledby': 'eat-fb-category' }, h(doc, 'span', { class: 'label', id: 'eat-fb-category', text: t('fb.category') }), options),
+    h(doc, 'label', { class: 'field', for: 'eat-fb-tool' },
+      h(doc, 'span', { class: 'label', text: t('fb.tool') }),
+      h(doc, 'select', { class: 'input', id: 'eat-fb-tool', name: 'fb-tool', onchange: (e) => { draft.tool = e.target.value; renderFacts(); sync(); } },
+        h(doc, 'option', { value: '', text: t('fb.toolNone'), selected: !draft.tool }),
+        TOOL_IDS.map((id2) => h(doc, 'option', { value: id2, selected: draft.tool === id2, text: t(`tool.${id2}`) })))),
+    h(doc, 'label', { class: 'field', for: 'eat-fb-note' },
+      h(doc, 'span', { class: 'label' }, t('fb.note'), h(doc, 'span', { class: 'mute', style: 'font-weight: 400;', text: ` · ${t('fb.optional')}` })),
+      h(doc, 'textarea', { class: 'input', id: 'eat-fb-note', name: 'fb-note', rows: 2, maxlength: 1000, placeholder: t('fb.notePlaceholder'), oninput: (e) => { draft.note = e.currentTarget.value; sync(); } })),
+    h(doc, 'span', { class: 'hint', style: 'margin-top: -6px;', text: t('fb.noteHint') }),
+    h(doc, 'div', { class: 'fb-box' },
+      h(doc, 'div', { class: 'row fb-box-h' }, h(doc, 'span', { class: 'h3 grow', text: t('fb.preview') }), h(doc, 'span', { class: 'xs mute', text: t('fb.previewOff') })),
+      facts,
+      h(doc, 'div', { class: 'row xs mute2 fb-box-f' }, icon(doc, ICONS.shield, 14), t('fb.never'))),
+    h(doc, 'span', { class: 'hint', text: t('fb.githubHint') }));
+  renderFacts();
 
   const dialog = openDialog(doc, container, {
-    title: t('fb.title'), description: t('fb.text'), body, closeLabel: t('fb.cancel'), returnFocus,
+    title: t('fb.title'), description: t('fb.text'), body, closeLabel: t('fb.cancel'), returnFocus, width: 640,
     footer: (close) => {
-      github = h(doc, 'a', { class: 'btn btn-default', href: issueUrl(report()), target: '_blank', rel: 'noopener noreferrer', 'data-action': 'fb-github', text: t('fb.github') });
-      return [h(doc, 'button', { class: 'btn btn-outline', type: 'button', onclick: close, text: t('fb.cancel') }), github];
+      github = h(doc, 'a', {
+        class: 'btn btn-p', href: issueUrl(report(), id), target: '_blank', rel: 'noopener noreferrer', 'data-action': 'fb-github', text: t('fb.github'),
+        onclick: () => { void reports?.record({ id, category: draft.category }); scope.setTimeout?.(close, 0); },
+      });
+      return [h(doc, 'span', { class: 'xs mute grow fb-foot', text: t('fb.seeFirst') }), h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: close, text: t('fb.cancel') }), github];
     },
   });
+  // The dialog's footer has its own text on the left instead of a spacer.
+  dialog.dialog.querySelector('.modal-f > .grow:first-child')?.remove();
   return dialog;
 }

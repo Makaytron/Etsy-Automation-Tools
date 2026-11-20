@@ -12,13 +12,15 @@
 
 import { createScopedGm } from '../core/scoped-gm.js';
 import { renderMaDrawer, renderMaPage } from './message-assistant-ui.js';
+import { createWaitingNotices } from '../core/waiting-notices.js';
 
 export const MA_TOOL_ID = 'message-assistant';
 export const STANDALONE_ROOT_ID = 'makaytron-etsy-message-assistant';
 const STANDALONE_GRACE_MS = 1500;
 
 export function createMessageAssistantModule({ secrets }) {
-  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '' };
+  const waiting = createWaitingNotices({ event: 'autopilotWaiting', tool: MA_TOOL_ID, page: `tool:${MA_TOOL_ID}` });
+  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', languages: null, local: { list: [], filter: 'all' } };
 
   const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
   const emit = (status) => state.ctx?.events?.emit('tool:status', { tool: MA_TOOL_ID, state: status });
@@ -40,6 +42,10 @@ export function createMessageAssistantModule({ secrets }) {
     if (text === state.last) return;
     state.last = text;
     emit('running');
+    // An autopilot or guided step that now waits for the user (send to confirm, result to check) is announced once.
+    const camp = state.engine.messages?.view().campaign;
+    waiting.update((camp?.active ? camp.items : []).filter((i) => ['inserted', 'sent_pending_verification'].includes(i.status)).map((i) => ({ key: `${i.id}:${i.status}`, detail: i.name })),
+      { notify: state.ctx?.notify, language: state.ctx?.settings?.get().language });
   }
 
   async function start(ctx) {
@@ -61,27 +67,64 @@ export function createMessageAssistantModule({ secrets }) {
       GM: gm,
       xmlHttpRequest: (details) => ctx.scope.GM.xmlHttpRequest(details),
       isAllowed: () => !state.standalone && ctx.isToolEnabled(MA_TOOL_ID),
+      autoPreview: () => ctx.settings.get().ai.autoTranslate,
       onChange: () => ctx.scope.setTimeout(changed, 0),
     });
     emit('running');
     await state.engine.start();
+    // "AI and translation services" in the setup and in Settings decides the engine's automatic translation preview.
+    const applyAutoPreview = () => state.engine?.ai?.setAutoPreview?.(ctx.settings.get().ai.autoTranslate).catch(() => {});
+    await applyAutoPreview();
+    ctx.settings.subscribe?.(() => { void applyAutoPreview(); });
     changed();
   }
 
   function actionsFor(ui) {
     const engine = state.engine;
-    const run = (fn) => Promise.resolve().then(fn).catch((error) => console.error('[Etsy Automation Tools] Message Assistant', error));
+    const m = engine.messages;
+    const run = (fn) => Promise.resolve().then(fn).catch((error) => { console.error('[Etsy Automation Tools] Message Assistant', error); return false; });
     // The engine's panel opens on the page, so the drawer and workspace step out of its way.
     const inPanel = (fn) => { ui.hide?.(); return run(fn); };
+    const rerender = () => (ui.onTab ? ui.onTab(ui.tab ?? 'inbox') : emit('running'));
     return {
       openPanel: (section) => inPanel(() => engine.openPanel(section)),
-      translateLast: () => inPanel(() => engine.translateLast()),
-      generateReply: () => inPanel(() => engine.generateReply()),
       openDetails: () => ui.openWorkspace?.(`tool:${MA_TOOL_ID}`),
+      openSettings: (tab) => ui.openSettings?.(tab),
+      report: (options) => ui.report?.(options),
+      languages: () => (state.languages ??= m.languages()),
+      variables: () => m.variables(),
+      translate: () => run(() => m.translate()),
+      draft: () => run(() => m.draft()),
+      regenerate: () => run(() => m.regenerate()),
+      useTemplate: (id) => run(() => m.useTemplate(id)),
+      setReplyLanguage: (code) => run(() => m.setReplyLanguage(code)),
+      editReply: (text) => m.editReply(text),
+      insert: () => run(() => m.insert()),
+      copy: () => run(() => m.copy()),
+      refresh: () => run(() => (view()?.listPage ? m.translateList() : rerender())),
+      openConversation: (url) => m.openConversation(url),
+      previewTemplate: (text, language) => m.previewTemplate(text, language),
+      saveTemplate: (input) => run(() => m.saveTemplate(input)),
+      archiveTemplate: (id, archived) => run(() => m.archiveTemplate(id, archived)),
+      campaignPause: (expected) => run(() => m.campaignPause(expected)),
+      campaignResume: (expected) => run(() => m.campaignResume(expected)),
+      setAutoAdvance: (on) => run(() => m.setAutoAdvance(on)),
+      refreshReviews: () => run(() => m.refreshReviews()),
+      reviewDraft: (id) => run(() => m.reviewDraft(id)),
+      reviewCopy: (id) => run(() => m.reviewCopy(id)),
+      setLocal: (patch) => { Object.assign(state.local, patch); rerender(); },
     };
   }
 
-  const view = () => (state.standalone || !state.engine ? null : state.engine.snapshot());
+  const snapshot = () => (state.standalone || !state.engine ? null : state.engine.snapshot());
+  /** The engine's view; the conversation list is kept while a conversation is open (Etsy shows it only on the list). */
+  function view() {
+    if (state.standalone || !state.engine?.messages) return null;
+    const current = state.engine.messages.view();
+    if (current.listPage) state.local.list = current.list;
+    return current;
+  }
+  const unread = () => (state.local.list ?? []).filter((item) => item.unread).length;
 
   return {
     id: MA_TOOL_ID,
@@ -90,13 +133,30 @@ export function createMessageAssistantModule({ secrets }) {
     storageNamespace: MA_TOOL_ID,
     migrated: true,
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+    /** Provider management for Settings › AI providers, while the engine runs on this page. */
+    aiProviders: () => (state.standalone ? null : state.engine?.ai ?? null),
+    /** Shortcut "Add the draft to the message box" (Settings › Shortcuts): the engine's own insert, which never sends. */
+    shortcut(action) {
+      if (action !== 'maInsertDraft' || state.standalone || !state.engine?.messages) return false;
+      const c = state.engine.messages.view().conversation;
+      if (!c?.reply || !c.replyCurrent || !c.canInsert) return false;
+      void Promise.resolve(state.engine.messages.insert()).catch(() => {});
+      return true;
+    },
+    /** Unread conversations in the last list read, for the workspace menu and the drawer. */
+    drawerCount: () => unread(),
     renderDrawer(ui) {
-      const snap = view();
-      return snap ? renderMaDrawer(ui.doc, { snap, language: ui.language, actions: actionsFor(ui) }) : null;
+      const snap = snapshot();
+      return snap ? renderMaDrawer(ui.doc, { snap, view: view(), language: ui.language, actions: actionsFor(ui), unread: unread() }) : null;
     },
     renderPage(ui) {
-      const snap = view();
-      return snap ? renderMaPage(ui.doc, { snap, language: ui.language, actions: actionsFor(ui) }) : null;
+      const current = snapshot() ? view() : null;
+      return current ? renderMaPage(ui.doc, {
+        view: current, language: ui.language, actions: actionsFor(ui), tab: ui.tab === 'overview' ? 'inbox' : ui.tab, onTab: ui.onTab,
+        local: state.local, container: ui.container, version: state.ctx?.appVersion ?? '',
+        // Settings › Tools › "Order details in messages".
+        showOrder: state.ctx?.settings?.get().links?.orderInfoInMessages !== false,
+      }) : null;
     },
     async mount(ctx) {
       state.ctx = ctx;
