@@ -65,6 +65,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
       onTab: (tab) => { state.toolTab[id] = tab; state.message = ''; render(); },
       message: state.message, say: (message) => { state.message = message; render(); },
       openWorkspace: (page) => go(page), hide: () => close(false), report: (options) => text.report?.(options),
+      openSettings: (tab) => { state.tab = tab; go('settings'); },
       notify: (item) => notices?.add(item),
     });
     if (custom) return custom;

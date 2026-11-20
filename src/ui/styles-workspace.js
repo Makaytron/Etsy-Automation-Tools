@@ -56,6 +56,8 @@ export const WORKSPACE_CSS = `
 @media (max-width: 1100px) { .cols { flex-direction: column; align-items: stretch; } .cols > .side { width: auto; } }
 
 /* Tool pages */
+/* Page tabs are buttons here (links in the canvas): only the underline of .tab stays. */
+button.tab { border: none; border-bottom: 2px solid transparent; background: transparent; cursor: pointer; font-family: inherit; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .spend-bar { width: 64px; height: 6px; border-radius: 999px; background: #f0f0f0; overflow: hidden; display: inline-block; }
 .spend-bar > span { display: block; height: 6px; background: var(--primary); border-radius: 999px; }

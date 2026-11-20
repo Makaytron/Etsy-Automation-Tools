@@ -112,13 +112,13 @@ const ENGINE_API = `
     // Saves a whole rule list from the workspace's word list page, by the editor's own rules.
     async function __eatSaveRules(list) {
         if (!RouteLifecycle.allowed() || activeOperation || wordlistUpdateRunning || document.getElementById(EDITOR_MODAL_ID)) return { ok: false, reason: 'busy' };
-        const value = (Array.isArray(list) ? list : []).map((rule) => encodeEditorRule({ type: rule?.type === 'exact' ? 'exact' : rule?.type === 'regex' ? 'regex' : 'contains', value: String(rule?.value ?? ''), edited: true })).filter(Boolean).join('\n');
+        const value = (Array.isArray(list) ? list : []).map((rule) => encodeEditorRule({ type: rule?.type === 'exact' ? 'exact' : rule?.type === 'regex' ? 'regex' : 'contains', value: String(rule?.value ?? ''), edited: true })).filter(Boolean).join('\\n');
         if (!value) return { ok: false, reason: 'empty' };
         if (new TextEncoder().encode(value).length > MAX_WORDLIST_BYTES) return { ok: false, reason: 'too_large' };
         await setRulesValue('adWordlist', value);
         try {
             const filteredRows = await decorateRows();
-            const params = { rules: quantity(value.split('\n').length, 'rule'), matches: quantity(filteredRows.length, 'match') };
+            const params = { rules: quantity(value.split('\\n').length, 'rule'), matches: quantity(filteredRows.length, 'match') };
             notify('success', t('rulesSaved', params));
             setPanelStatus('rulesSavedStatus', 'success', '', params);
         } catch { /* the list is saved; the page marks catch up on the next read */ }
