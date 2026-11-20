@@ -4,6 +4,12 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.1.1] - 2026-11-20
+
+### Fixed
+
+- Etsy now loads the "Targeted keywords" section of an ad page collapsed. The script opens it while it waits for the keyword table, so it no longer stops with "The keyword table could not be loaded".
+
 ## [1.1.0] - 2026-11-20
 
 ### Added

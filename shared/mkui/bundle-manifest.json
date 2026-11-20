@@ -17,7 +17,7 @@
     {
       "id": "ads-keyword-manager",
       "path": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
-      "scriptVersion": "1.1.0",
+      "scriptVersion": "1.1.1",
       "mkuiVersion": "1.0.0",
       "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "presentationHash": "sha256:ef3e965d6b3dc21a2377a026866716712abad568d4822fc81572a9ce993e6cbd",

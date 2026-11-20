@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
-  "sourceDigest": "sha256:a19a722da988db4c334cf08a136b9b6c6e93d0a5b06455261002e61c034cb052",
+  "sourceDigest": "sha256:f19e90b7ebb1fe8fbb3b119b40f629b828c79eb5bd218173333f3127b0e88258",
   "status": "pass",
   "summary": {
     "scriptCount": 5,
@@ -36,10 +36,10 @@
       "id": "ads-keyword-manager",
       "label": "Ads Keyword Manager",
       "path": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
-      "bytes": 209466,
-      "lines": 3637,
-      "sha256": "2b21f69da65b18a183e17bf5cac77a6a0cbfde63020a66529886b62202e217a4",
-      "version": "1.1.0",
+      "bytes": 210022,
+      "lines": 3648,
+      "sha256": "ed155e0a59f702d1ae92b0d2860f5fa400ec9a64dac1a5595012b9052c0c3e9d",
+      "version": "1.1.1",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -218,7 +218,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 3568,
+          "line": 3579,
           "key": "KeyK",
           "modifiers": [
             "Alt",
@@ -230,7 +230,7 @@
         },
         {
           "target": "document",
-          "line": 3568,
+          "line": 3579,
           "key": "Space",
           "modifiers": [
             "Alt",
