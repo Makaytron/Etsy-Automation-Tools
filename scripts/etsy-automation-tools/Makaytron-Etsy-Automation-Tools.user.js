@@ -27511,6 +27511,9 @@
       setReplyLanguage(code) {
           const next = String(code || '').trim().toLowerCase();
           if (!GOOGLE_TRANSLATION_LANGUAGE_NAMES[next] && !GOOGLE_TRANSLATION_LANGUAGE_NAMES[next.split('-')[0]]) return Promise.resolve(false);
+          // Adopt the open conversation first: adopting a new one clears the language, which would undo the choice.
+          const live = MessageAdapter.context();
+          if (live.conversationId) UI.adoptMessageContext(live);
           UI.state.targetLanguage = next;
           return UI.state.reply ? __eatRun('regenerate-reply', () => UI.regenerateReply()) : Promise.resolve(true);
       },
@@ -27560,13 +27563,12 @@
               return true;
           });
       },
-      campaignPause() {
-          const campaign = Store.campaign;
-          return __eatRun('campaign-pause', () => Campaign.pauseAutopilot({ expectedCampaignId: campaign?.id || '', expectedRevision: campaign?.revision }));
+      // Both take the campaign id and revision the user saw; the engine refuses if the stored campaign moved on.
+      campaignPause(expected = {}) {
+          return __eatRun('campaign-pause', () => Campaign.pauseAutopilot({ expectedCampaignId: String(expected.id || ''), expectedRevision: expected.revision }));
       },
-      campaignResume() {
-          const campaign = Store.campaign;
-          return __eatRun('campaign-start', () => Campaign.startAutopilot({ expectedCampaignId: campaign?.id || '', expectedRevision: campaign?.revision }));
+      campaignResume(expected = {}) {
+          return __eatRun('campaign-start', () => Campaign.startAutopilot({ expectedCampaignId: String(expected.id || ''), expectedRevision: expected.revision }));
       },
       setAutoAdvance(on) {
           return __eatRun('settings-save', async () => {
@@ -44815,7 +44817,7 @@
         const draft = local.templateDraft && local.templateDraft.id === (editing?.id ?? '') ? local.templateDraft : editing ? { id: editing.id, name: editing.name, category: editing.category, text: editing.text } : null;
         const query = String(local.templateQuery ?? '').trim().toLocaleLowerCase(language);
         const shown = all.filter((t) => !query || `${t.name} ${t.category}`.toLocaleLowerCase(language).includes(query));
-        const pick = (t) => actions.setLocal({ templateId: t.id, template: null, templateDraft: null, previewText: null });
+        const pick = (t) => actions.setLocal({ templateId: t.id, template: null, templateDraft: null, previewKey: null });
         const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
           h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec;' },
             h(doc, 'div', { class: 'search' }, icon(doc, ICONS.search),
@@ -44835,11 +44837,16 @@
         const groups = [...new Set(all.map((t) => t.category).filter(Boolean))];
         // Turkish needs no translation; another language is translated only when chosen.
         const previewLanguage = local.previewLanguage ?? 'tr';
-        if (local.previewText == null && !local.previewLoading) {
-          local.previewLoading = true;
+        // A preview belongs to one template, language and text: a newer request replaces it, and a late answer
+        // for anything else is dropped, so the preview never describes a different reply.
+        const previewKey = `${draft.id}|${previewLanguage}|${draft.text}`;
+        if (local.previewKey !== previewKey) {
+          local.previewKey = previewKey;
+          local.previewText = null;
+          local.previewError = false;
           actions.previewTemplate(draft.text, previewLanguage).then(
-            (text) => actions.setLocal({ previewText: text, previewLoading: false }),
-            () => actions.setLocal({ previewText: '', previewError: true, previewLoading: false }));
+            (text) => { if (local.previewKey === previewKey) actions.setLocal({ previewText: text }); },
+            () => { if (local.previewKey === previewKey) actions.setLocal({ previewText: '', previewError: true }); });
         }
         const right = h(doc, 'div', { class: 'grow', style: 'padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; overflow: auto; min-width: 0;', 'data-role': 'ma-template-editor' },
           h(doc, 'div', { class: 'g2', style: 'gap: 16px;' },
@@ -44864,8 +44871,8 @@
             h(doc, 'span', { class: 'label', id: 'eat-ma-preview-label', text: ts('previewBuyer') }),
             h(doc, 'div', { class: 'row', style: 'margin-bottom: 4px;' },
               segmented(doc, { labelledBy: 'eat-ma-preview-label', name: 'ma-preview', value: previewLanguage, options: PREVIEW_LANGUAGES.map((code) => ({ value: code, label: languageName(code, language) })),
-                onChange: (code) => actions.setLocal({ previewLanguage: code, previewText: null, previewError: false }) }),
-              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'preview-refresh', 'aria-label': ts('refresh'), onclick: () => actions.setLocal({ previewText: null, previewError: false }) }, icon(doc, ICONS.refresh, 14))),
+                onChange: (code) => actions.setLocal({ previewLanguage: code, previewKey: null, previewError: false }) }),
+              h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'preview-refresh', 'aria-label': ts('refresh'), onclick: () => actions.setLocal({ previewKey: null, previewError: false }) }, icon(doc, ICONS.refresh, 14))),
             h(doc, 'div', { style: 'border: 1px solid #e7e7e7; border-radius: 8.4px; background: #fafafa; padding: 12px; white-space: pre-wrap;', class: 'sm', 'data-role': 'ma-preview', 'aria-live': 'polite' },
               local.previewText == null ? ts('previewLoading') : local.previewError ? ts('previewFailed') : local.previewText)),
           unknown.length
@@ -44878,7 +44885,7 @@
             stored ? h(doc, 'button', { class: 'btn btn-g', type: 'button', style: stored.archived ? null : 'color: #b91c1c;', 'data-ma': 'template-archive', disabled: busy,
               onclick: () => actions.archiveTemplate(stored.id, !stored.archived) }, icon(doc, stored.archived ? ICONS.refresh : ICONS.trash, 16), ts(stored.archived ? 'unarchive' : 'archive')) : null,
             h(doc, 'span', { class: 'grow' }),
-            h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-ma': 'template-cancel', onclick: () => actions.setLocal({ template: null, templateDraft: null, previewText: null }), text: ts('cancel') }),
+            h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-ma': 'template-cancel', onclick: () => actions.setLocal({ template: null, templateDraft: null, previewKey: null }), text: ts('cancel') }),
             h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'template-save', disabled: busy,
               onclick: async () => { const d = local.templateDraft ?? draft; if (await actions.saveTemplate({ ...d, id: stored ? d.id : '' })) actions.setLocal({ template: null, templateDraft: null, templateId: stored ? d.id : null }); }, text: ts('save') })),
         ];
@@ -44896,8 +44903,8 @@
             h(doc, 'div', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'h2', { class: 'h2', text: ts('autopilot') }),
               h(doc, 'span', { class: 'xs mute', text: camp ? ts(running ? 'apOn' : 'apPaused', { done, total: items.length }) : ts('apOff') })),
             camp ? (running
-              ? h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'pause', disabled: busy, onclick: () => actions.campaignPause() }, icon(doc, ICONS.pause, 14), ts('pause'))
-              : h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'resume', disabled: busy, onclick: (e) => confirmResume(e.currentTarget, items.length - done) }, icon(doc, ICONS.play, 14), ts('resume'))) : null),
+              ? h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-ma': 'pause', disabled: busy, onclick: () => actions.campaignPause({ id: camp.id, revision: camp.revision }) }, icon(doc, ICONS.pause, 14), ts('pause'))
+              : h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-ma': 'resume', disabled: busy, onclick: (e) => confirmResume(e.currentTarget, items.length - done, { id: camp.id, revision: camp.revision }) }, icon(doc, ICONS.play, 14), ts('resume'))) : null),
           camp
             ? [h(doc, 'div', { class: 'card-b col', style: 'gap: 8px;' },
               h(doc, 'div', { class: 'row xs mute2' }, h(doc, 'span', { class: 'grow', text: ts('progress') }), h(doc, 'span', { class: 'num', text: `${done} / ${items.length}` })),
@@ -44949,13 +44956,14 @@
         return [h(doc, 'div', { style: 'display: flex; gap: 16px; align-items: flex-start;' }, h(doc, 'div', { class: 'col grow', style: 'gap: 16px; min-width: 0;' }, autopilot, rules), reviews)];
       };
 
-      function confirmResume(returnFocus, remaining) {
+      // The approval is bound to the campaign shown in the dialog: if another tab changes it meanwhile, the engine refuses.
+      function confirmResume(returnFocus, remaining, campaign) {
         openDialog(doc, container, {
           title: ts('confirmTitle', { n: remaining }), description: ts('confirmText'), closeLabel: ts('close'), returnFocus, width: 520,
           body: h(doc, 'div', { class: 'col', style: 'gap: 10px;' }, ['confirm1', 'confirm2', 'confirm3'].map((key) => h(doc, 'span', { class: 'row sm', style: 'gap: 8px;' }, icon(doc, ICONS.check, 16), ts(key)))),
           footer: (close) => [
             h(doc, 'button', { class: 'btn btn-g', type: 'button', onclick: close, text: ts('cancel') }),
-            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'confirm-resume', onclick: () => { close(); void actions.campaignResume(); }, text: ts('startAutopilot') }),
+            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'confirm-resume', onclick: () => { close(); void actions.campaignResume(campaign); }, text: ts('startAutopilot') }),
           ],
         });
       }
@@ -44966,7 +44974,7 @@
           h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-ma': 'start-autopilot', onclick: () => onTab('automation'), text: ts('startAutopilot') }),
           h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-ma': 'refresh', disabled: busy, onclick: () => actions.refresh() }, icon(doc, ICONS.refresh, 16), ts('refresh'))] }),
         templates: pageHead(doc, { overline: 'MESSAGE ASSISTANT', title: ts('templates'), description: ts('templatesText'), actions: [
-          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'template-new', onclick: () => actions.setLocal({ template: { id: '', name: ts('untitled'), category: '', text: '', unknown: [] }, templateDraft: null, previewText: null }) }, icon(doc, ICONS.plus, 16), ts('newTemplate'))] }),
+          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ma': 'template-new', onclick: () => actions.setLocal({ template: { id: '', name: ts('untitled'), category: '', text: '', unknown: [] }, templateDraft: null, previewKey: null }) }, icon(doc, ICONS.plus, 16), ts('newTemplate'))] }),
         automation: pageHead(doc, { overline: 'MESSAGE ASSISTANT', title: ts('automation'), description: ts('automationText') }),
       };
       const body = current === 'templates' ? templatesTab() : current === 'automation' ? automationTab() : inbox();
@@ -45085,8 +45093,8 @@
           previewTemplate: (text, language) => m.previewTemplate(text, language),
           saveTemplate: (input) => run(() => m.saveTemplate(input)),
           archiveTemplate: (id, archived) => run(() => m.archiveTemplate(id, archived)),
-          campaignPause: () => run(() => m.campaignPause()),
-          campaignResume: () => run(() => m.campaignResume()),
+          campaignPause: (expected) => run(() => m.campaignPause(expected)),
+          campaignResume: (expected) => run(() => m.campaignResume(expected)),
           setAutoAdvance: (on) => run(() => m.setAutoAdvance(on)),
           refreshReviews: () => run(() => m.refreshReviews()),
           reviewDraft: (id) => run(() => m.reviewDraft(id)),

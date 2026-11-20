@@ -225,6 +225,9 @@ const EPILOGUE = `
         setReplyLanguage(code) {
             const next = String(code || '').trim().toLowerCase();
             if (!GOOGLE_TRANSLATION_LANGUAGE_NAMES[next] && !GOOGLE_TRANSLATION_LANGUAGE_NAMES[next.split('-')[0]]) return Promise.resolve(false);
+            // Adopt the open conversation first: adopting a new one clears the language, which would undo the choice.
+            const live = MessageAdapter.context();
+            if (live.conversationId) UI.adoptMessageContext(live);
             UI.state.targetLanguage = next;
             return UI.state.reply ? __eatRun('regenerate-reply', () => UI.regenerateReply()) : Promise.resolve(true);
         },
@@ -274,13 +277,12 @@ const EPILOGUE = `
                 return true;
             });
         },
-        campaignPause() {
-            const campaign = Store.campaign;
-            return __eatRun('campaign-pause', () => Campaign.pauseAutopilot({ expectedCampaignId: campaign?.id || '', expectedRevision: campaign?.revision }));
+        // Both take the campaign id and revision the user saw; the engine refuses if the stored campaign moved on.
+        campaignPause(expected = {}) {
+            return __eatRun('campaign-pause', () => Campaign.pauseAutopilot({ expectedCampaignId: String(expected.id || ''), expectedRevision: expected.revision }));
         },
-        campaignResume() {
-            const campaign = Store.campaign;
-            return __eatRun('campaign-start', () => Campaign.startAutopilot({ expectedCampaignId: campaign?.id || '', expectedRevision: campaign?.revision }));
+        campaignResume(expected = {}) {
+            return __eatRun('campaign-start', () => Campaign.startAutopilot({ expectedCampaignId: String(expected.id || ''), expectedRevision: expected.revision }));
         },
         setAutoAdvance(on) {
             return __eatRun('settings-save', async () => {
