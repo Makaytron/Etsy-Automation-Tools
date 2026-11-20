@@ -10,7 +10,7 @@ Etsy Shop Manager için Bulk Sales & Discounts Automation aracı. **Sales and di
 
 Script standalone çalışır; başka bir Etsy Automation Tools paketinin kurulması gerekmez.
 
-**Sürüm:** 1.1.0 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.1.1 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış desteklenmeyen bir Etsy sayfasında olsa da yalnız hafif URL dinleyicisi çalışır; araç kendi sayfasına girilince başlar, çıkılınca arayüzü kaldırılır ve sayfa işlemleri durur. Yeniden girişte mükerrer panel veya menü oluşmaz.
 
@@ -30,7 +30,7 @@ Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış destekle
 - Yalnızca yüzde indirimi, Everywhere ve All listings değerleri doğrulanırsa ilerler.
 - Aynı kodu, mağaza kimliğini, sekme sahipliğini ve tek-gönderim durumunu kontrol eder.
 - Her oluşturma sonrasında kalıcı kuyruğu önce kaydeder; başarı penceresini yalnız kampanyayı gönderen sekmede ve en fazla bir kez kapatır, modalın gerçekten kaybolduğunu görmeden sonraki güne geçmez.
-- Tüm oluşturma adımları bittikten sonra kalıcı kuyruğu **Details & Stats** kanıtlarıyla topluca doğrular; Retry doğrulama aşamasında hiçbir kampanyayı yeniden göndermez.
+- Tüm oluşturma adımları bittikten sonra kalıcı kuyruğu **Sales and discounts** sayfasındaki tam (All Time) promosyon listesiyle topluca doğrular; Retry doğrulama aşamasında hiçbir kampanyayı yeniden göndermez.
 - Aktif satış adımının exact `Loading`, `Please wait`, `Saving`, `Submitting` veya `Processing` kabuğunda hiçbir alanı değiştirmeden ve hiçbir düğmeye tıklamadan en fazla 20 saniye bekler; başka veya kalıcı pencerelerde fail-closed durur.
 - CAPTCHA, rate limit, Etsy hatası, belirsiz sonuç veya açık yabancı modal durumunda fail-closed durur.
 - CSV ve Excel uyumlu XML raporu oluşturur.
@@ -44,7 +44,7 @@ Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış destekle
 2. Tarih aralığını, kampanya süresini, indirim yüzdesini ve isteğe bağlı kod önekini girin.
 3. Planı kaydedin. **Seriyi Başlat** canlı yazma yetkisidir; basıldığında script Etsy adımlarını ve her kampanyanın final gönderim düğmesini otomatik tıklar.
 4. İlk canlı kullanımda tek günlük seri çalıştırın.
-5. Sonucu Etsy **Details & Stats** ekranında elle kontrol edin.
+5. Sonucu Etsy **Sales and discounts** sayfasındaki **Individual sales and offers** listesinde (dönem: **All Time**) elle kontrol edin.
 
 Script hata gördüğünde sessizce sonraki güne geçmez. Aynı tarihte durur ve yeniden deneme, günü atlama veya tamamen durdurma seçeneklerini gösterir.
 
