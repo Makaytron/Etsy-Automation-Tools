@@ -68,6 +68,8 @@ const EPILOGUE = `
             collection: job ? { status: String(job.status || 'idle'), pages: Collection.pageCount(), total: Number(job.totalPages) || 0, found: job.uniqueIds?.length || 0 } : null,
             collecting: state.collection?.status === 'running' && Boolean(state.collectionLoop && state.collectionLeaseToken),
             queue: Array.isArray(state.queue?.items) ? state.queue.items.length : 0,
+            // Change markers for the unified screens (not shown).
+            marks: [state.selectedIds.size, state.queue?.cursor ?? -1, state.queue?.status || '', Queue.activeItem()?.status || '', state.settings.minVisitsToImprove, state.settings.minVisitsToProtect, state.settings.minRenewalsToReview, state.settings.declinePercent].join('|'),
         };
     }
     async function __eatOpen(view) {
@@ -83,9 +85,100 @@ const EPILOGUE = `
         if (!['tr', 'en'].includes(next) || next === state.settings.language || state.collectionLoop || !state.panel) return null;
         return UI.toggleLanguage();
     }
+    // The unified Overview, Listings, AI, Queue and Thresholds screens. view() is a
+    // read-only copy of the analysed records; every action runs the engine's own
+    // function, so its fences (fresh collection, lease, current proposal, the
+    // user's own publish and deactivate clicks on Etsy) still decide.
+    const __eatThresholdFields = ['minVisitsToImprove', 'minVisitsToProtect', 'minRenewalsToReview', 'declinePercent'];
+    const __eatLaNotify = () => { if (__env.onChange) __env.onChange(); };
+    function __eatLaView() {
+        const fresh = analysisCollectionIsFresh();
+        const scope = fresh ? collectedAnalysisRecords() : state.records;
+        const pageIds = new Set(state.pageListings.map((listing) => String(listing.listingId)));
+        let lastAt = '';
+        const records = scope.map((record) => {
+            const latest = record.history?.at(-1) || {};
+            if (String(latest.at || '') > lastAt) lastAt = String(latest.at || '');
+            const a = record.analysis || record.health?.result || {};
+            let reason = '';
+            try { reason = analysisReason(record); } catch { reason = ''; }
+            return {
+                id: String(record.listingId), title: String(record.meta?.title || record.listingId), sku: String(record.meta?.sku || ''),
+                state: String(record.meta?.statusLabel || ''), imageUrl: String(record.meta?.imageUrl || ''), editUrl: String(record.meta?.editUrl || ''),
+                score: Number.isFinite(a.score) ? a.score : null, code: String(a.code || ''), lifecycle: String(a.lifecycle || ''),
+                lifecycleLabel: a.lifecycle ? lifecycleLabel(a.lifecycle) : '', assessment: a.code ? assessmentLabel(a) : '', reason,
+                confidence: String(a.confidenceBand || ''), nextReviewAt: String(a.nextReviewAt || ''),
+                visits: latest.visits ?? null, favorites: latest.favorites ?? null, sales: latest.sales ?? null, revenue: latest.revenue ?? null,
+                currency: normalizeSpace(latest.currency) || '$', renewals: latest.renewals ?? null, stock: latest.stock ?? null,
+                visitsDelta: a.deltas?.visits ?? null, proposal: Boolean(record.proposal), onPage: pageIds.has(String(record.listingId)),
+                selected: state.selectedIds.has(record.listingId),
+            };
+        });
+        const queue = state.queue && Array.isArray(state.queue.items) ? {
+            status: String(state.queue.status || ''), cursor: Number(state.queue.cursor) || 0, recovery: Boolean(Queue.recoveryState()),
+            items: state.queue.items.map((item) => ({ id: String(item.listingId), title: String(item.title || item.listingId), status: String(item.status || ''), action: String(item.proposal?.action || '') })),
+            active: Queue.activeItem() ? String(Queue.activeItem().listingId) : '',
+        } : null;
+        return {
+            route: routeKind(), fresh, records, queue, lastAt, counts: UI.summary(),
+            editingId: routeKind() === 'editor' ? String(currentListingId() || '') : '',
+            thresholds: Object.fromEntries(__eatThresholdFields.map((key) => [key, state.settings[key]])),
+            limits: Object.fromEntries(__eatThresholdFields.map((key) => [key, { min: HEALTH_THRESHOLD_CONTRACTS[key].min, max: HEALTH_THRESHOLD_CONTRACTS[key].max }])),
+            status: { tone: String(state.status.tone || 'ready'), text: t(state.status.key, state.status.params) },
+        };
+    }
+    async function __eatLaRun(fn) {
+        try { return (await fn()) !== false; }
+        catch (error) { console.error('[Listing Analyzer]', error); return false; }
+        finally { __eatLaNotify(); }
+    }
+    const __eatLa = {
+        view: __eatLaView,
+        select(ids, on) {
+            for (const id of Array.isArray(ids) ? ids : [ids]) { if (on) state.selectedIds.add(String(id)); else state.selectedIds.delete(String(id)); }
+            pruneSelectionToCollection();
+            __eatLaNotify();
+        },
+        clearSelection() { state.selectedIds.clear(); __eatLaNotify(); },
+        buildQueue: () => __eatLaRun(() => buildQueueFromSelection()),
+        research: () => __eatLaRun(() => startMarketplaceResearchSelection()),
+        goCurrent: () => __eatLaRun(() => Queue.navigate()),
+        apply: () => __eatLaRun(() => applyCurrentProposal()),
+        publish: () => __eatLaRun(() => publishCurrentProposal()),
+        verifyPublish: () => __eatLaRun(() => verifyCurrentPublish()),
+        deactivate: () => __eatLaRun(() => openCurrentDeactivate()),
+        verifyDeactivate: () => __eatLaRun(() => verifyCurrentDeactivate()),
+        skip: () => __eatLaRun(() => skipCurrentItem()),
+        stop: () => __eatLaRun(() => stopCurrentQueue('user')),
+        recover: () => __eatLaRun(() => recoverCurrentItem()),
+        copyAiRequest: () => __eatLaRun(() => copyAiRequest()),
+        copyAiTemplate: () => __eatLaRun(() => copyText(aiProposalTemplate())),
+        async importAi(text) {
+            const out = { text: '', ok: true };
+            const feedback = { style: { set color(value) { out.ok = !/danger|red|#b|err/i.test(String(value)); } }, set textContent(value) { out.text = String(value); }, setAttribute() {}, dataset: {} };
+            await __eatLaRun(() => importAiResponse(String(text || ''), feedback));
+            return out;
+        },
+        async saveThresholds(values) {
+            const next = Object.fromEntries(__eatThresholdFields.map((key) => [key, Number(values?.[key])]));
+            const check = validateThresholdSettings(next);
+            if (!check.valid) return check;
+            const saved = await persistThresholdSettings(next);
+            if (saved) await refreshRecords().catch(() => {});
+            __eatLaNotify();
+            return { valid: saved, reason: saved ? '' : 'storage', field: '' };
+        },
+        async openRecord(id, kind = 'history') {
+            const record = state.records.find((item) => String(item.listingId) === String(id));
+            if (!record || !state.panel || !RouteLifecycle.allowed()) return false;
+            await UI.setCollapsed(false);
+            if (kind === 'proposal') UI.openProposal(record); else UI.openHistory(record);
+            return true;
+        },
+    };
     return {
         start: __eatStart, suspend: suspendListingRoute, version: APP_VERSION,
-        snapshot: __eatSnapshot, openPanel: __eatOpen, syncLanguage: __eatSyncLanguage,
+        snapshot: __eatSnapshot, openPanel: __eatOpen, syncLanguage: __eatSyncLanguage, la: __eatLa,
         scanPage: () => scanCurrentPage(), toggleCollection: () => Collection.toggle(), exportData: () => exportBackup(),
     };`;
 

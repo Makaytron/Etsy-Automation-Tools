@@ -19,7 +19,7 @@ const STANDALONE_GRACE_MS = 1500;
 const engineLanguage = (language) => (String(language ?? '').toLowerCase().startsWith('tr') ? 'tr' : 'en');
 
 export function createListingAnalyzerModule() {
-  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '' };
+  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', local: {} };
 
   const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
   const emit = (status) => state.ctx?.events?.emit('tool:status', { tool: LA_TOOL_ID, state: status });
@@ -70,17 +70,35 @@ export function createListingAnalyzerModule() {
 
   function actionsFor(ui) {
     const engine = state.engine;
-    const run = (fn) => Promise.resolve().then(fn).catch((error) => console.error('[Etsy Automation Tools] Listing Analyzer', error));
+    const la = engine.la;
+    const run = (fn) => Promise.resolve().then(fn).catch((error) => { console.error('[Etsy Automation Tools] Listing Analyzer', error); return false; });
+    // The engine's panel opens on the page, so the drawer and workspace step out of its way.
+    const inPanel = (fn) => { ui.hide?.(); return run(fn); };
     return {
-      // The engine's panel opens on the page, so the drawer and workspace step out of its way.
-      openPanel: (view) => { ui.hide?.(); return run(() => engine.openPanel(view)); },
+      openPanel: (view) => inPanel(() => engine.openPanel(view)),
+      openRecord: (id, kind) => inPanel(() => la.openRecord(id, kind)),
       toggleCollection: () => run(() => engine.toggleCollection()),
       scanPage: () => run(() => engine.scanPage()),
       exportData: () => run(() => engine.exportData()),
       openDetails: () => ui.openWorkspace?.(`tool:${LA_TOOL_ID}`),
+      select: (ids, on) => la.select(ids, on),
+      buildQueue: () => run(() => la.buildQueue()),
+      goCurrent: () => run(() => la.goCurrent()),
+      apply: () => run(() => la.apply()),
+      publish: () => run(() => la.publish()),
+      verifyPublish: () => run(() => la.verifyPublish()),
+      deactivate: () => run(() => la.deactivate()),
+      verifyDeactivate: () => run(() => la.verifyDeactivate()),
+      skip: () => run(() => la.skip()),
+      stop: () => run(() => la.stop()),
+      recover: () => run(() => la.recover()),
+      copyAiRequest: () => run(() => la.copyAiRequest()),
+      copyAiTemplate: () => run(() => la.copyAiTemplate()),
+      importAi: (text) => run(() => la.importAi(text)).then((r) => r || { ok: false, text: '' }),
+      saveThresholds: (values) => run(() => la.saveThresholds(values)).then((r) => r || { valid: false, reason: 'storage' }),
+      setLocal: (patch) => { Object.assign(state.local, patch); if (ui.onTab) ui.onTab(ui.tab); else emit('running'); },
     };
   }
-
   function view(ui) {
     if (state.standalone || !state.engine) return null;
     const snap = state.engine.snapshot();
@@ -101,7 +119,7 @@ export function createListingAnalyzerModule() {
     },
     renderPage(ui) {
       const snap = view(ui);
-      return snap ? renderLaPage(ui.doc, { snap, language: ui.language, actions: actionsFor(ui) }) : null;
+      return snap && state.engine.la ? renderLaPage(ui.doc, { snap, view: state.engine.la.view(), language: ui.language, actions: actionsFor(ui), tab: ui.tab, onTab: ui.onTab, local: state.local }) : null;
     },
     async mount(ctx) {
       state.ctx = ctx;

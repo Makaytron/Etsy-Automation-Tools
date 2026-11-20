@@ -500,14 +500,17 @@ const scenarios = {
     out.summary = q('[data-role="la-summary"]')?.textContent ?? null;
     out.collectionButton = q('[data-la="collection"]')?.textContent ?? null;
     q('[data-la="details"]').click(); await wait(150);
-    out.pageTitle = q('.page-title')?.textContent ?? null;
-    out.notFresh = Boolean(q('[data-role="la-not-fresh"]'));
-    out.views = [...S().querySelectorAll('[data-role="la-views"] tbody tr')].map((tr) => tr.dataset.view);
-    q('[data-la-open="queue"]').click();
-    await until(() => !L.querySelector('.meli-panel').hidden && L.querySelector('.meli-nav-btn.is-active')?.dataset.view === 'queue');
-    out.panelOpen = !L.querySelector('.meli-panel').hidden;
-    out.panelView = L.querySelector('.meli-nav-btn.is-active')?.dataset.view ?? null;
-    out.workspaceClosed = !q('.workspace') || q('.workspace').hidden || getComputedStyle(q('.workspace')).display === 'none';
+    out.tab = q('[data-role="la-page"]')?.dataset.laTab ?? null;
+    out.empty = Boolean(q('[data-role="la-empty"]'));
+    q('[data-name="la-tab"][data-value="thresholds"]').click();
+    await until(() => q('[data-role="la-thresholds"]'));
+    out.thresholds = S().querySelectorAll('[data-threshold]').length;
+    q('[data-name="la-tab"][data-value="queue"]').click();
+    await until(() => q('[data-role="la-queue"]'));
+    out.queue = Boolean(q('[data-role="la-queue"]'));
+    q('[data-name="la-tab"][data-value="ai"]').click();
+    await until(() => q('[data-role="la-ai"]'));
+    out.aiCopyDisabled = q('[data-la="copy-request"]').disabled;
     out.requests = window.__requests || [];
     return out;
   }`,
@@ -919,18 +922,17 @@ test('Listing Analyzer engine runs inside the unified script, isolated from a st
   assert.equal(r.laDrawer, true, 'the drawer shows the new Listing Analyzer screen');
 });
 
-test('Listing Analyzer screens summarise the engine and open its panel at a view', async () => {
+test('Listing Analyzer screens show the engine data on every tab', async () => {
   const r = await visit(chrome, base, '/your/shops/me/tools/listings?eat=screens');
   assert.equal(r.launcherHidden, true, 'the edge button replaces the floating launcher');
   assert.ok(['ready', 'stopped'].includes(r.state), r.state);
   assert.equal(r.summary, '0 listing kayıtlı · bu sayfada 0');
   assert.equal(r.collectionButton, 'Tüm sayfaları tara');
-  assert.equal(r.pageTitle, 'Listing performansı');
-  assert.equal(r.notFresh, true);
-  assert.deepEqual(r.views, ['overview', 'analysis', 'ai', 'queue', 'settings']);
-  assert.equal(r.panelOpen, true, 'the engine panel opens');
-  assert.equal(r.panelView, 'queue');
-  assert.equal(r.workspaceClosed, true);
+  assert.equal(r.tab, 'overview');
+  assert.equal(r.empty, true, 'nothing read yet: the first-use page');
+  assert.equal(r.thresholds, 4, 'the four engine thresholds');
+  assert.equal(r.queue, true);
+  assert.equal(r.aiCopyDisabled, true, 'no AI request without a selection');
   assert.deepEqual(r.requests, []);
 });
 
