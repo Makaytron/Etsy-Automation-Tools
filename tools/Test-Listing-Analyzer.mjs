@@ -353,6 +353,14 @@ function buildSanitizedListingsDocument(fixture) {
             }
             return container;
         });
+        if (defaults.combinedMetricSections) {
+            // Etsy's November 2026 layout: one .card-meta block, each <h6> in its own row followed by its rows.
+            const combined = listingFixtureElement('div', { class: 'card-meta' });
+            metricContainers.forEach((container) => container.children.forEach((child) => {
+                combined.append(child.tagName === 'H6' ? listingFixtureElement('div', { class: 'card-meta-row' }, '', [listingFixtureElement('h6', {}, child.textContent)]) : child);
+            }));
+            metricContainers.splice(0, metricContainers.length, combined);
+        }
         const editLink = listingFixtureElement('a', { class: 'card-body', href: editUrl }, '', [
             listingFixtureElement('div', { class: 'card-title', title: entry.title }, entry.title),
             listingFixtureElement('div', { class: 'card-meta-row-sku' }, '', [
@@ -540,9 +548,9 @@ test('card adapter scopes metric rows, rejects menu-only edit links, and rejects
     sandbox.getComputedStyle = () => ({ display: 'block', visibility: 'visible', opacity: '0' });
     assert.equal(api.elementIsUsable(fadingElement), false);
     sandbox.getComputedStyle = () => ({});
+    // Headings and rows come back in page order; a row before any heading is not a metric.
     const metricContainer = {
-        querySelector: (selector) => selector === 'h6' ? {} : null,
-        querySelectorAll: () => [{ textContent: '2 sales' }, { textContent: '$10 revenue' }],
+        querySelectorAll: () => [{ tagName: 'DIV', textContent: '9 in stock' }, { tagName: 'H6', textContent: 'All time' }, { tagName: 'DIV', textContent: '2 sales' }, { tagName: 'DIV', textContent: '$10 revenue' }],
     };
     const link = { querySelectorAll: () => [metricContainer], textContent: '100 Sales Goal Tracker' };
     assert.deepEqual(Array.from(api.ListingPageAdapter.metricRows(link)), ['2 sales', '$10 revenue']);
@@ -595,6 +603,26 @@ test('card adapter scopes metric rows, rejects menu-only edit links, and rejects
     exactListing.currency = '$';
     otherCurrencyListing.currency = 'EUR';
     assert.notEqual(adapter.readSignature([exactListing]), adapter.readSignature([otherCurrencyListing]));
+});
+
+test('metric headings and rows in one .card-meta block (Etsy layout of November 2026) still parse by scope', () => {
+    const { api, sandbox } = loadAnalyzer();
+    const fixture = JSON.parse(fs.readFileSync(sanitizedListingsFixturePath, 'utf8'));
+    fixture.defaults = { ...fixture.defaults, combinedMetricSections: true, metricSections: [
+        { heading: 'Last 30 days', rows: ['5 visits', '2 favorites'] },
+        { heading: 'All time', rows: ['3 sales', '$104.57 revenue', '4 renewals'] },
+    ] };
+    sandbox.document = buildSanitizedListingsDocument(fixture);
+    const fixtureUrl = new URL(fixture.page.href);
+    sandbox.location.pathname = fixtureUrl.pathname;
+    sandbox.location.search = fixtureUrl.search;
+    sandbox.location.href = fixtureUrl.href;
+    const firstLink = api.ListingPageAdapter.cardLinks()[0];
+    assert.equal(firstLink.querySelectorAll('.card-meta').length, 1, 'the fixture really uses one block');
+    const listings = api.ListingPageAdapter.scan();
+    assert.equal(listings.length, 40);
+    assert.deepEqual([listings[0].visits, listings[0].favorites, listings[0].sales, listings[0].revenue, listings[0].renewals], [5, 2, 3, 104.57, 4]);
+    assert.deepEqual(plain(listings[0].metricContract.headings), { rolling30d: 'Last 30 days', lifetime: 'All time' });
 });
 
 test('sanitized current Etsy fixture parses 40 canonical inactive listings and preserves every explicit zero metric', () => {

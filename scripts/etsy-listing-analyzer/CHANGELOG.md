@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1] - 2026-11-20
+
+### Fixed
+
+- Etsy now shows a listing card's "Last 30 days" and "All time" figures in one block. The script read them as a single section and stopped with "Listing cards not found" on every page. Each heading now owns the rows that follow it, so both layouts are read with the same strict scopes.
+
 ## [1.3.0] - 2026-11-20
 
 ### Added

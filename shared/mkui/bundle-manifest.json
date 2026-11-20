@@ -61,7 +61,7 @@
     {
       "id": "listing-analyzer",
       "path": "scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js",
-      "scriptVersion": "1.3.0",
+      "scriptVersion": "1.3.1",
       "mkuiVersion": "1.0.0",
       "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "presentationHash": "sha256:e56d4c2e3cf84d42f922b05a792f634174a23aa1a3b4ed806597c4353cff1bd2",

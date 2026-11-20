@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
-  "sourceDigest": "sha256:f19e90b7ebb1fe8fbb3b119b40f629b828c79eb5bd218173333f3127b0e88258",
+  "sourceDigest": "sha256:406bda996efd636dcb6d2bf1ae7ec56603fc4b5ce87bb9c6fb0dca16c6ea3b25",
   "status": "pass",
   "summary": {
     "scriptCount": 5,
@@ -1015,10 +1015,10 @@
       "id": "listing-analyzer",
       "label": "Listing Analyzer",
       "path": "scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js",
-      "bytes": 851867,
-      "lines": 11040,
-      "sha256": "a3dfaeaab31a77cbf5f7c8d9d4ff14a6fa7596329fa07f45cf0f22a4cf1b8dd0",
-      "version": "1.3.0",
+      "bytes": 852395,
+      "lines": 11051,
+      "sha256": "38c2e2c8c1b2d7a0b06a6d5186abfbe88042474f322b7bd2bd20ccbcca0f0d5f",
+      "version": "1.3.1",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -1204,7 +1204,7 @@
       "fixedSurfaces": [
         {
           "source": "innerHTML<style>",
-          "line": 8166,
+          "line": 8177,
           "selector": ".meli-launcher",
           "top": "148px",
           "right": "0",
@@ -1216,7 +1216,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 8167,
+          "line": 8178,
           "selector": ".meli-panel",
           "top": "12px",
           "right": "12px",
@@ -1228,7 +1228,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 8180,
+          "line": 8191,
           "selector": ".meli-overlay",
           "top": null,
           "right": null,
@@ -1240,7 +1240,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 8181,
+          "line": 8192,
           "selector": ".meli-toast-root",
           "top": "16px",
           "right": null,
@@ -1254,7 +1254,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 10862,
+          "line": 10873,
           "key": "Escape",
           "modifiers": [
             "Alt",
@@ -1266,7 +1266,7 @@
         },
         {
           "target": "document",
-          "line": 10862,
+          "line": 10873,
           "key": "KeyA",
           "modifiers": [
             "Alt",
@@ -1278,7 +1278,7 @@
         },
         {
           "target": "document",
-          "line": 10862,
+          "line": 10873,
           "key": "KeyL",
           "modifiers": [
             "Alt",
@@ -1300,7 +1300,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 8536,
+            "line": 8547,
             "bytes": 52,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -1308,7 +1308,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 9646,
+            "line": 9657,
             "bytes": 76,
             "selectorCount": 3,
             "unsafeSelectors": []
@@ -1316,7 +1316,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 8164,
+            "line": 8175,
             "bytes": 49073,
             "selectorCount": 418,
             "unsafeSelectors": []

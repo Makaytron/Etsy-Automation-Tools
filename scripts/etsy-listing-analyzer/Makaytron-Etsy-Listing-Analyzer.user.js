@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.3.0
+// @version      1.3.1
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -516,7 +516,7 @@
     }
 
 
-    const APP_VERSION = '1.3.0';
+    const APP_VERSION = '1.3.1';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -5887,13 +5887,24 @@
             return found;
         },
         metricSections(link) {
-            return Array.from(link?.querySelectorAll('.card-meta') || []).filter(elementIsUsable).map((container) => {
-                const heading = container.querySelector('h6');
-                if (!heading || !elementIsUsable(heading)) return null;
-                const rows = Array.from(container.querySelectorAll('.card-meta-row .card-meta-row-item')).filter(elementIsUsable)
-                    .map((item) => normalizeSpace(item.textContent)).filter(Boolean);
-                return { heading: normalizeSpace(heading.textContent), rows };
-            }).filter(Boolean);
+            // Each <h6> heading starts a metric scope and owns the rows after it, in page order. Etsy may put
+            // "Last 30 days" and "All time" in one .card-meta block or in separate blocks; rows before any
+            // heading (title, SKU, stock, price) are not metrics.
+            return Array.from(link?.querySelectorAll('.card-meta') || []).filter(elementIsUsable).flatMap((container) => {
+                const sections = [];
+                let current = null;
+                container.querySelectorAll('h6, .card-meta-row .card-meta-row-item').forEach((node) => {
+                    if (!elementIsUsable(node)) return;
+                    if (String(node.tagName).toUpperCase() === 'H6') {
+                        current = { heading: normalizeSpace(node.textContent), rows: [] };
+                        sections.push(current);
+                        return;
+                    }
+                    const text = normalizeSpace(node.textContent);
+                    if (current && text) current.rows.push(text);
+                });
+                return sections;
+            });
         },
         metricRows(link) {
             return this.metricSections(link).flatMap((section) => section.rows);
