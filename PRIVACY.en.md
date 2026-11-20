@@ -2,9 +2,9 @@
 
 # Privacy and Data Processing
 
-Last updated: 2026-10-22
+Last updated: 2026-11-20
 
-Etsy Automation Tools consists of Tampermonkey userscripts that run in the browser. All five scripts enable limited, pseudonymous product-usage telemetry by default, show a visible first-use notice, and provide a one-click off switch in Settings. Telemetry does not collect Etsy content or account data. The Message Assistant panel is closed by default and ships with **Automatic Translation Preview** enabled. Visiting an individual conversation may therefore send up to the latest 40 customer and seller messages to the selected translation provider even while the panel is closed; opening the panel on a conversation list may send up to 50 visible previews. To prevent this transfer, open Makaytron settings from the Tampermonkey menu and disable automatic translation preview before opening a conversation or the panel.
+Etsy Automation Tools consists of Tampermonkey userscripts that run in the browser: five standalone scripts and the unified **Makaytron Etsy Automation Tools** script that contains all five tools. The unified script sends no usage telemetry (see [The unified script](#the-unified-script)). The five standalone scripts enable limited, pseudonymous product-usage telemetry by default, show a visible first-use notice, and provide a one-click off switch in Settings. Telemetry does not collect Etsy content or account data. The Message Assistant panel is closed by default and ships with **Automatic Translation Preview** enabled. Visiting an individual conversation may therefore send up to the latest 40 customer and seller messages to the selected translation provider even while the panel is closed; opening the panel on a conversation list may send up to 50 visible previews. To prevent this transfer, open Makaytron settings from the Tampermonkey menu and disable automatic translation preview before opening a conversation or the panel.
 
 
 Userscript matching covers Etsy broadly only to detect page transitions. On unsupported pages, the application does not read Etsy content, send telemetry, or show its functional interface; it activates only on its supported routes.
@@ -60,7 +60,7 @@ The first-use notice explains that telemetry is on by default and can be disable
 - Listing Analyzer makes no network request to an AI provider and stores no AI API key. The user can export or copy an anonymizable request JSON/prompt, then import proposal JSON from an external tool after validation. The user controls what is sent to that external tool.
 - Listing Analyzer checks the canonical `main` commit identity through `api.github.com`, then reads userscript metadata only from that immutable commit on `raw.githubusercontent.com`, at most once every 24 hours with anonymous, cookie-free requests. Installation is never automatic; only the verified commit URL is opened in Tampermonkey's confirmation screen.
 - Keyword & Market Analyzer also verifies the canonical `main` commit identity through `api.github.com` and reads metadata only from that immutable commit's userscript on `raw.githubusercontent.com`. Etsy Sale Manager, Message Assistant, and Ads Keyword Manager may read their own canonical public Raw userscript sources at most once every 24 hours. A non-GitHub installation source does not have the private GitHub flow forced over its distributor.
-- While telemetry is enabled, all five scripts may send limited daily open, successful-use, and categorized-error signals to the Makaytron telemetry collector. None of the raw errors, content, or account data excluded above is sent to that recipient.
+- While telemetry is enabled, the five standalone scripts may send limited daily open, successful-use, and categorized-error signals to the Makaytron telemetry collector. None of the raw errors, content, or account data excluded above is sent to that recipient.
 - Ads Keyword Manager downloads the canonical `keyword-rules.txt` from `raw.githubusercontent.com` only after the user confirms **Update list**. The current local list is backed up in Tampermonkey storage first.
 - Apart from the limited telemetry described above, Keyword & Market Analyzer sends no request to an Etsy API or Makaytron content server; it reads only the open Marketplace Insights DOM. Optional request/result messages between both analyzers stay in the same browser Etsy origin through `BroadcastChannel`. Title/tag content is transferred only after the user starts research.
 - When the user starts standalone or integrated research, each seed keyword goes to Etsy as the URL `query` during normal Marketplace Insights search navigation. This may consume Etsy's research quota or displayed query cost; the script does not send it to Makaytron or bypass the quota.
@@ -77,6 +77,25 @@ Keyword & Market Analyzer labels `Search results` as Etsy's visible result/compe
 
 Each provider's own privacy and retention terms apply. Remove unnecessary customer and order details before sending text to a provider.
 
+## The unified script
+
+Makaytron Etsy Automation Tools runs the same five tools inside one script, so the local data, translation and AI recipients and Etsy page actions described above apply to it in the same way; for example, Message Assistant's automatic translation preview behaves as described at the top of this document. The differences:
+
+- **No usage telemetry.** The telemetry of every included tool is switched off when the script is built: no installation identifier is created, no first-use telemetry notice is shown and nothing is sent to the Makaytron telemetry collector.
+- **No update checks of its own.** The included tools do not check GitHub for their standalone versions. Tampermonkey updates the unified script from its canonical Raw `main` address on GitHub.
+- **Language packs.** English is built in. When another interface language is chosen, the script downloads that language's text file once from `raw.githubusercontent.com` with an anonymous, cookie-free request and keeps it in its local storage. The request contains only the language code; no Etsy, shop or customer data is sent.
+- **Local storage.** Settings, tool data and API keys stay in the unified script's own Tampermonkey storage, apart from the standalone scripts' storage. API keys are kept separate from tool data.
+- **Backups.** **Settings › Privacy and data › Download a backup** writes settings, word lists, templates, research and reports to a JSON file on your computer. API keys are never included. Protecting and deleting that file is your responsibility.
+- **Makaytron Pro suggestions.** The drawer and the workspace show links to Makaytron Pro. They are plain links: nothing is loaded or sent until you open one. The Makaytron Pro card and suggestion can be turned off in **Settings › Tools**.
+
+## Moving data to Etsy Automation Tools
+
+The standalone scripts show a notice about Etsy Automation Tools, the single script that contains all five tools. A transfer happens only when you press **Aktar** (Transfer) in that notice: for two minutes the script answers a transfer request from Etsy Automation Tools running on the same Etsy tab. The two scripts agree on a one-time key (ECDH P-256) and the data travels encrypted (AES-GCM) through the page; both show the same 4-digit check code. Nothing is sent to Makaytron or any other server. API keys and tokens are removed before encryption and never move; locks, update checks and send journals stay behind. The standalone script keeps its own data and only records, in its own storage, that a transfer was completed. **Daha sonra** (Later) stores when the notice may appear again. Listing Analyzer asks for `GM.listValues` so its per-listing history can be included. No transfer starts while one of the script's jobs is running.
+
+## Reporting a problem
+
+The **Report a problem** dialog in Etsy Automation Tools first shows every field of the report: version, browser family and major version, operating system family, interface language, browser language and country, a page type without shop names, a known error code, the chosen problem type and an optional note. Links, e-mail addresses, keys and long numbers are removed from the note. Shop, customer and listing data and API keys never enter the report. The script sends nothing itself: **Report on GitHub** opens a public GitHub Issues entry with the report filled in, in a new tab. The report is published only when you check and submit it on GitHub, and GitHub's own terms apply.
+
 ## Exports and secrets
 
 Configuration exports exclude API keys by default. If **Include API keys** is deliberately enabled, keys are written in plain text to the downloaded JSON file. Do not share that file or place it in unprotected cloud storage.
@@ -89,7 +108,8 @@ Automatic sending in Message Assistant is off by default. When enabled, the scri
 
 ## Delete data
 
-- Turn off usage telemetry in each script's Settings before uninstalling the script or resetting Tampermonkey storage. This requests deletion of the server-side installation summary and linked daily event and error aggregates, then removes the local telemetry identifier after a verified response. If the UUID is lost first, targeted server deletion is no longer possible and the record expires under the normal retention policy.
+- In the unified script, use **Settings › Privacy and data › Delete local data**. Settings and tool data are deleted; API keys are deleted only when that option is ticked. This deletes nothing in the standalone scripts.
+- Turn off usage telemetry in each standalone script's Settings before uninstalling the script or resetting Tampermonkey storage. This requests deletion of the server-side installation summary and linked daily event and error aggregates, then removes the local telemetry identifier after a verified response. If the UUID is lost first, targeted server deletion is no longer possible and the record expires under the normal retention policy.
 - Use **History → Clear History** inside Message Assistant.
 - Use the history-clearing action inside Listing Analyzer or reset that Tampermonkey script's storage.
 - Use Keyword & Market Analyzer's local-data cleanup action or reset its `ekma:v1` Tampermonkey script storage.

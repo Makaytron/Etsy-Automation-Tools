@@ -74,3 +74,10 @@ test('scoped GM stores engine keys under the transfer location and hides update 
   shim.addStyle('.x{}');
   assert.equal(appended[0].textContent, '.x{}');
 });
+
+test('the adopted engine reads the promotion list from the all-time JSON endpoint', () => {
+  assert.ok(adopted.includes('/api/v3/ajax/bespoke/shop/${encodeURIComponent(shopId)}/sales-coupons/combined'));
+  assert.match(adopted, /const PROMOTION_API_RANGE = 'all-time';/);
+  assert.match(adopted, /const VERIFICATION_URL = PROMOTIONS_URL;/);
+  assert.doesNotMatch(adopted, /DETAILS_STATS_URL/, 'the retired Details & Stats page is no longer a data source');
+});

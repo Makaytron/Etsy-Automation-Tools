@@ -4,7 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const block = (await readFile(path.join(root, 'shared/lifecycle/spa-lifecycle.js'), 'utf8')).trimEnd();
-const products = JSON.parse(await readFile(path.join(root, 'config/production-packages.json'), 'utf8'));
+// The standalone scripts inline the block; the unified build bundles it from shared/lifecycle itself.
+const products = JSON.parse(await readFile(path.join(root, 'config/production-packages.json'), 'utf8')).filter((product) => product.kind === 'standalone');
 const startMarker = '    // BEGIN SPA LIFECYCLE';
 const endMarker = '    // END SPA LIFECYCLE';
 for (const product of products) {
@@ -17,4 +18,4 @@ for (const product of products) {
     if (!process.argv.includes('--write')) throw new Error(`Lifecycle drift in ${product.id}; run node tools/Sync-SPA-Lifecycle.mjs --write`);
     await writeFile(file, source.slice(0, start) + block + source.slice(end), 'utf8');
 }
-console.log('PASS shared SPA lifecycle: all registered production scripts synchronized.');
+console.log('PASS shared SPA lifecycle: all standalone production scripts synchronized.');

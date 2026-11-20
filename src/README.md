@@ -16,6 +16,7 @@ This folder holds the source of the single userscript that will replace the five
 | `core/drawer-geometry.js` | Edge button and drawer geometry: the drawer opens from the button's side, from the left when the button is on the top or bottom edge. |
 | `core/i18n.js` | Browser-language detection, bundled language-picker strings, downloaded and validated language packs with caching, RTL detection. |
 | `core/diagnostics.js` | Problem reports built from an allowlist: version, browser family/major, OS family, locale/region, redacted route template, known error code, category, and a scrubbed note. |
+| `core/feedback.js`, `ui/feedback.js` | The Report a problem dialog: shows every field of the report, then a link opens a prefilled public GitHub issue. The script sends nothing itself. |
 | `core/events.js` | Small event bus. |
 | `core/migration.js` | Receiving side of the one-time transfer from the standalone scripts: stores each tool's data under `legacy.<key>` in its namespace and records the transfer once. |
 | `modules/index.js` | The five tools, each running its adopted standalone engine. |
@@ -36,12 +37,12 @@ This folder holds the source of the single userscript that will replace the five
 | `ui/settings-page.js`, `ui/controls.js`, `ui/styles-workspace.js` | Settings (General: theme, density, language, drawer edge and behaviour; Tools: turn tools and Pro suggestions on or off; Privacy and data: backup download/restore and deleting local data with typed confirmation, API keys only when ticked). Sources: `template.shell.base-layout`, `template.shell.app-sidebar`, `template.shell.site-header`, `template.navigation.nav-main`, `template.primitive.sidebar`, `card`, `tabs`, `checkbox`, `select`, `input`, `dialog`. The registry has no switch or slider, so on/off settings use the checkbox and the position along the edge is set by dragging. |
 | `ui/onboarding.js` | First-run setup on the first seller page: language (opens in the browser language), then tools. Escape postpones it to the next seller page. Sources: `template.primitive.dialog`, `progress`, `select`, `checkbox`, `badge`, `button`; the registry has no radio list, so the language uses the select. |
 | Settings › Privacy and data › transfer | The visible side of `core/migration.js`: steps, "Start the transfer", a result table (`template.primitive.table`, `badge`) with the 4-digit check code the standalone script also shows. |
-| `ui/strings.js`, `ui/strings-workspace.js`, `ui/text.js`, `ui/icons.js`, `ui/dom.js` | Interface strings (English source and Turkish, both bundled), the translator shared by the shell and the setup, lucide icon paths, and text-only DOM helpers. |
-| `core/language-packs.js`, `ui/strings-picker.js`, `ui/language-status.js`, `languages/*.json` | Every other language is a pack in `languages/` (German, Spanish, French, Italian, Japanese, Dutch, Polish, Portuguese): downloaded from the repository once the user picks it, validated (format, language, minimum app version, plain text only), kept in storage and used without a request from then on. The setup's language step and the pack status are bundled in every language, so the first screen opens in the browser's language. A failed download keeps English and offers Try again and Report a problem. Tool screens look their keys up with a prefix (`sale.`, `ads.`, `kw.`, `ma.`, `la.`). |
+| `ui/strings.js`, `ui/strings-workspace.js`, `ui/text.js`, `ui/icons.js`, `ui/dom.js` | Interface strings (English source, bundled; every other language is a pack), the translator shared by the shell and the setup, lucide icon paths, and text-only DOM helpers. |
+| `core/language-packs.js`, `ui/strings-picker.js`, `ui/language-status.js`, `languages/*.json` | Every other language is a pack in `languages/` (42 languages, Turkish included; the list is `PACK_LANGUAGES`): downloaded from the repository once the user picks it, validated (format, language, minimum app version, plain text only), kept in storage and used without a request from then on. The setup's language step and the pack status are bundled in every language, so the first screen opens in the browser's language. A failed download keeps English and offers Try again and Report a problem. Tool screens look their keys up with a prefix (`sale.`, `ads.`, `kw.`, `ma.`, `la.`). |
 
 ## Transfer from the standalone scripts
 
-Userscript storage is private to each script, so the data moves on an Etsy tab where both scripts run. The protocol is in `shared/migration/handoff.js`, plain script inlined into this build and, in phase 7, into the final versions of the standalone scripts.
+Userscript storage is private to each script, so the data moves on an Etsy tab where both scripts run. The protocol is in `shared/migration/handoff.js`, plain script inlined into this build and into the standalone scripts. The standalone scripts also carry `shared/migration/notice.js`, the notice with "Yeni scripti kur" (install), "Aktar" and "Daha sonra" (hide for a week); each starts it between `BEGIN/END EAT MIGRATION START` with its own "a job is running" check. `tools/Sync-Migration-Blocks.mjs` keeps both blocks equal to the shared files, and the adopters remove all three regions, so the unified script never shows the notice.
 
 1. The user presses "Aktar" in a standalone script; its responder accepts requests for a short window and never while a job of that script is running.
 2. The unified script sends a request with a fresh ECDH P-256 public key.
@@ -71,7 +72,7 @@ node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs to
 
 1. Core structure (done).
 2. Single-file deterministic build and product CI (done). MKUI is inlined together with the UI shell in step 4.
-3. Transfer protocol and receiving side (done). The standalone scripts get the sending side, the "Aktar" button and `@grant GM.listValues` (Listing Analyzer reads its per-listing keys) in step 7.
+3. Transfer protocol and receiving side (done). The standalone scripts got the sending side, the notice with "Aktar" and, for Listing Analyzer, `@grant GM.listValues` (its per-listing keys) in step 7.
 4. Shared UI shell: edge button and drawer, workspace and settings, first-run setup and the transfer screen (done).
 5. Move tools in: Sale Manager (engine adopted, new screens done; the part-based code builder in the design needs a change to the standalone engine first), Ads Keyword Manager (engine adopted, new screens done), Keyword & Market Analyzer (engine adopted, new screens done), Message Assistant (engine adopted, new screens done; its panel stays for the detailed work), Listing Analyzer (engine adopted, new screens done; its panel stays for the detailed work).
 
@@ -88,5 +89,5 @@ node --test tools/Test-Unified-Core.mjs tools/Test-Unified-Host-Lifecycle.mjs to
 
 Fixes made in the standalone Sale Manager reach the unified script with the next build. `tools/Test-Unified-Sale-Manager.mjs` covers the edits and the GM shim; the Chrome test runs the engine on a fake Sales & Discounts page, checks it reads transferred data, writes only under `eat:` and makes no network request, and checks it stays off when the standalone script is present.
 6. Language packs (done). `node tools/Unified-Language-Catalog.mjs --check` checks that every pack has exactly the English catalog's keys and placeholders; `--source` prints the catalog to translate from.
-7. Distribution: registry entry, hosted channels, migration notice in the standalone scripts (kept for six months).
+7. Distribution: migration notice and sending side in the standalone scripts (done; they keep working for six months), registry entry and hosted channels.
 8. Release.

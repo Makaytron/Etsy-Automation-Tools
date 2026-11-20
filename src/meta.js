@@ -1,22 +1,26 @@
 // Userscript metadata for the unified script.
 //
-// Phase 2 renders this into the `==UserScript==` header of the single built
+// The build renders this into the `==UserScript==` header of the single built
 // file. It is a new installed identity: the five standalone scripts keep their
 // own @name/@namespace and stay installable until their retirement window
-// ends. The unified script is not registered in config/production-packages.json
-// yet; that registration is a deliberate distribution-schema change (see
-// AGENTS.md) made only when it is ready to ship.
+// ends. @name follows the repository's "Makaytron Etsy …" listing names; the
+// interface itself says "Etsy Automation Tools". The production build
+// (`--production`) adds @updateURL/@downloadURL for `scriptPath`, which is
+// registered in config/production-packages.json (distributed from GitHub only).
 
 export const META = Object.freeze({
-  name: 'Etsy Automation Tools',
+  name: 'Makaytron Etsy Automation Tools',
   namespace: 'https://makaytron.com/etsy-automation-tools',
   version: '2.0.0',
   description: 'Sale Manager, Message Assistant, Ads Keyword Manager, Listing Analyzer and Keyword & Market Analyzer for Etsy sellers, in one drawer.',
   author: 'Makaytron',
-  homepage: 'https://makaytron.com',
+  // Same canonical package page the standalone scripts use (tools/Test-Distribution.ps1).
+  homepage: 'https://github.com/Makaytron/Etsy-Automation-Tools/tree/main/scripts/etsy-automation-tools',
   supportURL: 'https://github.com/Makaytron/Etsy-Automation-Tools/issues',
   icon: 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/assets/makaytron-logo.png',
   license: 'MIT',
+  // Canonical file on main; the production build points both update URLs at its raw copy.
+  scriptPath: 'scripts/etsy-automation-tools/Makaytron-Etsy-Automation-Tools.user.js',
   // Union of the standalone scripts' @match lines. Each tool still runs only
   // on its own pages through src/core/routes.js.
   match: Object.freeze(['https://www.etsy.com/*', 'https://etsy.com/*']),
@@ -33,5 +37,6 @@ export const META = Object.freeze({
     'api-free.deepl.com', 'api.deepl.com', 'translate.googleapis.com',
     'api.openai.com', 'api.anthropic.com', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'openrouter.ai',
   ]),
-  antifeature: Object.freeze(['tracking', 'ads']),
+  // Makaytron Pro suggestions only. No usage metrics: the adopted engines' telemetry is switched off at build time.
+  antifeature: Object.freeze(['ads']),
 });

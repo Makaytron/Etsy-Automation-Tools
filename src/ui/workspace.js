@@ -6,7 +6,6 @@ import { TOOL_HOME } from './strings.js';
 import { renderSettingsPage } from './settings-page.js';
 import { TOOL_IDS } from '../core/settings.js';
 
-import { SUPPORT_URL } from './language-status.js';
 
 export function createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, assets = {}, onClose }) {
   const doc = scope.document;
@@ -55,6 +54,19 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
       openWorkspace: (page) => go(page), hide: () => close(false),
     });
     if (custom) return custom;
+    const module = host.module?.(id);
+    if (module?.migrated) {
+      // The tool is here but has no screen right now: its standalone script runs on this page, or this is not its page.
+      const tool = t(`tool.${id}`);
+      const standalone = module.status?.() === 'standalone';
+      return h(doc, 'div', { style: 'display:contents' },
+        h(doc, 'div', { class: 'page-head' }, h(doc, 'h1', { class: 'page-title', text: tool })),
+        h(doc, 'section', { class: 'card', 'data-role': standalone ? 'tool-standalone' : 'tool-elsewhere' },
+          h(doc, 'div', { class: 'card-header' },
+            h(doc, 'p', { class: 'card-description', text: standalone ? t('drawer.standaloneActive', { tool }) : t('tool.openOnPage', { tool }) })),
+          standalone ? null : h(doc, 'div', { class: 'card-content' },
+            h(doc, 'div', {}, h(doc, 'a', { class: 'btn btn-default btn-sm', href: TOOL_HOME[id], text: t('tool.goToPage') })))));
+    }
     return h(doc, 'div', { style: 'display:contents' },
       h(doc, 'div', { class: 'page-head' },
         h(doc, 'h1', { class: 'page-title', text: t(`tool.${id}`) })),
@@ -71,8 +83,8 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     const keep = focusKey(root?.getRootNode?.().activeElement);
     root?.remove();
     const s = settings.get();
-    const active = host.activeTool;
     const enabled = TOOL_IDS.filter((id) => s.tools[id] !== false);
+    const active = enabled.includes(host.activeTool) ? host.activeTool : null;
     if (state.page.startsWith('tool:') && !enabled.includes(state.page.slice(5))) state.page = 'settings';
 
     const page = state.page === 'settings'
@@ -81,6 +93,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
         tab: state.tab, onTab: (tab) => { state.tab = tab; state.message = ''; render(); },
         message: state.message, say: (message) => { state.message = message; render(); },
         migration, migrationState: state.migration, runMigration,
+        onDataDeleted: () => { state.migration = { running: false, results: null, done: [] }; },
       })
       : toolPage(state.page.slice(5));
 
@@ -100,7 +113,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
         h(doc, 'div', { class: 'ws-sidebar-footer' },
           h(doc, 'a', { href: 'https://makaytron.com', target: '_blank', rel: 'noopener noreferrer', text: 'makaytron.com' }),
           h(doc, 'span', { 'aria-hidden': 'true', text: '·' }),
-          h(doc, 'a', { href: SUPPORT_URL, target: '_blank', rel: 'noopener noreferrer', text: t('ws.report') }))),
+          h(doc, 'button', { class: 'ws-link', type: 'button', 'data-action': 'report-problem', onclick: (e) => text.report?.({ returnFocus: e.currentTarget }), text: t('ws.report') }))),
       h(doc, 'div', { class: 'ws-inset' },
         h(doc, 'header', { class: 'ws-header' },
           h(doc, 'span', { class: 'ws-context', text: t('ws.thisPage', { page: active ? t(`tool.${active}`) : t('page.unsupported') }) }),
@@ -124,7 +137,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
   }
 
   function open({ page, tab, returnFocus } = {}) {
-    const active = host.activeTool;
+    const active = settings.get().tools[host.activeTool] !== false ? host.activeTool : null;
     state.page = page ?? (active ? `tool:${active}` : 'settings');
     if (tab) state.tab = tab;
     state.returnFocus = returnFocus ?? null;

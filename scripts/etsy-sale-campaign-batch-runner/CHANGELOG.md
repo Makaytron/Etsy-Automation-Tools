@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-11-20
+
+### Fixed
+
+- Etsy retired the **Details & Stats** page; its address now redirects to **Sales and discounts**, so the duplicate pre-check stopped every series with "Failed to fetch" and no campaign could be created. The promotion list is now read from the JSON source behind Etsy's **Individual sales and offers** list, always for the **All Time** period (so future-dated sales are included), page by page.
+- The check stays fail-closed: the list counts as read only when every page answers directly as JSON with the same total and exactly that many distinct promotions were collected. A redirect, an HTML or login page, a period-filtered answer, a changing total, repeated rows, a rate limit or a network error stops the day without creating anything.
+- Verification after creation and the batch verification now run on the **Sales and discounts** page and read the same complete list once per attempt. Single-promotion checks use Etsy's promotion detail data and accept only the requested promotion id.
+
+### Tests
+
+- Fixture tests for the paginated list, the created-sale verification, the existing-duplicate stop, and every incomplete or unreadable list case.
+
+## [1.1.0] - 2026-11-20
+
+### Added
+
+- A notice about the move to Etsy Automation Tools, the single script that now contains this tool. It links to the new script and offers **Aktar** (Transfer): for two minutes the script answers a transfer request from Etsy Automation Tools on the same tab, encrypted end to end on the page. API keys and tokens are never included; the data also stays in this script. **Daha sonra** (Later) hides the notice for a week.
+- The notice and the transfer never run while one of this script's jobs is running.
+
+This script keeps working for six months after Etsy Automation Tools is released and then gets no more updates.
+
 ## [1.0.14] - 2026-10-22
 
 ### Fixed

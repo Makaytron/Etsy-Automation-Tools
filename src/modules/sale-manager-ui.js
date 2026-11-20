@@ -42,35 +42,9 @@ export const SALE_STRINGS = Object.freeze({
     csv: 'Download CSV', excel: 'Download Excel', openEtsy: 'Open Sales & Discounts',
     phase: 'Step: {phase}',
   }),
-  tr: Object.freeze({
-    running: 'Çalışıyor', paused: 'Duraklatıldı', ready: 'Hazır', completed: 'Tamamlandı',
-    campaignOf: '{n}. kampanya / {total}', series: '{count} kampanya · {start} – {end} · %{discount} indirim',
-    start: 'Seriyi başlat…', stop: 'Seriyi durdur', retry: 'Devam et', skip: 'Bu günü atla', details: 'Ayrıntıları aç',
-    settings: 'Ayarlar', overview: 'Genel bakış', report: 'Rapor',
-    title: 'Kampanya serisi', description: 'Sales & Discounts sayfasında kampanyaları sırayla oluşturur, her birini Etsy listesinde doğrular.',
-    tileRange: 'Başlangıç aralığı', tileDiscount: 'İndirim', tileCount: 'Kampanya', tileProgress: 'İlerleme',
-    perCampaign: 'Her kampanya {days} gün', everywhere: 'Geçerlilik: Everywhere', verified: '{n} doğrulandı',
-    planned: 'Planlanan kampanyalar', colCode: 'Kod', colDates: 'Tarih', colStatus: 'Durum', colCheck: 'Doğrulama',
-    stPlanned: 'Planlandı', stDone: 'Oluşturuldu', stError: 'Hata', stStopped: 'Durduruldu', stCurrent: 'Sürüyor',
-    checked: 'Doğrulandı', notChecked: '—',
-    pausedWhy: 'Seri güvenlik nedeniyle durdu: {reason}',
-    confirmTitle: '{count} kampanya sırayla oluşturulacak',
-    confirmText: '%{discount} indirim · Everywhere',
-    confirmNote1: 'Her kampanya oluşturulduktan sonra Etsy listesinde doğrulanır.',
-    confirmNote2: 'Doğrulanamayan adımda seri durur ve sizden onay ister.',
-    confirmNote3: 'Seri bitene kadar bu sekmeyi açık tutun.',
-    confirmStart: '{count} kampanyayı başlat', cancel: 'Vazgeç',
-    fStart: 'İlk başlangıç tarihi', fEnd: 'Son başlangıç tarihi', fDuration: 'Kampanya süresi (gün)', fDiscount: 'İndirim (%)',
-    fPrefix: 'Kod metni', fPrefixHint: 'Harf ve rakam, en fazla 12. Kod tarih + metin + indirimdir, örneğin 261207WINTER25.',
-    fRegion: 'Geçerlilik', fResume: 'Sayfa yenilenince kaldığı yerden sür', fResumeHint: 'Yalnız sayfada onayınızdan sonra.',
-    save: 'Ayarları kaydet', saved: 'Ayarlar kaydedildi.', lockedWhileRunning: 'Seri çalışırken ayarlar kilitlidir.',
-    preview: 'Kodlar', noReport: 'Henüz rapor yok. İlk seriden sonra burada görünür.',
-    csv: 'CSV indir', excel: 'Excel indir', openEtsy: 'Sales & Discounts’u aç',
-    phase: 'Adım: {phase}',
-  }),
 });
 
-// Bundled English and Turkish; other languages read the downloaded pack ("sale." keys).
+// Bundled English; other languages read the downloaded pack ("sale." keys).
 function texts(language) {
   const lang = SALE_STRINGS[language] ? language : 'en';
   return (key, vars) => interpolate(SALE_STRINGS[language]?.[key] ?? packText(language, `sale.${key}`) ?? SALE_STRINGS[lang][key] ?? SALE_STRINGS.en[key] ?? key, vars);

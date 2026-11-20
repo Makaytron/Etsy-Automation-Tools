@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.1] - 2026-11-20
+
+### Fixed
+
+- Etsy now shows a listing card's "Last 30 days" and "All time" figures in one block. The script read them as a single section and stopped with "Listing cards not found" on every page. Each heading now owns the rows that follow it, so both layouts are read with the same strict scopes.
+
+## [1.3.0] - 2026-11-20
+
+### Added
+
+- A notice about the move to Etsy Automation Tools, the single script that now contains this tool. It links to the new script and offers **Aktar** (Transfer): for two minutes the script answers a transfer request from Etsy Automation Tools on the same tab, encrypted end to end on the page. API keys and tokens are never included; the data also stays in this script. **Daha sonra** (Later) hides the notice for a week.
+- The notice and the transfer never run while one of this script's jobs is running.
+
+This script keeps working for six months after Etsy Automation Tools is released and then gets no more updates.
+
+### Changed
+
+- `@grant GM.listValues`, so the transfer can include the per-listing history keys.
+
 ## [1.2.4] - 2026-10-22
 
 ### Fixed

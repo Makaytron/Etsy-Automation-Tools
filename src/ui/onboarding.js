@@ -16,6 +16,8 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
   const { t } = text;
   const draft = { step: 1, language: text.language(), tools: { ...settings.get().tools } };
   const detected = (scope.navigator?.languages ?? [])[0] ?? '';
+  // The opening sentence says the language came from the browser; once the user picks another one it no longer does.
+  const openedIn = draft.language;
   let overlay = null;
 
   function progress(n, total) {
@@ -29,7 +31,7 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
     return [
       h(doc, 'div', { class: 'dialog-header' },
         h(doc, 'h2', { class: 'dialog-title', id: 'eat-ob-title', text: t('ob.langTitle') }),
-        h(doc, 'p', { class: 'dialog-description', text: t('ob.langText') })),
+        h(doc, 'p', { class: 'dialog-description', text: t(draft.language === openedIn ? 'ob.langText' : 'ob.langTextChosen') })),
       progress(1, 2),
       h(doc, 'div', { class: 'field', style: 'align-items:center' },
         select(doc, {
@@ -41,7 +43,8 @@ export function openOnboarding({ doc, container, text, settings, scope, onDone }
       languageStatus(doc, text),
       h(doc, 'p', { class: 'field-hint', text: t('ob.privacy') }),
       h(doc, 'div', { class: 'dialog-footer' },
-        h(doc, 'button', { class: 'btn btn-default', type: 'button', 'data-action': 'ob-continue', onclick: async () => { await settings.update({ language: draft.language }); draft.step = 2; render(); }, text: t('ob.continue') })),
+        // The setup goes on only once the chosen language is there.
+        h(doc, 'button', { class: 'btn btn-default', type: 'button', 'data-action': 'ob-continue', disabled: !['ready', 'bundled'].includes(text.pack().status), onclick: async () => { await settings.update({ language: draft.language }); draft.step = 2; render(); }, text: t('ob.continue') })),
     ];
   }
 

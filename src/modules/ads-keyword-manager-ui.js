@@ -34,25 +34,9 @@ export const ADS_STRINGS = Object.freeze({
     colRule: 'Rule', colType: 'Match', contains: 'Contains', exact: 'Exact', regex: 'Pattern',
     loading: 'Reading the word list…',
   }),
-  tr: Object.freeze({
-    title: 'Anahtar kelime temizliği', description: 'Etsy Ads’te kelime listenizle eşleşen reklam kelimelerini bulur, kapatır veya açar.',
-    overview: 'Genel bakış', wordlist: 'Kelime listesi',
-    ready: 'Hazır', running: 'Çalışıyor', success: 'Tamamlandı', warning: 'Uyarı', error: 'Hata',
-    pageSummary: 'Bu sayfada {rows} kelime · {matches} tanesi listenizle eşleşiyor',
-    closePage: 'Buradaki eşleşenleri kapat', openPage: 'Buradaki eşleşenleri aç', closeAll: 'Tüm sayfalarda kapat…',
-    details: 'Ayrıntıları aç', busy: 'Bir işlem sürüyor. Bitmesini bekleyin.',
-    tilePage: 'Sayfa', tileRows: 'Bu sayfadaki kelimeler', tileMatches: 'Listenizle eşleşen', tileHigh: 'Yüksek tıklama oranı',
-    tileHighHint: 'Sipariş başına 25’ten fazla tıklama', tileMatchesHint: 'Etsy tablosunda işaretlenir',
-    allPagesNote: 'Tüm sayfalarda kapatma sayfaları tek tek dolaşır ve önce sizden onay ister.',
-    rulesTitle: '{count} kural', rulesNote: 'Bir kelime, kuralı içeriyorsa, tam kurala eşitse veya desen kuralına uyuyorsa eşleşir.',
-    edit: 'Kuralları düzenle', update: 'Makaytron listesini al…', restore: 'Önceki listeye dön…',
-    noBackup: 'Henüz önceki liste yok. Listeyi güncellediğinizde mevcut liste yedek olarak saklanır.',
-    colRule: 'Kural', colType: 'Eşleşme', contains: 'İçerir', exact: 'Tam', regex: 'Desen',
-    loading: 'Kelime listesi okunuyor…',
-  }),
 });
 
-// Bundled English and Turkish; other languages read the downloaded pack ("ads." keys).
+// Bundled English; other languages read the downloaded pack ("ads." keys).
 function texts(language) {
   const lang = ADS_STRINGS[language] ? language : 'en';
   return (key, vars) => interpolate(ADS_STRINGS[language]?.[key] ?? packText(language, `ads.${key}`) ?? ADS_STRINGS[lang][key] ?? ADS_STRINGS.en[key] ?? key, vars);

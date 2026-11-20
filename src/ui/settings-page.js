@@ -6,7 +6,7 @@ import { UI_LANGUAGES } from './strings-workspace.js';
 import { languageStatus } from './language-status.js';
 import { TOOL_IDS } from '../core/settings.js';
 
-export function renderSettingsPage(doc, { t, text, language, settings, storage, appVersion, scope, container, tab = 'general', onTab, message = '', say, migration, migrationState = {}, runMigration }) {
+export function renderSettingsPage(doc, { t, text, language, settings, storage, appVersion, scope, container, tab = 'general', onTab, message = '', say, migration, migrationState = {}, runMigration, onDataDeleted }) {
   const s = settings.get();
   const notice = h(doc, 'p', { class: 'notice', role: 'status', 'aria-live': 'polite', text: message });
 
@@ -92,6 +92,7 @@ export function renderSettingsPage(doc, { t, text, language, settings, storage, 
       await storage.clear({ includeSecrets: keys });
       await settings.load();
       await settings.update({});
+      onDataDeleted?.(); // transfer records went with the data: the card must not say "transferred before"
       close();
       say(t('dlg.deleted'));
     });
@@ -112,6 +113,7 @@ export function renderSettingsPage(doc, { t, text, language, settings, storage, 
       h(doc, 'ol', { class: 'steps-list' }, h(doc, 'li', { text: t('mig.step1') }), h(doc, 'li', { text: t('mig.step2') })),
       done.length ? h(doc, 'p', { class: 'field-hint', 'data-role': 'mig-done', text: t('mig.done', { tools: done.map((id) => t(`tool.${id}`)).join(', ') }) }) : null,
       h(doc, 'div', {}, h(doc, 'button', { class: 'btn btn-default btn-sm', type: 'button', 'data-action': 'start-migration', disabled: Boolean(running) || !migration, onclick: () => runMigration?.(), text: running ? t('mig.running') : t('mig.start') })),
+      running ? h(doc, 'p', { class: 'field-hint busy', role: 'status', 'aria-live': 'polite', 'data-role': 'mig-wait' }, h(doc, 'span', { class: 'spinner', 'aria-hidden': 'true' }), h(doc, 'span', { text: t('mig.wait') })) : null,
       results && !results.length ? h(doc, 'p', { class: 'field-hint', role: 'status', text: t('mig.none') }) : null,
       results?.length ? h(doc, 'div', { class: 'table-wrap' }, h(doc, 'table', { class: 'table' },
         h(doc, 'thead', {}, h(doc, 'tr', {}, h(doc, 'th', { text: t('mig.colTool') }), h(doc, 'th', { text: t('mig.colResult') }), h(doc, 'th', { text: t('mig.colCode') }))),

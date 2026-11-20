@@ -28,8 +28,8 @@ test('every pack matches the English catalog (keys, placeholders, plain text, ve
   assert.deepEqual(await checkAll(), []);
 });
 
-test('the language list is English, Turkish and every pack, with picker strings for each pack', async () => {
-  assert.deepEqual(UI_LANGUAGES.map((l) => l.code).sort(), ['en', 'tr', ...PACK_LANGUAGES].sort());
+test('the language list is English and every pack, with picker strings for each pack', async () => {
+  assert.deepEqual(UI_LANGUAGES.map((l) => l.code).sort(), ['en', ...PACK_LANGUAGES].sort());
   const source = await catalog('en');
   const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
   for (const code of PACK_LANGUAGES) {
@@ -56,7 +56,7 @@ test('a pack is downloaded once, validated and kept in storage', async () => {
   assert.deepEqual(changes, ['de:loading', 'de:ready']);
   assert.equal((await cache.get('pack.de')).language, 'de');
   // Bundled languages never download anything.
-  assert.deepEqual(await packs.ensure('tr'), { status: 'bundled' });
+  assert.deepEqual(await packs.ensure('en'), { status: 'bundled' });
   assert.equal(gm.requests.length, 1);
 
   // A new page reads the stored pack without a request.
@@ -96,4 +96,19 @@ test('a pack for another language or an older app is rejected', async () => {
   assert.deepEqual(await createLanguagePacks({ gm: wrong, cache, appVersion: META.version }).ensure('nl'), { status: 'error', code: 'i18n_pack_language' });
   const newer = fakeGm((d) => d.onload({ status: 200, responseText: JSON.stringify({ ...pack('pl'), minAppVersion: '99.0.0' }) }));
   assert.deepEqual(await createLanguagePacks({ gm: newer, cache, appVersion: META.version }).ensure('pl'), { status: 'error', code: 'i18n_pack_version' });
+});
+
+test('browser language tags find the right pack', async () => {
+  const { normalizeTags } = await import('../src/ui/text.js');
+  const { detectLanguage } = await import('../src/core/i18n.js');
+  const codes = UI_LANGUAGES.map((l) => l.code);
+  const pick = (tags) => detectLanguage(normalizeTags(tags), codes, 'en');
+  assert.equal(pick(['zh-HK']), 'zh-TW');
+  assert.equal(pick(['zh-Hant-TW']), 'zh-TW');
+  assert.equal(pick(['zh']), 'zh-CN');
+  assert.equal(pick(['zh-SG']), 'zh-CN');
+  assert.equal(pick(['de-AT']), 'de');
+  assert.equal(pick(['pt-BR']), 'pt');
+  assert.equal(pick(['xx-YY']), 'en', 'an unknown language falls back to English');
+  for (const code of PACK_LANGUAGES) assert.equal(pick([code]), code, code);
 });

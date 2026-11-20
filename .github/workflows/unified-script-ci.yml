@@ -3,6 +3,8 @@ name: Unified script CI
 on:
   push:
     branches: [main]
+    tags:
+      - 'etsy-automation-tools-v*'
     paths:
       - 'src/**'
       - 'languages/**'
@@ -15,6 +17,9 @@ on:
       - 'tools/Build-Unified-Userscript.mjs'
       - 'tools/Unified-Adopt-*.mjs'
       - 'tools/Test-Unified-*.mjs'
+      - 'tools/Release-Tag-Verification.mjs'
+      - 'tools/Validate-Standalone-Tag.mjs'
+      - 'tools/New-Standalone-ReleaseAssets.ps1'
       - '.github/workflows/unified-script-ci.yml'
   pull_request:
   workflow_dispatch:
@@ -30,6 +35,7 @@ jobs:
       - name: Check out the reviewed revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -53,3 +59,29 @@ jobs:
         run: |
           node tools/Build-Unified-Userscript.mjs
           node --check dist/etsy-automation-tools.user.js
+      - name: Check the committed production file equals the production build
+        run: |
+          node tools/Build-Unified-Userscript.mjs --check-production
+          node --check scripts/etsy-automation-tools/Makaytron-Etsy-Automation-Tools.user.js
+      - name: Validate standalone package tag contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/Validate-Standalone-Tag.mjs --package-slug etsy-automation-tools
+      - name: Build standalone release assets
+        id: package
+        shell: pwsh
+        run: |
+          $outputDirectory = Join-Path $env:RUNNER_TEMP 'etsy-automation-tools-release'
+          ./tools/New-Standalone-ReleaseAssets.ps1 `
+              -PackageSlug 'etsy-automation-tools' `
+              -OutputDirectory $outputDirectory
+          "artifact_path=$outputDirectory" >> $env:GITHUB_OUTPUT
+      - name: Upload the manually publishable release candidate
+        if: github.event_name == 'workflow_dispatch' || github.ref_type == 'tag'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: etsy-automation-tools-release-candidate
+          path: ${{ steps.package.outputs.artifact_path }}
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 14

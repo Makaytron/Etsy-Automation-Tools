@@ -150,8 +150,12 @@ Assert-True ($version -match '^\d+\.\d+\.\d+$') "VERSION is not strict SemVer: $
 
 $productionRegistryPath = Join-Path $repoRoot 'config/production-packages.json'
 Assert-True (Test-Path -LiteralPath $productionRegistryPath -PathType Leaf) 'Production package registry is missing.'
-$productionPackages = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($productionRegistryPath, [System.Text.Encoding]::UTF8)))
-Assert-True ($productionPackages.Count -eq 5) "Expected exactly five registered production packages; found $($productionPackages.Count)."
+$productionPackages = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($productionRegistryPath, [System.Text.Encoding]::UTF8)) | ForEach-Object { $_ })
+$standalonePackages = @($productionPackages | Where-Object { [string]$_.kind -eq 'standalone' })
+$unifiedPackages = @($productionPackages | Where-Object { [string]$_.kind -eq 'unified' })
+Assert-True ($standalonePackages.Count -eq 5) "Expected exactly five registered standalone production packages; found $($standalonePackages.Count)."
+Assert-True ($unifiedPackages.Count -eq 1) "Expected exactly one registered unified production package; found $($unifiedPackages.Count)."
+Assert-True ($productionPackages.Count -eq ($standalonePackages.Count + $unifiedPackages.Count)) 'Production registry contains a package with an unknown kind.'
 $productionPackagesBySlug = @{}
 $scripts = @(
     foreach ($package in $productionPackages) {
@@ -192,7 +196,15 @@ foreach ($script in $scripts) {
 
     $runtimePattern = '(?m)^\s*const\s+(?:APP_VERSION|VERSION)\s*=\s*[''"](?<version>\d+\.\d+\.\d+)[''"]\s*;\s*\r?$'
     $runtimeMatches = @([regex]::Matches($source, $runtimePattern))
-    Assert-True ($runtimeMatches.Count -eq 1) "$relativePath must contain exactly one runtime version marker."
+    $packageKind = [string]$productionPackagesBySlug[$slug].kind
+    if ($packageKind -eq 'unified') {
+        # The unified script bundles the five standalone engines, each keeping its own
+        # version marker; its own APP_VERSION is the first marker in the file.
+        Assert-True ($runtimeMatches.Count -ge 1) "$relativePath must contain a runtime version marker."
+    }
+    else {
+        Assert-True ($runtimeMatches.Count -eq 1) "$relativePath must contain exactly one runtime version marker."
+    }
     Assert-True ($runtimeMatches[0].Groups['version'].Value -eq $scriptVersion) "$relativePath runtime version does not match @version $scriptVersion."
 
     $readmeVersionPattern = '(?m)^(?:\*\*[^*\r\n]+:\*\*|Version:)\s+`?{0}`?(?:\s|$)' -f [regex]::Escape($scriptVersion)
@@ -214,7 +226,15 @@ foreach ($script in $scripts) {
     Assert-True ((Metadata-Values -Source $source -Key 'supportURL') -join '' -eq "$canonicalRepo/issues") "$relativePath has a non-canonical @supportURL."
     Assert-True ((Metadata-Values -Source $source -Key 'updateURL') -join '' -eq $expectedRaw) "$relativePath has a non-canonical @updateURL."
     Assert-True ((Metadata-Values -Source $source -Key 'downloadURL') -join '' -eq $expectedRaw) "$relativePath has a non-canonical @downloadURL."
-    Assert-True ((Metadata-Values -Source $source -Key 'antifeature') -join '' -eq 'tracking') "$relativePath must disclose @antifeature tracking."
+    $antifeatures = @(Metadata-Values -Source $source -Key 'antifeature')
+    if ($packageKind -eq 'unified') {
+        # The unified script shows Makaytron Pro suggestions (@antifeature ads). It sends no usage metrics: every adopted
+        # engine's telemetrySuppressed() is forced true at build time, so it must not claim @antifeature tracking.
+        Assert-True (($antifeatures -join ',') -eq 'ads') "$relativePath must disclose exactly @antifeature ads."
+    }
+    else {
+        Assert-True (($antifeatures -join '') -eq 'tracking') "$relativePath must disclose @antifeature tracking."
+    }
 
     $legacyLiveUrl = [regex]::IsMatch($source, '(?m)^// @(?:homepageURL|supportURL|updateURL|downloadURL)\s+.*Makaytron/EtsyScript')
     Assert-True (-not $legacyLiveUrl) "$relativePath uses the retired repository in a live metadata URL."
@@ -498,8 +518,10 @@ if ($HostedChannels) {
         }
         Write-Host "HOSTED MATCH GitHub Release $releaseTag assets=$($expectedReleaseAssetNames.Count) commit=$releaseCommitSha"
 
+        # The unified package is GitHub-only (it exceeds Greasy Fork's size limit); the Raw
+        # main parity and GitHub Release checks above cover it.
         $greasyForkListings = @(
-            foreach ($package in $productionPackages) {
+            foreach ($package in @($productionPackages | Where-Object { [string]$_.distribution -eq 'greasyfork' })) {
                 [pscustomobject]@{
                     Id = [int]$package.greasyForkId
                     Slug = [string]$package.packageSlug
@@ -644,7 +666,7 @@ if ($HostedChannels) {
                     Write-Warning -WarningAction Continue -Message "Userscript.Zone index is incomplete or stale: $($missingZoneListings -join '; ')"
                 }
                 else {
-                    Write-Host 'HOSTED MATCH Userscript.Zone 5 listings (advisory channel)'
+                    Write-Host "HOSTED MATCH Userscript.Zone $($greasyForkListings.Count) listings (advisory channel)"
                 }
             }
         }

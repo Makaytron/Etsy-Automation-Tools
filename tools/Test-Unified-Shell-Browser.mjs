@@ -35,6 +35,27 @@ ${handoffSource}
 })();
 </script>`;
 
+// The real standalone Ads Keyword Manager with its own userscript storage, next to the unified script.
+const REAL_STANDALONE_ADS = `<script>
+(() => {
+  const values = new Map(Object.entries({ adWordlist: 'bts\\nkpop poster', adWordlistLanguage: 'en' }));
+  window.__standaloneValues = values;
+  window.__standaloneGM = {
+    info: { script: { name: 'Makaytron Etsy Ads Keyword Manager', version: 'fixture' }, scriptHandler: 'fixture' },
+    getValue: async (k, d) => (values.has(k) ? structuredClone(values.get(k)) : d),
+    setValue: async (k, v) => { values.set(k, structuredClone(v)); },
+    deleteValue: async (k) => { values.delete(k); },
+    listValues: async () => [...values.keys()],
+    addValueChangeListener: () => 1,
+    registerMenuCommand: () => 1,
+    xmlHttpRequest: (d) => setTimeout(() => d.onerror?.(new Error('blocked in fixture')), 0),
+  };
+})();
+</script>
+<script>(function (GM) {
+${fs.readFileSync(new URL('../scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js', import.meta.url), 'utf8').replace(/<\/script/gi, '<\\/script')}
+})(window.__standaloneGM);</script>`;
+
 function chromeCandidates() {
   return [
     process.env.CHROME_PATH,
@@ -56,7 +77,10 @@ async function findChrome() {
 const safe = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 
 // In-page stand-in for the userscript manager, plus a hook that keeps the closed shadow root reachable for the test.
-function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {} }) {
+// Turkish comes as a pack; most pages start as if it had been downloaded on an earlier visit.
+const PACK_TR = JSON.parse(fs.readFileSync(new URL('../languages/tr.json', import.meta.url), 'utf8'));
+
+function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, trCached = true }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Etsy fixture</title>
 <style>body{margin:0;font:16px Georgia,serif;background:#f5f5f5} button.probe{font:13px Georgia,serif}</style></head>
 <body><header style="height:56px;background:#fff;border-bottom:1px solid #ddd"></header>
@@ -67,6 +91,7 @@ function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {} }) 
   ${settings ? `values.set('eat:v1:core:settings', ${safe(settings)});` : ''}
   values.set('eat:v1:sale-manager:legacy.eda-batch-config-v4', { discount: 25 });
   values.set('eat:secret:openai', 'fixture-placeholder');
+  ${trCached ? `values.set('eat:v1:core:pack.tr', ${safe(PACK_TR)});` : ''}
   for (const [k, v] of Object.entries(${safe(preload)})) values.set(k, v);
   window.__values = values;
   window.__packs = ${safe(packs)};
@@ -132,6 +157,9 @@ const HELPERS = `
 const ADS_TABLE = `<section id="listing-detail-targeted-keywords-accordion"><table><thead><tr><th>Keyword</th><th>Clicks</th><th>Orders</th></tr></thead><tbody>
 ${[['bts sticker', 4, 1], ['army gift', 30, 0], ['kpop poster', 2, 1], ['wedding card', 3, 1]].map(([w, c, o]) => `<tr class="wt-table__row"><th class="wt-table__row__cell"><p>${w}</p></th><td><span>${c}</span></td><td><span>${o}</span></td></tr>`).join('')}
 </tbody></table><nav><button aria-current="true">1</button></nav></section>`;
+// Etsy now loads that section collapsed: its rows exist only after the toggle opens it.
+const ADS_TABLE_COLLAPSED = `<button type="button" id="kw-toggle" aria-controls="listing-detail-targeted-keywords-accordion" aria-expanded="false">Targeted keywords (4)</button>
+<script>document.getElementById('kw-toggle').addEventListener('click', function () { this.setAttribute('aria-expanded', 'true'); this.insertAdjacentHTML('afterend', ${JSON.stringify(ADS_TABLE)}); }, { once: true });</script>`;
 const ADS_RULES = ['bts', '=army gift', '/^kpop/'].join(String.fromCharCode(10));
 
 // A small Marketplace Insights result for "bts sticker" with two similar search terms.
@@ -146,6 +174,7 @@ const KW_SAVED_KEY = 'eat:v1:keyword-market-analyzer:legacy.ekma.v1.captures';
 const KW_WAIT = `const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-kw-state="analysed"]'));`;
 
 const PACK_DE = JSON.parse(fs.readFileSync(new URL('../languages/de.json', import.meta.url), 'utf8'));
+const PACK_HE = JSON.parse(fs.readFileSync(new URL('../languages/he.json', import.meta.url), 'utf8'));
 
 const scenarios = {
   sellerPage: `async ({ wait }) => {${HELPERS}
@@ -204,12 +233,14 @@ const scenarios = {
     out.savedAds = window.__values.get('eat:v1:core:settings').tools['ads-keyword-manager'];
     out.menuAfterOff = [...S().querySelectorAll('.ws-menu-button')].map((b) => b.dataset.page).filter(Boolean);
     await press('[data-name="settings-tab"][data-value="privacy"]');
+    out.migDoneBeforeDelete = Boolean(q('[data-role="mig-done"]'));
     await press('[data-action="delete-data"]');
     out.dialog = Boolean(q('[role="alertdialog"]')); out.confirmDisabledAtStart = q('[data-action="confirm-delete"]').disabled;
     const input = q('#eat-confirm'); input.value = 'sil'; input.dispatchEvent(new Event('input', { bubbles: true })); await wait(20);
     out.confirmEnabledAfterTyping = !q('[data-action="confirm-delete"]').disabled;
     await press('[data-action="confirm-delete"]'); await wait(200);
     out.keysAfterDelete = [...window.__values.keys()].sort();
+    out.migDoneAfterDelete = Boolean(q('[data-role="mig-done"]'));
     out.notice = q('.notice')?.textContent ?? null;
     q('#eat-workspace').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
     await wait(120);
@@ -287,12 +318,15 @@ const scenarios = {
     const engineRoot = document.getElementById('eat-sale-batch-root');
     out.enginePanelHidden = engineRoot ? getComputedStyle(engineRoot).display === 'none' : null;
     out.drawerText = q('[data-role="sale-drawer"]')?.textContent ?? null;
+    // A report left open from an earlier series would hold the engine back, hidden behind the new screens.
+    document.body.insertAdjacentHTML('beforeend', '<div class="eda-report-backdrop" id="left-report"></div>');
     q('[data-sale="start"]').click(); await wait(100);
     out.confirmTitle = q('.dialog-title')?.textContent ?? null;
     out.confirmCodes = [...S().querySelectorAll('.dialog .mono-code')].map((n) => n.textContent);
     q('[data-sale="confirm-start"]').click();
     await until(() => document.getElementById('eat-sale-batch-toast-root')?.textContent);
     out.engineToast = document.getElementById('eat-sale-batch-toast-root')?.textContent ?? null;
+    out.leftReportClosed = !document.getElementById('left-report');
     out.jobAfterStart = window.__values.get('eat:v1:sale-manager:legacy.eda-batch-job-v4') ?? null;
     q('[data-sale="details"]').click(); await wait(150);
     out.pageTitle = q('.page-title')?.textContent ?? null;
@@ -481,14 +515,69 @@ const scenarios = {
       requests: window.__requests || [],
     };
   }`,
+  packRtl: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    await until(() => S().querySelector('.sheet')?.textContent.includes('אין כלי שפועל בדף הזה'));
+    return {
+      lang: S().querySelector('.mkui-root')?.getAttribute('lang') ?? null,
+      dir: S().querySelector('[dir]')?.getAttribute('dir') ?? null,
+      drawerText: S().querySelector('.sheet')?.textContent ?? '',
+    };
+  }`,
   packFailed: `async ({ wait }) => {${HELPERS}
     const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
     await until(() => S().querySelector('[data-role="lang-status"][data-state="error"]'));
     const status = S().querySelector('[data-role="lang-status"]');
-    const out = { title: S().querySelector('.dialog-title')?.textContent ?? null, failed: status?.textContent ?? null, requests: (window.__requests || []).length };
+    const out = { title: S().querySelector('.dialog-title')?.textContent ?? null, failed: status?.textContent ?? null, requests: (window.__requests || []).length, continueDisabled: S().querySelector('[data-action="ob-continue"]')?.disabled === true };
+    status.querySelector('[data-action="lang-report"]').click(); await wait(80);
+    out.reportCategory = S().querySelector('[data-name="fb-category"]')?.value ?? S().querySelector('select[name="fb-category"]')?.value ?? null;
+    out.reportCode = [...S().querySelectorAll('[data-role="fb-preview"] tr')].find((tr) => tr.dataset.field === 'errorCode')?.children[1].textContent ?? null;
+    S().querySelectorAll('.overlay')[S().querySelectorAll('.overlay').length - 1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await wait(50);
     status.querySelector('[data-action="lang-retry"]').click();
     await until(() => (window.__requests || []).length > out.requests);
     out.retried = (window.__requests || []).length > out.requests;
+    return out;
+  }`,
+  realTransfer: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const q = (sel) => S().querySelector(sel);
+    const NOTICE = 'makaytron-eat-migration-notice-ads-keyword-manager';
+    await wait(1000);
+    await until(() => document.getElementById(NOTICE));
+    const notice = () => document.getElementById(NOTICE);
+    const out = { noticeText: notice()?.textContent ?? null };
+    [...notice().querySelectorAll('button')].find((b) => b.textContent === 'Transfer').click();
+    await until(() => notice().textContent.includes('Ready to transfer'));
+    out.armed = notice().textContent.includes('Ready to transfer');
+    await click(); q('[data-action="open-workspace"]').click(); await wait(120);
+    q('[data-page="settings"]').click(); await wait(120);
+    q('[data-name="settings-tab"][data-value="privacy"]').click(); await wait(120);
+    q('[data-action="start-migration"]').click();
+    await until(() => q('tr[data-tool="ads-keyword-manager"] [data-sas]') && notice().textContent.includes('Transferred'));
+    const row = q('tr[data-tool="ads-keyword-manager"]');
+    out.result = row?.querySelector('.badge')?.textContent ?? null;
+    out.sas = row?.querySelector('[data-sas]')?.dataset.sas ?? null;
+    out.done = notice().textContent;
+    out.stored = window.__values.get('eat:v1:ads-keyword-manager:legacy.adWordlist') ?? null;
+    out.doneRecord = window.__standaloneValues.get('eat-migration-done') ?? null;
+    out.standaloneKept = window.__standaloneValues.get('adWordlist') ?? null;
+    return out;
+  }`,
+  feedback: `async ({ wait }) => {${HELPERS}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const q = (sel) => S().querySelector(sel);
+    await click(); q('[data-action="open-workspace"]').click(); await wait(120);
+    q('[data-action="report-problem"]').click(); await wait(100);
+    const out = { title: q('.dialog-title')?.textContent ?? null };
+    const note = q('#eat-fb-note');
+    note.value = 'Shop https://www.etsy.com/shop/MyShop 1234567890 mail me@example.com'; note.dispatchEvent(new Event('input', { bubbles: true }));
+    out.preview = Object.fromEntries([...S().querySelectorAll('[data-role="fb-preview"] tr')].map((tr) => [tr.dataset.field, tr.children[1].textContent]));
+    out.github = q('[data-action="fb-github"]')?.getAttribute('href') ?? '';
+    out.target = q('[data-action="fb-github"]')?.getAttribute('target') ?? null;
+    const body = new URL(out.github).searchParams.get('body') ?? '';
+    out.payload = JSON.parse(body.slice(body.indexOf('{'), body.lastIndexOf('}') + 1));
+    out.requests = window.__requests || [];
     return out;
   }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
@@ -501,7 +590,7 @@ const PAGES = {
   '/your/shops/me/sales-discounts': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.sellerPage },
   '/c/jewelry': { settings: { onboarded: true, language: 'tr' }, scenario: scenarios.shoppingPage },
   '/your/shops/me/stats': { settings: { onboarded: true, language: 'tr', theme: 'dark', drawer: { openOnLoad: true } }, scenario: scenarios.darkOpen },
-  '/your/shops/me/tools/listings': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.workspace },
+  '/your/shops/me/tools/listings': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.workspace, preload: { 'eat:v1:core:migration.sale-manager': { tool: 'sale-manager', at: '2026-11-19T00:00:00.000Z', keys: 1 } } },
   '/your/shops/me/orders': { settings: null, scenario: scenarios.onboarding },
   '/your/shops/me/advertising': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
   '/your/shops/me/sales-discounts/engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.saleEngine, preload: { 'eat:v1:sale-manager:legacy.eda-batch-config-v4': { discount: 33, discountName: 'WINTER' } } },
@@ -512,6 +601,7 @@ const PAGES = {
   '/your/shops/me/advertising/listings/123': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsEngine },
   '/your/shops/me/advertising/listings/456': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsEngine, extra: '<div id="makaytron-ad-wordlist">standalone Ads Keyword Manager</div>' },
   '/your/shops/me/advertising/listings/ui': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.adsScreens, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
+  '/your/shops/me/advertising/listings/collapsed': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"], [data-ads-state="error"]')); return { state: window.__shadow.querySelector('[data-ads-state]')?.dataset.adsState, expanded: document.getElementById('kw-toggle').getAttribute('aria-expanded') }; }`, extra: ADS_TABLE_COLLAPSED, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/drawer-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/page-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/rules-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="ads-tab"][data-value="wordlist"]').click(); await until(() => window.__shadow.querySelector('[data-role="ads-rules"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
@@ -527,8 +617,13 @@ const PAGES = {
   '/your/shops/me/tools/listings?eat=screens': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laScreens },
   '/your/shops/me/tools/listings?eat=standalone': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.laEngine, extra: '<div id="makaytron-etsy-listing-analyzer">standalone Listing Analyzer</div>' },
   '/your/shops/me/stats/pack-de': { settings: { onboarded: true, language: 'de', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packReady, packs: { de: PACK_DE } },
+  '/your/shops/me/stats/pack-he': { settings: { onboarded: true, language: 'he', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packRtl, packs: { he: PACK_HE } },
   '/your/shops/me/stats/pack-fr': { settings: { onboarded: false, language: 'fr', theme: 'light' }, scenario: scenarios.packFailed },
+  '/your/shops/me/advertising/listings/transfer': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.realTransfer, extra: REAL_STANDALONE_ADS },
+  '/your/shops/me/stats/feedback': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.feedback },
   // Screenshot-only pages.
+  '/your/shops/me/stats/feedback-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: `async ({ wait }) => { ${HELPERS} await click(); S().querySelector('[data-action="open-workspace"]').click(); await wait(120); S().querySelector('[data-action="report-problem"]').click(); await wait(150); return { ok: true }; }` },
+  '/your/shops/me/advertising/listings/notice-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: `async ({ wait }) => { await wait(1500); return { ok: true }; }`, extra: REAL_STANDALONE_ADS },
   '/your/shops/me/onboarding-shot': { settings: null, scenario: `async () => ({ ok: true })` },
   '/your/shops/me/migration-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.migration, extra: STANDALONE_ADS },
   '/your/account': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.openSettings },
@@ -555,7 +650,7 @@ function runChrome(chrome, url, extra = []) {
     const profile = await mkdtemp(path.join(os.tmpdir(), 'eat-shell-'));
     const child = spawn(chrome, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', `--user-data-dir=${profile}`,
       // Reduced motion turns off the slide animation, so measurements do not depend on timing.
-      '--window-size=1440,900', '--hide-scrollbars', '--force-prefers-reduced-motion', '--lang=en-US', ...(process.env.EAT_DEBUG_DIR ? ['--enable-logging=stderr', '--v=0'] : []), '--virtual-time-budget=12000', ...extra, url], { stdio: ['ignore', 'pipe', 'pipe'] });
+      '--window-size=1440,900', '--hide-scrollbars', '--force-prefers-reduced-motion', '--lang=en-US', ...(process.env.EAT_DEBUG_DIR ? ['--enable-logging=stderr', '--v=0'] : []), '--virtual-time-budget=20000', ...extra, url], { stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = ''; let stderr = '';
     child.stdout.setEncoding('utf8'); child.stderr.setEncoding('utf8');
     child.stdout.on('data', (c) => { stdout += c; }); child.stderr.on('data', (c) => { stderr += c; });
@@ -659,6 +754,8 @@ test('workspace: navigation, settings, deleting local data, Escape back to the d
   assert.ok(!r.keysAfterDelete.includes('eat:v1:sale-manager:legacy.eda-batch-config-v4'), 'tool data deleted');
   assert.ok(r.keysAfterDelete.includes('eat:secret:openai'), 'API keys stay unless ticked');
   assert.ok(r.notice && r.notice.length > 0, 'deletion is confirmed on the page');
+  assert.equal(r.migDoneBeforeDelete, true, 'the transfer card listed the earlier transfer');
+  assert.equal(r.migDoneAfterDelete, false, 'and drops it as soon as the data is deleted');
   assert.equal(r.wsAfterEscape, false);
   assert.equal(r.tabBack, true);
   assert.equal(r.drawerBack, true, 'Escape returns to the drawer');
@@ -691,6 +788,7 @@ test('Sale Manager screens drive the engine without bypassing its safety checks'
   assert.deepEqual(r.confirmCodes, ['261207WINTER25', '261208WINTER25', '261209WINTER25', '261210WINTER25', '261211WINTER25']);
   assert.match(r.engineToast, /mağaza kimliği okunamadı/, 'the engine refuses to start without a verified shop');
   assert.equal(r.jobAfterStart, null, 'no job was created');
+  assert.equal(r.leftReportClosed, true, 'a leftover engine report is closed before the series starts');
   assert.equal(r.pageTitle, 'Kampanya serisi');
   assert.equal(r.planRows, 5);
   assert.deepEqual(r.savedConfig, { discount: 30, discountName: 'SPRING' });
@@ -725,6 +823,12 @@ test('Ads Keyword Manager screens show the engine counts and open its own rule e
   assert.equal(r.workspaceClosed, true, 'the workspace steps out of the way of the editor');
   assert.deepEqual(r.foreignKeys, []);
   assert.deepEqual(r.requests, [], 'a stored word list needs no download');
+});
+
+test('Ads Keyword Manager opens the collapsed targeted-keywords section and reads its rows', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising/listings/collapsed');
+  assert.equal(r.expanded, 'true', 'the engine opened the section');
+  assert.equal(r.state, 'warning', 'three of the four rows match the word list');
 });
 
 test('Ads Keyword Manager steps aside when the standalone script runs on the same page', async () => {
@@ -830,6 +934,13 @@ test('a language pack downloads once and the interface switches to it', async ()
   assert.deepEqual(r.requests, ['https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/languages/de.json']);
 });
 
+test('a right-to-left pack turns the interface around', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/stats/pack-he');
+  assert.equal(r.lang, 'he');
+  assert.equal(r.dir, 'rtl');
+  assert.match(r.drawerText, /אין כלי שפועל בדף הזה/);
+});
+
 test('a failed language pack keeps English, says so in the chosen language and can be retried', async () => {
   const r = await visit(chrome, base, '/your/shops/me/stats/pack-fr');
   assert.equal(r.title, 'Choisissez votre langue', 'the first screen is bundled in every language');
@@ -837,6 +948,34 @@ test('a failed language pack keeps English, says so in the chosen language and c
   assert.match(r.failed, /Réessayer/);
   assert.match(r.failed, /Signaler un problème/);
   assert.equal(r.retried, true);
+  assert.equal(r.continueDisabled, true, 'the setup waits for the chosen language');
+  assert.equal(r.reportCategory, 'language-pack');
+  assert.equal(r.reportCode, 'i18n_pack_download');
+});
+
+test('the real standalone script hands its data over from its notice, with the same check code on both sides', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising/listings/transfer');
+  assert.match(r.noticeText, /We are moving to Etsy Automation Tools/);
+  assert.equal(r.armed, true);
+  assert.equal(r.result, 'Aktarıldı');
+  assert.match(r.done, new RegExp(`Check code: ${r.sas}`), 'the notice showed the same check code before it finished');
+  assert.equal(r.stored, 'bts\nkpop poster');
+  assert.equal(r.doneRecord.tool, 'ads-keyword-manager');
+  assert.equal(r.standaloneKept, 'bts\nkpop poster', 'the standalone script keeps its own data');
+});
+
+test('a problem report shows everything, never shop data, and opens a prefilled GitHub issue without sending anything', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/stats/feedback');
+  assert.equal(r.title, 'Sorun bildir');
+  assert.equal(r.preview.region, 'US');
+  assert.equal(r.preview.browserLocale, 'en-US');
+  assert.equal(r.preview.uiLanguage, 'tr');
+  assert.equal(r.preview.note, 'Shop [link] [number] mail [email]');
+  assert.match(r.github, /^https:\/\/github\.com\/Makaytron\/Etsy-Automation-Tools\/issues\/new\?/);
+  assert.equal(r.target, '_blank');
+  assert.deepEqual(r.requests, [], 'the script itself sends nothing');
+  assert.deepEqual(Object.keys(r.payload).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorCode', 'format', 'formatVersion', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'uiLanguage']);
+  assert.doesNotMatch(JSON.stringify(r.payload), /MyShop|1234567890|example\.com/);
 });
 
 test('first run: setup opens in the browser language, switches to Turkish, saves tools', async () => {
@@ -868,7 +1007,7 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['pack-de', '/your/shops/me/stats/pack-de'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
+  for (const [name, pathname] of [['feedback', '/your/shops/me/stats/feedback-shot'], ['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-he-rtl', '/your/shops/me/stats/pack-he'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
   }
 });

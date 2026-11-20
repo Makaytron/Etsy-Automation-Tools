@@ -176,7 +176,7 @@ test('the receiver ignores keys outside the transfer list and strips secrets aga
 });
 
 test('transfer lists match the keys the standalone scripts really use', () => {
-  const registry = JSON.parse(fs.readFileSync(new URL('../config/production-packages.json', import.meta.url), 'utf8'));
+  const registry = JSON.parse(fs.readFileSync(new URL('../config/production-packages.json', import.meta.url), 'utf8')).filter((pkg) => pkg.kind === 'standalone');
   for (const pkg of registry) {
     const script = fs.readFileSync(new URL(`../${pkg.scriptPath}`, import.meta.url), 'utf8');
     const spec = H.MIGRATION_SPECS[pkg.id];

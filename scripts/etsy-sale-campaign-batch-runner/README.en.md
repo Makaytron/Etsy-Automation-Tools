@@ -2,7 +2,7 @@
 
 <p><a href="./README.md">Türkçe</a> · <strong>English</strong></p>
 
-Version: `1.0.14`
+Version: `1.1.1`
 
 Same-document Etsy navigation is supported. A lightweight URL listener runs even when the initial Etsy page is unsupported; the application starts on its own surface, removes its UI and stops page work on exit, and reactivates without duplicate panels or menus on return.
 
@@ -23,7 +23,7 @@ The script is standalone and does not require another Etsy Automation Tools pack
 - The active sale step may wait up to 20 seconds, without editing or clicking, for an exact transient-only `Loading`, `Please wait`, `Saving`, `Submitting`, or `Processing` shell; ambiguous, persistent, filtered, mismatched, or incomplete evidence stops the flow.
 - Shop/tab leases, reservation recovery, duplicate preflight checks, and strict result verification reduce repeated actions.
 - After each creation, the durable verification queue is saved first; only the submitting tab may acknowledge the structural success action, at most once, and the next date cannot start until the old modal has actually disappeared.
-- After all creation steps, the durable queue is batch-verified against **Details & Stats** evidence; Retry never resubmits a campaign during verification.
+- After all creation steps, the durable queue is batch-verified against the complete (All Time) **Sales and discounts** promotion list; Retry never resubmits a campaign during verification.
 - Reports protect CSV/XML cells from spreadsheet formula injection.
 - **Start Series** is the user's live-write authorization. After it is clicked, the script automatically advances through Etsy and clicks each campaign's final submit button; there is no separate per-campaign manual approval.
 - Canonical GitHub installations check the public userscript version no more than once per 24 hours. Installations from another distributor leave updates to that platform.

@@ -36,28 +36,9 @@ export const MA_STRINGS = Object.freeze({
     sSettings: 'Settings', dSettings: 'AI provider, model and key, translation, signature.',
     campaignNote: 'A message campaign is running. Its progress and controls are in the Automation section.',
   }),
-  tr: Object.freeze({
-    title: 'Müşteri mesajları', description: 'Etsy mesajlarını çevirir, kendi AI sağlayıcınız ve API anahtarınızla cevap hazırlar.',
-    aiReady: 'AI hazır', aiMissing: 'API anahtarı yok', campaign: 'Kampanya sürüyor',
-    aiLine: '{provider} · {model}', aiNone: 'Cevap hazırlamak için asistan ayarlarına AI sağlayıcı anahtarınızı girin.',
-    ctxMessages: 'Bu konuşmada çeviri ve cevap hazırlama hazır.', ctxList: 'Çevirmek veya cevap hazırlamak için bir konuşma açın.',
-    ctxOrders: 'Sipariş mesajı otomasyonu bu sayfada çalışır.', ctxReviews: 'Bu sayfadaki yorumlar çevrilip cevaplanabilir.', ctxOther: 'Mesajlar, Satılan siparişler ve mağaza panosunda çalışır.',
-    translate: 'Son mesajı çevir', reply: 'Cevap hazırla', openPanel: 'Asistanı aç', details: 'Ayrıntıları aç',
-    tileAi: 'AI sağlayıcı', tileTranslation: 'Çeviri', tileTemplates: 'Şablonlar', tileHistory: 'Geçmiş',
-    noModel: 'Model seçilmedi', previewIn: 'Önizleme dili: {language}', activeTemplates: 'Etkin şablon', records: 'Kayıtlı işlem',
-    sections: 'Bölümler', sectionNote: 'Ayrıntılı çalışma bu sayfadaki Message Assistant panelinde açılır.',
-    colSection: 'Bölüm', colWhat: 'Ne yapar', open: 'Aç',
-    sMessages: 'Mesajlar', dMessages: 'Konuşmayı çevirir, cevap hazırlar ve kontrol eder.',
-    sOrders: 'Otomasyon', dOrders: 'Satılan siparişlerin alıcılarına tek tek, kontrollü mesaj.',
-    sReviews: 'Yorumlar', dReviews: 'Yorumları çevirir, herkese açık cevap hazırlar.',
-    sTemplates: 'Şablonlar', dTemplates: 'Değişkenli cevap şablonları.',
-    sHistory: 'Geçmiş', dHistory: 'Bu bilgisayarda tutulan çeviri, cevap ve gönderimler.',
-    sSettings: 'Ayarlar', dSettings: 'AI sağlayıcı, model ve anahtar, çeviri, imza.',
-    campaignNote: 'Bir mesaj kampanyası sürüyor. İlerlemesi ve kontrolleri Otomasyon bölümünde.',
-  }),
 });
 
-// Bundled English and Turkish; other languages read the downloaded pack ("ma." keys).
+// Bundled English; other languages read the downloaded pack ("ma." keys).
 function texts(language) {
   const lang = MA_STRINGS[language] ? language : 'en';
   return (key, vars) => interpolate(MA_STRINGS[language]?.[key] ?? packText(language, `ma.${key}`) ?? MA_STRINGS[lang][key] ?? MA_STRINGS.en[key] ?? key, vars);

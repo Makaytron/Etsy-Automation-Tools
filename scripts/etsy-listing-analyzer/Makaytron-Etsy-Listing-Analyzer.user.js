@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.2.4
+// @version      1.3.1
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -20,6 +20,7 @@
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.deleteValue
+// @grant        GM.listValues
 // @grant        GM.addValueChangeListener
 // @grant        GM.xmlHttpRequest
 // @grant        GM.openInTab
@@ -111,6 +112,393 @@
         };
     }
     // END SPA LIFECYCLE
+
+    // BEGIN MIGRATION HANDOFF (shared/migration/handoff.js)
+    // One-time transfer of a standalone script's saved data to the unified
+    // Etsy Automation Tools script. Userscript storage is private to each
+    // script, so the two scripts meet on the same Etsy tab:
+    //
+    // 1. The user presses "Aktar" in the standalone script, which arms its
+    //    responder for a short window. Nothing is offered while it is not armed
+    //    or while a job of that script is running.
+    // 2. The unified script sends a request with a fresh ECDH P-256 public key.
+    // 3. The responder answers with its own public key and the data, encrypted
+    //    with AES-GCM under a key derived from the shared secret (HKDF-SHA-256,
+    //    salted with the session id). Page scripts that only listen cannot read
+    //    it. Both sides can show the same 4-digit check code (sas) derived from
+    //    the shared key.
+    // 4. The unified script imports the data and acknowledges with a digest of
+    //    what it received; the standalone script then records the transfer.
+    //    It does not delete its own data, so the user can go back.
+    //
+    // API keys and tokens never leave the standalone script: secret fields are
+    // removed before encryption, and the receiver removes them again.
+    // Locks, leases, update checks and send/publication journals are not
+    // transferred; they only make sense inside the script that owns them.
+    //
+    // This file is plain script (no module syntax) so it can be inlined both
+    // into the unified build and into the final versions of the standalone
+    // scripts, like shared/lifecycle/spa-lifecycle.js.
+
+    const MIGRATION_PROTOCOL = 'eat-migration';
+    const MIGRATION_VERSION = 1;
+    const MIGRATION_EVENT = 'makaytron:eat-migration';
+    const MIGRATION_MAX_BYTES = 32 * 1024 * 1024;
+
+    const MIGRATION_SPECS = Object.freeze({
+        'sale-manager': Object.freeze({
+            keys: ['eda-batch-config-v4', 'eda-batch-report-v4', 'eda-batch-report-history-v4', 'eda-batch-config-v3', 'eda-batch-report-v3'],
+            prefixes: [],
+            secrets: {},
+        }),
+        'ads-keyword-manager': Object.freeze({
+            keys: ['adWordlist', 'adWordlistBackup', 'adWordlistLanguage', 'adWordlistPanelCollapsed'],
+            prefixes: [],
+            secrets: {},
+        }),
+        'keyword-market-analyzer': Object.freeze({
+            keys: ['ekma:v1:settings', 'ekma:v1:research-queue', 'ekma:v1:research-cache', 'ekma:v1:captures', 'ekma:v1:result-envelopes'],
+            prefixes: [],
+            secrets: {},
+        }),
+        'listing-analyzer': Object.freeze({
+            keys: ['meli:v1:settings', 'meli:v1:ui-preferences', 'meli:v1:listing-index', 'meli:v1:queue', 'meli:v1:audit',
+                'meli:v1:collection', 'meli:v1:analysis-filters', 'meli:v1:filter-presets', 'meli:v1:ai-requests',
+                'meli:v1:feedback', 'meli:v1:research-requests'],
+            prefixes: ['meli:v1:listing:'],
+            secrets: {},
+        }),
+        'message-assistant': Object.freeze({
+            keys: ['mema:settings', 'mema:providers', 'mema:templates', 'mema:history', 'mema:statuses', 'mema:campaign',
+                'mema:config-meta', 'mema:onboarding'],
+            prefixes: [],
+            // value paths that hold credentials; '*' matches every key of an object
+            secrets: { 'mema:settings': ['deeplApiKey', 'messageCenterAgentToken'], 'mema:providers': ['*.apiKey'] },
+        }),
+    });
+
+    function migrationStripSecrets(spec, key, value) {
+        const paths = spec.secrets[key];
+        if (!paths || !value || typeof value !== 'object') return value;
+        const copy = JSON.parse(JSON.stringify(value));
+        for (const path of paths) {
+            const [head, field] = path.split('.');
+            if (head === '*' && field) {
+                for (const item of Object.values(copy)) if (item && typeof item === 'object' && field in item) item[field] = '';
+            } else if (head in copy) {
+                copy[head] = '';
+            }
+        }
+        return copy;
+    }
+
+    /** Reads the transferable values of one tool. `store` is { get(key), keys() }. */
+    async function migrationCollect(spec, store) {
+        const values = {};
+        const wanted = new Set(spec.keys);
+        if (spec.prefixes.length) {
+            for (const key of await store.keys()) if (spec.prefixes.some((p) => key.startsWith(p))) wanted.add(key);
+        }
+        for (const key of [...wanted].sort()) {
+            const value = await store.get(key);
+            if (value !== undefined && value !== null) values[key] = migrationStripSecrets(spec, key, value);
+        }
+        return values;
+    }
+
+    function migrationIsTransferableKey(spec, key) {
+        return spec.keys.includes(key) || spec.prefixes.some((p) => key.startsWith(p) && /^[A-Za-z0-9:._-]{1,120}$/.test(key));
+    }
+
+    function migrationBytesToBase64(bytes) {
+        let binary = '';
+        const step = 0x8000;
+        for (let i = 0; i < bytes.length; i += step) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+        return btoa(binary);
+    }
+
+    function migrationBase64ToBytes(text) {
+        const binary = atob(text);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+    }
+
+    function migrationRandomId(cryptoApi) {
+        return migrationBytesToBase64(cryptoApi.getRandomValues(new Uint8Array(16))).replace(/[^A-Za-z0-9]/g, '').slice(0, 22);
+    }
+
+    async function migrationKeyPair(cryptoApi) {
+        const pair = await cryptoApi.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+        const raw = new Uint8Array(await cryptoApi.subtle.exportKey('raw', pair.publicKey));
+        return { pair, publicKey: migrationBytesToBase64(raw) };
+    }
+
+    /** AES-GCM key and 4-digit check code from our private key and the peer's public key. */
+    async function migrationSharedKey(cryptoApi, privateKey, peerPublicKey, session, tool) {
+        const peer = await cryptoApi.subtle.importKey('raw', migrationBase64ToBytes(peerPublicKey), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+        const bits = await cryptoApi.subtle.deriveBits({ name: 'ECDH', public: peer }, privateKey, 256);
+        const material = await cryptoApi.subtle.importKey('raw', bits, 'HKDF', false, ['deriveKey', 'deriveBits']);
+        const enc = new TextEncoder();
+        const params = (label) => ({ name: 'HKDF', hash: 'SHA-256', salt: enc.encode(session), info: enc.encode(`${MIGRATION_PROTOCOL}-v${MIGRATION_VERSION}|${tool}|${label}`) });
+        const key = await cryptoApi.subtle.deriveKey(params('key'), material, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+        const sasBits = new Uint8Array(await cryptoApi.subtle.deriveBits(params('sas'), material, 32));
+        const sas = String((((sasBits[0] << 24) >>> 0) + (sasBits[1] << 16) + (sasBits[2] << 8) + sasBits[3]) % 10000).padStart(4, '0');
+        return { key, sas };
+    }
+
+    async function migrationDigest(cryptoApi, text) {
+        const hash = new Uint8Array(await cryptoApi.subtle.digest('SHA-256', new TextEncoder().encode(text)));
+        return [...hash].map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function migrationValidMessage(message) {
+        return message && typeof message === 'object' && message.protocol === MIGRATION_PROTOCOL && message.v === MIGRATION_VERSION
+            && typeof message.type === 'string' && typeof message.session === 'string' && /^[A-Za-z0-9]{16,40}$/.test(message.session);
+    }
+
+    /** Transport over DOM events; both userscript sandboxes share the page document. Payloads are JSON strings. */
+    function createDomMigrationTransport(doc) {
+        return {
+            send(message) { doc.dispatchEvent(new CustomEvent(MIGRATION_EVENT, { detail: JSON.stringify(message) })); },
+            subscribe(handler) {
+                const listener = (event) => {
+                    if (typeof event.detail !== 'string' || event.detail.length > MIGRATION_MAX_BYTES * 2) return;
+                    let message;
+                    try { message = JSON.parse(event.detail); } catch { return; }
+                    if (migrationValidMessage(message)) handler(message);
+                };
+                doc.addEventListener(MIGRATION_EVENT, listener);
+                return () => doc.removeEventListener(MIGRATION_EVENT, listener);
+            },
+        };
+    }
+
+    /**
+     * Standalone-script side. `store` is { get(key), keys() } over the script's
+     * own storage; `isBusy()` reports a running job; `onDone(record)` stores
+     * that the transfer happened.
+     */
+    function createMigrationResponder({ tool, appVersion, store, transport, cryptoApi, isBusy = () => false, onStatus = () => {}, onDone = () => {}, now = () => new Date() }) {
+        const spec = MIGRATION_SPECS[tool];
+        if (!spec) throw new Error(`Unknown migration tool: ${tool}`);
+        let armedUntil = 0;
+        let pending = null; // { session, digest }
+        let unsubscribe = null;
+
+        async function answer(message) {
+            if (Date.now() > armedUntil || pending) return;
+            if (!Array.isArray(message.tools) || !message.tools.includes(tool) || typeof message.publicKey !== 'string') return;
+            if (await isBusy()) { onStatus({ state: 'busy' }); transport.send({ protocol: MIGRATION_PROTOCOL, v: MIGRATION_VERSION, type: 'busy', session: message.session, tool }); return; }
+            const values = await migrationCollect(spec, store);
+            const plaintext = JSON.stringify({ tool, appVersion, exportedAt: now().toISOString(), values });
+            if (plaintext.length > MIGRATION_MAX_BYTES) { onStatus({ state: 'too-large' }); return; }
+            const { pair, publicKey } = await migrationKeyPair(cryptoApi);
+            const { key, sas } = await migrationSharedKey(cryptoApi, pair.privateKey, message.publicKey, message.session, tool);
+            const iv = cryptoApi.getRandomValues(new Uint8Array(12));
+            const ciphertext = new Uint8Array(await cryptoApi.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(plaintext)));
+            pending = { session: message.session, digest: await migrationDigest(cryptoApi, plaintext) };
+            onStatus({ state: 'offered', sas });
+            transport.send({ protocol: MIGRATION_PROTOCOL, v: MIGRATION_VERSION, type: 'offer', session: message.session, tool, publicKey, iv: migrationBytesToBase64(iv), ciphertext: migrationBytesToBase64(ciphertext) });
+        }
+
+        function handle(message) {
+            if (message.type === 'request') {
+                answer(message).catch((error) => onStatus({ state: 'error', error }));
+            } else if (message.type === 'ack' && pending && message.session === pending.session && message.tool === tool) {
+                const ok = message.digest === pending.digest;
+                pending = null;
+                armedUntil = 0;
+                if (ok) { onDone({ tool, at: now().toISOString() }); onStatus({ state: 'done' }); } else onStatus({ state: 'error', error: new Error('migration_digest_mismatch') });
+            }
+        }
+
+        return {
+            arm(ms = 120000) {
+                armedUntil = Date.now() + ms;
+                pending = null;
+                if (!unsubscribe) unsubscribe = transport.subscribe(handle);
+                onStatus({ state: 'armed' });
+            },
+            disarm() { armedUntil = 0; pending = null; unsubscribe?.(); unsubscribe = null; },
+            get armed() { return Date.now() <= armedUntil; },
+        };
+    }
+
+    /** Unified-script side. Resolves with the decrypted bundles that arrived before the timeout. */
+    function createMigrationRequester({ transport, cryptoApi }) {
+        async function request({ tools = Object.keys(MIGRATION_SPECS), timeoutMs = 4000 } = {}) {
+            const session = migrationRandomId(cryptoApi);
+            const { pair, publicKey } = await migrationKeyPair(cryptoApi);
+            const results = [];
+            const work = [];
+            const unsubscribe = transport.subscribe((message) => {
+                if (message.session !== session || !tools.includes(message.tool)) return;
+                if (message.type === 'busy') { results.push({ tool: message.tool, state: 'busy' }); return; }
+                if (message.type !== 'offer' || results.some((r) => r.tool === message.tool)) return;
+                const entry = { tool: message.tool, state: 'pending' };
+                results.push(entry);
+                work.push((async () => {
+                    try {
+                        const { key, sas } = await migrationSharedKey(cryptoApi, pair.privateKey, message.publicKey, session, message.tool);
+                        const plain = await cryptoApi.subtle.decrypt({ name: 'AES-GCM', iv: migrationBase64ToBytes(message.iv) }, key, migrationBase64ToBytes(message.ciphertext));
+                        const text = new TextDecoder().decode(plain);
+                        const bundle = JSON.parse(text);
+                        if (bundle.tool !== message.tool) throw new Error('migration_tool_mismatch');
+                        Object.assign(entry, { state: 'received', sas, bundle, digest: await migrationDigest(cryptoApi, text) });
+                    } catch (error) {
+                        Object.assign(entry, { state: 'error', error });
+                    }
+                })());
+            });
+            transport.send({ protocol: MIGRATION_PROTOCOL, v: MIGRATION_VERSION, type: 'request', session, tools, publicKey });
+            await new Promise((resolve) => setTimeout(resolve, timeoutMs));
+            unsubscribe();
+            await Promise.all(work);
+            const ack = (tool) => {
+                const entry = results.find((r) => r.tool === tool && r.state === 'received');
+                if (entry) transport.send({ protocol: MIGRATION_PROTOCOL, v: MIGRATION_VERSION, type: 'ack', session, tool, digest: entry.digest });
+            };
+            return { session, results, ack };
+        }
+        return { request };
+    }
+    // END MIGRATION HANDOFF
+
+    // BEGIN MIGRATION NOTICE (shared/migration/notice.js)
+    // The notice the standalone scripts show while they are kept running next to
+    // Etsy Automation Tools (six months after its release). It explains the
+    // move, links to the unified script and offers "Aktar" (Transfer), which
+    // arms the responder of shared/migration/handoff.js for two minutes. The
+    // data stays in this script; nothing is sent anywhere but to the unified
+    // script on the same tab, encrypted. "Later" hides the notice for a week.
+    //
+    // Plain script, inlined into every standalone script by
+    // tools/Sync-Migration-Blocks.mjs. The unified script strips it when it
+    // adopts a standalone engine.
+
+    const EAT_INSTALL_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-automation-tools/Makaytron-Etsy-Automation-Tools.user.js';
+    const EAT_NOTICE_HIDDEN_KEY = 'eat-migration-notice-hidden-until';
+    const EAT_NOTICE_DONE_KEY = 'eat-migration-done';
+    const EAT_NOTICE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const EAT_NOTICE_TEXT = Object.freeze({
+        tr: Object.freeze({
+            title: 'Etsy Automation Tools’a taşınıyoruz',
+            text: '{tool} artık tek script olan Etsy Automation Tools’un içinde. Bu script altı ay daha çalışır, sonra güncelleme almaz. Yeni scripti kurun, sonra verilerinizi aktarmak için burada Aktar’a basın.',
+            install: 'Yeni scripti kur', transfer: 'Aktar', later: 'Daha sonra',
+            armed: 'Aktarıma hazır (2 dakika). Aynı sekmede yeni scriptte Ayarlar › Gizlilik ve veri › Aktarımı başlat’a basın.',
+            offered: 'Kontrol kodu: {sas}. Yeni script de aynı kodu göstermeli.',
+            done: 'Aktarıldı. Her şey yolundaysa bu scripti Tampermonkey’de kapatabilirsiniz. Verileri bu scriptte de durur.',
+            busy: 'Şu an bir iş çalışıyor. Bittiğinde Aktar’a yeniden basın.',
+            error: 'Aktarım tamamlanamadı. Aktar’a yeniden basın.',
+        }),
+        en: Object.freeze({
+            title: 'We are moving to Etsy Automation Tools',
+            text: '{tool} is now part of Etsy Automation Tools, a single script. This script keeps working for six more months, then gets no more updates. Install the new script, then press Transfer here to bring your data over.',
+            install: 'Install the new script', transfer: 'Transfer', later: 'Later',
+            armed: 'Ready to transfer (2 minutes). On this tab, press Settings › Privacy and data › Start the transfer in the new script.',
+            offered: 'Check code: {sas}. The new script should show the same code.',
+            done: 'Transferred. If everything looks right, you can turn this script off in Tampermonkey. Its data also stays here.',
+            busy: 'A job is running. Press Transfer again when it ends.',
+            error: 'The transfer did not complete. Press Transfer again.',
+        }),
+    });
+
+    /**
+     * @param {object} o
+     * @param {string} o.tool        migration tool id (see MIGRATION_SPECS)
+     * @param {string} o.toolName    name shown in the notice
+     * @param {string} o.appVersion
+     * @param {object} o.gm          this script's GM object
+     * @param {Function} o.allowed   whether this script runs on the current page
+     * @param {Function} o.isBusy    whether one of its jobs is running
+     */
+    function startEatMigrationNotice({ tool, toolName, appVersion, gm, allowed, isBusy }) {
+        if (typeof document === 'undefined' || typeof window === 'undefined' || !window.crypto?.subtle) return null;
+        const language = String(navigator.language || '').toLowerCase().startsWith('tr') ? 'tr' : 'en';
+        const text = (key, vars = {}) => String(EAT_NOTICE_TEXT[language][key]).replace(/\{(\w+)\}/g, (m, name) => (name in vars ? String(vars[name]) : m));
+        const store = {
+            get: (key) => gm.getValue(key, null),
+            keys: async () => (typeof gm.listValues === 'function' ? gm.listValues() : []),
+        };
+        let host = null;
+        let status = '';
+        let hidden = false;
+        let lastSas = '';
+        const responder = createMigrationResponder({
+            tool, appVersion, store, transport: createDomMigrationTransport(document), cryptoApi: window.crypto,
+            isBusy,
+            onStatus: (event) => {
+                if (event.state === 'offered') lastSas = event.sas;
+                // The check code stays visible after the transfer, so it can be compared with the new script.
+                const done = lastSas ? `${text('offered', { sas: lastSas })} ${text('done')}` : text('done');
+                status = { armed: text('armed'), offered: text('offered', { sas: event.sas }), busy: text('busy'), done, error: text('error'), 'too-large': text('error') }[event.state] ?? '';
+                render();
+            },
+            onDone: (record) => { void gm.setValue(EAT_NOTICE_DONE_KEY, record); },
+        });
+
+        // Light DOM with inline styles, like the scripts' other notices: no shadow root, no class names.
+        const FONT = 'Inter,system-ui,-apple-system,"Segoe UI",sans-serif';
+        function button(label, primary, onClick) {
+            const element = document.createElement('button');
+            element.type = 'button';
+            element.textContent = label;
+            element.style.cssText = `all:initial;box-sizing:border-box;min-height:32px;padding:0 12px;border:1px solid ${primary ? '#1f1f1f' : '#cfcfcf'};border-radius:7px;background:${primary ? '#1f1f1f' : '#fff'};color:${primary ? '#fafafa' : '#171717'};font:600 12.5px/30px ${FONT};cursor:pointer`;
+            element.addEventListener('click', onClick);
+            return element;
+        }
+
+        function paragraph(content, strong = false) {
+            const element = document.createElement(strong ? 'strong' : 'p');
+            element.textContent = content;
+            element.style.cssText = strong
+                ? `all:initial;display:block;margin:0 0 4px;color:#171717;font:700 14px/1.4 ${FONT}`
+                : `all:initial;display:block;margin:0 0 10px;color:#404040;font:13px/1.45 ${FONT}`;
+            return element;
+        }
+
+        function render() {
+            if (!allowed() || hidden) { host?.remove(); host = null; return; }
+            if (!host || !host.isConnected) {
+                host = document.createElement('section');
+                host.id = `makaytron-eat-migration-notice-${tool}`;
+                host.setAttribute('role', 'region');
+                host.style.cssText = `all:initial;position:fixed;left:16px;bottom:16px;z-index:2147483646;box-sizing:border-box;width:min(380px,calc(100vw - 32px));padding:14px;border:1px solid #d6d6d6;border-radius:10px;background:#fff;color:#202020;box-shadow:0 16px 42px rgba(0,0,0,.2);font:13px/1.45 ${FONT}`;
+                document.documentElement.appendChild(host);
+            }
+            host.setAttribute('aria-label', text('title'));
+            host.replaceChildren(paragraph(text('title'), true), paragraph(text('text', { tool: toolName })));
+            if (status) {
+                const line = paragraph(status);
+                line.setAttribute('role', 'status');
+                line.style.color = '#1f1f1f';
+                line.style.fontWeight = '600';
+                host.append(line);
+            }
+            const row = document.createElement('div');
+            row.style.cssText = 'all:initial;display:flex;flex-wrap:wrap;gap:8px';
+            row.append(
+                button(text('install'), false, () => { window.open(EAT_INSTALL_URL, '_blank', 'noopener,noreferrer'); }),
+                button(text('transfer'), true, () => { responder.arm(120000); }),
+                button(text('later'), false, () => {
+                    hidden = true;
+                    responder.disarm();
+                    void gm.setValue(EAT_NOTICE_HIDDEN_KEY, Date.now() + EAT_NOTICE_WEEK_MS);
+                    render();
+                }),
+            );
+            host.append(row);
+        }
+
+        Promise.resolve(gm.getValue(EAT_NOTICE_HIDDEN_KEY, 0)).then((until) => {
+            hidden = Number(until) > Date.now();
+            render();
+            window.setInterval(() => { if (Boolean(host) !== (allowed() && !hidden)) render(); }, 1000);
+        }).catch(() => { /* the notice is optional */ });
+        return responder;
+    }
+    // END MIGRATION NOTICE
     const RUNTIME_ROUTE_PATTERN = /^\/your\/shops\/[^/]+\/(?:tools\/listings\/?|listing-editor\/edit\/\d+\/?)$/;
     const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path));
     let listingInitialized = false;
@@ -128,7 +516,7 @@
     }
 
 
-    const APP_VERSION = '1.2.4';
+    const APP_VERSION = '1.3.1';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -5499,13 +5887,24 @@
             return found;
         },
         metricSections(link) {
-            return Array.from(link?.querySelectorAll('.card-meta') || []).filter(elementIsUsable).map((container) => {
-                const heading = container.querySelector('h6');
-                if (!heading || !elementIsUsable(heading)) return null;
-                const rows = Array.from(container.querySelectorAll('.card-meta-row .card-meta-row-item')).filter(elementIsUsable)
-                    .map((item) => normalizeSpace(item.textContent)).filter(Boolean);
-                return { heading: normalizeSpace(heading.textContent), rows };
-            }).filter(Boolean);
+            // Each <h6> heading starts a metric scope and owns the rows after it, in page order. Etsy may put
+            // "Last 30 days" and "All time" in one .card-meta block or in separate blocks; rows before any
+            // heading (title, SKU, stock, price) are not metrics.
+            return Array.from(link?.querySelectorAll('.card-meta') || []).filter(elementIsUsable).flatMap((container) => {
+                const sections = [];
+                let current = null;
+                container.querySelectorAll('h6, .card-meta-row .card-meta-row-item').forEach((node) => {
+                    if (!elementIsUsable(node)) return;
+                    if (String(node.tagName).toUpperCase() === 'H6') {
+                        current = { heading: normalizeSpace(node.textContent), rows: [] };
+                        sections.push(current);
+                        return;
+                    }
+                    const text = normalizeSpace(node.textContent);
+                    if (current && text) current.rows.push(text);
+                });
+                return sections;
+            });
         },
         metricRows(link) {
             return this.metricSections(link).flatMap((section) => section.rows);
@@ -10631,6 +11030,16 @@
             },
         });
     }
+
+    // BEGIN EAT MIGRATION START
+    if (window.__MAKAYTRON_LISTING_SKIP_INIT__ !== true) {
+        startEatMigrationNotice({
+            tool: 'listing-analyzer', toolName: 'Listing Analyzer', appVersion: APP_VERSION, gm: GM,
+            allowed: () => RouteLifecycle.allowed(),
+            isBusy: () => Boolean(state.collectionLoop || state.actionTask || state.collection?.status === 'running'),
+        });
+    }
+    // END EAT MIGRATION START
 
     if (window.__MAKAYTRON_LISTING_SKIP_INIT__ !== true) {
         void RouteLifecycle.start({ enter: init, leave: suspendListingRoute }).catch((error) => {

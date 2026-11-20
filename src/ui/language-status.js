@@ -1,12 +1,11 @@
 // The language pack line under a language choice: "downloading…", or the
-// failure with Try again and Report a problem. Nothing while the language is
+// failure with Try again and Report a problem (the problem report dialog,
+// with the language-pack category and the error code filled in). Nothing while the language is
 // bundled or its pack is ready.
 //
 // Design sources: template.primitive.button, the alert style of the settings page.
 
 import { h } from './dom.js';
-
-export const SUPPORT_URL = 'https://github.com/Makaytron/Etsy-Automation-Tools/issues';
 
 export function languageStatus(doc, text) {
   const { t } = text;
@@ -17,5 +16,5 @@ export function languageStatus(doc, text) {
     h(doc, 'p', { class: 'alert-warn', role: 'alert', text: t('lang.failed') }),
     h(doc, 'div', { class: 'row-actions' },
       h(doc, 'button', { class: 'btn btn-outline btn-sm', type: 'button', 'data-action': 'lang-retry', onclick: () => { void text.retryPack(); }, text: t('lang.retry') }),
-      h(doc, 'a', { class: 'btn btn-ghost btn-sm', href: SUPPORT_URL, target: '_blank', rel: 'noopener noreferrer', text: t('ws.report') })));
+      h(doc, 'button', { class: 'btn btn-ghost btn-sm', type: 'button', 'data-action': 'lang-report', onclick: (e) => text.report?.({ category: 'language-pack', errorCode: state.code ?? 'i18n_pack_download', returnFocus: e.currentTarget }), text: t('ws.report') })));
 }

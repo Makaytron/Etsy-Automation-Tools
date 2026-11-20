@@ -8,6 +8,7 @@
 // the standalone script fails the build instead of producing a wrong engine.
 
 import fs from 'node:fs';
+import { stripStandaloneOnly } from './Unified-Adopt.mjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -64,6 +65,8 @@ const ENGINE_API = `
         downloadCsv: () => downloadCsv(lastReport),
         downloadExcel: () => downloadExcel(lastReport),
         openCreateSale: () => go(CREATE_SALE_URL),
+        // The engine waits while its own report is open; from the unified screens that report sits out of sight.
+        closeReport: () => { document.querySelectorAll('.eda-report-backdrop').forEach((node) => node.remove()); },
     };`;
 
 /** Returns the source of `async function createAdoptedSaleManager(__env)`. */
@@ -72,7 +75,7 @@ export function adoptSaleManager(source = fs.readFileSync(SALE_MANAGER_SOURCE, '
   const start = text.indexOf(OPEN);
   const end = text.lastIndexOf(CLOSE);
   if (start < 0 || end < 0 || end < start) throw new Error('Sale Manager adoption: entry or exit marker not found.');
-  let body = text.slice(start + OPEN.length, end);
+  let body = stripStandaloneOnly(text.slice(start + OPEN.length, end), 'Sale Manager');
   for (const [from, to, expected, reason] of SALE_MANAGER_EDITS) {
     const count = body.split(from).length - 1;
     if (count !== expected) throw new Error(`Sale Manager adoption: "${reason}" matched ${count} times, expected ${expected}.`);
