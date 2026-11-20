@@ -45765,6 +45765,11 @@
         'mig.error': 'Could not be read', 'mig.rejected': 'Rejected',
         'mig.codeHint': 'The standalone script shows the same check code. If the codes differ, delete the transferred data and report a problem.',
         'mig.done': 'Transferred before: {tools}',
+        'wn.updated': 'Etsy Automation Tools was updated · {date}',
+        'wn.kept': 'Your settings, saved research and reports stayed as they were.',
+        'wn.show': 'Show this window after updates',
+        'wn.all': 'All release notes',
+        'wn.ok': 'OK',
         'ws.runsHere': 'Runs on this page',
         'ws.sessionOpen': 'Etsy session open',
         'ws.sessionClosed': 'Not signed in to Etsy',
@@ -46420,6 +46425,8 @@
     // suite-css.js; this file only places them.
 
     const SHELL_CSS = `
+    @keyframes eat-toast-timer { from { width: 100%; } to { width: 0; } }
+    @media (prefers-reduced-motion: reduce) { .toast .pl { animation: none !important; } }
     :host { all: initial; }
     .mkui-root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
     .mkui-root > * { pointer-events: auto; }
@@ -47251,6 +47258,124 @@
     return Object.freeze({ normalizeTags, createText, languageName });
   })();
 
+  // ── src/ui/toasts.js ──
+  const __eat_ui_toasts = (() => {
+    // Toasts for notices announced while the page is open (design canvas artboard
+    // States: success, error and info toasts with a timer line). The notice itself
+    // stays in the bell's list; the toast only says it as it happens.
+    // Design sources: Toast-01 anatomy as adapted in the canvas (.toast/.in/.ico/.pl).
+
+    const { h, icon } = __eat_ui_dom;
+    const { ICONS } = __eat_ui_icons;
+
+    const SHOW_MS = 6000;
+    const TONE = { seriesDone: 'ok', scanDone: 'ok', seriesStopped: 'err', autopilotWaiting: 'info', queueWaiting: 'info', newMessage: 'info', newVersion: 'info' };
+    const STYLE = {
+      ok: { glyph: ICONS.check, well: 'background: #ecfdf3; color: #15803d;' },
+      err: { glyph: ICONS.alert, well: 'background: #fef2f2; color: #b91c1c;' },
+      info: { glyph: ICONS.info, well: 'background: var(--soft); color: var(--ink2);' },
+    };
+
+    /** Watches `notices` and shows a toast for each notice added after it starts. */
+    function createToasts({ doc, container, text, notices, now = () => Date.now() }) {
+      if (!notices) return () => {};
+      const since = now();
+      const shown = new Set(notices.list().map((n) => n.id));
+      let stack = null;
+
+      function show(n) {
+        if (!stack?.isConnected) {
+          stack = h(doc, 'div', { class: 'col', role: 'region', 'aria-live': 'polite', 'aria-label': text.t('nt.title'), style: 'position: fixed; inset-inline-end: 16px; bottom: 16px; gap: 8px; z-index: 2147483646;' });
+          container.append(stack);
+        }
+        const tone = TONE[n.event] ?? 'info';
+        const { glyph, well } = STYLE[tone];
+        const remove = () => el.remove();
+        const el = h(doc, 'div', { class: 'toast', role: tone === 'err' ? 'alert' : 'status', 'data-notice': n.id },
+          h(doc, 'div', { class: 'in' },
+            h(doc, 'span', { class: 'ico', style: well }, icon(doc, glyph, 14)),
+            h(doc, 'span', { class: 'col grow', style: 'gap: 2px; min-width: 0;' },
+              h(doc, 'span', { class: 'sm b', text: n.title }),
+              n.detail ? h(doc, 'span', { class: 'xs mute', text: n.detail }) : null),
+            h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': text.t('fb.cancel'), onclick: remove }, icon(doc, ICONS.close, 14))),
+          h(doc, 'div', { class: 'pl', style: `animation: eat-toast-timer ${SHOW_MS}ms linear forwards;` }));
+        stack.append(el);
+        doc.defaultView?.setTimeout(remove, SHOW_MS);
+      }
+
+      return notices.subscribe((items) => {
+        for (const n of items) {
+          if (shown.has(n.id)) continue;
+          shown.add(n.id);
+          if (n.at >= since) show(n);
+        }
+      });
+    }
+    return Object.freeze({ createToasts });
+  })();
+
+  // ── src/core/release-notes.js ──
+  const __eat_core_release_notes = (() => {
+    // Release notes shown in Settings › Updates and in the "What's new" dialog
+    // after an update. Each line is a translation key, so the notes follow the
+    // interface language. Newest first; keep it to the last few versions.
+
+    const RELEASE_NOTES = Object.freeze([
+      Object.freeze({ version: '2.1.0', date: '2026-11-20', items: Object.freeze(['rn.210.design', 'rn.210.settings', 'rn.210.notices']) }),
+      Object.freeze({ version: '2.0.0', date: '2026-11-20', items: Object.freeze(['rn.200.one', 'rn.200.workspace', 'rn.200.report']) }),
+    ]);
+    return Object.freeze({ RELEASE_NOTES });
+  })();
+
+  // ── src/ui/whats-new.js ──
+  const __eat_ui_whats_new = (() => {
+    // "What's new" dialog after an update (design canvas artboard WhatsNew;
+    // adaptation of template.primitive.dialog). It opens once per new version on
+    // the first seller page, only when Settings › Updates allows it
+    // (settings.updateNotes); a first install records the version without it.
+
+    const { h, icon } = __eat_ui_dom;
+    const { ICONS } = __eat_ui_icons;
+    const { openDialog } = __eat_ui_controls;
+    const { RELEASE_NOTES } = __eat_core_release_notes;
+    const { compareVersions } = __eat_core_i18n;
+    const { formatDate } = __eat_ui_format;
+
+    const SEEN_KEY = 'seenVersion';
+
+    /** Shows the notes of `appVersion` if the user moved up to it from an older version. */
+    async function maybeShowWhatsNew({ doc, container, text, settings, store, appVersion, onAllNotes }) {
+      const seen = await store.get(SEEN_KEY, null).catch(() => null);
+      await store.set(SEEN_KEY, appVersion).catch(() => {});
+      // No record yet: a first install (still in setup) or an upgrade from a version that kept none.
+      if (!seen && !settings.get().onboarded) return false;
+      if ((seen && compareVersions(appVersion, String(seen)) <= 0) || !settings.get().updateNotes) return false;
+      const notes = RELEASE_NOTES.find((n) => n.version === appVersion);
+      if (!notes) return false;
+      const { t } = text;
+      const s = settings.get();
+      const body = h(doc, 'div', { class: 'col', style: 'gap: 12px;', 'data-role': 'whats-new' },
+        h(doc, 'div', { class: 'list', style: 'border: 1px solid var(--line); border-radius: 10.4px;' },
+          notes.items.map((key) => h(doc, 'div', { class: 'li', style: 'align-items: flex-start; gap: 10px;' },
+            icon(doc, ICONS.check, 16),
+            h(doc, 'span', { class: 'sm', text: t(key) })))),
+        h(doc, 'div', { class: 'banner' }, icon(doc, ICONS.info), h(doc, 'span', { class: 'grow', text: t('wn.kept') })));
+      const show = h(doc, 'input', { type: 'checkbox', class: 'chk', name: 'wn-show', checked: true, onchange: (e) => settings.update({ updateNotes: e.target.checked }) });
+      openDialog(doc, container, {
+        title: `${t('set.notesTitle')} · ${appVersion}`,
+        description: t('wn.updated', { date: formatDate(Date.parse(notes.date), s.format, text.language()) }),
+        body, closeLabel: t('fb.cancel'), width: 560,
+        footer: (close) => [
+          h(doc, 'label', { class: 'row xs mute2', style: 'gap: 8px; margin-inline-end: auto;' }, show, t('wn.show')),
+          h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-action': 'wn-all', onclick: () => { close(); onAllNotes?.(); }, text: t('wn.all') }),
+          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-action': 'wn-ok', onclick: close, text: t('wn.ok') }),
+        ],
+      });
+      return true;
+    }
+    return Object.freeze({ maybeShowWhatsNew });
+  })();
+
   // ── src/ui/notifications.js ──
   const __eat_ui_notifications = (() => {
     // The notification popover under the workspace bell.
@@ -47417,19 +47542,6 @@
       ];
     }
     return Object.freeze({ renderProPage });
-  })();
-
-  // ── src/core/release-notes.js ──
-  const __eat_core_release_notes = (() => {
-    // Release notes shown in Settings › Updates and in the "What's new" dialog
-    // after an update. Each line is a translation key, so the notes follow the
-    // interface language. Newest first; keep it to the last few versions.
-
-    const RELEASE_NOTES = Object.freeze([
-      Object.freeze({ version: '2.1.0', date: '2026-11-20', items: Object.freeze(['rn.210.design', 'rn.210.settings', 'rn.210.notices']) }),
-      Object.freeze({ version: '2.0.0', date: '2026-11-20', items: Object.freeze(['rn.200.one', 'rn.200.workspace', 'rn.200.report']) }),
-    ]);
-    return Object.freeze({ RELEASE_NOTES });
   })();
 
   // ── src/ui/language-status.js ──
@@ -48181,6 +48293,8 @@
     const { openFeedback } = __eat_ui_feedback;
     const { createWorkspace } = __eat_ui_workspace;
     const { openOnboarding } = __eat_ui_onboarding;
+    const { maybeShowWhatsNew } = __eat_ui_whats_new;
+    const { createToasts } = __eat_ui_toasts;
     const { tabRect, snapToEdge, drawerSide, drawerWidth, TAB_SHORT, TAB_LONG } = __eat_core_drawer_geometry;
     const { TOOL_IDS } = __eat_core_settings;
     const { actionForEvent } = __eat_core_shortcuts;
@@ -48244,6 +48358,8 @@
         state.mounted = true;
         applyChrome();
         render();
+        unsubscribe.push(createToasts({ doc, container, text, notices }));
+        void maybeShowWhatsNew({ doc, container, text, settings, store: storage.namespace('core'), appVersion, onAllNotes: () => openWorkspace('settings') }).catch(() => {});
         if (!settings.get().onboarded) {
           openOnboarding({ doc, container, text, settings, scope, assets, onDone: () => tab.focus({ preventScroll: true }) });
         } else if (settings.get().drawer.openOnLoad) {
@@ -48309,7 +48425,13 @@
         const now = active
           ? h(doc, 'div', { class: 'dock-now', 'aria-labelledby': 'eat-current' },
             toolView ?? h(doc, 'div', { class: 'row' }, icon(doc, ICONS[active]), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: t(`tool.${active}`) })),
-            toolView ? null : h(doc, 'p', { class: 'xs mute2', 'data-role': 'tool-status', text: statusText(active) }))
+            toolView ? null : h(doc, 'p', { class: 'xs mute2', 'data-role': 'tool-status', text: statusText(active) }),
+            // While the tool's engine starts, its section shows the canvas's loading skeleton (Loaders).
+            !toolView && host.module?.(active)?.migrated && host.module(active).status?.() === 'starting'
+              ? h(doc, 'div', { class: 'ld-box', 'aria-hidden': 'true', 'data-role': 'tool-loading' },
+                [0, 1].map(() => h(doc, 'div', { class: 'row', style: 'gap: 12px;' }, h(doc, 'span', { class: 'shim', style: 'width: 40px; height: 40px; flex: none;' }),
+                  h(doc, 'span', { class: 'col grow', style: 'gap: 8px;' }, h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 80%;' }), h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 50%;' })))))
+              : null)
           : h(doc, 'div', { class: 'dock-idle', 'data-role': 'drawer-idle' },
             h(doc, 'span', { class: 'well-lg' }, icon(doc, ICONS.compass, 20)),
             h(doc, 'span', { class: 'h3', 'data-role': 'no-tool', text: t('drawer.noTool') }),

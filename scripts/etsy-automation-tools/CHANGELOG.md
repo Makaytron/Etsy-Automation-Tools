@@ -14,6 +14,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak 
 - Settings: AI providers, notifications (panel and desktop, quiet hours), keyboard shortcuts, updates (version check, stable or beta channel, what is new) and help (guides, your reports and their GitHub state).
 - Notifications in the workspace for finished jobs, steps that wait for you and new versions; desktop notifications only after you allow them.
 - The Makaytron Pro page.
+- A "What's new" window once after an update (it can be turned off), toasts for notifications that arrive while the page is open, and a loading skeleton while a tool starts.
 
 ### Changed
 

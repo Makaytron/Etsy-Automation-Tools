@@ -80,7 +80,10 @@ const safe = (value) => JSON.stringify(value).replace(/</g, '\\u003c').replace(/
 // Turkish comes as a pack; most pages start as if it had been downloaded on an earlier visit.
 const PACK_TR = JSON.parse(fs.readFileSync(new URL('../languages/tr.json', import.meta.url), 'utf8'));
 
-function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, trCached = true }) {
+// Pages start as if this version had already been seen, so the "What's new" dialog stays out of the way unless a page asks for it.
+const APP_VERSION = /version:\s*'([^']+)'/.exec(fs.readFileSync(new URL('../src/meta.js', import.meta.url), 'utf8'))[1];
+
+function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, trCached = true, seen = APP_VERSION }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Etsy fixture</title>
 <style>body{margin:0;font:16px Georgia,serif;background:#f5f5f5} button.probe{font:13px Georgia,serif}</style></head>
 <body><header style="height:56px;background:#fff;border-bottom:1px solid #ddd"></header>
@@ -89,6 +92,7 @@ function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, tr
 (() => {
   const values = new Map();
   ${settings ? `values.set('eat:v1:core:settings', ${safe(settings)});` : ''}
+  ${seen ? `values.set('eat:v1:core:seenVersion', ${safe(seen)});` : ''}
   values.set('eat:v1:sale-manager:legacy.eda-batch-config-v4', { discount: 25 });
   values.set('eat:secret:openai', 'fixture-placeholder');
   ${trCached ? `values.set('eat:v1:core:pack.tr', ${safe(PACK_TR)});` : ''}
@@ -635,6 +639,9 @@ const PAGES = {
   '/your/shops/me/stats/pack-he': { settings: { onboarded: true, language: 'he', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.packRtl, packs: { he: PACK_HE } },
   '/your/shops/me/stats/pack-fr': { settings: { onboarded: false, language: 'fr', theme: 'light' }, scenario: scenarios.packFailed },
   '/your/shops/me/advertising/listings/transfer': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.realTransfer, extra: REAL_STANDALONE_ADS },
+  '/your/shops/me/stats/whats-new': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.0.0', scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(500); await until(() => window.__shadow.querySelector('[data-role="whats-new"]')); const S = window.__shadow; const out = { title: S.querySelector('.modal-title')?.textContent ?? null, items: S.querySelectorAll('[data-role="whats-new"] .li').length, seen: window.__values.get('eat:v1:core:seenVersion') }; S.querySelector('[data-action="wn-ok"]').click(); await wait(50); out.closed = !S.querySelector('[data-role="whats-new"]'); return out; }` },
+  '/your/shops/me/stats/whats-new-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.0.0', scenario: `async ({ wait }) => { await wait(1200); return { ok: true }; }` },
+  '/your/shops/me/stats/first-visit': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.1.0', scenario: `async ({ wait }) => { await wait(800); return { shown: Boolean(window.__shadow.querySelector('[data-role="whats-new"]')) }; }` },
   '/your/shops/me/stats/feedback': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.feedback },
   // Screenshot-only pages.
   '/your/shops/me/stats/feedback-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: `async ({ wait }) => { ${HELPERS} await click(); S().querySelector('[data-action="open-workspace"]').click(); await wait(120); S().querySelector('[data-action="report-problem"]').click(); await wait(150); return { ok: true }; }` },
@@ -982,6 +989,16 @@ test('the real standalone script hands its data over from its notice, with the s
   assert.equal(r.standaloneKept, 'bts\nkpop poster', 'the standalone script keeps its own data');
 });
 
+test("the What's new dialog shows once after an update, in the interface language", async () => {
+  const r = await visit(chrome, base, '/your/shops/me/stats/whats-new');
+  assert.match(r.title, /Yenilikler · 2\.1\.0/);
+  assert.equal(r.items, 3);
+  assert.equal(r.seen, '2.1.0', 'the version is recorded, so it does not open again');
+  assert.equal(r.closed, true);
+  const again = await visit(chrome, base, '/your/shops/me/stats/first-visit');
+  assert.equal(again.shown, false, 'nothing to show for a version already seen');
+});
+
 test('a problem report shows everything, never shop data, and opens a prefilled GitHub issue without sending anything', async () => {
   const r = await visit(chrome, base, '/your/shops/me/stats/feedback');
   assert.equal(r.title, 'Sorun bildir');
@@ -1025,7 +1042,8 @@ test('transfer screen pulls data from an armed standalone script on the same tab
 });
 
 test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSHOTS }, async () => {
-  for (const [name, pathname] of [['feedback', '/your/shops/me/stats/feedback-shot'], ['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-he-rtl', '/your/shops/me/stats/pack-he'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['ma-conv-drawer', '/messages/1234567890'], ['ma-conv-page', '/messages/1234567890?shot=page'], ['ma-inbox-empty', '/messages/eat-shot-inbox'], ['ma-templates', '/messages/eat-shot-templates'], ['ma-automation', '/messages/eat-shot-automation'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases']]) {
-    await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`]);
+  for (const [name, pathname, width] of [['feedback', '/your/shops/me/stats/feedback-shot'], ['legacy-notice', '/your/shops/me/advertising/listings/notice-shot'], ['pack-de', '/your/shops/me/stats/pack-de'], ['pack-he-rtl', '/your/shops/me/stats/pack-he'], ['pack-fr-failed', '/your/shops/me/stats/pack-fr'], ['la-drawer', '/your/shops/me/tools/listings?eat=engine'], ['ma-drawer', '/messages/eat-engine'], ['ma-conv-drawer', '/messages/1234567890'], ['ma-conv-page', '/messages/1234567890?shot=page'], ['ma-inbox-empty', '/messages/eat-shot-inbox'], ['ma-templates', '/messages/eat-shot-templates'], ['ma-automation', '/messages/eat-shot-automation'], ['kw-drawer', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=drawer'], ['kw-page', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=page'], ['kw-saved', '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved'], ['ads-drawer', '/your/shops/me/advertising/listings/drawer-shot'], ['ads-page', '/your/shops/me/advertising/listings/page-shot'], ['ads-rules', '/your/shops/me/advertising/listings/rules-shot'], ['sale-drawer', '/your/shops/me/sales-discounts/drawer-shot'], ['sale-page', '/your/shops/me/sales-discounts/ui-shot'], ['sale-engine', '/your/shops/me/sales-discounts/engine'], ['onboarding', '/your/shops/me/onboarding-shot'], ['migration', '/your/shops/me/migration-shot'],['shell-light-open', '/messages'], ['shell-dark-open', '/your/shops/me/stats'], ['shell-closed', '/your/orders/sold'], ['ws-settings-light', '/your/account'], ['ws-settings-dark', '/your/purchases'], ['whats-new', '/your/shops/me/stats/whats-new-shot'], ['ws-narrow', '/your/account', 1000], ['ws-narrow-rtl', '/your/shops/me/stats/pack-he', 1000]]) {
+    // A third value is a narrower window width (the design's narrow-window layout).
+    await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`, ...(width ? [`--window-size=${width},800`] : [])]);
   }
 });

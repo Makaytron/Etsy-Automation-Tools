@@ -10,6 +10,8 @@
 // suite-css.js; this file only places them.
 
 export const SHELL_CSS = `
+@keyframes eat-toast-timer { from { width: 100%; } to { width: 0; } }
+@media (prefers-reduced-motion: reduce) { .toast .pl { animation: none !important; } }
 :host { all: initial; }
 .mkui-root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
 .mkui-root > * { pointer-events: auto; }

@@ -18,6 +18,8 @@ import { createLanguagePacks } from '../core/language-packs.js';
 import { openFeedback } from './feedback.js';
 import { createWorkspace } from './workspace.js';
 import { openOnboarding } from './onboarding.js';
+import { maybeShowWhatsNew } from './whats-new.js';
+import { createToasts } from './toasts.js';
 import { tabRect, snapToEdge, drawerSide, drawerWidth, TAB_SHORT, TAB_LONG } from '../core/drawer-geometry.js';
 import { TOOL_IDS } from '../core/settings.js';
 import { actionForEvent } from '../core/shortcuts.js';
@@ -81,6 +83,8 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     state.mounted = true;
     applyChrome();
     render();
+    unsubscribe.push(createToasts({ doc, container, text, notices }));
+    void maybeShowWhatsNew({ doc, container, text, settings, store: storage.namespace('core'), appVersion, onAllNotes: () => openWorkspace('settings') }).catch(() => {});
     if (!settings.get().onboarded) {
       openOnboarding({ doc, container, text, settings, scope, assets, onDone: () => tab.focus({ preventScroll: true }) });
     } else if (settings.get().drawer.openOnLoad) {
@@ -146,7 +150,13 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     const now = active
       ? h(doc, 'div', { class: 'dock-now', 'aria-labelledby': 'eat-current' },
         toolView ?? h(doc, 'div', { class: 'row' }, icon(doc, ICONS[active]), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: t(`tool.${active}`) })),
-        toolView ? null : h(doc, 'p', { class: 'xs mute2', 'data-role': 'tool-status', text: statusText(active) }))
+        toolView ? null : h(doc, 'p', { class: 'xs mute2', 'data-role': 'tool-status', text: statusText(active) }),
+        // While the tool's engine starts, its section shows the canvas's loading skeleton (Loaders).
+        !toolView && host.module?.(active)?.migrated && host.module(active).status?.() === 'starting'
+          ? h(doc, 'div', { class: 'ld-box', 'aria-hidden': 'true', 'data-role': 'tool-loading' },
+            [0, 1].map(() => h(doc, 'div', { class: 'row', style: 'gap: 12px;' }, h(doc, 'span', { class: 'shim', style: 'width: 40px; height: 40px; flex: none;' }),
+              h(doc, 'span', { class: 'col grow', style: 'gap: 8px;' }, h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 80%;' }), h(doc, 'span', { class: 'shim', style: 'height: 10px; width: 50%;' })))))
+          : null)
       : h(doc, 'div', { class: 'dock-idle', 'data-role': 'drawer-idle' },
         h(doc, 'span', { class: 'well-lg' }, icon(doc, ICONS.compass, 20)),
         h(doc, 'span', { class: 'h3', 'data-role': 'no-tool', text: t('drawer.noTool') }),
