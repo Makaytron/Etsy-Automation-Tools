@@ -7,7 +7,12 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const registryPath = path.join(repoRoot, 'config', 'production-packages.json');
 const distributionPath = path.join(repoRoot, 'DISTRIBUTION.md');
 const distributionGatePath = path.join(repoRoot, 'tools', 'Test-Distribution.ps1');
-const expectedCount = 5;
+// Five standalone tools distributed through Greasy Fork plus the unified
+// script, which Greasy Fork cannot host (its 2,000,000-character limit), so it
+// is distributed from GitHub only.
+const expectedKindCounts = { standalone: 5, unified: 1 };
+const expectedDistributionByKind = { standalone: 'greasyfork', unified: 'github' };
+const expectedCount = Object.values(expectedKindCounts).reduce((sum, value) => sum + value, 0);
 
 function fail(message) {
   throw new Error(message);
@@ -38,10 +43,19 @@ if (registry.length !== expectedCount) {
   fail(`Production package registry must contain exactly ${expectedCount} packages; found ${registry.length}.`);
 }
 
-const uniqueFields = ['id', 'packageSlug', 'publicName', 'scriptPath', 'greasyForkId', 'greasyForkSlug'];
+const uniqueFields = ['id', 'packageSlug', 'publicName', 'scriptPath'];
 for (const field of uniqueFields) {
   const values = registry.map((entry) => entry?.[field]);
   if (new Set(values).size !== values.length) fail(`Production package registry contains duplicate ${field} values.`);
+}
+const greasyForkEntries = registry.filter((entry) => entry?.distribution === 'greasyfork');
+for (const field of ['greasyForkId', 'greasyForkSlug']) {
+  const values = greasyForkEntries.map((entry) => entry[field]);
+  if (new Set(values).size !== values.length) fail(`Production package registry contains duplicate ${field} values.`);
+}
+for (const [kind, count] of Object.entries(expectedKindCounts)) {
+  const found = registry.filter((entry) => entry?.kind === kind).length;
+  if (found !== count) fail(`Production package registry must contain exactly ${count} ${kind} package(s); found ${found}.`);
 }
 
 for (const entry of registry) {
@@ -49,8 +63,16 @@ for (const entry of registry) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.id ?? '')) fail(`Invalid production id: ${entry.id ?? 'missing'}`);
   if (!/^etsy-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.packageSlug ?? '')) fail(`Invalid packageSlug: ${entry.packageSlug ?? 'missing'}`);
   if (typeof entry.publicName !== 'string' || !entry.publicName.startsWith('Makaytron Etsy ')) fail(`Invalid publicName for ${entry.packageSlug}.`);
-  if (!Number.isInteger(entry.greasyForkId) || entry.greasyForkId <= 0) fail(`Invalid greasyForkId for ${entry.packageSlug}.`);
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.greasyForkSlug ?? '')) fail(`Invalid greasyForkSlug for ${entry.packageSlug}.`);
+  if (!Object.hasOwn(expectedDistributionByKind, entry.kind)) fail(`Invalid kind for ${entry.packageSlug}: ${entry.kind ?? 'missing'}`);
+  if (entry.distribution !== expectedDistributionByKind[entry.kind]) {
+    fail(`${entry.packageSlug}: a ${entry.kind} package must use distribution "${expectedDistributionByKind[entry.kind]}".`);
+  }
+  if (entry.distribution === 'greasyfork') {
+    if (!Number.isInteger(entry.greasyForkId) || entry.greasyForkId <= 0) fail(`Invalid greasyForkId for ${entry.packageSlug}.`);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(entry.greasyForkSlug ?? '')) fail(`Invalid greasyForkSlug for ${entry.packageSlug}.`);
+  } else if (entry.greasyForkId !== null || entry.greasyForkSlug !== null) {
+    fail(`${entry.packageSlug}: a GitHub-only package must set greasyForkId and greasyForkSlug to null.`);
+  }
 
   const expectedPrefix = `scripts/${entry.packageSlug}/`;
   if (typeof entry.scriptPath !== 'string' || !entry.scriptPath.startsWith(expectedPrefix) || !entry.scriptPath.endsWith('.user.js')) {
@@ -76,7 +98,8 @@ if (JSON.stringify(actualUserscripts) !== JSON.stringify(registeredUserscripts))
 }
 
 const mkuiPairs = MKUI_PRODUCTION_SCRIPTS.map((entry) => `${entry.id}\t${entry.path}`).sort();
-const registryPairs = registry.map((entry) => `${entry.id}\t${entry.scriptPath}`).sort();
+// The unified script is not an MKUI bundle; MKUI drift protection covers the standalone tools.
+const registryPairs = registry.filter((entry) => entry.kind === 'standalone').map((entry) => `${entry.id}\t${entry.scriptPath}`).sort();
 if (JSON.stringify(mkuiPairs) !== JSON.stringify(registryPairs)) {
   fail('MKUI production registry id/path inventory does not match config/production-packages.json.');
 }
@@ -85,7 +108,7 @@ const distributionSource = fs.readFileSync(distributionPath, 'utf8');
 const documentedGreasyForkListings = [...distributionSource.matchAll(/^- \[([^\]\r\n]+)\]\(https:\/\/greasyfork\.org\/en\/scripts\/(\d+)-([a-z0-9-]+)\)\s*$/gm)]
   .map((match) => `${match[1]}\t${match[2]}\t${match[3]}`)
   .sort();
-const expectedGreasyForkListings = registry
+const expectedGreasyForkListings = greasyForkEntries
   .map((entry) => `${entry.publicName}\t${entry.greasyForkId}\t${entry.greasyForkSlug}`)
   .sort();
 if (JSON.stringify(documentedGreasyForkListings) !== JSON.stringify(expectedGreasyForkListings)) {
@@ -100,4 +123,4 @@ if (/\bId\s*=\s*58984\d\b/.test(distributionGateSource)) {
   fail('tools/Test-Distribution.ps1 still contains hard-coded Greasy Fork ids; use the production package registry.');
 }
 
-console.log(`PASS production package registry: ${registry.length} packages, filesystem/MKUI/docs/distribution mapping aligned.`);
+console.log(`PASS production package registry: ${registry.length} packages (${expectedKindCounts.standalone} standalone on Greasy Fork, ${expectedKindCounts.unified} unified on GitHub only), filesystem/MKUI/docs/distribution mapping aligned.`);

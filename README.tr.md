@@ -19,6 +19,9 @@ Etsy satıcıları için açık kaynak Etsy automation tools ve Tampermonkey use
 | [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.md) | 1.1.1 | Form tabanlı filtrelerle mevcut sayfadaki eşleşmeleri açıp kapatır; açık onayla tüm sayfalardaki eşleşmeleri kapatır. |
 | [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.md) | 1.3.1 | Tüm sayfaları sırayla toplar, Etsy metrik kapsamını doğrular; aktif dönem analizi, bağlamlı kohortlar, exact deney aralıkları, veri-kaliteli grafikler, AI karşılaştırması ve Health Engine sunar. |
 | [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/README.md) | 1.1.0 | Marketplace Insights metriklerini görünür DOM'dan okur, keyword satırlarının altında açıklar ve isteğe bağlı olarak Listing Analyzer'a kanıtlı araştırma sonucu gönderir; Listing Analyzer öneriyi bu kanıttan üretir. |
+| [Makaytron Etsy Automation Tools](./scripts/etsy-automation-tools/README.md) | 2.0.0 | Beş aracın tümü tek scriptte: Etsy satıcı sayfalarında kenar düğmesi ve çekmece, tam pencere çalışma alanı, ortak ayarlar ve standalone scriptlerden ayarların tek seferlik aktarımı. |
+
+Makaytron Etsy Automation Tools yalnız GitHub'dan, canonical raw `main` adresiyle kurulur ve güncellenir; script boyutu Greasy Fork sınırını aştığı için Greasy Fork'ta yer almaz. Beş standalone script GitHub ve Greasy Fork'ta kullanılmaya devam eder.
 
 Listing Analyzer ve Keyword & Market Analyzer ayrı ayrı kurulup kullanılabilir. Listing Analyzer'daki pazar araştırması özelliği kullanıcı tarafından başlatıldığında companion bulunamazsa neden gerekli olduğunu açıklar; yalnız kullanıcının **Yükleme sayfasını aç** onayından sonra canonical userscript adresini açar. Son kurulum onayı her zaman Tampermonkey'e ve kullanıcıya aittir.
 

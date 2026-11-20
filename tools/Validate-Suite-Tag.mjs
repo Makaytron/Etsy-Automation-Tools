@@ -53,8 +53,11 @@ try {
 } catch (error) {
   fail(`Production package registry is invalid JSON: ${error.message}`);
 }
-if (!Array.isArray(registry) || registry.length !== 5) {
-  fail(`Suite release requires exactly five registered production packages; found ${Array.isArray(registry) ? registry.length : 'invalid registry'}.`);
+if (!Array.isArray(registry)) fail('Production package registry must be a JSON array.');
+const standaloneCount = registry.filter((entry) => entry?.kind === 'standalone').length;
+const unifiedCount = registry.filter((entry) => entry?.kind === 'unified').length;
+if (standaloneCount !== 5 || unifiedCount !== 1 || registry.length !== 6) {
+  fail(`Suite release requires exactly five standalone and one unified registered production package; found ${standaloneCount} standalone, ${unifiedCount} unified, ${registry.length} total.`);
 }
 
 const packageContracts = registry.map((entry) => {

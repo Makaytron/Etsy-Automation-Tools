@@ -15,7 +15,7 @@ import { TOOLS } from '../src/modules/index.js';
 // ── Routes ──────────────────────────────────────────────────────────────
 
 test('routes match the standalone scripts exactly', () => {
-  const registry = JSON.parse(fs.readFileSync(new URL('../config/production-packages.json', import.meta.url), 'utf8'));
+  const registry = JSON.parse(fs.readFileSync(new URL('../config/production-packages.json', import.meta.url), 'utf8')).filter((pkg) => pkg.kind === 'standalone');
   for (const pkg of registry) {
     const source = fs.readFileSync(new URL(`../${pkg.scriptPath}`, import.meta.url), 'utf8');
     const legacy = source.match(/const RUNTIME_ROUTE_PATTERN = (\/.*\/);/)[1];

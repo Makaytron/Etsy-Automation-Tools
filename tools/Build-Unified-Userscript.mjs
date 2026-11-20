@@ -3,6 +3,8 @@
 //
 //   node tools/Build-Unified-Userscript.mjs            writes dist/etsy-automation-tools.user.js
 //   node tools/Build-Unified-Userscript.mjs --check    builds twice in memory, fails unless byte-identical
+//   node tools/Build-Unified-Userscript.mjs --production         writes the registered production file (META.scriptPath)
+//   node tools/Build-Unified-Userscript.mjs --check-production   fails unless that committed file equals the production build
 //
 // The bundler is deliberately small and dependency-free. It accepts only the
 // module syntax used in src/: named relative imports and `export` on
@@ -10,9 +12,11 @@
 // instead of being bundled incorrectly. The output is deterministic: no
 // timestamps, stable module order, LF line endings.
 //
-// This is a development build. The unified script is not a production
-// package yet, so the header carries no @updateURL/@downloadURL; those are
-// added when it is registered in config/production-packages.json.
+// The default output is a development build without @updateURL/@downloadURL.
+// The production file is registered in config/production-packages.json
+// (kind "unified", distribution "github") and must stay byte-identical to the
+// --production build. The build reads no registry entries: the five
+// standalone tools are adopted through tools/Unified-Adopt-*.mjs.
 
 import fs from 'node:fs';
 import path from 'node:path';

@@ -9,7 +9,8 @@ import vm from 'node:vm';
 import test from 'node:test';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const registry = JSON.parse(await readFile(path.join(root, 'config/production-packages.json'), 'utf8'));
+// The five standalone tools; the unified script is covered by tools/Test-Unified-*.mjs.
+const registry = JSON.parse(await readFile(path.join(root, 'config/production-packages.json'), 'utf8')).filter(product => product.kind === 'standalone');
 const shared = (await readFile(path.join(root, 'shared/lifecycle/spa-lifecycle.js'), 'utf8')).trim();
 const sources = new Map(await Promise.all(registry.map(async product => [product.id, await readFile(path.join(root, product.scriptPath), 'utf8')])));
 const surfaces = {

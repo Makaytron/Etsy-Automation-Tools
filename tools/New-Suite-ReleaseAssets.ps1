@@ -32,8 +32,10 @@ Assert-True (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf) "Suite rel
 
 $registryPath = Join-Path $repoRoot 'config/production-packages.json'
 Assert-True (Test-Path -LiteralPath $registryPath -PathType Leaf) 'Production package registry is missing.'
-$registry = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($registryPath, [System.Text.Encoding]::UTF8)))
-Assert-True ($registry.Count -eq 5) "Suite release requires exactly five registered production packages; found $($registry.Count)."
+$registry = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($registryPath, [System.Text.Encoding]::UTF8)) | ForEach-Object { $_ })
+$standaloneCount = @($registry | Where-Object { [string]$_.kind -eq 'standalone' }).Count
+$unifiedCount = @($registry | Where-Object { [string]$_.kind -eq 'unified' }).Count
+Assert-True ($standaloneCount -eq 5 -and $unifiedCount -eq 1 -and $registry.Count -eq 6) "Suite release requires exactly five standalone and one unified registered production package; found $standaloneCount standalone, $unifiedCount unified, $($registry.Count) total."
 
 $scriptAssets = @(
     foreach ($package in $registry) {

@@ -19,6 +19,9 @@ Open-source Etsy automation tools and Tampermonkey userscripts for sellers. The 
 | [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.1.1 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
 | [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.en.md) | 1.3.1 | Collects every page in order, verifies Etsy metric scopes, and adds active-epoch analysis, context-aware cohorts, exact experiment intervals, quality-aware charts, AI comparison, and Health Engine workflows. |
 | [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/README.en.md) | 1.1.0 | Reads visible Marketplace Insights metrics, explains them beneath keyword rows, and can return evidence to Listing Analyzer, which derives the title/tag suggestion locally. |
+| [Makaytron Etsy Automation Tools](./scripts/etsy-automation-tools/README.en.md) | 2.0.0 | All five tools in one script: an edge button and drawer on Etsy seller pages, a full-window workspace, shared settings, and a one-time transfer of settings from the standalone scripts. |
+
+Makaytron Etsy Automation Tools installs and updates from GitHub only, through its canonical raw `main` URL; it is not on Greasy Fork, whose script size limit it exceeds. The five standalone scripts remain available on GitHub and Greasy Fork.
 
 Listing Analyzer and Keyword & Market Analyzer are independently installable and fully usable on their own. When the user starts the optional market-research action in Listing Analyzer and the companion is missing, the script explains why it is needed and opens the canonical install URL only after the user approves **Open install page**. Tampermonkey and the user always retain final installation control.
 

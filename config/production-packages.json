@@ -4,6 +4,8 @@
     "packageSlug": "etsy-ads-keyword-manager",
     "publicName": "Makaytron Etsy Ads Keyword Manager",
     "scriptPath": "scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js",
+    "kind": "standalone",
+    "distribution": "greasyfork",
     "greasyForkId": 589845,
     "greasyForkSlug": "makaytron-etsy-ads-keyword-manager"
   },
@@ -12,6 +14,8 @@
     "packageSlug": "etsy-keyword-market-analyzer",
     "publicName": "Makaytron Etsy Keyword & Market Analyzer",
     "scriptPath": "scripts/etsy-keyword-market-analyzer/Makaytron-Etsy-Keyword-Market-Analyzer.user.js",
+    "kind": "standalone",
+    "distribution": "greasyfork",
     "greasyForkId": 589847,
     "greasyForkSlug": "makaytron-etsy-keyword-market-analyzer"
   },
@@ -20,6 +24,8 @@
     "packageSlug": "etsy-listing-analyzer",
     "publicName": "Makaytron Etsy Listing Analyzer",
     "scriptPath": "scripts/etsy-listing-analyzer/Makaytron-Etsy-Listing-Analyzer.user.js",
+    "kind": "standalone",
+    "distribution": "greasyfork",
     "greasyForkId": 589846,
     "greasyForkSlug": "makaytron-etsy-listing-analyzer"
   },
@@ -28,6 +34,8 @@
     "packageSlug": "etsy-message-assistant",
     "publicName": "Makaytron Etsy Message Assistant",
     "scriptPath": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
+    "kind": "standalone",
+    "distribution": "greasyfork",
     "greasyForkId": 589844,
     "greasyForkSlug": "makaytron-etsy-message-assistant"
   },
@@ -36,7 +44,19 @@
     "packageSlug": "etsy-sale-campaign-batch-runner",
     "publicName": "Makaytron Etsy Sale Manager",
     "scriptPath": "scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js",
+    "kind": "standalone",
+    "distribution": "greasyfork",
     "greasyForkId": 589843,
     "greasyForkSlug": "makaytron-etsy-sale-manager"
+  },
+  {
+    "id": "automation-tools",
+    "packageSlug": "etsy-automation-tools",
+    "publicName": "Makaytron Etsy Automation Tools",
+    "scriptPath": "scripts/etsy-automation-tools/Makaytron-Etsy-Automation-Tools.user.js",
+    "kind": "unified",
+    "distribution": "github",
+    "greasyForkId": null,
+    "greasyForkSlug": null
   }
 ]

@@ -5,8 +5,8 @@
 // own @name/@namespace and stay installable until their retirement window
 // ends. @name follows the repository's "Makaytron Etsy …" listing names; the
 // interface itself says "Etsy Automation Tools". The production build
-// (`--production`) adds @updateURL/@downloadURL for `scriptPath`; registering
-// it in config/production-packages.json is the release step (see AGENTS.md).
+// (`--production`) adds @updateURL/@downloadURL for `scriptPath`, which is
+// registered in config/production-packages.json (distributed from GitHub only).
 
 export const META = Object.freeze({
   name: 'Makaytron Etsy Automation Tools',
@@ -14,7 +14,8 @@ export const META = Object.freeze({
   version: '2.0.0',
   description: 'Sale Manager, Message Assistant, Ads Keyword Manager, Listing Analyzer and Keyword & Market Analyzer for Etsy sellers, in one drawer.',
   author: 'Makaytron',
-  homepage: 'https://makaytron.com',
+  // Same canonical package page the standalone scripts use (tools/Test-Distribution.ps1).
+  homepage: 'https://github.com/Makaytron/Etsy-Automation-Tools/tree/main/scripts/etsy-automation-tools',
   supportURL: 'https://github.com/Makaytron/Etsy-Automation-Tools/issues',
   icon: 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/assets/makaytron-logo.png',
   license: 'MIT',

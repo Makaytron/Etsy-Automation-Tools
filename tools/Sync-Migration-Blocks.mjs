@@ -51,7 +51,8 @@ export async function synchronize(source, id) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const products = JSON.parse(await readFile(path.join(root, 'config/production-packages.json'), 'utf8'));
+  // Only the standalone scripts send; the unified script itself receives.
+  const products = JSON.parse(await readFile(path.join(root, 'config/production-packages.json'), 'utf8')).filter((product) => product.kind === 'standalone');
   for (const product of products) {
     if (!LEGACY_IDS.includes(product.id)) continue; // the unified script itself receives, it does not send
     const file = path.join(root, product.scriptPath);

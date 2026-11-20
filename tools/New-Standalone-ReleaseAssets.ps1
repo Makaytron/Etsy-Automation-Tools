@@ -23,7 +23,7 @@ function Assert-True {
 Assert-True ($PackageSlug -match '^[a-z0-9]+(?:-[a-z0-9]+)*$') "PackageSlug is invalid: $PackageSlug"
 $registryPath = Join-Path $repoRoot 'config/production-packages.json'
 Assert-True (Test-Path -LiteralPath $registryPath -PathType Leaf) 'Production package registry is missing.'
-$registry = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($registryPath, [System.Text.Encoding]::UTF8)))
+$registry = @(ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($registryPath, [System.Text.Encoding]::UTF8)) | ForEach-Object { $_ })
 $registeredMatches = @($registry | Where-Object { [string]$_.packageSlug -eq $PackageSlug })
 Assert-True ($registeredMatches.Count -eq 1) "PackageSlug is not a unique registered production package: $PackageSlug"
 $registeredPackage = $registeredMatches[0]
@@ -51,7 +51,13 @@ $version = $metadataMatches[0].Groups['version'].Value
 
 $runtimePattern = '(?m)^\s*const\s+(?<name>APP_VERSION|VERSION)\s*=\s*[''"](?<version>{0})[''"]\s*;\s*\r?$' -f $strictSemVerPattern
 $runtimeMatches = @([regex]::Matches($scriptSource, $runtimePattern))
-Assert-True ($runtimeMatches.Count -eq 1) "$PackageSlug userscript must contain exactly one APP_VERSION or VERSION marker."
+if ([string]$registeredPackage.kind -eq 'unified') {
+    # The unified script bundles the standalone engines with their own markers; its own APP_VERSION comes first.
+    Assert-True ($runtimeMatches.Count -ge 1) "$PackageSlug userscript must contain an APP_VERSION or VERSION marker."
+}
+else {
+    Assert-True ($runtimeMatches.Count -eq 1) "$PackageSlug userscript must contain exactly one APP_VERSION or VERSION marker."
+}
 Assert-True ($runtimeMatches[0].Groups['version'].Value -eq $version) "$($runtimeMatches[0].Groups['name'].Value) does not match @version $version."
 
 if (-not [string]::IsNullOrWhiteSpace($ExpectedVersion)) {
