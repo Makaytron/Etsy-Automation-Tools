@@ -13,14 +13,17 @@
 // engine does not start, and it steps aside if the standalone one appears.
 
 import { createScopedGm } from '../core/scoped-gm.js';
-import { renderSaleDrawer, renderSalePage, confirmSaleStart } from './sale-manager-ui.js';
+import { renderSaleDrawer, renderSalePage, confirmSaleStart, summary, SALE_STRINGS } from './sale-manager-ui.js';
+import { interpolate } from '../core/i18n.js';
+import { packText } from '../core/language-packs.js';
 
 export const STANDALONE_ROOT_ID = 'eda-batch-root';
 export const ENGINE_ROOT_ID = 'eat-sale-batch-root';
 const STANDALONE_GRACE_MS = 1500;
 
 export function createSaleManagerModule() {
-  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, lastSnapshot: '' };
+  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, lastSnapshot: '', lastJob: null, reportFilter: 'all' };
+  const say = (key, vars) => { const lang = state.ctx?.settings?.get().language ?? 'en'; return interpolate(SALE_STRINGS[lang]?.[key] ?? packText(lang, `sale.${key}`) ?? SALE_STRINGS.en[key] ?? key, vars); };
 
   const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
 
@@ -42,7 +45,24 @@ export function createSaleManagerModule() {
     const text = JSON.stringify(state.engine.snapshot());
     if (text === state.lastSnapshot) return;
     state.lastSnapshot = text;
+    announce(state.engine.snapshot());
     ctx.events?.emit('tool:status', { tool: 'sale-manager', state: 'running' });
+  }
+
+  // Notifications: the series stopped (needs the user) or ended.
+  function announce(snap) {
+    const job = snap.job;
+    const before = state.lastJob;
+    state.lastJob = job ? { active: job.active, paused: job.paused, jobId: job.jobId } : null;
+    if (!before?.active) return;
+    const notify = state.ctx?.notify;
+    if (!notify) return;
+    const { done, total, index } = summary(snap);
+    if (job?.active && job.paused && !before.paused) {
+      void notify({ event: 'seriesStopped', tool: 'sale-manager', title: say('stoppedBanner', { n: index + 1 }), detail: snap.plans[index]?.saleName ?? '', needsAction: true, page: 'tool:sale-manager' });
+    } else if (!job?.active) {
+      void notify({ event: 'seriesDone', tool: 'sale-manager', title: say('completed'), detail: `${done} / ${total}`, page: 'tool:sale-manager' });
+    }
   }
 
   async function start(ctx) {
@@ -85,6 +105,9 @@ export function createSaleManagerModule() {
       openEtsy: () => run(() => engine.openCreateSale()),
       openPage: () => ui.openWorkspace?.('tool:sale-manager'),
       say: (message) => ui.say?.(message),
+      report: (options) => ui.report?.(options),
+      reportFilter: () => state.reportFilter,
+      setReportFilter: (value) => { state.reportFilter = value; ui.onTab?.('report'); },
       confirmStart: (trigger) => confirmSaleStart(ui.doc, ui.container, {
         snap: engine.snapshot(), language: ui.language, returnFocus: trigger, onStart: () => run(async () => { engine.closeReport?.(); await engine.start(); }),
       }),
@@ -98,6 +121,19 @@ export function createSaleManagerModule() {
     storageNamespace: 'sale-manager',
     migrated: true,
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+    /** Badge and tooltip line of the edge button while a series runs (Launcher-Closed). */
+    launcherStatus() {
+      const snap = !state.standalone && state.engine ? state.engine.snapshot() : null;
+      if (!snap?.job?.active) return null;
+      const { done, total } = summary(snap);
+      return { count: done, text: say('launcher', { done, total }) };
+    },
+    /** Shortcut "Pause the series" (Settings › Shortcuts). */
+    shortcut(action) {
+      if (action !== 'salePause' || !state.engine?.snapshot().job?.active) return false;
+      void Promise.resolve(state.engine.stop()).catch(() => {});
+      return true;
+    },
     /** Drawer section; null keeps the generic status text. */
     renderDrawer(ui) {
       if (state.standalone || !state.engine) return null;

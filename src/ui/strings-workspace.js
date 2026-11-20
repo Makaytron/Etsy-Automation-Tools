@@ -133,7 +133,8 @@ export const WORKSPACE_STRINGS = Object.freeze({
  * Languages the interface can show, with their own names: English (bundled)
  * and every pack (core/language-packs.js), named from the pack itself.
  */
+const englishName = (code) => { try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code); } catch { return code; } };
 export const UI_LANGUAGES = Object.freeze([
-  Object.freeze({ code: 'en', name: 'English' }),
-  ...PACK_LANGUAGES.map((code) => Object.freeze({ code, name: PACK_NAMES[code] })),
+  Object.freeze({ code: 'en', name: 'English', english: 'English' }),
+  ...PACK_LANGUAGES.map((code) => Object.freeze({ code, name: PACK_NAMES[code], english: englishName(code) })),
 ]);

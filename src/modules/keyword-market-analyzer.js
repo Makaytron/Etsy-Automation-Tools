@@ -21,7 +21,7 @@ const STANDALONE_GRACE_MS = 1500;
 const engineLanguage = (language) => (String(language ?? '').toLowerCase().startsWith('tr') ? 'tr' : 'en');
 
 export function createKeywordMarketAnalyzerModule() {
-  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', data: null, loading: null, reload: false };
+  const state = { engine: null, starting: null, standalone: false, observer: null, ctx: null, last: '', data: null, loading: null, reload: false, view: { query: '', selected: null }, wasActive: false };
 
   const standalonePresent = (doc) => Boolean(doc.getElementById(STANDALONE_ROOT_ID));
   const emit = (status) => state.ctx?.events?.emit('tool:status', { tool: KW_TOOL_ID, state: status });
@@ -103,6 +103,8 @@ export function createKeywordMarketAnalyzerModule() {
       cancel: () => run(() => engine.cancel()),
       clearData: () => run(() => engine.clearData()),
       openDetails: () => ui.openWorkspace?.(`tool:${KW_TOOL_ID}`),
+      viewState: () => state.view,
+      setViewState: (patch) => { state.view = { ...state.view, ...patch }; ui.onTab?.(ui.tab ?? 'overview'); },
     };
   }
 
@@ -125,7 +127,7 @@ export function createKeywordMarketAnalyzerModule() {
     },
     renderPage(ui) {
       const snap = view(ui);
-      return snap ? renderKwPage(ui.doc, { snap, data: state.data, language: ui.language, actions: actionsFor(ui), tab: ui.tab, onTab: ui.onTab }) : null;
+      return snap ? renderKwPage(ui.doc, { snap, data: state.data, language: ui.language, actions: actionsFor(ui), container: ui.container }) : null;
     },
     async mount(ctx) {
       state.ctx = ctx;

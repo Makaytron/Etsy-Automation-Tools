@@ -124,7 +124,7 @@ test('drawer opens from the button side, from the left for top and bottom', () =
   assert.equal(drawerSide('top'), 'left');
   assert.equal(drawerSide('bottom'), 'left');
   assert.equal(drawerWidth(1024), 360);
-  assert.equal(drawerWidth(1440), 384);
+  assert.equal(drawerWidth(1440), 400);
 });
 
 test('edge button stays inside the viewport and snaps to the nearest edge', () => {
@@ -183,7 +183,7 @@ test('problem reports carry only allowlisted, redacted fields', () => {
     { appVersion: '2.0.0', category: 'language-pack', errorCode: 'i18n_pack_download', note: 'Shop MyShop, key sk-ant-abcdefghijkl, mail a@b.co, see https://etsy.com/x order 123456789' },
     { userAgent: 'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 Chrome/131.0 Safari/537.36', locale: 'tr-TR', pathname: '/your/shops/MyShop/tools/listings', uiLanguage: 'tr' },
   );
-  assert.deepEqual(Object.keys(report).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorCode', 'format', 'formatVersion', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'uiLanguage']);
+  assert.deepEqual(Object.keys(report).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorAt', 'errorCode', 'format', 'formatVersion', 'handler', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'tool', 'uiLanguage', 'utcOffset']);
   assert.equal(report.browser, 'Chrome');
   assert.equal(report.os, 'Windows');
   assert.equal(report.region, 'TR');

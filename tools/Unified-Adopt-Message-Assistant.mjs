@@ -76,9 +76,52 @@ const EPILOGUE = `
         else await UI.generateReply();
         return true;
     }
+    // AI providers for the workspace's Settings › AI providers tab. Keys never leave
+    // the engine: the list reports only whether one is saved.
+    const __eatAi = {
+        list() {
+            const ai = Object.entries(AI_PROVIDERS).map(([id, p]) => ({
+                id, name: p.name, kind: 'text', apiKeyUrl: p.apiKeyUrl, models: AI.models(id),
+                model: String(Store.providers?.[id]?.model || ''), hasKey: Boolean(String(Store.providers?.[id]?.apiKey || '').trim()),
+            }));
+            const deepl = { id: 'deepl', name: 'DeepL', kind: 'translate', apiKeyUrl: 'https://www.deepl.com/your-account/keys', models: [], model: '', hasKey: Boolean(String(Store.settings.deeplApiKey || '').trim()) };
+            const google = { id: 'google', name: 'Google Translate', kind: 'translate', apiKeyUrl: '', models: [], model: '', hasKey: true, keyless: true };
+            return [deepl, google, ...ai];
+        },
+        active() { return { provider: String(Store.settings.aiProvider || ''), translator: String(Store.settings.translator || '') }; },
+        async save(id, { apiKey, model } = {}) {
+            if (id === 'deepl') {
+                const next = { ...Store.settings, deeplApiKey: apiKey === undefined ? Store.settings.deeplApiKey : String(apiKey).trim() };
+                await MessageCenterAgent.withSafeConfigurationChange(next, () => Store.saveConfigBundle({ settings: next }));
+                return true;
+            }
+            if (!AI_PROVIDERS[id]) return false;
+            const providers = clone(Store.providers);
+            const current = providers[id] || {};
+            providers[id] = { ...current, apiKey: apiKey === undefined ? current.apiKey : String(apiKey).trim(), model: model ? String(model) : current.model };
+            await Store.saveConfigBundle({ providers });
+            return true;
+        },
+        remove(id) { return __eatAi.save(id, { apiKey: '' }); },
+        /** Automatic translation preview: sends opened conversations to the translator without a click. */
+        autoPreview() { return Boolean(Store.settings.autoTurkishPreview); },
+        async setAutoPreview(on) {
+            if (Boolean(Store.settings.autoTurkishPreview) === Boolean(on)) return true;
+            const next = { ...Store.settings, autoTurkishPreview: Boolean(on) };
+            await MessageCenterAgent.withSafeConfigurationChange(next, () => Store.saveConfigBundle({ settings: next }));
+            return true;
+        },
+        async use({ provider, translator } = {}) {
+            const next = { ...Store.settings };
+            if (provider && AI_PROVIDERS[provider]) next.aiProvider = provider;
+            if (translator === 'deepl' || translator === 'google') next.translator = translator;
+            await MessageCenterAgent.withSafeConfigurationChange(next, () => Store.saveConfigBundle({ settings: next }));
+            return true;
+        },
+    };
     return {
         start: () => App.init(), version: APP_VERSION,
-        snapshot: __eatSnapshot, openPanel: __eatOpen,
+        snapshot: __eatSnapshot, openPanel: __eatOpen, ai: __eatAi,
         translateLast: () => __eatCompose('translate'), generateReply: () => __eatCompose('reply'),
     };`;
 

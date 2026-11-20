@@ -37,6 +37,12 @@ export const UI_STRINGS = Object.freeze({
     'where.listing-analyzer': 'On Listings',
     'where.keyword-market-analyzer': 'On Marketplace Insights',
     'page.unsupported': 'Etsy',
+    'page.sale-manager': 'Sales & Discounts',
+    'page.message-assistant': 'Messages',
+    'page.ads-keyword-manager': 'Etsy Ads · keywords',
+    'page.listing-analyzer': 'Listings',
+    'page.keyword-market-analyzer': 'Marketplace Insights',
+    'tab.tip': 'Click to open, drag to move.',
   }),
 });
 

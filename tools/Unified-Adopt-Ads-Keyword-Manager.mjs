@@ -57,6 +57,74 @@ const ENGINE_API = `
             hasBackup: typeof backup === 'string' && Boolean(backup.trim()),
         };
     }
+    // Rows of this page that match the word list, for the workspace table (design canvas: Ads-Overview).
+    function __eatCellText(row, names) {
+        const table = row.closest('table');
+        if (!table) return '';
+        const wanted = names.map(normalizeText);
+        const semantic = Array.from(row.querySelectorAll(':scope > td')).find((cell) => wanted.includes(normalizeText(cell.querySelector(':scope > .wt-table--responsive__title')?.textContent)));
+        const index = Array.from(table.querySelectorAll('thead th')).findIndex((header) => wanted.includes(normalizeText(header.textContent)));
+        const cell = semantic || (index >= 0 ? row.children[index] : null);
+        return cell ? String(getReadableCellText(cell) ?? '').trim().slice(0, 24) : '';
+    }
+    async function __eatMatches() {
+        if (!RouteLifecycle.allowed()) return null;
+        try {
+            const wordlist = await loadWordlist();
+            const rows = [];
+            let unmatched = 0;
+            for (const row of getAllRows()) {
+                const keyword = getRowWord(row);
+                if (!keyword) continue;
+                const rule = wordlist.find((word) => wordMatchesRow(word, keyword));
+                if (!rule) { unmatched += 1; continue; }
+                const decoded = decodeEditorRule(rule, 0);
+                const box = row.querySelector('input[type=checkbox]');
+                rows.push({
+                    keyword, rule: decoded.value, type: decoded.type,
+                    clicks: getMetricValue(row, ['Clicks', 'Click', 'Tıklamalar', 'Tıklama']),
+                    orders: getMetricValue(row, ['Orders', 'Order', 'Siparişler', 'Sipariş']),
+                    spend: __eatCellText(row, ['Spend', 'Ad spend', 'Harcama', 'Reklam harcaması']),
+                    enabled: Boolean(box?.checked), switchable: Boolean(box && !box.disabled), high: isHighClickRatioRow(row),
+                });
+            }
+            return { rows, unmatched };
+        } catch {
+            return null;
+        }
+    }
+    // One row on or off, as if the user pressed its Etsy switch; the same steady-state check as a page run.
+    function __eatToggleOne(keyword, targetState) {
+        if (!RouteLifecycle.allowed() || activeOperation || wordlistUpdateRunning || document.getElementById(EDITOR_MODAL_ID)) return Promise.resolve(false);
+        const route = RouteLifecycle.capture();
+        activeOperation = (async () => {
+            const row = (await getFilteredRows()).find((candidate) => getRowWord(candidate) === keyword);
+            const box = row?.querySelector('input[type=checkbox]');
+            if (!box || box.disabled) return false;
+            if (box.checked === targetState) return true;
+            const changed = await waitForStableCheckboxState(box, targetState, () => { assertAdsRoute(route); box.click(); });
+            await decorateRows();
+            if (changed) notify('success', t('keywordChanged', { keyword, state: t(targetState ? 'enabled' : 'disabled') }));
+            return changed;
+        })().catch(() => false).finally(() => { activeOperation = null; __env.onChange?.(); });
+        return activeOperation;
+    }
+    // Saves a whole rule list from the workspace's word list page, by the editor's own rules.
+    async function __eatSaveRules(list) {
+        if (!RouteLifecycle.allowed() || activeOperation || wordlistUpdateRunning || document.getElementById(EDITOR_MODAL_ID)) return { ok: false, reason: 'busy' };
+        const value = (Array.isArray(list) ? list : []).map((rule) => encodeEditorRule({ type: rule?.type === 'exact' ? 'exact' : rule?.type === 'regex' ? 'regex' : 'contains', value: String(rule?.value ?? ''), edited: true })).filter(Boolean).join('\n');
+        if (!value) return { ok: false, reason: 'empty' };
+        if (new TextEncoder().encode(value).length > MAX_WORDLIST_BYTES) return { ok: false, reason: 'too_large' };
+        await setRulesValue('adWordlist', value);
+        try {
+            const filteredRows = await decorateRows();
+            const params = { rules: quantity(value.split('\n').length, 'rule'), matches: quantity(filteredRows.length, 'match') };
+            notify('success', t('rulesSaved', params));
+            setPanelStatus('rulesSavedStatus', 'success', '', params);
+        } catch { /* the list is saved; the page marks catch up on the next read */ }
+        __env.onChange?.();
+        return { ok: true };
+    }
     function __eatSyncLanguage(language) {
         if (!['tr', 'en'].includes(language) || language === currentLanguage) return null;
         if (activeOperation || wordlistUpdateRunning || languageChangePromise) return null;
@@ -72,7 +140,7 @@ const EPILOGUE = `
     }
     return {
         start: __eatStart, suspend: suspendAdsRoute, version: APP_VERSION,
-        snapshot: __eatSnapshot, rules: __eatRules, syncLanguage: __eatSyncLanguage,
+        snapshot: __eatSnapshot, rules: __eatRules, syncLanguage: __eatSyncLanguage, matches: __eatMatches, toggleOne: __eatToggleOne, saveRules: __eatSaveRules,
         closePage: () => runToggleRows(false), openPage: () => runToggleRows(true), closeAllPages: requestDisableAllPages,
         updateList: ensureWord, restoreBackup: restoreWordlistBackup, editRules: openWordlistEditor,
     };`;

@@ -1,0 +1,8 @@
+// Release notes shown in Settings › Updates and in the "What's new" dialog
+// after an update. Each line is a translation key, so the notes follow the
+// interface language. Newest first; keep it to the last few versions.
+
+export const RELEASE_NOTES = Object.freeze([
+  Object.freeze({ version: '2.1.0', date: '2026-11-20', items: Object.freeze(['rn.210.design', 'rn.210.settings', 'rn.210.notices']) }),
+  Object.freeze({ version: '2.0.0', date: '2026-11-20', items: Object.freeze(['rn.200.one', 'rn.200.workspace', 'rn.200.report']) }),
+]);

@@ -52,5 +52,14 @@ export function createText({ settings, scope, packs = null }) {
   const retryPack = () => (packs ? packs.retry(language()) : Promise.resolve(pack()));
   const onPackChange = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
   const packChanged = () => { for (const fn of [...listeners]) fn(); };
-  return { t, language, direction: () => textDirection(language()), pack, ensurePack, retryPack, onPackChange, packChanged };
+  /** The same for any language: used to download a new language before switching to it. */
+  const languageState = (code) => (packs ? packs.state(code) : { status: 'bundled' });
+  const ensureLanguage = (code) => (packs ? (packs.state(code).status === 'error' ? packs.retry(code) : packs.ensure(code)) : Promise.resolve({ status: 'bundled' }));
+  const packSize = (code) => packs?.size?.(code) ?? 0;
+  return { t, language, direction: () => textDirection(language()), pack, ensurePack, retryPack, onPackChange, packChanged, languageState, ensureLanguage, packSize };
+}
+
+/** A language's own name ("Türkçe", "Deutsch"), as the language list shows it. */
+export function languageName(code) {
+  return UI_LANGUAGES.find((l) => l.code === code)?.name ?? code;
 }

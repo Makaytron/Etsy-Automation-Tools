@@ -14,6 +14,9 @@ import { TOOLS } from './modules/index.js';
 import { runLegacyMigration, migratedTools } from './core/migration.js';
 import { isSellerPath } from './core/routes.js';
 import { createShell } from './ui/shell.js';
+import { createNotices } from './core/notices.js';
+import { createUpdates } from './core/updates.js';
+import { createReports } from './core/reports.js';
 
 const LOG_PREFIX = '[Etsy Automation Tools]';
 const PATH_POLL_MS = 1000;
@@ -29,6 +32,12 @@ export async function boot({ scope, createRouteLifecycle, handoff, assets = {}, 
   const settings = createSettings(storage.namespace('core'));
   await settings.load();
   const events = createEvents((error) => console.error(LOG_PREFIX, error));
+  // Notification centre, version check and the list of sent reports (Settings › Notifications, Updates, Help).
+  const core = storage.namespace('core');
+  const notices = createNotices({ store: core, settings, scope });
+  const updates = createUpdates({ gm: scope.GM, store: core, appVersion: META.version, settings });
+  const reports = createReports({ gm: scope.GM, store: core });
+  await Promise.all([notices.load(), updates.load(), reports.load()]).catch(() => {});
   const onError = (code, error) => {
     console.error(LOG_PREFIX, code, error);
     events.emit('error', { code });
@@ -57,7 +66,8 @@ export async function boot({ scope, createRouteLifecycle, handoff, assets = {}, 
     createRouteLifecycle,
     location: scope.location,
     services: {
-      storage, settings, events, migration, scope, assets, engines,
+      storage, settings, events, migration, scope, assets, engines, notices,
+      notify: (item) => notices.add(item),
       appVersion: META.version, persistent: Boolean(gmStore),
       isToolEnabled: (id) => settings.get().tools[id] !== false,
     },
@@ -65,7 +75,14 @@ export async function boot({ scope, createRouteLifecycle, handoff, assets = {}, 
     onError,
     onChange: syncShell,
   });
-  shell = createShell({ scope, settings, host, storage, appVersion: META.version, migration, assets });
+  shell = createShell({ scope, settings, host, storage, appVersion: META.version, migration, assets, notices, updates, reports });
+  // A new version found by a check is announced once.
+  updates.subscribe((state) => {
+    if (updates.available() && state.latest && !notices.list().some((n) => n.event === 'newVersion' && n.detail.includes(state.latest))) {
+      void notices.add({ event: 'newVersion', title: shell.t?.('nt.newVersion', { version: state.latest }) ?? `Etsy Automation Tools ${state.latest}`, detail: state.latest, page: 'settings:updates' });
+    }
+  });
+  notices.subscribe(() => shell.refresh());
   events.on('tool:status', () => shell.refresh());
   await host.start();
   syncShell();
@@ -74,5 +91,5 @@ export async function boot({ scope, createRouteLifecycle, handoff, assets = {}, 
   scope.setInterval?.(() => {
     if (scope.location.pathname !== lastPath) { lastPath = scope.location.pathname; syncShell(); }
   }, PATH_POLL_MS);
-  return { host, storage, settings, events, shell };
+  return { host, storage, settings, events, shell, notices, updates, reports };
 }

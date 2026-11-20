@@ -27,7 +27,7 @@ export function packText(language, key) {
   return loaded.get(language)?.[key];
 }
 
-function download(gm, url) {
+function download(gm, url, onProgress = null) {
   return new Promise((resolve, reject) => {
     if (typeof gm?.xmlHttpRequest !== 'function') { reject(new Error('no request API')); return; }
     gm.xmlHttpRequest({
@@ -38,6 +38,7 @@ function download(gm, url) {
         else if (text.length > MAX_PACK_BYTES) reject(new Error('too large'));
         else { try { resolve(JSON.parse(text)); } catch (error) { reject(error); } }
       },
+      onprogress: (event) => { if (onProgress && Number.isFinite(event?.loaded)) onProgress(event.loaded, Number.isFinite(event.total) && event.total > 0 ? event.total : null); },
       onerror: () => reject(new Error('network')),
       ontimeout: () => reject(new Error('timeout')),
     });
@@ -65,7 +66,7 @@ export function createLanguagePacks({ gm, cache, appVersion, onChange = () => {}
         return;
       } catch { /* an old or damaged pack: download it again */ }
     }
-    const pack = await download(gm, `${PACK_BASE_URL}${language}.json`);
+    const pack = await download(gm, `${PACK_BASE_URL}${language}.json`, (loadedBytes, total) => set(language, { status: 'loading', loaded: loadedBytes, total }));
     loaded.set(language, validatePack(pack, { language, appVersion }));
     await cache?.set(`pack.${language}`, pack).catch(() => {});
   }
@@ -98,5 +99,11 @@ export function createLanguagePacks({ gm, cache, appVersion, onChange = () => {}
     return states.get(language) ?? { status: 'idle' };
   }
 
-  return { ensure, retry, state };
+  /** Size of a loaded pack in bytes (UTF-8 of its JSON), or 0. */
+  function size(language) {
+    const pack = loaded.get(language);
+    return pack ? new TextEncoder().encode(JSON.stringify(pack)).length : 0;
+  }
+
+  return { ensure, retry, state, size };
 }

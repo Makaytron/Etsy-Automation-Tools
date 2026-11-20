@@ -65,6 +65,10 @@ export function createMessageAssistantModule({ secrets }) {
     });
     emit('running');
     await state.engine.start();
+    // "AI and translation services" in the setup and in Settings decides the engine's automatic translation preview.
+    const applyAutoPreview = () => state.engine?.ai?.setAutoPreview?.(ctx.settings.get().ai.autoTranslate).catch(() => {});
+    await applyAutoPreview();
+    ctx.settings.subscribe?.(() => { void applyAutoPreview(); });
     changed();
   }
 
@@ -90,6 +94,8 @@ export function createMessageAssistantModule({ secrets }) {
     storageNamespace: MA_TOOL_ID,
     migrated: true,
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+    /** Provider management for Settings › AI providers, while the engine runs on this page. */
+    aiProviders: () => (state.standalone ? null : state.engine?.ai ?? null),
     renderDrawer(ui) {
       const snap = view();
       return snap ? renderMaDrawer(ui.doc, { snap, language: ui.language, actions: actionsFor(ui) }) : null;

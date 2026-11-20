@@ -1,16 +1,22 @@
-// Full-window workspace: sidebar navigation, header and pages.
+// Full-window workspace: header, sidebar navigation and pages.
+//
+// Markup follows the design canvas artboards SuiteHeader, SuiteNav and the
+// page artboards (Sale-Overview, Settings, Pro…) class for class.
 
 import { h, icon } from './dom.js';
 import { ICONS } from './icons.js';
 import { TOOL_HOME } from './strings.js';
 import { renderSettingsPage } from './settings-page.js';
+import { renderProPage } from './pro-page.js';
+import { toggleNotifications } from './notifications.js';
 import { TOOL_IDS } from '../core/settings.js';
+import { languageName } from './text.js';
+import { comboFromEvent, RESERVED } from '../core/shortcuts.js';
 
-
-export function createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, assets = {}, onClose }) {
+export function createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, notices, updates, reports, assets = {}, onClose }) {
   const doc = scope.document;
   const { t } = text;
-  const state = { open: false, page: 'settings', tab: 'general', toolTab: {}, returnFocus: null, message: '', migration: { running: false, results: null, done: [] } };
+  const state = { open: false, page: 'settings', tab: 'general', toolTab: {}, returnFocus: null, message: '', migration: { running: false, results: null, done: [] }, usage: null, pendingLanguage: null, capturing: null };
 
   async function runMigration() {
     if (!migration || state.migration.running) return;
@@ -39,11 +45,18 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     el?.focus({ preventScroll: true });
   }
 
-  function menuButton(page, label, iconPaths) {
-    return h(doc, 'li', {}, h(doc, 'button', {
-      class: 'ws-menu-button', type: 'button', 'data-page': page, 'aria-current': state.page === page ? 'page' : null,
+  /** SuiteNav row. `here` adds "Runs on this page"; `count` a counter. */
+  function navItem(page, label, iconPaths, { here = false, count = 0 } = {}) {
+    return h(doc, 'button', {
+      class: state.page === page ? 'nv on' : 'nv', type: 'button', 'data-page': page, 'aria-current': state.page === page ? 'page' : null,
       title: label, onclick: () => go(page),
-    }, icon(doc, iconPaths), h(doc, 'span', { text: label })));
+    }, icon(doc, iconPaths),
+    here
+      ? h(doc, 'span', { class: 'col grow', style: 'min-width: 0;' },
+        h(doc, 'span', { class: 'trunc', text: label }),
+        h(doc, 'span', { class: 'row xxs here' }, h(doc, 'span', { class: 'dot' }), t('ws.runsHere')))
+      : h(doc, 'span', { class: 'grow trunc', text: label }),
+    count ? h(doc, 'span', { class: 'cnt', text: String(count) }) : null);
   }
 
   function toolPage(id) {
@@ -51,31 +64,78 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
       doc, container, language: text.language(), tab: state.toolTab[id] ?? 'overview',
       onTab: (tab) => { state.toolTab[id] = tab; state.message = ''; render(); },
       message: state.message, say: (message) => { state.message = message; render(); },
-      openWorkspace: (page) => go(page), hide: () => close(false),
+      openWorkspace: (page) => go(page), hide: () => close(false), report: (options) => text.report?.(options),
+      notify: (item) => notices?.add(item),
     });
     if (custom) return custom;
     const module = host.module?.(id);
+    const tool = t(`tool.${id}`);
+    const head = h(doc, 'div', { class: 'ph' }, h(doc, 'div', { class: 'col grow' }, h(doc, 'span', { class: 'ov', text: 'Etsy Automation Tools' }), h(doc, 'h1', { class: 'h1', text: tool })));
     if (module?.migrated) {
       // The tool is here but has no screen right now: its standalone script runs on this page, or this is not its page.
-      const tool = t(`tool.${id}`);
       const standalone = module.status?.() === 'standalone';
-      return h(doc, 'div', { style: 'display:contents' },
-        h(doc, 'div', { class: 'page-head' }, h(doc, 'h1', { class: 'page-title', text: tool })),
-        h(doc, 'section', { class: 'card', 'data-role': standalone ? 'tool-standalone' : 'tool-elsewhere' },
-          h(doc, 'div', { class: 'card-header' },
-            h(doc, 'p', { class: 'card-description', text: standalone ? t('drawer.standaloneActive', { tool }) : t('tool.openOnPage', { tool }) })),
-          standalone ? null : h(doc, 'div', { class: 'card-content' },
-            h(doc, 'div', {}, h(doc, 'a', { class: 'btn btn-default btn-sm', href: TOOL_HOME[id], text: t('tool.goToPage') })))));
+      return [head, h(doc, 'div', { class: 'empty', 'data-role': standalone ? 'tool-standalone' : 'tool-elsewhere' },
+        h(doc, 'span', { class: 'ei' }, icon(doc, ICONS[id], 24)),
+        h(doc, 'p', { class: 'et', text: tool }),
+        h(doc, 'p', { class: 'ed', text: standalone ? t('drawer.standaloneActive', { tool }) : t('tool.openOnPage', { tool }) }),
+        standalone ? null : h(doc, 'div', { class: 'ea' }, h(doc, 'a', { class: 'btn btn-p', href: TOOL_HOME[id], text: t('tool.goToPage') })))];
     }
-    return h(doc, 'div', { style: 'display:contents' },
-      h(doc, 'div', { class: 'page-head' },
-        h(doc, 'h1', { class: 'page-title', text: t(`tool.${id}`) })),
-      h(doc, 'section', { class: 'card' },
-        h(doc, 'div', { class: 'card-header' },
-          h(doc, 'h2', { class: 'card-title', text: t('tool.notMigratedTitle', { tool: t(`tool.${id}`) }) }),
-          h(doc, 'p', { class: 'card-description', text: t('tool.notMigratedText', { where: t(`where.${id}`) }) })),
-        h(doc, 'div', { class: 'card-content' },
-          h(doc, 'div', {}, h(doc, 'a', { class: 'btn btn-default btn-sm', href: TOOL_HOME[id], text: t('tool.goToPage') })))));
+    return [head, h(doc, 'div', { class: 'empty' },
+      h(doc, 'span', { class: 'ei' }, icon(doc, ICONS[id], 24)),
+      h(doc, 'p', { class: 'et', text: t('tool.notMigratedTitle', { tool }) }),
+      h(doc, 'p', { class: 'ed', text: t('tool.notMigratedText', { where: t(`where.${id}`) }) }),
+      h(doc, 'div', { class: 'ea' }, h(doc, 'a', { class: 'btn btn-p', href: TOOL_HOME[id], text: t('tool.goToPage') })))];
+  }
+
+  function etsySession() {
+    // Seller pages need a signed-in Etsy account; Etsy sends signed-out visitors to its sign-in page.
+    const path = scope.location?.pathname ?? '';
+    if (/\/signin|\/join/.test(path)) return 'closed';
+    return /^\/(your|messages)\b/.test(path) ? 'open' : null;
+  }
+
+  function header(active) {
+    const unread = notices?.unread() ?? 0;
+    const session = etsySession();
+    return h(doc, 'header', { class: 'win-h' },
+      h(doc, 'a', { class: 'win-brand', href: 'https://makaytron.com', target: '_blank', rel: 'noopener noreferrer', 'aria-label': t('drawer.brandLink') },
+        assets.logo ? h(doc, 'img', { src: assets.logo, alt: '' }) : null,
+        h(doc, 'span', {}, h(doc, 'b', { text: 'Makaytron.com' }), h(doc, 'small', { text: 'Etsy Automation Tools' }))),
+      h(doc, 'span', { class: 'badge out mono', 'data-role': 'app-version', text: `v${appVersion}` }),
+      h(doc, 'span', { class: 'win-vsep', 'aria-hidden': 'true' }),
+      h(doc, 'span', { class: 'row xs mute2', 'data-role': 'ws-context' }, h(doc, 'span', { class: 'dot' }), t('ws.thisPage', { page: active ? t(`page.${active}`) : t('page.unsupported') })),
+      h(doc, 'span', { class: 'grow' }),
+      session ? h(doc, 'span', { class: `badge${session === 'closed' ? ' warn' : ''}`, 'data-role': 'etsy-session' }, h(doc, 'span', { class: 'dot' }), t(session === 'open' ? 'ws.sessionOpen' : 'ws.sessionClosed')) : null,
+      h(doc, 'button', {
+        class: 'ib o win-bell', type: 'button', 'data-action': 'open-notifications', 'aria-haspopup': 'dialog',
+        'aria-label': unread ? t('nt.bellUnread', { count: unread }) : t('nt.bell'),
+        onclick: (e) => toggleNotifications({ doc, root, anchor: e.currentTarget, text, notices, onSettings: () => { state.page = 'settings'; state.tab = 'notifications'; render(); }, onChange: render }),
+      }, icon(doc, ICONS.bell), unread ? h(doc, 'span', { class: 'cnt', text: String(unread) }) : null),
+      h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-action': 'open-language', 'aria-label': t('ws.languageButton', { language: languageName(text.language()) }), onclick: () => { state.page = 'settings'; state.tab = 'general'; render(); root.querySelector('[name="language"]')?.focus({ preventScroll: true }); } },
+        icon(doc, ICONS.globe, 14), languageName(text.language())),
+      h(doc, 'button', { class: 'ib o', type: 'button', 'data-action': 'back-to-drawer', 'aria-label': t('ws.backToDrawer'), onclick: () => close(true) }, icon(doc, ICONS.shrink)),
+      h(doc, 'button', { class: 'ib o', type: 'button', 'data-action': 'close-workspace', 'aria-label': t('ws.close'), onclick: () => close(false) }, icon(doc, ICONS.close)));
+  }
+
+  function nav(enabled, active) {
+    const s = settings.get();
+    return h(doc, 'nav', { class: 'win-nav', 'aria-label': t('ws.nav') },
+      h(doc, 'span', { class: 'ov', text: t('ws.navTools') }),
+      enabled.map((id) => navItem(`tool:${id}`, t(`tool.${id}`), ICONS[id], { here: id === active, count: host.module?.(id)?.drawerCount?.() ?? 0 })),
+      h(doc, 'span', { class: 'ov g2nd', text: t('ws.navMakaytron') }),
+      navItem('pro', t('ws.pro'), ICONS.compass),
+      navItem('settings', t('ws.settings'), ICONS.settings),
+      h(doc, 'span', { class: 'grow' }),
+      s.showProSuggestions
+        ? h(doc, 'div', { class: 'nav-pro' },
+          h(doc, 'span', { class: 'h3', text: 'Makaytron Pro' }),
+          h(doc, 'span', { class: 'xs mute', text: t('ws.proCard') }),
+          h(doc, 'a', { class: 'xs b', href: '#', onclick: (e) => { e.preventDefault(); go('pro'); }, text: `${t('ws.proLook')} →` }))
+        : null,
+      h(doc, 'div', { class: 'row xxs mute nav-foot' },
+        h(doc, 'a', { class: 'site', href: 'https://makaytron.com', target: '_blank', rel: 'noopener noreferrer', text: 'makaytron.com' }),
+        h(doc, 'span', { 'aria-hidden': 'true', text: '·' }),
+        h(doc, 'button', { type: 'button', 'data-action': 'report-problem', onclick: (e) => text.report?.({ returnFocus: e.currentTarget }), text: t('ws.report') })));
   }
 
   function render() {
@@ -87,46 +147,61 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     const active = enabled.includes(host.activeTool) ? host.activeTool : null;
     if (state.page.startsWith('tool:') && !enabled.includes(state.page.slice(5))) state.page = 'settings';
 
-    const page = state.page === 'settings'
-      ? renderSettingsPage(doc, {
-        t, text, language: text.language(), settings, storage, appVersion, scope, container,
-        tab: state.tab, onTab: (tab) => { state.tab = tab; state.message = ''; render(); },
+    let page;
+    if (state.page === 'settings') {
+      page = renderSettingsPage(doc, {
+        t, text, language: text.language(), settings, storage, appVersion, scope, container, host, notices, updates, reports,
+        usage: state.usage, pendingLanguage: state.pendingLanguage, setPendingLanguage: (code) => { state.pendingLanguage = code; render(); },
+        capturing: state.capturing, capture: startCapture, refresh: render,
+        openTool: (id, tab) => { state.toolTab[id] = tab; go(`tool:${id}`); },
+        tab: state.tab, onTab: (tab) => { state.tab = tab; state.message = ''; render(); onSettingsTab(tab); },
         message: state.message, say: (message) => { state.message = message; render(); },
         migration, migrationState: state.migration, runMigration,
         onDataDeleted: () => { state.migration = { running: false, results: null, done: [] }; },
-      })
-      : toolPage(state.page.slice(5));
+      });
+    } else if (state.page === 'pro') {
+      page = renderProPage(doc, { t, text, settings, onHide: () => go('settings') });
+    } else {
+      page = toolPage(state.page.slice(5));
+    }
 
-    root = h(doc, 'div', { class: 'ws', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('ws.label'), id: 'eat-workspace', onkeydown: onKey },
-      h(doc, 'nav', { class: 'ws-sidebar', 'aria-label': t('ws.nav') },
-        h(doc, 'a', { class: 'ws-brand', href: 'https://makaytron.com', target: '_blank', rel: 'noopener noreferrer', 'aria-label': t('drawer.brandLink') },
-          h(doc, 'span', { class: 'ws-logo' }, assets.logo ? h(doc, 'img', { src: assets.logo, alt: '' }) : null),
-          h(doc, 'span', { class: 'ws-brand-text' }, h(doc, 'b', { text: 'Makaytron.com' }), h(doc, 'small', { text: 'Etsy Automation Tools' }))),
-        h(doc, 'div', { class: 'ws-group' },
-          h(doc, 'div', { class: 'ws-group-label', text: t('ws.navTools') }),
-          h(doc, 'ul', { class: 'ws-menu' }, enabled.map((id) => menuButton(`tool:${id}`, t(`tool.${id}`), ICONS[id])))),
-        h(doc, 'div', { class: 'ws-group' },
-          h(doc, 'div', { class: 'ws-group-label', text: t('ws.navMakaytron') }),
-          h(doc, 'ul', { class: 'ws-menu' },
-            h(doc, 'li', {}, h(doc, 'a', { class: 'ws-menu-button', href: 'https://makaytron.com', target: '_blank', rel: 'noopener noreferrer', title: t('ws.pro') }, icon(doc, ICONS.compass), h(doc, 'span', { text: t('ws.pro') }))),
-            menuButton('settings', t('ws.settings'), ICONS.settings))),
-        h(doc, 'div', { class: 'ws-sidebar-footer' },
-          h(doc, 'a', { href: 'https://makaytron.com', target: '_blank', rel: 'noopener noreferrer', text: 'makaytron.com' }),
-          h(doc, 'span', { 'aria-hidden': 'true', text: '·' }),
-          h(doc, 'button', { class: 'ws-link', type: 'button', 'data-action': 'report-problem', onclick: (e) => text.report?.({ returnFocus: e.currentTarget }), text: t('ws.report') }))),
-      h(doc, 'div', { class: 'ws-inset' },
-        h(doc, 'header', { class: 'ws-header' },
-          h(doc, 'span', { class: 'ws-context', text: t('ws.thisPage', { page: active ? t(`tool.${active}`) : t('page.unsupported') }) }),
-          h(doc, 'span', { class: 'ws-spacer' }),
-          h(doc, 'button', { class: 'btn btn-ghost btn-sm', type: 'button', 'data-action': 'back-to-drawer', onclick: () => close(true), text: t('ws.backToDrawer') }),
-          h(doc, 'button', { class: 'btn btn-ghost btn-icon close', type: 'button', 'aria-label': t('ws.close'), 'data-action': 'close-workspace', onclick: () => close(false) }, icon(doc, ICONS.close))),
-        h(doc, 'main', { class: 'ws-main' }, page)));
+    root = h(doc, 'div', { class: 'win', role: 'dialog', 'aria-modal': 'true', 'aria-label': t('ws.label'), id: 'eat-workspace', onkeydown: onKey },
+      header(active),
+      h(doc, 'div', { class: 'wbody' },
+        nav(enabled, active),
+        h(doc, 'main', { class: 'main' }, page)));
     container.append(root);
     if (keep) restoreFocus(keep);
   }
 
   function onKey(event) {
-    if (event.key === 'Escape' && !container.querySelector('.overlay')) { event.stopPropagation(); close(true); }
+    if (state.capturing) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') { state.capturing = null; render(); return; }
+      const combo = comboFromEvent(event);
+      if (!combo) return;
+      const action = state.capturing;
+      const taken = Object.entries(settings.get().shortcuts.keys).find(([a, k]) => a !== action && k === combo);
+      state.capturing = null;
+      if (taken) { state.message = t('set.keysTaken', { keys: combo, action: t(`key.${taken[0]}`) }); render(); return; }
+      state.message = RESERVED.includes(combo) ? t('set.keysReserved', { keys: combo }) : '';
+      settings.update({ shortcuts: { keys: { [action]: combo } } });
+      return;
+    }
+    if (event.key === 'Escape' && !container.querySelector('.overlay, .pop[data-role="notifications"]')) { event.stopPropagation(); close(true); }
+  }
+
+  function startCapture(action) {
+    state.capturing = state.capturing === action ? null : action;
+    state.message = '';
+    render();
+  }
+
+  // Data sizes and the update check are read when the tabs that show them open.
+  function onSettingsTab(tab) {
+    if (['tools', 'privacy'].includes(tab)) storage.usage?.().then((usage) => { state.usage = usage; render(); }).catch(() => {});
+    if (tab === 'updates') updates?.checkIfStale().then(render).catch(() => {});
   }
 
   function go(page) {
@@ -134,6 +209,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     state.message = '';
     render();
     restoreFocus(page);
+    if (page === 'settings') onSettingsTab(state.tab);
   }
 
   function open({ page, tab, returnFocus } = {}) {
@@ -143,6 +219,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     state.returnFocus = returnFocus ?? null;
     state.open = true;
     render();
+    if (state.page === 'settings') onSettingsTab(state.tab);
     root.querySelector('[aria-current="page"]')?.focus({ preventScroll: true });
     migration?.done().then((done) => { state.migration = { ...state.migration, done }; render(); }).catch(() => {});
   }
@@ -155,6 +232,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
   }
 
   const unsubscribe = settings.subscribe(() => render());
+  const offNotices = notices?.subscribe?.(() => render()) ?? (() => {});
 
-  return { open, close: () => close(false), refresh: render, dispose: unsubscribe, get isOpen() { return state.open; } };
+  return { open, close: () => close(false), refresh: render, dispose: () => { unsubscribe(); offNotices(); }, get isOpen() { return state.open; } };
 }

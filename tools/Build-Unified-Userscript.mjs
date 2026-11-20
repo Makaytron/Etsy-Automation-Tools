@@ -35,6 +35,17 @@ const LIFECYCLE = path.join(repoRoot, 'shared', 'lifecycle', 'spa-lifecycle.js')
 const HANDOFF = path.join(repoRoot, 'shared', 'migration', 'handoff.js');
 const MKUI_TOKENS = path.join(repoRoot, 'shared', 'mkui', 'tokens.css');
 const LOGO = path.join(repoRoot, 'assets', 'makaytron-logo.png');
+const FONTS = path.join(repoRoot, 'assets', 'fonts');
+
+/** @font-face rules for the embedded design fonts (assets/fonts, SIL OFL 1.1), under names Etsy does not use. */
+function fontFaces() {
+  const rows = fs.readFileSync(path.join(FONTS, 'unicode-ranges.tsv'), 'utf8').split(/\r?\n/).filter(Boolean).map((line) => line.split('\t'));
+  return rows.map(([family, subset, range]) => {
+    const file = path.join(FONTS, `${family.replace(/ /g, '')}-${subset}.woff2`);
+    const weight = family === 'Inter' ? '400 700' : '500 700';
+    return `@font-face{font-family:"MK ${family}";font-style:normal;font-weight:${weight};font-display:swap;src:url(data:font/woff2;base64,${fs.readFileSync(file).toString('base64')}) format("woff2");unicode-range:${range};}`;
+  }).join('\n');
+}
 const HANDOFF_EXPORTS = ['MIGRATION_SPECS', 'migrationIsTransferableKey', 'migrationStripSecrets', 'createMigrationRequester', 'createDomMigrationTransport'];
 export const OUTPUT = path.join(repoRoot, 'dist', 'etsy-automation-tools.user.js');
 export const RAW_MAIN = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/';
@@ -171,6 +182,7 @@ export async function buildUnified({ production = false } = {}) {
   const assets = {
     logo: `data:image/png;base64,${fs.readFileSync(LOGO).toString('base64')}`,
     mkuiTokens: read(MKUI_TOKENS).trim(),
+    fonts: fontFaces(),
   };
   const assetsLine = `  const __eat_assets = Object.freeze(${JSON.stringify(assets)});`;
   const parts = [

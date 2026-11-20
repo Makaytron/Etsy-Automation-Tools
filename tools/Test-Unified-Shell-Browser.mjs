@@ -690,10 +690,10 @@ test('seller page: edge button, drawer, Escape and dragging to other edges', asy
 
   assert.equal(r.openHidden, false);
   assert.equal(r.openSide, 'right');
-  assert.equal(r.openWidth, 384);
+  assert.equal(r.openWidth, 400);
   assert.equal(r.openRight, r.innerWidth);
   assert.equal(r.expanded, 'true');
-  assert.equal(r.tabWhenOpen.right, r.innerWidth - 384, 'button rides on the drawer edge');
+  assert.equal(r.tabWhenOpen.right, r.innerWidth - 400, 'button rides on the drawer edge');
   assert.equal(r.current, 'Sale Manager');
   assert.ok(!r.otherTools.includes('Sale Manager') && r.otherTools.length === 4, r.otherTools.join(','));
   assert.equal(r.focusOnClose, 'Makaytron çekmecesini kapat', 'focus moves into the drawer');
@@ -705,7 +705,7 @@ test('seller page: edge button, drawer, Escape and dragging to other edges', asy
   assert.equal(r.tabLeft.left, 0);
   assert.equal(r.leftSide, 'left');
   assert.equal(r.leftSheet.left, 0);
-  assert.equal(r.tabLeftOpen.left, 384);
+  assert.equal(r.tabLeftOpen.left, 400);
 
   assert.equal(r.dragTop.zoneOn, 'top');
   assert.match(r.dragTop.chip, /üst kenar · Çekmece soldan açılır/);
@@ -974,7 +974,7 @@ test('a problem report shows everything, never shop data, and opens a prefilled 
   assert.match(r.github, /^https:\/\/github\.com\/Makaytron\/Etsy-Automation-Tools\/issues\/new\?/);
   assert.equal(r.target, '_blank');
   assert.deepEqual(r.requests, [], 'the script itself sends nothing');
-  assert.deepEqual(Object.keys(r.payload).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorCode', 'format', 'formatVersion', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'uiLanguage']);
+  assert.deepEqual(Object.keys(r.payload).sort(), ['appVersion', 'browser', 'browserLocale', 'browserMajor', 'category', 'errorAt', 'errorCode', 'format', 'formatVersion', 'handler', 'note', 'os', 'region', 'routeId', 'routeTemplate', 'tool', 'uiLanguage', 'utcOffset']);
   assert.doesNotMatch(JSON.stringify(r.payload), /MyShop|1234567890|example\.com/);
 });
 
