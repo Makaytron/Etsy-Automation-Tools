@@ -4,7 +4,7 @@
 
 Son güncelleme: 2026-11-20
 
-Etsy Automation Tools, tarayıcı içinde çalışan Tampermonkey userscriptlerinden oluşur. Beş script de yalnız ürün kullanımını ölçen sınırlı, psödonimleştirilmiş telemetriyi varsayılan olarak açık getirir; ilk kullanımda görünür bir bildirim gösterir ve Ayarlar'dan tek tıkla kapatma olanağı verir. Telemetri Etsy içeriğini veya hesap verisini toplamaz. Message Assistant paneli varsayılan olarak kapalıdır ve **Otomatik Çeviri Önizlemesi** açık gelir. Kullanıcı tekil konuşma sayfasına girdiğinde panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajı seçili görüntüleme diline çeviri için seçili sağlayıcıya gönderilebilir; panel konuşma listesinde açılırsa en fazla 50 görünür önizleme gönderilebilir. Bu aktarımı istemiyorsanız konuşmayı veya paneli açmadan önce Tampermonkey menüsünden Makaytron ayarlarını açıp otomatik çeviri önizlemesini kapatın.
+Etsy Automation Tools, tarayıcı içinde çalışan Tampermonkey userscriptlerinden oluşur: beş ayrı script ve beş aracın tümünü içeren birleşik **Makaytron Etsy Automation Tools** scripti. Birleşik script kullanım telemetrisi göndermez (bkz. [Birleşik script](#birleşik-script)). Beş ayrı script yalnız ürün kullanımını ölçen sınırlı, psödonimleştirilmiş telemetriyi varsayılan olarak açık getirir; ilk kullanımda görünür bir bildirim gösterir ve Ayarlar'dan tek tıkla kapatma olanağı verir. Telemetri Etsy içeriğini veya hesap verisini toplamaz. Message Assistant paneli varsayılan olarak kapalıdır ve **Otomatik Çeviri Önizlemesi** açık gelir. Kullanıcı tekil konuşma sayfasına girdiğinde panel kapalı olsa bile müşteri ve satıcının son 40'a kadar konuşma mesajı seçili görüntüleme diline çeviri için seçili sağlayıcıya gönderilebilir; panel konuşma listesinde açılırsa en fazla 50 görünür önizleme gönderilebilir. Bu aktarımı istemiyorsanız konuşmayı veya paneli açmadan önce Tampermonkey menüsünden Makaytron ayarlarını açıp otomatik çeviri önizlemesini kapatın.
 
 
 Userscript eşleştirmesi Etsy genelinde yalnız sayfa geçişlerini algılamak için geniştir. Desteklenmeyen sayfalarda Etsy içeriği okunmaz, telemetri gönderilmez ve işlevsel arayüz açılmaz; uygulama yalnız kendi desteklenen yollarında etkinleşir.
@@ -60,7 +60,7 @@ Tarayıcı Do Not Track (`navigator.doNotTrack === "1"`) veya Global Privacy Con
 - Listing Analyzer bir AI sağlayıcısına ağ isteği göndermez ve AI API anahtarı saklamaz. Kullanıcı anonimleştirilebilir istek JSON'u/prompt'u dışa aktarabilir veya kopyalayabilir; harici araçtan aldığı teklif JSON'unu doğrulamadan sonra içe aktarabilir. Harici araca ne gönderileceğini kullanıcı kontrol eder.
 - Listing Analyzer güncelleme denetimi en fazla 24 saatte bir, çerez göndermeyen anonim isteklerle `api.github.com` üzerinden canonical `main` commit kimliğini ve ardından yalnız o değişmez commit altındaki `raw.githubusercontent.com` userscript metadata’sını okur. Kurulum otomatik yapılmaz; yalnız doğrulanan commit URL’si Tampermonkey onay ekranında açılır.
 - Keyword & Market Analyzer da canonical `main` commit kimliğini `api.github.com` üzerinden doğrular ve metadata'yı yalnız o değişmez commit altındaki `raw.githubusercontent.com` userscriptinden okur. Etsy Sale Manager, Message Assistant ve Ads Keyword Manager uygulama içi güncelleme denetimleri en fazla 24 saatte bir kendi canonical public Raw userscript kaynaklarını okuyabilir. Başka dağıtım kaynağından kurulumda özel GitHub akışı zorlanmaz.
-- Beş script, telemetri açıkken sınırlı günlük açılma, başarılı kullanım ve kategorize hata sinyallerini Makaytron telemetri toplayıcısına gönderebilir. Yukarıda sayılan ham hatalar, içerik ve hesap verileri bu alıcıya gönderilmez.
+- Beş ayrı script, telemetri açıkken sınırlı günlük açılma, başarılı kullanım ve kategorize hata sinyallerini Makaytron telemetri toplayıcısına gönderebilir. Yukarıda sayılan ham hatalar, içerik ve hesap verileri bu alıcıya gönderilmez.
 - Ads Keyword Manager yalnız kullanıcı **Listeyi güncelle** işlemini onayladığında canonical `keyword-rules.txt` dosyasını `raw.githubusercontent.com` üzerinden indirir. Mevcut yerel liste önce Tampermonkey depolamasında yedeklenir.
 - Keyword & Market Analyzer, yukarıdaki sınırlı telemetri dışında Etsy API'sine veya Makaytron içerik sunucusuna istek göndermez; yalnız açık Marketplace Insights DOM'unu okur. İki analyzer arasındaki istek/sonuç `BroadcastChannel` ile aynı tarayıcıdaki Etsy origin'i içinde kalır. Listing başlığı/tag içeriği yalnız kullanıcı araştırmayı başlattığında aktarılır.
 - Kullanıcı bağımsız veya entegre araştırmayı başlattığında seed keyword, normal Marketplace Insights arama sayfasına geçişte Etsy'ye URL `query` değeri olarak gider. Bu Etsy araştırma kotasını veya Etsy'nin gösterdiği sorgu maliyetini tüketebilir; script bunu Makaytron'a göndermez ve kotayı atlatmaz.
@@ -76,6 +76,17 @@ Kullanıcı bir listing için deaktivasyonu ayrıca onayladığında Listing Ana
 Keyword & Market Analyzer `Search results` değerini Etsy'nin görünür sonuç/rekabet göstergesi olarak etiketler. Makaytron fırsat puanı türetilmiş karar desteğidir; Etsy tarafından sağlanan kesin rekabet, satış veya performans tahmini değildir.
 
 Bu sağlayıcıların kendi gizlilik, saklama ve kullanım koşulları geçerlidir. Göndermeden önce gereksiz müşteri ve sipariş verisini kaldırın.
+
+## Birleşik script
+
+Makaytron Etsy Automation Tools beş aracı tek scriptte çalıştırır; bu yüzden yukarıda anlatılan yerel veriler, çeviri ve yapay zekâ alıcıları ve Etsy sayfa işlemleri onun için de aynen geçerlidir. Örneğin Message Assistant'ın otomatik çeviri önizlemesi bu belgenin başında anlatıldığı gibi çalışır. Farklar:
+
+- **Kullanım telemetrisi yok.** İçindeki her aracın telemetrisi script derlenirken kapatılır: kurulum kimliği oluşturulmaz, ilk kullanım telemetri bildirimi gösterilmez ve Makaytron telemetri toplayıcısına hiçbir şey gönderilmez.
+- **Kendi güncelleme kontrolü yok.** İçindeki araçlar ayrı sürümleri için GitHub'ı kontrol etmez. Birleşik scripti Tampermonkey, GitHub'daki kanonik Raw `main` adresinden günceller.
+- **Dil paketleri.** İngilizce scriptin içindedir. Başka bir arayüz dili seçilince script o dilin metin dosyasını `raw.githubusercontent.com` adresinden anonim, çerezsiz bir istekle bir kez indirir ve yerel deposunda saklar. İstekte yalnız dil kodu bulunur; Etsy, mağaza veya müşteri verisi gönderilmez.
+- **Yerel depo.** Ayarlar, araç verileri ve API anahtarları birleşik scriptin kendi Tampermonkey deposunda, ayrı scriptlerin deposundan ayrı durur. API anahtarları araç verilerinden ayrı tutulur.
+- **Yedekler.** **Ayarlar › Gizlilik ve veri › Yedek indir**, ayarları, kelime listelerini, şablonları, araştırmaları ve raporları bilgisayarınıza bir JSON dosyası olarak yazar. API anahtarları hiçbir zaman eklenmez. Bu dosyayı korumak ve silmek sizin sorumluluğunuzdadır.
+- **Makaytron Pro önerileri.** Çekmece ve çalışma alanı Makaytron Pro bağlantıları gösterir. Bunlar düz bağlantılardır: siz açmadan hiçbir şey yüklenmez veya gönderilmez. Makaytron Pro kartı ve önerisi **Ayarlar › Araçlar** bölümünden kapatılabilir.
 
 ## Verileri Etsy Automation Tools'a taşıma
 
@@ -97,7 +108,8 @@ Message Assistant içindeki otomatik gönderim varsayılan olarak kapalıdır. A
 
 ## Veriyi silme
 
-- Her scriptin Ayarlar bölümündeki kullanım telemetrisi anahtarını scripti kaldırmadan veya Tampermonkey deposunu sıfırlamadan önce kapatın. Bu işlem sunucudaki kurulum özeti ile bağlı günlük olay ve hata toplamlarının silinmesini ister ve doğrulanan yanıttan sonra yerel telemetri kimliğini kaldırır. UUID önce kaybolursa hedefli sunucu silmesi yapılamaz; kayıt normal saklama süresiyle sona erer.
+- Birleşik scriptte **Ayarlar › Gizlilik ve veri › Yerel verileri sil** işlemini kullanın. Ayarlar ve araç verileri silinir; API anahtarları yalnız o seçenek işaretlenirse silinir. Bu işlem ayrı scriptlerde hiçbir şeyi silmez.
+- Her ayrı scriptin Ayarlar bölümündeki kullanım telemetrisi anahtarını scripti kaldırmadan veya Tampermonkey deposunu sıfırlamadan önce kapatın. Bu işlem sunucudaki kurulum özeti ile bağlı günlük olay ve hata toplamlarının silinmesini ister ve doğrulanan yanıttan sonra yerel telemetri kimliğini kaldırır. UUID önce kaybolursa hedefli sunucu silmesi yapılamaz; kayıt normal saklama süresiyle sona erer.
 - Message Assistant içindeki **Geçmiş → Geçmişi Temizle** işlemini kullanın.
 - Listing Analyzer içindeki geçmiş temizleme işlemini kullanın veya ilgili Tampermonkey script depolamasını sıfırlayın.
 - Keyword & Market Analyzer panelindeki yerel veri temizleme işlemini kullanın veya `ekma:v1` Tampermonkey script depolamasını sıfırlayın.

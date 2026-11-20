@@ -34,7 +34,6 @@
 // @connect     generativelanguage.googleapis.com
 // @connect     api.deepseek.com
 // @connect     openrouter.ai
-// @antifeature tracking
 // @antifeature ads
 // @run-at      document-idle
 // ==/UserScript==
@@ -38510,7 +38509,8 @@
         'api-free.deepl.com', 'api.deepl.com', 'translate.googleapis.com',
         'api.openai.com', 'api.anthropic.com', 'generativelanguage.googleapis.com', 'api.deepseek.com', 'openrouter.ai',
       ]),
-      antifeature: Object.freeze(['tracking', 'ads']),
+      // Makaytron Pro suggestions only. No usage metrics: the adopted engines' telemetry is switched off at build time.
+      antifeature: Object.freeze(['ads']),
     });
     return Object.freeze({ META });
   })();

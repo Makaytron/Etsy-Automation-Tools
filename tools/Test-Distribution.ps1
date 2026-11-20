@@ -228,8 +228,9 @@ foreach ($script in $scripts) {
     Assert-True ((Metadata-Values -Source $source -Key 'downloadURL') -join '' -eq $expectedRaw) "$relativePath has a non-canonical @downloadURL."
     $antifeatures = @(Metadata-Values -Source $source -Key 'antifeature')
     if ($packageKind -eq 'unified') {
-        # The unified script also shows Makaytron Pro suggestions, so it additionally discloses @antifeature ads.
-        Assert-True (($antifeatures -join ',') -eq 'tracking,ads') "$relativePath must disclose exactly @antifeature tracking and ads."
+        # The unified script shows Makaytron Pro suggestions (@antifeature ads). It sends no usage metrics: every adopted
+        # engine's telemetrySuppressed() is forced true at build time, so it must not claim @antifeature tracking.
+        Assert-True (($antifeatures -join ',') -eq 'ads') "$relativePath must disclose exactly @antifeature ads."
     }
     else {
         Assert-True (($antifeatures -join '') -eq 'tracking') "$relativePath must disclose @antifeature tracking."

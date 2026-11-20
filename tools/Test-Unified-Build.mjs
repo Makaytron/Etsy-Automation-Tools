@@ -22,6 +22,7 @@ test('header is a development header with the new identity', () => {
   assert.equal(one('license'), 'MIT');
   assert.match(header, /^\/\/ @noframes$/m);
   assert.match(header, /^\/\/ @antifeature\s+ads$/m);
+  assert.doesNotMatch(header, /@antifeature\s+tracking/, 'the unified script sends no usage metrics');
   assert.doesNotMatch(header, /@updateURL|@downloadURL/, 'not a production package yet');
   assert.doesNotMatch(header, /@connect\s+\*$/m, 'no wildcard connect');
   // The standalone identities must not be reused.
