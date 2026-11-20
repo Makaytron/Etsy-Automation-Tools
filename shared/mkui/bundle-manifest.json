@@ -39,7 +39,7 @@
     {
       "id": "sale-manager",
       "path": "scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js",
-      "scriptVersion": "1.1.0",
+      "scriptVersion": "1.1.1",
       "mkuiVersion": "1.0.0",
       "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "presentationHash": "sha256:5523e67e7e5f8cd5c9fabe4c7165abaf0c65c18d445864f5e2ff2e74de5472e2",

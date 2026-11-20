@@ -12,7 +12,7 @@ Open **Marketing → Sales and discounts** in Etsy Shop Manager:
 
 `https://www.etsy.com/your/shops/me/sales-discounts`
 
-The script also operates on Etsy's related **Run a sale**, review, and **Details & Stats** steps. If the panel is absent, open the supported route and refresh the page.
+The script also operates on Etsy's related **Run a sale** and review steps. If the panel is absent, open the supported route and refresh the page.
 
 ## Install
 
@@ -46,7 +46,7 @@ Select **Kaydet (Save)**. For the first live run, use the same day for the first
 6. It verifies **All listings**, then advances the **Continue**, review, and final-submit stages.
 7. After final submission, it first persists the exact form/submission evidence in the durable verification queue.
 8. Only the tab that submitted the campaign may acknowledge the trusted success dialog, at most once. The next date cannot start until the dialog is visibly gone; if it will not close, the script navigates to a safe non-creating Sales & Discounts route.
-9. After all planned dates have been submitted, it checks every queued campaign in **Details & Stats** using code, percentage, dates, status, type, region, and scope evidence.
+9. After all planned dates have been submitted, it checks every queued campaign against Etsy's complete (All Time) **Sales and discounts** promotion list using code, percentage, dates, status, type, region, and scope evidence.
 10. The series completes only when the durable verification queue is empty. An unresolved record pauses with its queue intact; **Yeniden Dene / Devam Et (Retry / Continue)** retries verification only and never resubmits the campaign.
 
 While a batch is active, Settings, manual **Run Sale**, and update installation are disabled. Keep the owning tab open and do not start the same series in another tab.
@@ -68,7 +68,7 @@ During creation, the script stops on the affected planned date; during batch ver
 1. Open **Rapor (Report)**.
 2. Review successful, failed, and skipped rows with their code, date, and verification status.
 3. Download CSV or Excel-compatible XML when needed.
-4. Manually verify the code, percentage, dates, and `All listings` scope in Etsy **Details & Stats**.
+4. Manually verify the code, percentage, dates, and `All listings` scope in Etsy **Sales and discounts** → **Individual sales and offers** (period: **All Time**).
 
 ## Keyboard shortcuts
 

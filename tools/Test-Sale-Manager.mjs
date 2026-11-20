@@ -200,6 +200,15 @@ async function loadManager() {
         saleActionContextMatches,
         markSuccess,
         assertNoBlockingForeignOverlay,
+        assessPromotionCandidates,
+        fetchPromotionDetail,
+        isVerificationPath,
+        promotionListApiUrl,
+        promotionListReadability,
+        readPromotionListFromApi,
+        verifyByFetch,
+        verificationUrl: VERIFICATION_URL,
+        setFetch(value) { window.fetch = value; },
         getPanelActionState() { return panelActionState ? { ...panelActionState } : null; },
         getTabId() { return TAB_ID; },
         setPanelState(panel, status) {
@@ -1727,4 +1736,187 @@ test('leaving the sale surface rejects DOM actions before any business operation
     const api = await loadManager();
     api.setLocationPath('/your/shops/me/tools/listings');
     assert.throws(() => api.assertForegroundTab(), /Etsy sayfası değişti/);
+});
+
+// Etsy's Sales & Discounts list is read from its JSON endpoint (all-time range, paginated).
+// Synthetic shop and promotion ids only.
+const PROMO_SHOP_ID = '90000003';
+
+function jsonResponse(url, body, init = {}) {
+    const status = init.status ?? 200;
+    return {
+        type: init.type ?? 'basic',
+        redirected: init.redirected ?? false,
+        status,
+        ok: status >= 200 && status < 300,
+        url: init.url ?? String(url),
+        headers: { get: name => (/content-type/i.test(name) ? (init.contentType ?? 'application/json') : null) },
+        text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+    };
+}
+
+function syntheticSale(id, name, startMs, endMs, extra = {}) {
+    return {
+        promotion_id: id, promotion_name: name, sale_type: 'shopWide', promotion_type: 2, promotion_subtype: 0,
+        discount_value: '5%', reward_percent_discount_on_order: 5, reward_set_listing_ids: [],
+        start_date_ms: startMs, end_date_ms: endMs, start_date: Math.floor(startMs / 1000), end_date: Math.floor(endMs / 1000),
+        has_already_ended: false, is_buyer_targeted_offer_campaign_stopped: false, ...extra,
+    };
+}
+
+function promotionServer(promotions, options = {}) {
+    const requests = [];
+    const pageSize = options.pageSize ?? 2;
+    const fetch = async (url, init) => {
+        requests.push({ url: String(url), init });
+        const parsed = new URL(String(url));
+        const detail = parsed.pathname.match(/\/promotion-with-stats\/(\d+)$/);
+        if (detail) {
+            const found = promotions.find(item => String(item.promotion_id) === detail[1]);
+            return jsonResponse(url, { promotion: found || null });
+        }
+        if (options.respond) {
+            const custom = options.respond(parsed, requests.length);
+            if (custom) return custom;
+        }
+        const offset = Number(parsed.searchParams.get('offset'));
+        return jsonResponse(url, {
+            date_range_preference: parsed.searchParams.get('date_range_preference'),
+            specific_dates: '',
+            total_count: options.total ?? promotions.length,
+            promotions: promotions.slice(offset, offset + pageSize),
+            revenue_stats: [],
+        });
+    };
+    return { fetch, requests };
+}
+
+const PROMO_JOB = Object.freeze({ shop: { shopId: PROMO_SHOP_ID }, countryValue: '0', discount: 5, discountName: 'EATTEST', saleDurationDays: 1 });
+
+async function promotionApiManager(promotions, options = {}) {
+    const api = await loadManager();
+    api.setLocationPath('/your/shops/me/sales-discounts');
+    api.setTestJob({ ...PROMO_JOB, shop: { ...PROMO_JOB.shop } });
+    const server = promotionServer(promotions, options);
+    api.setFetch(server.fetch);
+    return { api, server };
+}
+
+const FUTURE_START = Date.UTC(2027, 1, 10, 5, 0, 0);
+const FUTURE_END = Date.UTC(2027, 1, 11, 4, 59, 59);
+
+test('the promotion list is read completely from the all-time JSON endpoint', async () => {
+    const promotions = [
+        syntheticSale(1000000000001, 'OTHERCODE5', FUTURE_START, FUTURE_END),
+        syntheticSale(1000000000002, 'SECOND5', FUTURE_START, FUTURE_END),
+        syntheticSale(1000000000003, 'THIRD5', FUTURE_START, FUTURE_END),
+        { promotion_id: 1000000000004, promotion_name: '', sale_type: 'promoCode' },
+        syntheticSale(1000000000005, 'FIFTH5', FUTURE_START, FUTURE_END),
+    ];
+    const { api, server } = await promotionApiManager(promotions);
+    const list = await api.readPromotionListFromApi({ strict: true, token: null });
+    assert.equal(list.ok, true, list.message);
+    assert.equal(list.total, 5);
+    assert.equal(list.pagesRead, 3);
+    assert.equal(list.records.length, 4, 'a promotion without a name is counted but is not a code candidate');
+    assert.deepEqual(server.requests.map(request => new URL(request.url).searchParams.get('offset')), ['0', '2', '4']);
+    for (const request of server.requests) {
+        const parsed = new URL(request.url);
+        assert.equal(parsed.pathname, `/api/v3/ajax/bespoke/shop/${PROMO_SHOP_ID}/sales-coupons/combined`);
+        assert.equal(parsed.searchParams.get('date_range_preference'), 'all-time');
+        assert.equal(request.init.credentials, 'include');
+        assert.equal(request.init.redirect, 'manual');
+    }
+    assert.equal(list.records[0].path, 'salesCouponsCombined.promotions[0]');
+    assert.equal(list.records[0].href, '/your/shops/me/sales-discounts/promotion/1000000000001');
+
+    const plan = api.buildPlan('2027-02-10', PROMO_JOB);
+    const result = api.assessPromotionCandidates(plan, list.records, api.promotionListReadability(list), { strict: true, countryValue: '0' });
+    assert.equal(result.notFound, true);
+    assert.equal(result.readComplete, true);
+});
+
+test('a created sale in the list is verified with its submitted form proof', async () => {
+    const { api } = await promotionApiManager([]);
+    const plan = api.buildPlan('2027-02-10', PROMO_JOB);
+    const promotions = [
+        syntheticSale(1000000000010, 'UNRELATED5', FUTURE_START, FUTURE_END),
+        syntheticSale(1000000000011, plan.saleName, FUTURE_START, FUTURE_END),
+    ];
+    api.setFetch(promotionServer(promotions).fetch);
+    const list = await api.readPromotionListFromApi({ strict: false, token: null });
+    assert.equal(list.ok, true, list.message);
+    const formEvidence = {
+        idempotencyKey: plan.idempotencyKey, saleName: plan.saleName, discount: plan.discount,
+        startDate: plan.startDateIso, endDate: plan.endDateIso, regionValue: '0', flowType: 'run_sale',
+    };
+    const submission = { status: 'submitted', idempotencyKey: plan.idempotencyKey, regionValue: '0', listingScope: 'all', formEvidence };
+    const verified = api.assessPromotionCandidates(plan, list.records, api.promotionListReadability(list), {
+        postSubmit: true, strict: false, countryValue: '0', submission, formEvidence, allowCache: false,
+    });
+    assert.equal(verified.ok, true, verified.message);
+    assert.equal(verified.url, '/your/shops/me/sales-discounts/promotion/1000000000011');
+
+    // Before creation the same record is an existing duplicate: Etsy does not report the
+    // region, so it can never be confirmed as identical and nothing new may be created.
+    const preflight = api.assessPromotionCandidates(plan, list.records, api.promotionListReadability(list), { strict: true, countryValue: '0' });
+    assert.equal(preflight.ok, false);
+    assert.equal(preflight.ambiguousExisting, true);
+    assert.notEqual(preflight.notFound, true);
+
+    const detail = await api.fetchPromotionDetail(preflight.url, 'detay', { strict: true, token: null });
+    assert.equal(detail.loaded, true, detail.message);
+    assert.equal(detail.url, '/your/shops/me/sales-discounts/promotion/1000000000011');
+});
+
+test('an unreadable or partial promotion list never becomes "not found"', async () => {
+    const promotions = [
+        syntheticSale(1000000000021, 'AAA5', FUTURE_START, FUTURE_END),
+        syntheticSale(1000000000022, 'BBB5', FUTURE_START, FUTURE_END),
+        syntheticSale(1000000000023, 'CCC5', FUTURE_START, FUTURE_END),
+    ];
+    const allTime = (url, total, rows) => jsonResponse(url.href, { date_range_preference: 'all-time', total_count: total, promotions: rows });
+    const cases = [
+        ['redirect to the Sales & Discounts page', { respond: url => jsonResponse(url.href, '', { type: 'opaqueredirect', status: 0 }) }, /yönlendirildi/],
+        ['HTML instead of JSON', { respond: url => jsonResponse(url.href, '<html></html>', { contentType: 'text/html' }) }, /JSON değil/],
+        ['server error', { respond: url => jsonResponse(url.href, {}, { status: 503 }) }, /HTTP 503/],
+        ['rate limit', { respond: url => jsonResponse(url.href, {}, { status: 429 }) }, /429/],
+        ['period-filtered answer', { respond: url => jsonResponse(url.href, { date_range_preference: 'this-month', total_count: 0, promotions: [] }) }, /aralığıyla/],
+        ['missing promotions array', { respond: url => jsonResponse(url.href, { date_range_preference: 'all-time', total_count: 3 }) }, /beklenen biçimde/],
+        ['total larger than the delivered rows', { total: 5 }, /boş sayfa/],
+        ['total changes between pages', { respond: (url, n) => (n === 2 ? allTime(url, 4, promotions.slice(2)) : null) }, /değişti/],
+        ['a row repeated across pages', { respond: (url, n) => (n === 2 ? allTime(url, 3, promotions.slice(1, 2)) : null) }, /iki sayfada/],
+        ['a row without id', { respond: url => allTime(url, 1, [{ promotion_name: 'X' }]) }, /kimliği okunamayan/],
+        ['network failure', { respond: () => { throw new TypeError('Failed to fetch'); } }, /Failed to fetch/],
+    ];
+    for (const [label, options, pattern] of cases) {
+        const { api } = await promotionApiManager(promotions, options);
+        const list = await api.readPromotionListFromApi({ strict: true, token: null });
+        assert.equal(list.ok, false, label);
+        assert.match(list.message, pattern, label);
+        const plan = api.buildPlan('2027-02-10', PROMO_JOB);
+        const result = api.assessPromotionCandidates(plan, [], api.promotionListReadability(list), { strict: true, countryValue: '0' });
+        assert.notEqual(result.notFound, true, label);
+        assert.equal(result.readComplete, false, label);
+    }
+});
+
+test('a promotion detail answer for another id is rejected', async () => {
+    const { api } = await promotionApiManager([]);
+    api.setFetch(async url => jsonResponse(url, { promotion: syntheticSale(1000000000099, 'OTHER5', FUTURE_START, FUTURE_END) }));
+    const detail = await api.fetchPromotionDetail('/your/shops/me/sales-discounts/promotion/1000000000031', 'detay', { strict: true, token: null });
+    assert.equal(detail.loaded, false);
+    assert.equal(detail.fatal, true);
+});
+
+test('verification runs on the Sales & Discounts page instead of the retired Details & Stats page', async () => {
+    const api = await loadManager();
+    assert.equal(new URL(api.verificationUrl).pathname, '/your/shops/me/sales-discounts');
+    api.setLocationPath('/your/shops/me/sales-discounts');
+    assert.equal(api.isVerificationPath(), true);
+    api.setLocationPath('/your/shops/me/sales-discounts/step/createSale');
+    assert.equal(api.isVerificationPath(), false);
+    const source = fs.readFileSync(scriptPath, 'utf8');
+    assert.doesNotMatch(source, /DETAILS_STATS_URL/);
+    assert.match(source, /sales-coupons\/combined/);
 });

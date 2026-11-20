@@ -373,7 +373,7 @@
 
   const __eat_assets = Object.freeze({"logo":"data:image/png;base64,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","mkuiTokens":"/* MKUI v1 canonical light tokens. Source-only until the Ads pilot is wired. */\n.mkui-root {\n  --mk-font: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;\n\n  --mk-bg: #f7f7f7;\n  --mk-surface: #ffffff;\n  --mk-fg: #171717;\n  --mk-muted: #f2f2f2;\n  --mk-muted-fg: #595959;\n  --mk-border: #dedede;\n  --mk-input: #cfcfcf;\n  --mk-primary: #1f1f1f;\n  --mk-primary-strong: #0f0f0f;\n  --mk-primary-fg: #fafafa;\n\n  --mk-success: #1f7a4d;\n  --mk-success-soft: #edf8f1;\n  --mk-warning: #8a5a00;\n  --mk-warning-soft: #fff9df;\n  --mk-danger: #b42318;\n  --mk-danger-soft: #fff1f0;\n\n  --mk-radius-sm: 7px;\n  --mk-radius-md: 10px;\n  --mk-radius-lg: 14px;\n  --mk-radius-xl: 18px;\n  --mk-radius-pill: 999px;\n\n  --mk-space-1: 4px;\n  --mk-space-2: 8px;\n  --mk-space-3: 12px;\n  --mk-space-4: 16px;\n  --mk-space-5: 20px;\n  --mk-space-6: 24px;\n\n  --mk-shadow-card: 0 1px 2px rgba(0,0,0,.04);\n  --mk-shadow-panel: 0 1px 3px rgba(0,0,0,.08), 0 18px 44px rgba(0,0,0,.14);\n  --mk-shadow-modal: 0 25px 50px -12px rgba(0,0,0,.26);\n  --mk-focus: 0 0 0 3px rgba(23,23,23,.14);\n\n  font-family: var(--mk-font);\n  color: var(--mk-fg);\n  font-variant-numeric: tabular-nums;\n}"});
 
-  // BEGIN ADOPTED SALE MANAGER 1.1.0 (scripts/etsy-sale-campaign-batch-runner, transformed by tools/Unified-Adopt-Sale-Manager.mjs)
+  // BEGIN ADOPTED SALE MANAGER 1.1.1 (scripts/etsy-sale-campaign-batch-runner, transformed by tools/Unified-Adopt-Sale-Manager.mjs)
   async function createAdoptedSaleManager(__env) {
   'use strict';
   // The engine talks to a storage and menu shim instead of the userscript manager directly.
@@ -472,7 +472,7 @@
   }
 
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.1.1';
   const MKUI_VERSION = '1.0.0';
   const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
   const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -1201,7 +1201,12 @@
   const NON_FINAL_RESERVATION_TTL_MS = 18000;
   const FETCH_TIMEOUT_MS = 12000;
   const MAX_VERIFY_FETCH_ATTEMPTS = 6;
-  const MAX_LIST_PAGES = 12;
+  // Etsy's Sales & Discounts list ("Individual sales and offers") is filled from a
+  // paginated JSON endpoint. The page itself defaults to a period filter, so the
+  // engine always asks for the all-time range, which includes future-dated sales.
+  const PROMOTION_API_PAGE_SIZE = 200;
+  const MAX_PROMOTION_API_PAGES = 40;
+  const PROMOTION_API_RANGE = 'all-time';
   const PROMOTION_INDEX_TTL_MS = 90000;
   const PROMOTION_INDEX_MAX_USES = 6;
   const FETCH_BUDGET_WINDOW_MS = 60000;
@@ -1209,7 +1214,10 @@
   const FETCH_MIN_GAP_MS = 650;
   const CREATE_SALE_URL = 'https://www.etsy.com/your/shops/me/sales-discounts/step/createSale?ref=seller-platform-mcnav';
   const PROMOTIONS_URL = 'https://www.etsy.com/your/shops/me/sales-discounts?ref=seller-platform-mcnav';
-  const DETAILS_STATS_URL = 'https://www.etsy.com/your/shops/me/sales-discounts/details-stats?ref=seller-platform-mcnav';
+  // The former Details & Stats page now redirects to the Sales & Discounts page, so
+  // verification runs there and reads the promotion list from Etsy's JSON endpoint.
+  const VERIFICATION_URL = PROMOTIONS_URL;
+  const VERIFICATION_PATH = '/your/shops/me/sales-discounts';
 
   const GITHUB_USERNAME = 'Makaytron';
   const GITHUB_REPOSITORY = 'Etsy-Automation-Tools';
@@ -4050,7 +4058,7 @@
   function isCreateSalePath() { return /\/your\/shops\/me\/sales-discounts\/step\/createSale\/?$/.test(location.pathname); }
   function isPromotionsHomePath() { return /\/your\/shops\/me\/sales-discounts\/?$/.test(location.pathname); }
   function isDetailsStatsPath() { return /\/your\/shops\/me\/sales-discounts\/details-stats\/?$/.test(location.pathname); }
-  function isVerificationPath() { return isDetailsStatsPath(); }
+  function isVerificationPath() { return isPromotionsHomePath() || isDetailsStatsPath(); }
   function go(url) {
       if (location.href === url) return;
       let expectedPath = '';
@@ -4297,7 +4305,7 @@
       resetAutomationController();
       toast(`${row.status === 'SUCCESS' ? 'Tamamlandı' : 'Atlandı'}: ${row.saleName}`, row.status === 'SUCCESS' ? 'success' : 'warning', 3000);
       if (committed.phase === 'batch_verify') {
-          go(DETAILS_STATS_URL);
+          go(VERIFICATION_URL);
           return;
       }
       setTimeout(() => processTick(), 80);
@@ -4331,10 +4339,10 @@
 
   function completionAckNavigationTarget(activeJob, ack) {
       if (ack?.advanceAfterClose === false) {
-          return ack.resumePhase === 'batch_verify' ? DETAILS_STATS_URL : PROMOTIONS_URL;
+          return ack.resumePhase === 'batch_verify' ? VERIFICATION_URL : PROMOTIONS_URL;
       }
       const nextDate = nextScheduleDate(activeJob, ack?.startDate || activeJob?.currentDate);
-      return batchCompleteAt(activeJob, nextDate) ? DETAILS_STATS_URL : PROMOTIONS_URL;
+      return batchCompleteAt(activeJob, nextDate) ? VERIFICATION_URL : PROMOTIONS_URL;
   }
 
   async function pauseCompletionAck(reason) {
@@ -4425,7 +4433,7 @@
           next.generation = Number(next.generation || 0) + 1;
           if (next.phase === 'batch_verify') {
               next.expectedNavigationUntil = Date.now() + 18000;
-              next.expectedNavigationPath = '/sales-discounts/details-stats';
+              next.expectedNavigationPath = VERIFICATION_PATH;
           } else if (next.phase === 'preflight' && !isPromotionsHomePath()) {
               next.expectedNavigationUntil = Date.now() + 18000;
               next.expectedNavigationPath = '/your/shops/me/sales-discounts';
@@ -4439,7 +4447,7 @@
       resetAutomationController();
       renderPanel();
       if (committed.phase === 'batch_verify') {
-          if (!isDetailsStatsPath()) go(DETAILS_STATS_URL);
+          if (!isVerificationPath()) go(VERIFICATION_URL);
           else scheduleTransitionTick(0);
       } else if (committed.phase === 'preflight' && !isPromotionsHomePath()) {
           go(PROMOTIONS_URL);
@@ -4768,8 +4776,8 @@
       }
       renderPanel();
       toast(['resume_required', 'legacy_migration', 'legacy_reconcile', 'upgrade_review', 'upgrade_reconcile', 'shop_identity_missing', 'submission_ambiguous', 'shop_identity_timeout', 'batch_verification_incomplete'].includes(resumedPauseKind) ? `Seri ${shopLabel(updated.shop)} mağazasında devam ediyor.` : 'Aynı gün güvenli biçimde yeniden deneniyor.', 'info', 3600);
-      if (['verify_created', 'batch_verify'].includes(updated.phase) && !isDetailsStatsPath()) {
-          go(DETAILS_STATS_URL);
+      if (['verify_created', 'batch_verify'].includes(updated.phase) && !isVerificationPath()) {
+          go(VERIFICATION_URL);
           return;
       }
       if (updated.phase === 'open_form' && !isCreateSalePath()) {
@@ -5812,9 +5820,9 @@
               next.phaseStartedAt = Date.now();
               next.verifyState = { startedAt: Date.now(), attempts: 0, nextFetchAt: Date.now() + 1800 };
               next.expectedNavigationUntil = Date.now() + 18000;
-              next.expectedNavigationPath = '/sales-discounts/details-stats';
+              next.expectedNavigationPath = VERIFICATION_PATH;
           });
-          go(DETAILS_STATS_URL);
+          go(VERIFICATION_URL);
           return;
       }
       setStatus(`Final gönderildi; Etsy yanıtı bekleniyor: ${plan.saleName}\nFinal düğmesine tekrar basılmayacak.`);
@@ -5974,21 +5982,6 @@
       });
       return contexts;
   }
-  function findSalesDataCollections(contexts) {
-      const collections = [];
-      const seen = new Set();
-      const walk = (value, depth = 0) => {
-          if (!value || typeof value !== 'object' || depth > 10 || seen.has(value)) return;
-          seen.add(value);
-          if (Object.prototype.hasOwnProperty.call(value, 'sales_data') && value.sales_data && typeof value.sales_data === 'object') {
-              collections.push(value.sales_data);
-          }
-          if (Array.isArray(value)) value.forEach(item => walk(item, depth + 1));
-          else Object.values(value).forEach(item => walk(item, depth + 1));
-      };
-      contexts.forEach(context => walk(context));
-      return collections;
-  }
 
   function epochDateCandidates(value) {
       if (value == null || value === '') return [];
@@ -6044,6 +6037,36 @@
       return out;
   }
 
+  function structuredPromotionRecord(normalized, path) {
+      const name = normalized.promotion_name ?? normalized.sale_name ?? normalized.promo_name ?? normalized.coupon_name ?? normalized.name;
+      const promotionId = normalized.promotion_id ?? normalized.promotionId ?? normalized.id;
+      if (!name || !promotionId) return null;
+      const discountEvidence = structuredDiscountEvidence(normalized);
+      return {
+          source: 'structured',
+          path,
+          raw: compactPolicyRaw(normalized),
+          name: String(name),
+          promotionId: String(promotionId),
+          href: `/your/shops/me/sales-discounts/promotion/${encodeURIComponent(String(promotionId))}`,
+          discount: discountEvidence.value,
+          discountKind: discountEvidence.kind,
+          startDates: uniq([
+              ...epochDateCandidates(normalized.start_date_ms),
+              ...epochDateCandidates(normalized.start_date),
+              ...epochDateCandidates(normalized.startDate),
+              ...(parseFlexibleDate(normalized.start_date_text || normalized.startDateText) ? [isoDate(parseFlexibleDate(normalized.start_date_text || normalized.startDateText))] : []),
+          ]),
+          endDates: uniq([
+              ...epochDateCandidates(normalized.end_date_ms),
+              ...epochDateCandidates(normalized.end_date),
+              ...epochDateCandidates(normalized.endDate),
+              ...(parseFlexibleDate(normalized.end_date_text || normalized.endDateText) ? [isoDate(parseFlexibleDate(normalized.end_date_text || normalized.endDateText))] : []),
+          ]),
+          text: JSON.stringify(compactPolicyRaw(normalized)),
+      };
+  }
+
   function structuredPromotionRecords(root = document) {
       const records = [];
       const seen = new Set();
@@ -6056,89 +6079,14 @@
               return;
           }
           const normalized = normalizePolicyRaw(value);
-          const name = normalized.promotion_name ?? normalized.sale_name ?? normalized.promo_name ?? normalized.coupon_name ?? normalized.name;
-          const promotionId = normalized.promotion_id ?? normalized.promotionId ?? normalized.id;
-          if (name && promotionId && /sales_data|promotion_data|promotions|discount/i.test(path + ' ' + JSON.stringify(Object.keys(normalized)))) {
-              const discountEvidence = structuredDiscountEvidence(normalized);
-              records.push({
-                  source: 'structured',
-                  path,
-                  raw: compactPolicyRaw(normalized),
-                  name: String(name),
-                  promotionId: String(promotionId),
-                  href: `/your/shops/me/sales-discounts/details-stats/promotion/${encodeURIComponent(String(promotionId))}`,
-                  discount: discountEvidence.value,
-                  discountKind: discountEvidence.kind,
-                  startDates: uniq([
-                      ...epochDateCandidates(normalized.start_date_ms),
-                      ...epochDateCandidates(normalized.start_date),
-                      ...epochDateCandidates(normalized.startDate),
-                      ...(parseFlexibleDate(normalized.start_date_text || normalized.startDateText) ? [isoDate(parseFlexibleDate(normalized.start_date_text || normalized.startDateText))] : []),
-                  ]),
-                  endDates: uniq([
-                      ...epochDateCandidates(normalized.end_date_ms),
-                      ...epochDateCandidates(normalized.end_date),
-                      ...epochDateCandidates(normalized.endDate),
-                      ...(parseFlexibleDate(normalized.end_date_text || normalized.endDateText) ? [isoDate(parseFlexibleDate(normalized.end_date_text || normalized.endDateText))] : []),
-                  ]),
-                  text: JSON.stringify(compactPolicyRaw(normalized)),
-              });
+          if (/sales_data|promotion_data|promotions|discount/i.test(path + ' ' + JSON.stringify(Object.keys(normalized)))) {
+              const record = structuredPromotionRecord(normalized, path);
+              if (record) records.push(record);
           }
           Object.entries(value).forEach(([key, child]) => walk(child, `${path}.${key}`, depth + 1));
       };
       contexts.forEach((context, index) => walk(context, `context[${index}]`, 0));
       return records;
-  }
-  function promotionCandidates(root = document) {
-      const selector = 'a[href*="/sales-discounts/promotion/"], a[href*="/sales-discounts/details-stats/promotion/"]';
-      const isNumericLink = link => /\/sales-discounts\/(?:details-stats\/)?promotion\/\d+(?:[/?#]|$)/.test(link?.getAttribute?.('href') || link?.href || '');
-      const linksWithin = node => {
-          const links = [];
-          if (node?.matches?.(selector) && isNumericLink(node)) links.push(node);
-          Array.from(node?.querySelectorAll?.(selector) || []).filter(isNumericLink).forEach(link => links.push(link));
-          return Array.from(new Set(links));
-      };
-      const links = Array.from(root?.querySelectorAll?.(selector) || []).filter(isNumericLink).filter(evidenceNodeVisible);
-      const seen = new Set();
-      const rows = [];
-      links.forEach(link => {
-          const href = link.href || link.getAttribute('href') || '';
-          const promotionId = promotionIdFromUrl(href);
-          if (!promotionId || seen.has(promotionId)) return;
-          const boundary = link.closest('tr, [data-testid*="promotion" i], [data-testid*="discount" i], [data-testid*="sale" i], article, li, .wt-card') || link.parentElement || link;
-          if (boundary.closest?.('[role="alert"], .wt-alert--error, .has-error-msg, .wt-validation__message, [data-testid*="error" i]')) return;
-          let current = link;
-          let isolated = link;
-          while (current && boundary.contains(current)) {
-              const localLinks = linksWithin(current);
-              if (localLinks.length === 1 && localLinks[0] === link) isolated = current;
-              else if (localLinks.length > 1) break;
-              if (current === boundary) break;
-              current = current.parentElement;
-          }
-          const isolatedLinks = linksWithin(isolated);
-          if (isolatedLinks.length !== 1 || isolatedLinks[0] !== link) return;
-          const codeNode = isolated.querySelector?.('[data-testid*="discount-code" i], [data-testid*="promo-code" i], [data-testid*="promotion-code" i], [data-testid*="coupon-code" i]');
-          const linkText = semanticVisibleText(link);
-          const codeText = semanticVisibleText(codeNode) || linkText;
-          const candidateText = semanticVisibleText(isolated);
-          if (!candidateText) return;
-          seen.add(promotionId);
-          rows.push({
-              source: 'dom',
-              node: isolated,
-              boundary,
-              isolated: true,
-              multiLinkBoundary: linksWithin(boundary).length > 1,
-              text: candidateText,
-              name: codeText,
-              codeText,
-              href,
-              promotionId,
-              raw: null,
-          });
-      });
-      return rows;
   }
   function exactCoreMatch(plan, candidate, aliases) {
       const source = candidate.text || '';
@@ -6169,7 +6117,7 @@
   function isCanonicalDetailsStatsRecord(candidate) {
       return candidate?.source === 'structured'
           && /^\d+$/.test(String(candidate?.promotionId || ''))
-          && /detailsAndStatsPageData\.promotions\[\d+\]/.test(String(candidate?.path || ''));
+          && /(?:detailsAndStatsPageData|salesCouponsCombined|promotionWithStats)\.promotions\[\d+\]/.test(String(candidate?.path || ''));
   }
   function submittedFormEvidenceMatches(plan, expectedRegion, options = {}) {
       const submission = options.submission || job?.submission;
@@ -6276,84 +6224,6 @@
       const unknown = Object.entries(fields).filter(([, value]) => value == null).map(([key]) => key);
       return { ok: mismatches.length === 0 && unknown.length === 0, fields, mismatches, unknown, serverOnly: !regionFromSubmittedForm };
   }
-  function activePromotionFilterEvidence(root, source = '') {
-      const normalized = low(source);
-      const textEvidence = /match(?:es)?\s+(?:your\s+)?current\s+filters?|clear\s+(?:all\s+)?filters?|filters?\s*\([1-9]\d*\)|filtered\s+by|status\s+filter\s*:\s*(?!all\b)|search\s+results?\s+for|no\s+(?:sales|discounts|promotions)\s+match/.test(normalized);
-      const defaultValue = value => !value || /^(?:all|any|all statuses|all promotions|show all|all_statuses|all_promotions|show_all)$/.test(low(value));
-      let controlEvidence = false;
-      Array.from(root?.querySelectorAll?.('select, input, [aria-pressed="true"], [aria-selected="true"], [data-filter]') || []).forEach(control => {
-          if (controlEvidence || !evidenceNodeVisible(control)) return;
-          const descriptor = low(`${control.id || ''} ${control.getAttribute?.('name') || ''} ${control.getAttribute?.('aria-label') || ''} ${control.getAttribute?.('data-testid') || ''}`);
-          if (!/filter|status|search|query|promotion/.test(descriptor)) return;
-          if (control.matches?.('input')) {
-              const value = low(control.value || '');
-              if (!defaultValue(value)) controlEvidence = true;
-          } else if (control.matches?.('select')) {
-              const rawValue = low(control.value || '');
-              const selectedText = low(control.selectedOptions?.[0]?.textContent || '');
-              if (!defaultValue(rawValue) || !defaultValue(selectedText)) controlEvidence = true;
-          } else if (control.getAttribute?.('aria-pressed') === 'true' || control.getAttribute?.('aria-selected') === 'true') {
-              const label = low(semanticVisibleText(control));
-              if (!defaultValue(label)) controlEvidence = true;
-          }
-      });
-      let urlEvidence = false;
-      try {
-          const href = root?.location?.href || root?.querySelector?.('link[rel="canonical"]')?.href || '';
-          if (href) {
-              const parsed = new URL(href, location.origin);
-              urlEvidence = Array.from(parsed.searchParams.entries()).some(([key, value]) => /filter|status|search|query|q/i.test(key) && !defaultValue(value));
-          }
-      } catch {}
-      return textEvidence || controlEvidence || urlEvidence;
-  }
-  function assessPromotionListReadability(root = document) {
-      const contexts = pageContextsFromDocument(root);
-      const salesCollections = findSalesDataCollections(contexts);
-      const structured = structuredPromotionRecords(contexts);
-      const rows = promotionCandidates(root);
-      const container = root?.querySelector?.('main#main-content, main, [role="main"]') || root?.body || root?.documentElement || root;
-      const source = low(semanticVisibleText(container, { includeValues: true }));
-      const filterActive = activePromotionFilterEvidence(root, source);
-      const explicitEmptyText = /\bno\s+(?:sales|discounts|promotions)(?:\s+yet)?\b|\bnothing\s+to\s+show\b|\byou\s+(?:do\s+not|don['’]t|haven['’]t)\s+(?:have|created)\s+any\s+(?:sales|discounts|promotions)\b/.test(source);
-      const explicitEmpty = explicitEmptyText && !filterActive;
-      const ariaBusy = Array.from(root?.querySelectorAll?.('[aria-busy="true"], .wt-spinner, [data-testid*="loading" i], [class*="skeleton" i]') || []).some(evidenceNodeVisible);
-      const loadingText = /\bloading\s+(?:promotions|sales|discounts)\b|\bplease wait\b/.test(source);
-      const loading = ariaBusy || loadingText;
-      const controlTexts = Array.from(root?.querySelectorAll?.('button, [role="button"], a') || []).filter(evidenceNodeVisible).map(node => low(semanticVisibleText(node))).filter(Boolean);
-      const hasLoadMore = controlTexts.some(value => /^(?:load|show|view)\s+more(?:\s+(?:promotions|sales|discounts))?$|more\s+(?:promotions|sales|discounts)/.test(value));
-      let rangeIncomplete = false;
-      const rangePatterns = [
-          /showing\s+(\d+)\s*[-–—]\s*(\d+)\s+of\s+(\d+)/g,
-          /(\d+)\s*[-–—]\s*(\d+)\s+of\s+(\d+)\s+(?:promotions|sales|discounts)/g,
-          /showing\s+(\d+)\s+of\s+(\d+)\s+(?:promotions|sales|discounts)?/g,
-      ];
-      for (const pattern of rangePatterns) {
-          let match;
-          while ((match = pattern.exec(source))) {
-              const end = Number(match[2]);
-              const total = Number(match[3] ?? match[2]);
-              const shown = match.length === 3 ? Number(match[1]) : end;
-              if ((match.length >= 4 && end < total) || (match.length === 3 && shown < total)) rangeIncomplete = true;
-          }
-      }
-      const concrete = structured.length > 0 || rows.length > 0;
-      const readable = !loading && (concrete || explicitEmpty);
-      const dynamicIncomplete = loading || hasLoadMore || rangeIncomplete || filterActive;
-      const complete = readable && !dynamicIncomplete;
-      const message = loading
-          ? 'Promosyon listesi hâlâ yükleniyor (aria-busy/spinner/loading). Görünen satırlar tam liste kabul edilmedi.'
-          : !readable
-              ? (filterActive
-                  ? 'Promosyon görünümü aktif filtre/arama altında ve tam mağaza listesi olarak okunamaz; kampanya yok kabul edilmedi.'
-                  : 'Promosyon listesi kesin okunamadı; gizli boş durum, boş sales_data kabuğu veya hydrate edilmemiş Etsy yanıtı kampanya yok sayılmadı.')
-              : dynamicIncomplete
-                  ? (filterActive
-                      ? 'Promosyon görünümünde aktif filtre/arama var; filtre dışındaki kayıtlar kontrol edilmeden kampanya yok kabul edilmedi.'
-                      : 'Promosyon listesi kısmi görünüyor; Load more/sanal liste veya gösterilen-toplam aralığı tüm kayıtların yüklenmediğini gösteriyor.')
-                  : 'Promosyon listesi okunabilir ve bu sayfa için tam görünüyor.';
-      return { readable, complete, contexts, salesCollections, structured, rows, explicitEmpty, loading, dynamicIncomplete, hasLoadMore, rangeIncomplete, filterActive, message };
-  }
   function serializePromotionCandidate(candidate) {
       if (!candidate) return null;
       const sourceText = String(candidate.text || '').slice(0, 6000);
@@ -6403,7 +6273,7 @@
           if (!candidateText || negative.test(candidateText)) continue;
           const core = exactCoreMatch(plan, candidate, aliases);
           if (!core.name) continue;
-          const href = candidate.href || (candidate.promotionId ? `/your/shops/me/sales-discounts/details-stats/promotion/${candidate.promotionId}` : '');
+          const href = candidate.href || (candidate.promotionId ? `/your/shops/me/sales-discounts/promotion/${candidate.promotionId}` : '');
           const numericLink = /\/sales-discounts\/(?:details-stats\/)?promotion\/\d+(?:[/?#]|$)/.test(href || '');
           const policy = policyEvidence(candidate, plan, options);
           const score = 50 + (core.discount ? 15 : 0) + (core.start ? 15 : 0) + (core.end ? 10 : 0) + (numericLink ? 5 : 0);
@@ -6527,11 +6397,6 @@
       });
   }
 
-  function verifyInDocument(plan, root = document, options = {}) {
-      const readability = assessPromotionListReadability(root);
-      const candidates = [...readability.structured, ...readability.rows];
-      return assessPromotionCandidates(plan, candidates, readability, options);
-  }
   function detailEvidenceScore(source) {
       const textValue = low(source);
       const dates = extractDateMentions(textValue).length;
@@ -6658,10 +6523,6 @@
           message: `Promosyon detayında kesin doğrulama tamamlanamadı: ${[...missing, policyPart].filter(Boolean).join(', ') || 'bilinmeyen alan'}.`,
       };
   }
-  function extractShopIdentityFromHtml(htmlText) {
-      return extractShopIdentityFromSource(htmlText, { allowDocumentFallback: false });
-  }
-
   async function fetchWithTimeout(url, init = {}, timeoutMs = FETCH_TIMEOUT_MS) {
       const globalSignal = automationController?.signal;
       if (globalSignal?.aborted) throw new AutomationCancelledError();
@@ -6769,111 +6630,93 @@
       fetchRequestTimes.push(startedAt);
   }
 
-  function paginationProgressState(value, baseUrl = DETAILS_STATS_URL) {
+  function etsyApiOrigin() {
       try {
-          const parsed = new URL(String(value || ''), baseUrl);
-          const groups = new Map();
-          const add = (group, rawValue) => {
-              const source = String(rawValue ?? '');
-              const numeric = /^(?:page|offset)$/.test(group) && /^\d+$/.test(source)
-                  ? String(Number(source))
-                  : source;
-              if (!groups.has(group)) groups.set(group, new Set());
-              groups.get(group).add(numeric);
-          };
-          parsed.searchParams.forEach((rawValue, rawKey) => {
-              const key = String(rawKey || '').toLowerCase().replace(/-/g, '_');
-              if (/^(?:page|page_number|pagenumber|p)$/.test(key)) add('page', rawValue);
-              else if (/^(?:offset|start_index|startindex)$/.test(key)) add('offset', rawValue);
-              else if (/^(?:cursor|next_cursor|nextcursor|after|after_cursor|aftercursor|before|before_cursor|beforecursor|end_cursor|endcursor)$/.test(key)) add('cursor', rawValue);
-              else if (key === 'start') add(/^\d+$/.test(String(rawValue)) ? 'offset' : 'cursor', rawValue);
-          });
-          const entries = Array.from(groups.entries())
-              .map(([group, values]) => [group, Array.from(values).sort()])
-              .sort(([left], [right]) => left.localeCompare(right));
-          const normalizePath = path => path.replace(/\/+$/, '') || '/';
-          return {
-              ok: true,
-              origin: parsed.origin,
-              pathname: normalizePath(parsed.pathname),
-              entries,
-              hasProgress: entries.length > 0,
-              identity: entries.map(([group, values]) => `${group}=${values.join('|')}`).join('&'),
-          };
-      } catch {
-          return { ok: false, origin: '', pathname: '', entries: [], hasProgress: false, identity: '' };
-      }
+          const origin = String(location.origin || '');
+          if (/^https:\/\/(?:www\.)?etsy\.com$/.test(origin)) return origin;
+      } catch {}
+      return 'https://www.etsy.com';
   }
 
-  function paginationRequestKey(value, baseUrl = DETAILS_STATS_URL) {
-      const state = paginationProgressState(value, baseUrl);
-      if (!state.ok) return String(value || '');
-      return `${state.origin}${state.pathname}${state.identity ? `?${state.identity}` : ''}`;
+  function promotionApiShopId(activeJob = job) {
+      const shopId = String(activeJob?.shop?.shopId || '');
+      return /^\d+$/.test(shopId) ? shopId : '';
   }
 
-  function paginationProgressMatches(requestedUrl, finalUrl) {
-      const requested = paginationProgressState(requestedUrl);
-      const final = paginationProgressState(finalUrl, requestedUrl);
-      if (!requested.ok || !final.ok) return false;
-      if (!requested.hasProgress) return true;
-      const finalGroups = new Map(final.entries);
-      return requested.entries.every(([group, expectedValues]) => {
-          const actualValues = finalGroups.get(group);
-          return !!actualValues
-              && actualValues.length === expectedValues.length
-              && actualValues.every((value, index) => value === expectedValues[index]);
-      });
+  function promotionListApiUrl(shopId, offset, limit = PROMOTION_API_PAGE_SIZE) {
+      const url = new URL(`/api/v3/ajax/bespoke/shop/${encodeURIComponent(shopId)}/sales-coupons/combined`, etsyApiOrigin());
+      url.searchParams.set('date_range_preference', PROMOTION_API_RANGE);
+      url.searchParams.set('specific_dates', '');
+      url.searchParams.set('limit', String(limit));
+      url.searchParams.set('offset', String(offset));
+      return url.href;
   }
 
-  async function fetchVerifiedDocument(url, label = 'doğrulama', options = {}) {
+  function promotionDetailApiUrl(shopId, promotionId) {
+      const url = new URL(`/api/v3/ajax/shop/${encodeURIComponent(shopId)}/seller-marketing/promotion-with-stats/${encodeURIComponent(promotionId)}`, etsyApiOrigin());
+      url.searchParams.set('date_range_preference', PROMOTION_API_RANGE);
+      url.searchParams.set('specific_dates', '');
+      return url.href;
+  }
+
+  // Reads one Etsy JSON endpoint for verification. Anything other than a direct,
+  // same-route JSON answer (redirect, login page, HTML shell, rate limit) is never
+  // treated as data, so a failed read can never become "campaign not found".
+  async function fetchVerifiedJson(url, label = 'doğrulama', options = {}) {
       const strict = !!options.strict;
       const token = options.token || null;
       try {
+          const liveIdentity = detectShopIdentity(false);
+          if (liveIdentity?.shopId && !sameShop(job?.shop, liveIdentity)) {
+              return { loaded: false, fatal: true, message: `${label}: açık Etsy sayfası farklı mağazaya ait: ${shopLabel(liveIdentity)}.` };
+          }
           if (token) await maintainLeaseForToken(token);
           await awaitFetchBudget(token);
           const response = await awaitWithLeaseHeartbeat(
-              fetchWithTimeout(url, { credentials: 'include', cache: 'no-store', redirect: 'follow' }, intVal(options.timeoutMs, FETCH_TIMEOUT_MS)),
+              fetchWithTimeout(url, {
+                  credentials: 'include',
+                  cache: 'no-store',
+                  redirect: 'manual',
+                  headers: { Accept: 'application/json' },
+              }, intVal(options.timeoutMs, FETCH_TIMEOUT_MS)),
               token,
           );
+          if (response.type === 'opaqueredirect' || response.redirected || (response.status >= 300 && response.status < 400)) {
+              void trackTelemetryError('selector_sale_verification');
+              return { loaded: false, fatal: true, retryable: false, telemetryCode: 'selector_sale_verification', message: `${label} isteği Etsy tarafından başka bir sayfaya yönlendirildi; yanıt veri olarak kullanılmadı.` };
+          }
           if (response.status === 403 || response.status === 429) return { loaded: false, fatal: true, message: `Etsy ${label} isteğini ${response.status} ile engelledi. Seri durduruldu.` };
           if (!response.ok) {
               void trackTelemetryError('network_sale_verification');
               return { loaded: false, fatal: strict || response.status >= 500, retryable: !strict, telemetryCode: 'network_sale_verification', message: `${label} isteği başarısız: HTTP ${response.status}.` };
           }
-          const finalUrl = String(response.url || url || '');
-          if (options.expectedRouteUrl) {
-              let routeMatches = false;
-              try {
-                  const expected = new URL(String(options.expectedRouteUrl), DETAILS_STATS_URL);
-                  const final = new URL(finalUrl, expected);
-                  const etsy = new URL(DETAILS_STATS_URL);
-                  const normalizePath = value => value.replace(/\/+$/, '') || '/';
-                  routeMatches = expected.origin === etsy.origin
-                      && final.origin === etsy.origin
-                      && normalizePath(final.pathname) === normalizePath(expected.pathname);
-              } catch {}
-              if (!routeMatches) {
-                  void trackTelemetryError('selector_sale_verification');
-                  return { loaded: false, fatal: true, retryable: false, telemetryCode: 'selector_sale_verification', message: `${label} yanıtı beklenen Etsy rotasında kalmadı. Nihai URL: ${finalUrl || 'bilinmiyor'}.` };
-              }
-          }
-          if (options.expectedPaginationUrl && !paginationProgressMatches(options.expectedPaginationUrl, finalUrl)) {
+          let routeMatches = false;
+          try {
+              const expected = new URL(String(url));
+              const final = new URL(String(response.url || url), expected);
+              routeMatches = final.origin === expected.origin && final.pathname === expected.pathname;
+          } catch {}
+          if (!routeMatches) {
               void trackTelemetryError('selector_sale_verification');
-              return { loaded: false, fatal: true, retryable: false, telemetryCode: 'selector_sale_verification', message: `${label} yanıtı istenen sayfa/cursor ilerlemesini korumadı. İstenen URL: ${options.expectedPaginationUrl}; nihai URL: ${finalUrl || 'bilinmiyor'}.` };
+              return { loaded: false, fatal: true, retryable: false, telemetryCode: 'selector_sale_verification', message: `${label} yanıtı beklenen Etsy adresinde kalmadı. Nihai URL: ${response.url || 'bilinmiyor'}.` };
           }
-          const htmlText = await awaitWithLeaseHeartbeat(
+          const contentType = String(response.headers?.get?.('content-type') || '');
+          if (!/\bjson\b/i.test(contentType)) {
+              void trackTelemetryError('selector_sale_verification');
+              return { loaded: false, fatal: true, retryable: false, telemetryCode: 'selector_sale_verification', message: `${label} yanıtı JSON değil (${contentType || 'içerik türü yok'}); oturum veya Etsy sayfa yapısı değişmiş olabilir.` };
+          }
+          const bodyText = await awaitWithLeaseHeartbeat(
               awaitAutomationBound(response.text(), intVal(options.timeoutMs, FETCH_TIMEOUT_MS), `${label} gövdesi`),
               token,
           );
           if (token) await maintainLeaseForToken(token);
-          const doc = new DOMParser().parseFromString(htmlText, 'text/html');
-          if (!doc?.documentElement) { void trackTelemetryError('selector_sale_verification'); return { loaded: false, fatal: strict, retryable: !strict, telemetryCode: 'selector_sale_verification', message: `${label} yanıtı DOM belgesine dönüştürülemedi.` }; }
-          const challenge = detectChallenge(doc);
-          if (challenge) return { loaded: false, fatal: true, message: `Etsy ${label} yanıtında güvenlik/hız sınırı algılandı: ${challenge}` };
-          const fetchedIdentity = extractShopIdentityFromHtml(htmlText);
-          if (!fetchedIdentity?.shopId) { void trackTelemetryError('selector_sale_verification'); return { loaded: false, fatal: true, telemetryCode: 'selector_sale_verification', message: `${label} yanıtında mağaza kimliği okunamadı.` }; }
-          if (!sameShop(job.shop, fetchedIdentity)) return { loaded: false, fatal: true, message: `${label} yanıtı farklı mağazaya ait: ${shopLabel(fetchedIdentity)}.` };
-          return { loaded: true, doc, url: finalUrl, identity: fetchedIdentity, htmlText };
+          let data = null;
+          try { data = JSON.parse(String(bodyText || '')); } catch {}
+          if (!data || typeof data !== 'object' || Array.isArray(data)) {
+              void trackTelemetryError('selector_sale_verification');
+              return { loaded: false, fatal: strict, retryable: !strict, telemetryCode: 'selector_sale_verification', message: `${label} yanıtı okunabilir bir JSON nesnesi değil.` };
+          }
+          return { loaded: true, data, url: String(response.url || url) };
       } catch (error) {
           if (error instanceof AutomationCancelledError) throw error;
           void trackTelemetryError('network_sale_verification');
@@ -6881,155 +6724,87 @@
           return { loaded: false, fatal: strict, retryable: !strict, telemetryCode: 'network_sale_verification', message: `${label} isteği ${timeout ? 'zaman aşımına uğradı' : 'çalışmadı'}: ${error?.message || error}` };
       }
   }
-  function addPaginationUrl(urls, value, baseUrl, paramHint = '') {
-      if (value == null || value === '') return;
-      try {
-          const parsed = new URL(String(value), baseUrl || DETAILS_STATS_URL);
-          if (parsed.origin === new URL(DETAILS_STATS_URL).origin
-              && /\/your\/shops\/me\/sales-discounts\/details-stats\/?$/.test(parsed.pathname)) {
-              urls.push(parsed.href);
-              return;
+
+  // Reads the whole all-time promotion list. The result counts as complete only when
+  // every page answered with the same total and exactly that many distinct promotion
+  // ids were collected; otherwise the caller gets a failure, never a partial list.
+  async function readPromotionListFromApi(options = {}) {
+      const strict = !!options.strict;
+      const token = options.token || null;
+      const fail = (message, extra = {}) => {
+          void trackTelemetryError(extra.telemetryCode || 'selector_sale_verification');
+          return { ok: false, fatal: strict, retryable: !strict, telemetryCode: 'selector_sale_verification', ...extra, message };
+      };
+      const shopId = promotionApiShopId();
+      if (!shopId) return fail('Mağaza kimliği sayısal değil; promosyon listesi güvenle okunamadı.', { fatal: true, retryable: false });
+      const ids = new Set();
+      const records = [];
+      let total = null;
+      let offset = 0;
+      let pagesRead = 0;
+      while (total == null || ids.size < total) {
+          if (pagesRead >= MAX_PROMOTION_API_PAGES) {
+              return fail(`Promosyon listesi ${MAX_PROMOTION_API_PAGES} sayfa sınırını aştı; liste tam okunamadı.`, { fatal: true, retryable: false });
           }
-      } catch {}
-      if (!paramHint) return;
-      try {
-          const parsed = new URL(baseUrl || DETAILS_STATS_URL);
-          parsed.searchParams.set(paramHint, String(value));
-          urls.push(parsed.href);
-      } catch {}
+          const page = await fetchVerifiedJson(promotionListApiUrl(shopId, offset), `promosyon listesi (sayfa ${pagesRead + 1})`, { strict, token });
+          if (!page.loaded) return { ok: false, fatal: !!page.fatal, retryable: !!page.retryable, telemetryCode: page.telemetryCode, message: page.message };
+          pagesRead += 1;
+          const data = page.data;
+          const promotions = data.promotions;
+          const pageTotal = Number(data.total_count);
+          if (!Array.isArray(promotions) || !Number.isInteger(pageTotal) || pageTotal < 0) {
+              return fail('Promosyon listesi yanıtında promotions/total_count alanları beklenen biçimde değil; Etsy veri yapısı değişmiş olabilir.');
+          }
+          if (String(data.date_range_preference ?? '') !== PROMOTION_API_RANGE) {
+              return fail(`Promosyon listesi tüm zamanlar yerine "${data.date_range_preference ?? 'bilinmeyen'}" aralığıyla döndü; filtreli liste tam liste kabul edilmedi.`);
+          }
+          if (total == null) total = pageTotal;
+          else if (pageTotal !== total) {
+              return fail(`Promosyon sayısı okuma sırasında değişti (${total} → ${pageTotal}); liste yeniden okunmalı.`, { fatal: false, retryable: true });
+          }
+          for (let index = 0; index < promotions.length; index += 1) {
+              const raw = promotions[index];
+              const promotionId = String(raw?.promotion_id ?? '');
+              if (!/^\d+$/.test(promotionId)) return fail('Promosyon listesinde kimliği okunamayan bir kayıt var; liste tam kabul edilmedi.');
+              if (ids.has(promotionId)) {
+                  return fail('Promosyon listesi sayfalar arasında kaydı; aynı kayıt iki sayfada göründü. Liste yeniden okunmalı.', { fatal: false, retryable: true });
+              }
+              ids.add(promotionId);
+              const record = structuredPromotionRecord(normalizePolicyRaw(raw), `salesCouponsCombined.promotions[${offset + index}]`);
+              if (record) records.push(record);
+          }
+          offset += promotions.length;
+          if (ids.size < total && !promotions.length) {
+              return fail(`Promosyon listesi ${total} kayıt bildirdi ancak ${ids.size} kayıttan sonra boş sayfa döndü; liste tam okunamadı.`);
+          }
+      }
+      if (ids.size !== total) return fail(`Promosyon listesi ${total} kayıt bildirdi ancak ${ids.size} benzersiz kayıt okundu; liste tam kabul edilmedi.`);
+      return { ok: true, records, total, pagesRead, message: `Etsy promosyon listesi tam okundu: ${total} kayıt, ${pagesRead} sayfa.` };
   }
 
-  function structuredPaginationEvidence(root, baseUrl) {
-      const contexts = pageContextsFromDocument(root);
-      const urls = [];
-      const seen = new Set();
-      const positions = { page: new Set(), offset: new Set(), cursor: new Set() };
-      let indicatesMore = false;
-      let unresolved = false;
-      const numeric = value => {
-          const n = Number(value);
-          return Number.isFinite(n) ? n : null;
-      };
-      const truthy = value => value === true || value === 1 || /^(?:true|yes|1)$/i.test(String(value ?? ''));
-      const first = (obj, keys) => {
-          for (const key of keys) if (Object.prototype.hasOwnProperty.call(obj, key)) return obj[key];
-          return undefined;
-      };
-      const pageParam = () => {
-          try {
-              const parsed = new URL(baseUrl || DETAILS_STATS_URL);
-              return Array.from(parsed.searchParams.keys()).find(key => /^(?:page|page_number|p)$/i.test(key)) || 'page';
-          } catch { return 'page'; }
-      };
-      const cursorParam = () => {
-          try {
-              const parsed = new URL(baseUrl || DETAILS_STATS_URL);
-              return Array.from(parsed.searchParams.keys()).find(key => /cursor|after|start/i.test(key)) || 'cursor';
-          } catch { return 'cursor'; }
-      };
-      const walk = (value, path = '', depth = 0) => {
-          if (!value || typeof value !== 'object' || depth > 12 || seen.has(value)) return;
-          seen.add(value);
-          if (Array.isArray(value)) {
-              value.forEach((item, index) => walk(item, `${path}[${index}]`, depth + 1));
-              return;
-          }
-          const keys = Object.keys(value);
-          const contextLabel = `${path} ${keys.join(' ')}`;
-          const signal = /promotion|sales|discount|pagination|pager|page[_ ]?info/i.test(contextLabel);
-          if (signal) {
-              const nextUrl = first(value, ['next_page_url', 'nextPageUrl', 'next_url', 'nextUrl', 'next_href', 'nextHref']);
-              const nextPage = first(value, ['next_page', 'nextPage', 'next_page_number', 'nextPageNumber']);
-              const explicitCurrentPage = first(value, ['current_page', 'currentPage', 'page_number', 'pageNumber']);
-              const currentPage = numeric(explicitCurrentPage !== undefined
-                  ? explicitCurrentPage
-                  : /pagination|pager|page[_ ]?info/i.test(contextLabel) ? first(value, ['page']) : undefined);
-              const totalPages = numeric(first(value, ['total_pages', 'totalPages', 'page_count', 'pageCount', 'num_pages', 'numPages', 'last_page', 'lastPage']));
-              const hasNext = first(value, ['has_next_page', 'hasNextPage', 'has_more', 'hasMore', 'more_results', 'moreResults']);
-              const nextCursor = first(value, ['next_cursor', 'nextCursor', 'end_cursor', 'endCursor', 'after_cursor', 'afterCursor']);
-              const explicitCurrentCursor = first(value, ['current_cursor', 'currentCursor']);
-              const currentCursor = explicitCurrentCursor !== undefined
-                  ? explicitCurrentCursor
-                  : /pagination|pager/i.test(contextLabel) ? first(value, ['cursor']) : undefined;
-              const total = numeric(first(value, ['total', 'total_count', 'totalCount', 'result_count', 'resultCount']));
-              const offset = numeric(first(value, ['offset', 'start', 'start_index', 'startIndex']));
-              const limit = numeric(first(value, ['limit', 'per_page', 'perPage', 'page_size', 'pageSize']));
-
-              if (currentPage != null) positions.page.add(String(currentPage));
-              if (offset != null) positions.offset.add(String(offset));
-              if (currentCursor != null && currentCursor !== '') positions.cursor.add(String(currentCursor));
-              if (nextUrl) addPaginationUrl(urls, nextUrl, baseUrl);
-              if (nextPage != null && nextPage !== '') {
-                  indicatesMore = true;
-                  addPaginationUrl(urls, nextPage, baseUrl, pageParam());
-              }
-              if (currentPage != null && totalPages != null && currentPage < totalPages) {
-                  indicatesMore = true;
-                  addPaginationUrl(urls, currentPage + 1, baseUrl, pageParam());
-              }
-              if (truthy(hasNext)) {
-                  indicatesMore = true;
-                  if (nextCursor != null && nextCursor !== '') addPaginationUrl(urls, nextCursor, baseUrl, cursorParam());
-              }
-              if (total != null && limit != null && limit > 0 && (offset ?? 0) + limit < total) {
-                  indicatesMore = true;
-                  try {
-                      const parsed = new URL(baseUrl || DETAILS_STATS_URL);
-                      const offsetKey = Array.from(parsed.searchParams.keys()).find(key => /offset|start/i.test(key)) || 'offset';
-                      parsed.searchParams.set(offsetKey, String((offset ?? 0) + limit));
-                      urls.push(parsed.href);
-                  } catch {}
-              }
-          }
-          Object.entries(value).forEach(([key, child]) => walk(child, `${path}.${key}`, depth + 1));
-      };
-      contexts.forEach((context, index) => walk(context, `context[${index}]`, 0));
-      const uniqueUrls = uniq(urls);
-      if (indicatesMore && !uniqueUrls.length) unresolved = true;
-      return {
-          urls: uniqueUrls,
-          indicatesMore,
-          unresolved,
-          positions: {
-              page: Array.from(positions.page).sort(),
-              offset: Array.from(positions.offset).sort(),
-              cursor: Array.from(positions.cursor).sort(),
-          },
-          message: unresolved ? 'Yapılandırılmış Etsy verisi başka promosyon sayfası olduğunu gösteriyor ancak güvenli sonraki sayfa adresi üretilemedi.' : '',
-      };
+  function promotionListReadability(list) {
+      if (list?.ok) {
+          return { readable: true, complete: true, structured: list.records, rows: [], dynamicIncomplete: false, message: list.message };
+      }
+      return { readable: false, complete: false, structured: [], rows: [], dynamicIncomplete: false, message: list?.message || 'Promosyon listesi okunamadı.' };
   }
 
-  function structuredPaginationMatchesRequest(requestedUrl, evidence) {
-      const requested = paginationProgressState(requestedUrl);
-      if (!requested.ok) return false;
-      if (!requested.hasProgress) return true;
-      const requestedGroups = new Map(requested.entries);
-      return ['page', 'offset', 'cursor'].every(group => {
-          const expected = requestedGroups.get(group);
-          const observed = Array.isArray(evidence?.positions?.[group]) ? evidence.positions[group] : [];
-          if (!expected?.length) return true;
-          // A page/cursor in the response URL is not proof that Etsy returned the
-          // corresponding body. Progress requests require an explicit structured
-          // body position so a repeated page-one payload cannot become notFound.
-          if (!observed.length) return false;
-          return observed.every(value => expected.includes(String(value)));
-      });
-  }
-
-  function collectPaginationUrls(root, baseUrl) {
-      const urls = [];
-      Array.from(root?.querySelectorAll?.('a[href], link[rel="next"][href]') || []).forEach(node => {
-          const href = node.getAttribute('href') || '';
-          if (!href) return;
-          let parsed = null;
-          try { parsed = new URL(href, baseUrl || DETAILS_STATS_URL); } catch { return; }
-          if (parsed.origin !== new URL(DETAILS_STATS_URL).origin) return;
-          if (!/\/your\/shops\/me\/sales-discounts\/details-stats\/?$/.test(parsed.pathname)) return;
-          const inPager = !!node.closest?.('[aria-label*="pagination" i], nav, .wt-pagination, [data-testid*="pagination" i]');
-          const hasPageParam = Array.from(parsed.searchParams.keys()).some(key => /page|offset|cursor|start|after|before/i.test(key));
-          if (node.getAttribute('rel') === 'next' || inPager || hasPageParam) urls.push(parsed.href);
-      });
-      return uniq(urls);
+  // Fetches one promotion fresh by id. The answer is accepted only for the requested
+  // id and is handed to verifyPromotionDetail as structured data.
+  async function fetchPromotionDetail(href, label = 'promosyon detay doğrulama', options = {}) {
+      const strict = !!options.strict;
+      const promotionId = promotionIdFromUrl(href);
+      const shopId = promotionApiShopId();
+      if (!promotionId || !shopId) return { loaded: false, fatal: true, message: `${label}: promosyon veya mağaza kimliği okunamadı.` };
+      const response = await fetchVerifiedJson(promotionDetailApiUrl(shopId, promotionId), label, { strict, token: options.token || null });
+      if (!response.loaded) return response;
+      const promotion = response.data.promotion;
+      if (!promotion || typeof promotion !== 'object' || String(promotion.promotion_id ?? '') !== promotionId) {
+          void trackTelemetryError('selector_sale_verification');
+          return { loaded: false, fatal: true, telemetryCode: 'selector_sale_verification', message: `${label} yanıtı istenen promosyon kaydını (${promotionId}) içermiyor.` };
+      }
+      const canonicalHref = `/your/shops/me/sales-discounts/promotion/${promotionId}`;
+      return { loaded: true, doc: [{ promotionWithStats: { promotions: [promotion] } }], url: canonicalHref };
   }
 
   async function verifyByFetch(plan, options = {}) {
@@ -7038,99 +6813,36 @@
       const cached = await verifyUsingPromotionIndex(plan, options);
       if (cached) {
           if (cached.detailRequired && cached.url) {
-              const detailPage = await fetchVerifiedDocument(cached.url, 'önbellekteki promosyon detay doğrulama', { strict, token, expectedRouteUrl: cached.url });
+              const detailPage = await fetchPromotionDetail(cached.url, 'önbellekteki promosyon detay doğrulama', { strict, token });
               if (!detailPage.loaded) return { ...cached, ok: false, fatal: !!detailPage.fatal || strict, readComplete: false, telemetryCode: detailPage.telemetryCode, message: `${cached.message} Detay kontrolü başarısız: ${detailPage.message}` };
-              const detailResult = verifyPromotionDetail(plan, detailPage.doc, { ...options, expectedUrl: cached.url, finalUrl: detailPage.url });
+              const detailResult = verifyPromotionDetail(plan, detailPage.doc, { ...options, expectedUrl: detailPage.url, finalUrl: detailPage.url });
               if (detailResult.ok) return { ...detailResult, ok: true, readComplete: true, url: detailPage.url, matchedName: detailResult.matchedName || cached.matchedName, fromCache: true };
               return { ...cached, ok: false, ambiguousExisting: true, policyMismatch: !!detailResult.policyMismatch, readComplete: true, message: `${cached.message} ${detailResult.message}` };
           }
           return cached;
       }
 
-      const queue = [DETAILS_STATS_URL];
-      const queued = new Set([paginationRequestKey(DETAILS_STATS_URL)]);
-      const seen = new Set();
-      let pagesRead = 0;
-      let lastMessage = '';
-      let collectedRecords = [];
-      while (queue.length) {
-          if (pagesRead >= MAX_LIST_PAGES) {
-              return { ok: false, fatal: true, readComplete: false, message: `Promosyon listesi ${MAX_LIST_PAGES} sayfa sınırını aştı; duplicate kontrolü tamamlanamadı.` };
+      const list = await readPromotionListFromApi({ strict, token });
+      if (!list.ok) return { ok: false, fatal: !!list.fatal, retryable: !!list.retryable, readComplete: false, telemetryCode: list.telemetryCode, message: list.message };
+      const pagesRead = list.pagesRead;
+      const listResult = assessPromotionCandidates(plan, list.records, promotionListReadability(list), options);
+      if (listResult.ok) return { ...listResult, readComplete: true, pagesRead };
+      if (listResult.detailRequired && listResult.url) {
+          const detailPage = await fetchPromotionDetail(listResult.url, 'promosyon detay doğrulama', { strict, token });
+          if (!detailPage.loaded) {
+              return { ok: false, fatal: !!detailPage.fatal || strict, retryable: !strict, ambiguousExisting: true, readComplete: false, telemetryCode: detailPage.telemetryCode, url: listResult.url, matchedName: listResult.matchedName, message: `${listResult.message} Detay kontrolü başarısız: ${detailPage.message}` };
           }
-          if (token) await maintainLeaseForToken(token);
-          const url = queue.shift();
-          let canonical = '';
-          try { canonical = new URL(url, location.origin).href; } catch { canonical = String(url); }
-          const requestKey = paginationRequestKey(canonical);
-          queued.delete(requestKey);
-          if (seen.has(requestKey)) continue;
-          seen.add(requestKey);
-          const listPage = await fetchVerifiedDocument(canonical, `promosyon listesi doğrulama (sayfa ${pagesRead + 1})`, { strict, token, expectedRouteUrl: DETAILS_STATS_URL, expectedPaginationUrl: canonical });
-          if (!listPage.loaded) return { ok: false, fatal: !!listPage.fatal, retryable: !!listPage.retryable, readComplete: false, telemetryCode: listPage.telemetryCode, message: listPage.message };
-          const finalKey = paginationRequestKey(listPage.url || canonical, canonical);
-          if (finalKey !== requestKey && seen.has(finalKey)) {
-              return { ok: false, fatal: strict, retryable: !strict, readComplete: false, telemetryCode: 'selector_sale_verification', message: 'Promosyon sayfalaması daha önce okunmuş bir sayfa/cursor durumuna yönlendirildi; kesin bulunamadı sonucu üretilmedi.' };
-          }
-          seen.add(finalKey);
-          pagesRead += 1;
-          const basePageUrl = listPage.url || canonical;
-          const structuredPagination = structuredPaginationEvidence(listPage.doc, basePageUrl);
-          if (!structuredPaginationMatchesRequest(canonical, structuredPagination)) {
-              void trackTelemetryError('selector_sale_verification');
-              return { ok: false, fatal: strict, retryable: !strict, readComplete: false, telemetryCode: 'selector_sale_verification', message: `Promosyon yanıt gövdesindeki sayfa/cursor konumu istenen ilerlemeyle uyuşmuyor. İstenen URL: ${canonical}.` };
-          }
-          const readability = assessPromotionListReadability(listPage.doc);
-          const pageCandidates = [...readability.structured, ...readability.rows];
-          if (options.allowCache !== false) collectedRecords = mergePromotionRecords(collectedRecords, pageCandidates);
-          const listResult = assessPromotionCandidates(plan, pageCandidates, readability, options);
-          lastMessage = listResult.message;
-          if (listResult.ok) return { ...listResult, readComplete: true, pagesRead };
-          if (listResult.detailRequired && listResult.url) {
-              const detailPage = await fetchVerifiedDocument(listResult.url, 'promosyon detay doğrulama', { strict, token, expectedRouteUrl: listResult.url });
-              if (!detailPage.loaded) {
-                  return { ok: false, fatal: !!detailPage.fatal || strict, retryable: !strict, ambiguousExisting: true, readComplete: false, telemetryCode: detailPage.telemetryCode, url: listResult.url, matchedName: listResult.matchedName, message: `${listResult.message} Detay kontrolü başarısız: ${detailPage.message}` };
-              }
-              const detailResult = verifyPromotionDetail(plan, detailPage.doc, { ...options, expectedUrl: listResult.url, finalUrl: detailPage.url });
-              if (detailResult.ok) return { ...detailResult, ok: true, readComplete: true, url: detailPage.url, matchedName: detailResult.matchedName || listResult.matchedName, pagesRead };
-              return { ok: false, fatal: !!detailResult.fatal, ambiguousExisting: true, policyMismatch: !!detailResult.policyMismatch, readComplete: true, url: listResult.url, matchedName: listResult.matchedName, cacheRecord: detailResult.cacheRecord, message: `${listResult.message} ${detailResult.message}` };
-          }
-          if (listResult.ambiguousExisting) return { ...listResult, readComplete: true, pagesRead };
-
-          // Pagination is evaluated before rejecting an otherwise empty page. A genuinely
-          // paginated Etsy response may have no rows on the current page but still expose a
-          // same-origin, safe next-page URL. An unhydrated app shell has no such evidence and
-          // remains fail-closed.
-          const domPaginationUrls = collectPaginationUrls(listPage.doc, basePageUrl);
-          const before = queue.length;
-          [...domPaginationUrls, ...structuredPagination.urls].forEach(nextUrl => {
-              let normalized = '';
-              try { normalized = new URL(nextUrl, basePageUrl).href; } catch { normalized = String(nextUrl); }
-              const nextKey = paginationRequestKey(normalized, basePageUrl);
-              if (!seen.has(nextKey) && !queued.has(nextKey)) {
-                  queue.push(normalized);
-                  queued.add(nextKey);
-              }
-          });
-          const addedSafePage = queue.length > before;
-          if (structuredPagination.unresolved && !domPaginationUrls.length) {
-              void trackTelemetryError('selector_sale_verification');
-              return { ok: false, fatal: strict, retryable: !strict, readComplete: false, telemetryCode: 'selector_sale_verification', message: structuredPagination.message };
-          }
-          if (!readability.readable && !addedSafePage) {
-              void trackTelemetryError('selector_sale_verification');
-              return { ok: false, fatal: strict, retryable: !strict, readComplete: false, telemetryCode: 'selector_sale_verification', message: readability.message };
-          }
-          if (readability.dynamicIncomplete && !addedSafePage) {
-              void trackTelemetryError('selector_sale_verification');
-              return { ok: false, fatal: strict, retryable: !strict, readComplete: false, telemetryCode: 'selector_sale_verification', message: `${readability.message} Güvenli bir sonraki sayfa URL'si bulunamadı; kampanya yok kabul edilmedi.` };
-          }
-          if (!listResult.readComplete && !addedSafePage) {
-              void trackTelemetryError('selector_sale_verification');
-              return { ok: false, fatal: strict, retryable: !strict, readComplete: false, telemetryCode: 'selector_sale_verification', message: listResult.message };
-          }
+          const detailResult = verifyPromotionDetail(plan, detailPage.doc, { ...options, expectedUrl: detailPage.url, finalUrl: detailPage.url });
+          if (detailResult.ok) return { ...detailResult, ok: true, readComplete: true, url: detailPage.url, matchedName: detailResult.matchedName || listResult.matchedName, pagesRead };
+          return { ok: false, fatal: !!detailResult.fatal, ambiguousExisting: true, policyMismatch: !!detailResult.policyMismatch, readComplete: true, url: listResult.url, matchedName: listResult.matchedName, cacheRecord: detailResult.cacheRecord, message: `${listResult.message} ${detailResult.message}` };
       }
-      if (strict && !options.postSubmit && options.allowCache !== false && token) await persistPromotionIndex(token, collectedRecords, pagesRead);
-      return { ok: false, notFound: true, readComplete: pagesRead > 0, pagesRead, message: lastMessage || 'Bütün okunabilir promosyon sayfaları kontrol edildi; kesin eşleşme bulunamadı.' };
+      if (listResult.ambiguousExisting) return { ...listResult, readComplete: true, pagesRead };
+      if (!listResult.notFound) {
+          void trackTelemetryError('selector_sale_verification');
+          return { ok: false, fatal: strict, retryable: !strict, readComplete: false, telemetryCode: 'selector_sale_verification', message: listResult.message };
+      }
+      if (strict && !options.postSubmit && options.allowCache !== false && token) await persistPromotionIndex(token, list.records, pagesRead);
+      return { ok: false, notFound: true, readComplete: true, pagesRead, message: `${list.message} ${listResult.message}` };
   }
   async function updateVerifyState(token, updater) {
       return await mutateJob(token, next => {
@@ -7233,9 +6945,9 @@
               const currentToken = makeToken();
               await mutateJob(currentToken, next => {
                   next.expectedNavigationUntil = Date.now() + 18000;
-                  next.expectedNavigationPath = '/sales-discounts/details-stats';
+                  next.expectedNavigationPath = VERIFICATION_PATH;
               });
-              go(DETAILS_STATS_URL);
+              go(VERIFICATION_URL);
           }
           if (elapsed > 15000) await markError(plan, 'Promosyon doğrulama sayfasına geçilemedi. Başarılı sayılmadı.', 'runtime_error', 'selector_sale_transition');
           return;
@@ -7253,7 +6965,9 @@
           });
       }
       const verifyOptions = { postSubmit: true, strict: false, countryValue: job?.countryValue, token, allowCache: false };
-      let result = verifyInDocument(plan, document, verifyOptions);
+      // The Sales & Discounts page renders its list lazily and filtered by period, so the
+      // page itself is never evidence; the complete list is read from Etsy's JSON endpoint.
+      let result = { ok: false, message: 'Etsy promosyon listesi okunacak.' };
       if (result.policyMismatch) { await markError(plan, result.message, 'created_policy_mismatch'); return; }
       if (result.ok) {
           await markSuccess(plan, result.message, { url: result.url, verified: true, cacheRecord: result.cacheRecord });
@@ -7312,9 +7026,9 @@
       const options = batchVerificationOptions(entry, token);
       let result = assessPromotionCandidates(plan, candidates, readability, options);
       if (result.detailRequired && result.url) {
-          const detailPage = await fetchVerifiedDocument(result.url, 'toplu promosyon detay doğrulama', { strict: false, token, expectedRouteUrl: result.url });
+          const detailPage = await fetchPromotionDetail(result.url, 'toplu promosyon detay doğrulama', { strict: false, token });
           if (!detailPage.loaded) return { ...result, ok: false, readComplete: false, retryable: true, message: `${result.message} Detay kontrolü başarısız: ${detailPage.message}` };
-          const detailResult = verifyPromotionDetail(plan, detailPage.doc, { ...options, expectedUrl: result.url, finalUrl: detailPage.url });
+          const detailResult = verifyPromotionDetail(plan, detailPage.doc, { ...options, expectedUrl: detailPage.url, finalUrl: detailPage.url });
           if (detailResult.ok) return { ...detailResult, ok: true, readComplete: true, url: detailPage.url, matchedName: detailResult.matchedName || result.matchedName };
           result = { ...result, ...detailResult, ok: false, ambiguousExisting: true, readComplete: true, message: `${result.message} ${detailResult.message}` };
       }
@@ -7392,9 +7106,9 @@
           setStatus(`Seri oluşturma tamamlandı. ${pending.length} kampanya için tek toplu doğrulama sayfası açılıyor.`);
           await mutateJob(token, next => {
               next.expectedNavigationUntil = Date.now() + 18000;
-              next.expectedNavigationPath = '/sales-discounts/details-stats';
+              next.expectedNavigationPath = VERIFICATION_PATH;
           });
-          go(DETAILS_STATS_URL);
+          go(VERIFICATION_URL);
           return;
       }
 
@@ -7409,14 +7123,17 @@
       }
 
       const attempt = Math.max(0, intVal(state.attempts, 0)) + 1;
-      const readability = assessPromotionListReadability(document);
-      const candidates = [...readability.structured, ...readability.rows];
+      setStatus(`Toplu doğrulama için Etsy promosyon listesi okunuyor: ${pending.length} kampanya · deneme ${attempt}/${MAX_VERIFY_FETCH_ATTEMPTS}`);
+      const list = await readPromotionListFromApi({ strict: false, token });
+      if (!list.ok && list.fatal) { await pauseBatchVerification(list.message); return; }
+      const readability = promotionListReadability(list);
+      const candidates = readability.structured;
       const resolved = [];
       const unresolved = [];
       setStatus(`Toplu doğrulama yapılıyor: ${pending.length} kampanya · deneme ${attempt}/${MAX_VERIFY_FETCH_ATTEMPTS}`);
       for (const entry of pending) {
           await maintainLeaseForToken(token);
-          const result = await verifyPendingBatchEntry(entry, candidates, readability, token, attempt > 1);
+          const result = await verifyPendingBatchEntry(entry, candidates, readability, token, false);
           if (result.ok) resolved.push({ entry, result });
           else unresolved.push({ entry, result });
       }
@@ -8158,7 +7875,7 @@
       openCreateSale: () => go(CREATE_SALE_URL),
   };
   }
-  const ADOPTED_SALE_MANAGER_VERSION = '1.1.0';
+  const ADOPTED_SALE_MANAGER_VERSION = '1.1.1';
   // END ADOPTED SALE MANAGER
 
   // BEGIN ADOPTED ADS KEYWORD MANAGER 1.1.1

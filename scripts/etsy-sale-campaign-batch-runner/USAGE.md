@@ -12,7 +12,7 @@ Etsy Shop Manager'da **Marketing → Sales and discounts** sayfasını açın:
 
 `https://www.etsy.com/your/shops/me/sales-discounts`
 
-Script bu sayfa ile Etsy'nin ilgili **Run a sale**, inceleme ve **Details & Stats** alt adımlarında çalışır. Başka bir Etsy sekmesinde panel görünmezse önce doğru rotayı açıp sayfayı yenileyin.
+Script bu sayfa ile Etsy'nin ilgili **Run a sale** ve inceleme alt adımlarında çalışır. Başka bir Etsy sekmesinde panel görünmezse önce doğru rotayı açıp sayfayı yenileyin.
 
 ## Kurulum
 
@@ -46,7 +46,7 @@ Panelde **Ayarlar** düğmesine basın ve şu alanları kontrol edin:
 6. Kapsamı **All listings** olarak doğrular; **Continue**, inceleme ve final gönderim adımlarını kontrollü biçimde ilerletir.
 7. Final gönderimden sonra exact form/gönderim kanıtını önce kalıcı doğrulama kuyruğuna yazar.
 8. Yalnız kampanyayı gönderen sekme güvenilir başarı penceresini en fazla bir kez kapatır. Pencerenin gerçekten kaybolduğu görülmeden sıradaki tarihe geçilmez; kapanmazsa script yeni kampanya açmayan güvenli Sales & Discounts rotasına döner.
-9. Tüm plan günleri oluşturulduktan sonra kuyruktaki kampanyaları Etsy **Details & Stats** verisinden kod, yüzde, tarih, durum, tür, bölge ve kapsam kanıtlarıyla sırayla doğrular.
+9. Tüm plan günleri oluşturulduktan sonra kuyruktaki kampanyaları Etsy **Sales and discounts** sayfasının tam (All Time) promosyon listesinden kod, yüzde, tarih, durum, tür, bölge ve kapsam kanıtlarıyla sırayla doğrular.
 10. Seri ancak kalıcı doğrulama kuyruğu boşaldığında tamamlanır. Çözülemeyen kayıt kuyruğu korunarak durur; **Yeniden Dene / Devam Et** yalnız doğrulamayı tekrarlar, kampanyayı yeniden göndermez.
 
 Seri çalışırken **Ayarlar**, **Run Sale** ve güncelleme kurulumu devre dışıdır. İşin açık olduğu sekmeyi kapatmayın ve aynı seriyi başka bir sekmede başlatmayın.
@@ -68,7 +68,7 @@ Script oluşturma sırasında hata gördüğünde ilgili plan tarihinde; toplu d
 1. Panelde **Rapor** düğmesini açın.
 2. Başarılı, hatalı ve atlanan satırları; kod, tarih ve doğrulama durumuyla inceleyin.
 3. Gerekiyorsa CSV veya Excel uyumlu XML çıktısını indirin.
-4. Etsy **Details & Stats** ekranında kampanya kodunu, indirimi, tarihleri ve `All listings` kapsamını elle doğrulayın.
+4. Etsy **Sales and discounts** → **Individual sales and offers** listesinde (dönem: **All Time**) kampanya kodunu, indirimi, tarihleri ve `All listings` kapsamını elle doğrulayın.
 
 ## Klavye kısayolları
 
