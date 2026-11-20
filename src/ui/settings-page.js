@@ -158,6 +158,9 @@ export function renderSettingsPage(doc, ctx) {
       card(doc, { id: 'eat-ai-use', title: t('set.aiUseTitle'), bodyClass: 'card-b col' },
         labeled(doc, { label: t('set.aiUseTranslate'), id: 'eat-ai-translate' }, select(doc, { id: 'eat-ai-translate', name: 'ai-translate', value: active.translator, options: translators.map((p) => ({ value: p.id, label: p.name })), onChange: async (translator) => { await engine.use({ translator }); say(t('set.saved')); } })),
         labeled(doc, { label: t('set.aiUseDrafts'), id: 'eat-ai-drafts' }, select(doc, { id: 'eat-ai-drafts', name: 'ai-drafts', value: active.provider, options: (writers.length ? writers : list.filter((p) => p.kind === 'text')).map((p) => ({ value: p.id, label: p.name })), onChange: async (provider) => { await engine.use({ provider }); say(t('set.saved')); } }))),
+      // Automatic translation preview (the setup's 'AI and translation services' switch).
+      card(doc, { id: 'eat-ai-auto', title: t('ob.ai'), list: true },
+        switchRow(doc, { name: 'ai-auto-translate', label: t('ob.ai'), hint: t(s.ai.autoTranslate ? 'ob.aiOn' : 'ob.aiOff'), checked: s.ai.autoTranslate, onChange: (autoTranslate) => settings.update({ ai: { autoTranslate } }) })),
     ]);
   };
 

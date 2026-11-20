@@ -4,6 +4,27 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.0] - Unreleased
+
+### Added
+
+- A new look for every screen, drawn from the Makaytron design canvas, the same in light and dark: the edge button and drawer, the workspace, settings, setup, the problem report and every tool page. Inter and JetBrains Mono are built into the script.
+- Message Assistant: Conversations (the conversation list, the open conversation with its translation, and a reply draft you check, edit, copy or add to Etsy's message box), Quick replies (edit, variable check, preview in the buyer's language) and Autopilot and reviews (pause or continue the autopilot, review reply drafts). Nothing presses Etsy's Send.
+- Listing Analyzer: Overview (health distribution, listings to look at first, scan progress), Listings (search, filter, selection, the review queue), AI suggestions (copy the request, paste and check the answer), Queue (open, apply, verify) and Thresholds.
+- Settings: AI providers, notifications (panel and desktop, quiet hours), keyboard shortcuts, updates (version check, stable or beta channel, what is new) and help (guides, your reports and their GitHub state).
+- Notifications in the workspace for finished jobs, steps that wait for you and new versions; desktop notifications only after you allow them.
+- The Makaytron Pro page.
+
+### Changed
+
+- Every language pack carries the new screens' texts; the setup's first screen is built in for every language.
+
+### Fixed
+
+- Settings tabs that hold several cards (tools, AI providers and others) were empty.
+- Keyword & Market Analyzer listed a just-saved search twice.
+- Saving the Ads word list from the workspace broke on a line break.
+
 ## [2.0.0] - Unreleased
 
 ### Added

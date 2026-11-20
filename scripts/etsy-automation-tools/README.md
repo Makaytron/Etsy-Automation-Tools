@@ -2,7 +2,7 @@
 
 # Makaytron Etsy Automation Tools
 
-**Sürüm:** 2.0.0 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 2.1.0 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 Etsy satıcıları için beş Makaytron aracı tek scriptte: Sale Manager, Message Assistant, Ads Keyword Manager, Listing Analyzer ve Keyword & Market Analyzer. Etsy sayfasının kenarındaki Makaytron düğmesi bir çekmece açar; çekmecede o sayfada çalışan araç ve diğer araçlara kısayollar bulunur. Ayrıntılar için çalışma alanı tam pencere açılır.
 
