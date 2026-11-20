@@ -81,6 +81,10 @@ Bu sağlayıcıların kendi gizlilik, saklama ve kullanım koşulları geçerlid
 
 Ayrı scriptler, beş aracın hepsini içeren tek script Etsy Automation Tools hakkında bir bildirim gösterir. Aktarım yalnız bu bildirimde **Aktar**'a bastığınızda olur: script iki dakika boyunca aynı Etsy sekmesinde çalışan Etsy Automation Tools'tan gelen aktarım isteğine yanıt verir. İki script tek seferlik bir anahtarda anlaşır (ECDH P-256) ve veri sayfa üzerinden şifreli (AES-GCM) taşınır; iki taraf da aynı 4 haneli kontrol kodunu gösterir. Makaytron'a veya başka bir sunucuya hiçbir şey gönderilmez. API anahtarları ve tokenlar şifrelemeden önce çıkarılır ve hiç taşınmaz; kilitler, güncelleme denetimleri ve gönderim günlükleri geride kalır. Ayrı script kendi verilerini korur ve kendi depolamasına yalnız aktarımın tamamlandığını kaydeder. **Daha sonra**, bildirimin ne zaman yeniden görünebileceğini saklar. Listing Analyzer, listing başına geçmişin de taşınabilmesi için `GM.listValues` izni ister. Scriptin bir işi çalışırken aktarım başlamaz.
 
+## Sorun bildirme
+
+Etsy Automation Tools'taki **Sorun bildir** penceresi raporun her alanını önce gösterir: sürüm, tarayıcı türü ve ana sürümü, işletim sistemi türü, arayüz dili, tarayıcı dili ve ülkesi, mağaza adı içermeyen sayfa türü, bilinen bir hata kodu, seçilen sorun türü ve isteğe bağlı not. Nottan bağlantılar, e-posta adresleri, anahtarlar ve uzun sayılar çıkarılır. Mağaza, müşteri ve ilan verileri ile API anahtarları rapora girmez. Script kendisi hiçbir şey göndermez: **GitHub'da bildir**, raporu doldurulmuş hâlde herkese açık bir GitHub Issues kaydı olarak yeni sekmede açar. Rapor ancak siz GitHub'da kontrol edip gönderdiğinizde yayımlanır ve GitHub'ın kendi koşullarına tabidir.
+
 ## Dışa aktarma ve sırlar
 
 Config dışa aktarımı varsayılan olarak API anahtarlarını içermez. **API anahtarlarını dahil et** seçeneği bilinçli olarak açılırsa anahtarlar indirilen JSON dosyasına düz metin olarak yazılır. Bu dosyayı paylaşmayın veya korumasız bulut depolamasına yüklemeyin.

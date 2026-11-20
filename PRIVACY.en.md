@@ -81,6 +81,10 @@ Each provider's own privacy and retention terms apply. Remove unnecessary custom
 
 The standalone scripts show a notice about Etsy Automation Tools, the single script that contains all five tools. A transfer happens only when you press **Aktar** (Transfer) in that notice: for two minutes the script answers a transfer request from Etsy Automation Tools running on the same Etsy tab. The two scripts agree on a one-time key (ECDH P-256) and the data travels encrypted (AES-GCM) through the page; both show the same 4-digit check code. Nothing is sent to Makaytron or any other server. API keys and tokens are removed before encryption and never move; locks, update checks and send journals stay behind. The standalone script keeps its own data and only records, in its own storage, that a transfer was completed. **Daha sonra** (Later) stores when the notice may appear again. Listing Analyzer asks for `GM.listValues` so its per-listing history can be included. No transfer starts while one of the script's jobs is running.
 
+## Reporting a problem
+
+The **Report a problem** dialog in Etsy Automation Tools first shows every field of the report: version, browser family and major version, operating system family, interface language, browser language and country, a page type without shop names, a known error code, the chosen problem type and an optional note. Links, e-mail addresses, keys and long numbers are removed from the note. Shop, customer and listing data and API keys never enter the report. The script sends nothing itself: **Report on GitHub** opens a public GitHub Issues entry with the report filled in, in a new tab. The report is published only when you check and submit it on GitHub, and GitHub's own terms apply.
+
 ## Exports and secrets
 
 Configuration exports exclude API keys by default. If **Include API keys** is deliberately enabled, keys are written in plain text to the downloaded JSON file. Do not share that file or place it in unprotected cloud storage.
