@@ -239,7 +239,7 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
     return [
       h(doc, 'div', { class: 'row', style: 'gap: 8px;' },
         h(doc, 'div', { class: 'search', style: 'width: 300px;' }, icon(doc, ICONS.search),
-          h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), value: local.query ?? '', 'data-la': 'search', oninput: (e) => actions.setLocal({ query: e.target.value, page: 0 }) })),
+          h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), name: 'la-search', value: local.query ?? '', 'data-la': 'search', oninput: (e) => actions.setLocal({ query: e.target.value, page: 0 }) })),
         h(doc, 'select', { class: 'input', style: 'width: 220px;', 'aria-label': ts('colSuggestion'), 'data-la': 'filter', onchange: (e) => actions.setLocal({ code: e.target.value, page: 0 }) },
           h(doc, 'option', { value: '', selected: !local.code, text: ts('allStates', { n: records.length }) }),
           codes.map((code) => { const r = records.find((x) => x.code === code); return h(doc, 'option', { value: code, selected: local.code === code, text: `${r.assessment} · ${records.filter((x) => x.code === code).length}` }); })),

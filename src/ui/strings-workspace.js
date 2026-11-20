@@ -334,7 +334,7 @@ export const WORKSPACE_STRINGS = Object.freeze({
     'key.adsClosePage': 'Turn off the matches on this page',
     'key.adsScanAll': 'Scan every ad page',
     'key.laScanAll': 'Scan every listing page',
-    'key.salePause': 'Pause the sale series',
+    'key.salePause': 'End the series',
     'key.maInsertDraft': 'Add the draft to the message box',
     'set.notesTitle': 'What is new',
     'set.installed': 'Installed',

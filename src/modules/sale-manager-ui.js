@@ -135,7 +135,7 @@ export function renderSaleDrawer(doc, { snap, language, actions }) {
         ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'retry', onclick: () => actions.retry() }, icon(doc, ICONS.refresh, 14), ts('retry')),
           h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'report-problem', onclick: (e) => actions.report?.({ category: 'interrupted', tool: 'sale-manager', returnFocus: e.currentTarget }), text: actions.reportLabel ?? 'Report a problem' })]
         : job?.active
-          ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.pause, 14), ts('pause')),
+          ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.power ?? ICONS.close, 14), ts('stop')),
             h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'details', onclick: () => actions.openPage(), text: ts('details') })]
           : [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'details', onclick: () => actions.openPage(), text: ts('details') }),
             h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'start', disabled: !snap.plans.length, onclick: (e) => actions.confirmStart(e.currentTarget), text: ts('start') })]));
@@ -366,7 +366,7 @@ export function renderSalePage(doc, { snap, language, actions, tab = 'overview',
       h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'retry', onclick: () => actions.retry() }, icon(doc, ICONS.refresh, 16), ts('retry'))]
     : running
       ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => onTab('report') }, icon(doc, ICONS.file, 16), ts('openReport')),
-        h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.pause, 16), ts('pause'))]
+        h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.power ?? ICONS.close, 16), ts('stop'))]
       : total
         ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => onTab('settings'), text: ts('settings') }),
           h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'start', onclick: (e) => actions.confirmStart(e.currentTarget) }, icon(doc, ICONS.play, 16), ts('start'))]

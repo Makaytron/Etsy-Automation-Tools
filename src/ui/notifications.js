@@ -26,15 +26,25 @@ export function toggleNotifications({ doc, root, anchor, text, notices, onSettin
   const { t } = text;
   let filter = 'all';
 
+  // The interface lives in a closed shadow root: seen from the document, every click inside it is retargeted to the host,
+  // so the popover marks its own clicks on the shadow root first and the document only closes it for the rest.
+  const shadow = root.getRootNode();
+  let insideClick = false;
+  function onInside(event) {
+    const path = event.composedPath();
+    insideClick = path.includes(open?.el) || path.includes(anchor);
+  }
   function close() {
     open?.el.remove();
-    doc.removeEventListener('pointerdown', onOutside, true);
+    doc.removeEventListener('pointerdown', onOutside);
+    shadow.removeEventListener?.('pointerdown', onInside);
     open?.anchor?.setAttribute('aria-expanded', 'false');
     open = null;
   }
-  function onOutside(event) {
-    const path = event.composedPath();
-    if (!path.includes(open?.el) && !path.includes(anchor)) close();
+  function onOutside() {
+    const inside = insideClick;
+    insideClick = false;
+    if (!inside) close();
   }
 
   function item(n) {
@@ -85,6 +95,7 @@ export function toggleNotifications({ doc, root, anchor, text, notices, onSettin
   root.append(el);
   anchor.setAttribute('aria-expanded', 'true');
   open = { el, anchor };
-  doc.addEventListener('pointerdown', onOutside, true);
+  shadow.addEventListener?.('pointerdown', onInside);
+  doc.addEventListener('pointerdown', onOutside);
   el.querySelector('button')?.focus({ preventScroll: true });
 }

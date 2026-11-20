@@ -113,6 +113,14 @@ export function createListingAnalyzerModule() {
     storageNamespace: LA_TOOL_ID,
     migrated: true,
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+    /** Shortcut "Scan every listing page" (Settings › Shortcuts): starts or continues the scan on the Listings page. */
+    shortcut(action) {
+      if (action !== 'laScanAll' || state.standalone || !state.engine) return false;
+      const snap = state.engine.snapshot();
+      if (snap.route !== 'listings' || snap.collecting) return false;
+      void Promise.resolve(state.engine.toggleCollection()).catch(() => {});
+      return true;
+    },
     renderDrawer(ui) {
       const snap = view(ui);
       return snap ? renderLaDrawer(ui.doc, { snap, language: ui.language, actions: actionsFor(ui) }) : null;

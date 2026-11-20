@@ -43,6 +43,8 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
       ? root.querySelector(`[data-name="${name}"][data-value="${value}"]`)
       : root.querySelector(`[data-page="${key}"], [name="${key}"], [data-action="${key}"]`);
     el?.focus({ preventScroll: true });
+    // A text field re-rendered while typing keeps the caret at the end of what was typed.
+    try { if (el && typeof el.value === 'string') el.setSelectionRange(el.value.length, el.value.length); } catch { /* fields without a caret */ }
   }
 
   /** SuiteNav row. `here` adds "Runs on this page"; `count` a counter. */

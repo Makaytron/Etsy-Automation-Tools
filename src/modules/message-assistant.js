@@ -61,6 +61,7 @@ export function createMessageAssistantModule({ secrets }) {
       GM: gm,
       xmlHttpRequest: (details) => ctx.scope.GM.xmlHttpRequest(details),
       isAllowed: () => !state.standalone && ctx.isToolEnabled(MA_TOOL_ID),
+      autoPreview: () => ctx.settings.get().ai.autoTranslate,
       onChange: () => ctx.scope.setTimeout(changed, 0),
     });
     emit('running');
@@ -128,6 +129,14 @@ export function createMessageAssistantModule({ secrets }) {
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
     /** Provider management for Settings › AI providers, while the engine runs on this page. */
     aiProviders: () => (state.standalone ? null : state.engine?.ai ?? null),
+    /** Shortcut "Add the draft to the message box" (Settings › Shortcuts): the engine's own insert, which never sends. */
+    shortcut(action) {
+      if (action !== 'maInsertDraft' || state.standalone || !state.engine?.messages) return false;
+      const c = state.engine.messages.view().conversation;
+      if (!c?.reply || !c.replyCurrent || !c.canInsert) return false;
+      void Promise.resolve(state.engine.messages.insert()).catch(() => {});
+      return true;
+    },
     /** Unread conversations in the last list read, for the workspace menu and the drawer. */
     drawerCount: () => unread(),
     renderDrawer(ui) {

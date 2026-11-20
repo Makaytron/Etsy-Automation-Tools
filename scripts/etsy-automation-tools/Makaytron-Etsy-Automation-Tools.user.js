@@ -27245,6 +27245,7 @@
               return this.onRoute();
           }
           await Store.load();
+          if (typeof __env.autoPreview === 'function') Store.settings = { ...Store.settings, autoTurkishPreview: Boolean(__env.autoPreview()) };
           await Campaign.recoverDurableSendPartials().catch(error => {
               console.error(`[${APP.id}] Kalıcı gönderim günlüğü başlangıçta uzlaştırılamadı.`, error);
           });
@@ -38698,12 +38699,24 @@
       let items = [];
       const listeners = new Set();
       const emit = () => { for (const fn of listeners) fn(items); };
-      const save = () => store.set(KEY, items);
       const fresh = (list) => list.filter((n) => now() - n.at < KEEP_MS).slice(0, MAX_ITEMS);
+      const stored = async () => { const raw = await store.get(KEY, []); return (Array.isArray(raw) ? raw : []).map(normalizeNotice).filter(Boolean); };
+      /** Union by id, newest first; a notice read in any tab stays read. */
+      function merge(...lists) {
+        const byId = new Map();
+        for (const n of lists.flat()) { const seen = byId.get(n.id); byId.set(n.id, seen ? { ...seen, read: seen.read || n.read } : n); }
+        return fresh([...byId.values()].sort((a, b) => b.at - a.at));
+      }
+      // Several Etsy tabs share the stored history: every change is applied to the stored list as it is now,
+      // never by writing back this tab's older copy.
+      async function mutate(change) {
+        items = fresh(change(merge(await stored())));
+        await store.set(KEY, items);
+        emit();
+      }
 
       async function load() {
-        const raw = await store.get(KEY, []);
-        items = fresh((Array.isArray(raw) ? raw : []).map(normalizeNotice).filter(Boolean).sort((a, b) => b.at - a.at));
+        items = merge(await stored());
         emit();
         return items;
       }
@@ -38724,28 +38737,20 @@
         if (!item) return null;
         if (prefs.desktop) desktop(item);
         if (!prefs.panel) return null;
-        items = fresh([item, ...items]);
-        await save();
-        emit();
+        await mutate((list) => [item, ...list]);
         return item;
       }
 
       async function markAllRead() {
-        items = items.map((n) => ({ ...n, read: true }));
-        await save();
-        emit();
+        await mutate((list) => list.map((n) => ({ ...n, read: true })));
       }
 
       async function markRead(id) {
-        items = items.map((n) => (n.id === id ? { ...n, read: true } : n));
-        await save();
-        emit();
+        await mutate((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n)));
       }
 
       async function clear() {
-        items = [];
-        await save();
-        emit();
+        await mutate(() => []);
       }
 
       return {
@@ -40408,6 +40413,8 @@
       const head = pageHead(doc, {
         overline: 'Keyword & Market Analyzer', title: ts('title'), description: ts('description'),
         actions: [
+          // Importing a Listing Analyzer research request stays possible once research is saved.
+          items.length ? h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-kw': 'import', onclick: (e) => importDialog(e.currentTarget) }, icon(doc, ICONS.upload, 16), ts('importRequest')) : null,
           h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-kw': 'export', disabled: !saved.length, onclick: () => actions.exportJson() }, icon(doc, ICONS.download, 16), ts('exportJson')),
           h(doc, 'form', { class: 'row', 'data-role': 'kw-search', onsubmit: (e) => { e.preventDefault(); actions.search(e.currentTarget.elements.keyword.value); } },
             h(doc, 'input', { class: 'input', id: 'eat-kw-keyword', name: 'keyword', type: 'search', 'aria-label': ts('keyword'), maxlength: 80, autocomplete: 'off', placeholder: ts('keyword'), value: snap.keyword ?? '', style: 'width: 200px;' }),
@@ -40884,7 +40891,7 @@
         return [
           h(doc, 'div', { class: 'row', style: 'gap: 8px;' },
             h(doc, 'div', { class: 'search', style: 'width: 300px;' }, icon(doc, ICONS.search),
-              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), value: local.query ?? '', 'data-la': 'search', oninput: (e) => actions.setLocal({ query: e.target.value, page: 0 }) })),
+              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), name: 'la-search', value: local.query ?? '', 'data-la': 'search', oninput: (e) => actions.setLocal({ query: e.target.value, page: 0 }) })),
             h(doc, 'select', { class: 'input', style: 'width: 220px;', 'aria-label': ts('colSuggestion'), 'data-la': 'filter', onchange: (e) => actions.setLocal({ code: e.target.value, page: 0 }) },
               h(doc, 'option', { value: '', selected: !local.code, text: ts('allStates', { n: records.length }) }),
               codes.map((code) => { const r = records.find((x) => x.code === code); return h(doc, 'option', { value: code, selected: local.code === code, text: `${r.assessment} · ${records.filter((x) => x.code === code).length}` }); })),
@@ -41168,6 +41175,14 @@
         storageNamespace: LA_TOOL_ID,
         migrated: true,
         status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
+        /** Shortcut "Scan every listing page" (Settings › Shortcuts): starts or continues the scan on the Listings page. */
+        shortcut(action) {
+          if (action !== 'laScanAll' || state.standalone || !state.engine) return false;
+          const snap = state.engine.snapshot();
+          if (snap.route !== 'listings' || snap.collecting) return false;
+          void Promise.resolve(state.engine.toggleCollection()).catch(() => {});
+          return true;
+        },
         renderDrawer(ui) {
           const snap = view(ui);
           return snap ? renderLaDrawer(ui.doc, { snap, language: ui.language, actions: actionsFor(ui) }) : null;
@@ -41364,7 +41379,7 @@
         const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
           h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec; display: flex; gap: 8px;' },
             h(doc, 'div', { class: 'search grow' }, icon(doc, ICONS.search),
-              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), value: local.query ?? '', 'data-ma': 'search',
+              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), name: 'ma-search', value: local.query ?? '', 'data-ma': 'search',
                 oninput: (e) => actions.setLocal({ query: e.target.value }) }))),
           h(doc, 'div', { style: 'padding: 8px 12px; border-bottom: 1px solid #ececec;' },
             segmented(doc, { label: ts('filter'), name: 'ma-filter', value: local.filter === 'unread' ? 'unread' : 'all', onChange: (value) => actions.setLocal({ filter: value }),
@@ -41490,7 +41505,7 @@
         const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
           h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec;' },
             h(doc, 'div', { class: 'search' }, icon(doc, ICONS.search),
-              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('searchTemplates'), 'aria-label': ts('searchTemplates'), value: local.templateQuery ?? '', oninput: (e) => actions.setLocal({ templateQuery: e.target.value }) }))),
+              h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('searchTemplates'), 'aria-label': ts('searchTemplates'), name: 'ma-template-search', value: local.templateQuery ?? '', oninput: (e) => actions.setLocal({ templateQuery: e.target.value }) }))),
           h(doc, 'div', { style: 'flex: 1 1 auto; overflow: auto;', 'data-role': 'ma-templates' }, shown.map((t) => h(doc, 'a', {
             class: t.id === draft?.id ? 'tp on' : 'tp', href: '#', 'data-template': t.id, onclick: (e) => { e.preventDefault(); pick(t); },
           }, h(doc, 'span', { class: 'col grow', style: 'gap: 2px; min-width: 0;' }, h(doc, 'span', { class: 'sm b trunc', text: t.name }), h(doc, 'span', { class: 'xs mute', text: t.category })),
@@ -41498,7 +41513,8 @@
             : t.unknown.length ? h(doc, 'span', { class: 'badge warn', text: ts('missingVar') }) : h(doc, 'span', { class: 'badge ok', text: ts('valid') })))));
         if (!draft) return [h(doc, 'div', { class: 'card', style: 'flex: 1 1 auto; min-height: 0; display: flex;' }, left)];
 
-        const update = (patch) => { local.templateDraft = { ...draft, ...patch }; };
+        // Each field merges into the latest draft, so editing the name and then the text keeps both.
+        const update = (patch) => { local.templateDraft = { ...(local.templateDraft?.id === draft.id ? local.templateDraft : draft), ...patch }; };
         const textArea = h(doc, 'textarea', { class: 'input', rows: '4', id: 'eat-ma-tpl-text', 'data-ma': 'template-text', oninput: (e) => update({ text: e.target.value }) }, draft.text);
         const used = [...new Set([...String(draft.text).matchAll(/{{\s*(\w+)\s*}}/g)].map((m) => m[1]))];
         const unknown = used.filter((v) => !variables.includes(v));
@@ -41710,6 +41726,7 @@
           GM: gm,
           xmlHttpRequest: (details) => ctx.scope.GM.xmlHttpRequest(details),
           isAllowed: () => !state.standalone && ctx.isToolEnabled(MA_TOOL_ID),
+          autoPreview: () => ctx.settings.get().ai.autoTranslate,
           onChange: () => ctx.scope.setTimeout(changed, 0),
         });
         emit('running');
@@ -41777,6 +41794,14 @@
         status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
         /** Provider management for Settings › AI providers, while the engine runs on this page. */
         aiProviders: () => (state.standalone ? null : state.engine?.ai ?? null),
+        /** Shortcut "Add the draft to the message box" (Settings › Shortcuts): the engine's own insert, which never sends. */
+        shortcut(action) {
+          if (action !== 'maInsertDraft' || state.standalone || !state.engine?.messages) return false;
+          const c = state.engine.messages.view().conversation;
+          if (!c?.reply || !c.replyCurrent || !c.canInsert) return false;
+          void Promise.resolve(state.engine.messages.insert()).catch(() => {});
+          return true;
+        },
         /** Unread conversations in the last list read, for the workspace menu and the drawer. */
         drawerCount: () => unread(),
         renderDrawer(ui) {
@@ -41947,7 +41972,7 @@
             ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'retry', onclick: () => actions.retry() }, icon(doc, ICONS.refresh, 14), ts('retry')),
               h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'report-problem', onclick: (e) => actions.report?.({ category: 'interrupted', tool: 'sale-manager', returnFocus: e.currentTarget }), text: actions.reportLabel ?? 'Report a problem' })]
             : job?.active
-              ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.pause, 14), ts('pause')),
+              ? [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.power ?? ICONS.close, 14), ts('stop')),
                 h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'details', onclick: () => actions.openPage(), text: ts('details') })]
               : [h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-sale': 'details', onclick: () => actions.openPage(), text: ts('details') }),
                 h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-sale': 'start', disabled: !snap.plans.length, onclick: (e) => actions.confirmStart(e.currentTarget), text: ts('start') })]));
@@ -42178,7 +42203,7 @@
           h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'retry', onclick: () => actions.retry() }, icon(doc, ICONS.refresh, 16), ts('retry'))]
         : running
           ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => onTab('report') }, icon(doc, ICONS.file, 16), ts('openReport')),
-            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.pause, 16), ts('pause'))]
+            h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'stop', onclick: () => actions.stop() }, icon(doc, ICONS.power ?? ICONS.close, 16), ts('stop'))]
           : total
             ? [h(doc, 'button', { class: 'btn btn-o', type: 'button', onclick: () => onTab('settings'), text: ts('settings') }),
               h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-sale': 'start', onclick: (e) => actions.confirmStart(e.currentTarget) }, icon(doc, ICONS.play, 16), ts('start'))]
@@ -45944,7 +45969,7 @@
         'key.adsClosePage': 'Turn off the matches on this page',
         'key.adsScanAll': 'Scan every ad page',
         'key.laScanAll': 'Scan every listing page',
-        'key.salePause': 'Pause the sale series',
+        'key.salePause': 'End the series',
         'key.maInsertDraft': 'Add the draft to the message box',
         'set.notesTitle': 'What is new',
         'set.installed': 'Installed',
@@ -47252,15 +47277,25 @@
       const { t } = text;
       let filter = 'all';
 
+      // The interface lives in a closed shadow root: seen from the document, every click inside it is retargeted to the host,
+      // so the popover marks its own clicks on the shadow root first and the document only closes it for the rest.
+      const shadow = root.getRootNode();
+      let insideClick = false;
+      function onInside(event) {
+        const path = event.composedPath();
+        insideClick = path.includes(open?.el) || path.includes(anchor);
+      }
       function close() {
         open?.el.remove();
-        doc.removeEventListener('pointerdown', onOutside, true);
+        doc.removeEventListener('pointerdown', onOutside);
+        shadow.removeEventListener?.('pointerdown', onInside);
         open?.anchor?.setAttribute('aria-expanded', 'false');
         open = null;
       }
-      function onOutside(event) {
-        const path = event.composedPath();
-        if (!path.includes(open?.el) && !path.includes(anchor)) close();
+      function onOutside() {
+        const inside = insideClick;
+        insideClick = false;
+        if (!inside) close();
       }
 
       function item(n) {
@@ -47311,7 +47346,8 @@
       root.append(el);
       anchor.setAttribute('aria-expanded', 'true');
       open = { el, anchor };
-      doc.addEventListener('pointerdown', onOutside, true);
+      shadow.addEventListener?.('pointerdown', onInside);
+      doc.addEventListener('pointerdown', onOutside);
       el.querySelector('button')?.focus({ preventScroll: true });
     }
     return Object.freeze({ relativeTime, toggleNotifications });
@@ -47919,6 +47955,8 @@
           ? root.querySelector(`[data-name="${name}"][data-value="${value}"]`)
           : root.querySelector(`[data-page="${key}"], [name="${key}"], [data-action="${key}"]`);
         el?.focus({ preventScroll: true });
+        // A text field re-rendered while typing keeps the caret at the end of what was typed.
+        try { if (el && typeof el.value === 'string') el.setSelectionRange(el.value.length, el.value.length); } catch { /* fields without a caret */ }
       }
 
       /** SuiteNav row. `here` adds "Runs on this page"; `count` a counter. */

@@ -45,12 +45,24 @@ export function createNotices({ store, settings, scope, now = () => Date.now() }
   let items = [];
   const listeners = new Set();
   const emit = () => { for (const fn of listeners) fn(items); };
-  const save = () => store.set(KEY, items);
   const fresh = (list) => list.filter((n) => now() - n.at < KEEP_MS).slice(0, MAX_ITEMS);
+  const stored = async () => { const raw = await store.get(KEY, []); return (Array.isArray(raw) ? raw : []).map(normalizeNotice).filter(Boolean); };
+  /** Union by id, newest first; a notice read in any tab stays read. */
+  function merge(...lists) {
+    const byId = new Map();
+    for (const n of lists.flat()) { const seen = byId.get(n.id); byId.set(n.id, seen ? { ...seen, read: seen.read || n.read } : n); }
+    return fresh([...byId.values()].sort((a, b) => b.at - a.at));
+  }
+  // Several Etsy tabs share the stored history: every change is applied to the stored list as it is now,
+  // never by writing back this tab's older copy.
+  async function mutate(change) {
+    items = fresh(change(merge(await stored())));
+    await store.set(KEY, items);
+    emit();
+  }
 
   async function load() {
-    const raw = await store.get(KEY, []);
-    items = fresh((Array.isArray(raw) ? raw : []).map(normalizeNotice).filter(Boolean).sort((a, b) => b.at - a.at));
+    items = merge(await stored());
     emit();
     return items;
   }
@@ -71,28 +83,20 @@ export function createNotices({ store, settings, scope, now = () => Date.now() }
     if (!item) return null;
     if (prefs.desktop) desktop(item);
     if (!prefs.panel) return null;
-    items = fresh([item, ...items]);
-    await save();
-    emit();
+    await mutate((list) => [item, ...list]);
     return item;
   }
 
   async function markAllRead() {
-    items = items.map((n) => ({ ...n, read: true }));
-    await save();
-    emit();
+    await mutate((list) => list.map((n) => ({ ...n, read: true })));
   }
 
   async function markRead(id) {
-    items = items.map((n) => (n.id === id ? { ...n, read: true } : n));
-    await save();
-    emit();
+    await mutate((list) => list.map((n) => (n.id === id ? { ...n, read: true } : n)));
   }
 
   async function clear() {
-    items = [];
-    await save();
-    emit();
+    await mutate(() => []);
   }
 
   return {

@@ -34,4 +34,3 @@ export function formatBytes(bytes, language = 'en') {
   if (n < 1024 * 1024) return `${new Intl.NumberFormat(language, { maximumFractionDigits: 0 }).format(Math.max(n ? 1 : 0, n / 1024))} KB`;
   return `${new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(n / (1024 * 1024))} MB`;
 }
-

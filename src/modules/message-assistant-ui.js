@@ -166,7 +166,7 @@ export function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTa
     const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
       h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec; display: flex; gap: 8px;' },
         h(doc, 'div', { class: 'search grow' }, icon(doc, ICONS.search),
-          h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), value: local.query ?? '', 'data-ma': 'search',
+          h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('search'), 'aria-label': ts('search'), name: 'ma-search', value: local.query ?? '', 'data-ma': 'search',
             oninput: (e) => actions.setLocal({ query: e.target.value }) }))),
       h(doc, 'div', { style: 'padding: 8px 12px; border-bottom: 1px solid #ececec;' },
         segmented(doc, { label: ts('filter'), name: 'ma-filter', value: local.filter === 'unread' ? 'unread' : 'all', onChange: (value) => actions.setLocal({ filter: value }),
@@ -292,7 +292,7 @@ export function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTa
     const left = h(doc, 'div', { style: 'width: 320px; flex: none; border-right: 1px solid #e7e7e7; display: flex; flex-direction: column; min-height: 0;' },
       h(doc, 'div', { style: 'padding: 12px; border-bottom: 1px solid #ececec;' },
         h(doc, 'div', { class: 'search' }, icon(doc, ICONS.search),
-          h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('searchTemplates'), 'aria-label': ts('searchTemplates'), value: local.templateQuery ?? '', oninput: (e) => actions.setLocal({ templateQuery: e.target.value }) }))),
+          h(doc, 'input', { class: 'input', type: 'search', placeholder: ts('searchTemplates'), 'aria-label': ts('searchTemplates'), name: 'ma-template-search', value: local.templateQuery ?? '', oninput: (e) => actions.setLocal({ templateQuery: e.target.value }) }))),
       h(doc, 'div', { style: 'flex: 1 1 auto; overflow: auto;', 'data-role': 'ma-templates' }, shown.map((t) => h(doc, 'a', {
         class: t.id === draft?.id ? 'tp on' : 'tp', href: '#', 'data-template': t.id, onclick: (e) => { e.preventDefault(); pick(t); },
       }, h(doc, 'span', { class: 'col grow', style: 'gap: 2px; min-width: 0;' }, h(doc, 'span', { class: 'sm b trunc', text: t.name }), h(doc, 'span', { class: 'xs mute', text: t.category })),
@@ -300,7 +300,8 @@ export function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTa
         : t.unknown.length ? h(doc, 'span', { class: 'badge warn', text: ts('missingVar') }) : h(doc, 'span', { class: 'badge ok', text: ts('valid') })))));
     if (!draft) return [h(doc, 'div', { class: 'card', style: 'flex: 1 1 auto; min-height: 0; display: flex;' }, left)];
 
-    const update = (patch) => { local.templateDraft = { ...draft, ...patch }; };
+    // Each field merges into the latest draft, so editing the name and then the text keeps both.
+    const update = (patch) => { local.templateDraft = { ...(local.templateDraft?.id === draft.id ? local.templateDraft : draft), ...patch }; };
     const textArea = h(doc, 'textarea', { class: 'input', rows: '4', id: 'eat-ma-tpl-text', 'data-ma': 'template-text', oninput: (e) => update({ text: e.target.value }) }, draft.text);
     const used = [...new Set([...String(draft.text).matchAll(/{{\s*(\w+)\s*}}/g)].map((m) => m[1]))];
     const unknown = used.filter((v) => !variables.includes(v));

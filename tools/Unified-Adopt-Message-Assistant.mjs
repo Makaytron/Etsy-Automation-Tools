@@ -44,6 +44,9 @@ export const MA_EDITS = Object.freeze([
   ['            if (!this.app || !this.view) return;\n', '            if (!this.app || !this.view) return;\n            __env.onChange?.();\n', 1, 'render hook'],
   ["            this.app?.setAttribute?.('aria-busy', String(Boolean(value)));\n", "            this.app?.setAttribute?.('aria-busy', String(Boolean(value)));\n            __env.onChange?.();\n", 1, 'busy hook'],
   ['            launcher.focus({ preventScroll: true });\n', '            launcher.focus({ preventScroll: true });\n            __env.onChange?.();\n', 1, 'close hook'],
+  // The unified "AI and translation services" choice decides the automatic translation preview before the first route is handled,
+  // so a disabled preference never lets an opened conversation reach the translator (it is also saved after start).
+  ['            await Store.load();\n            await Campaign.recoverDurableSendPartials()', "            await Store.load();\n            if (typeof __env.autoPreview === 'function') Store.settings = { ...Store.settings, autoTurkishPreview: Boolean(__env.autoPreview()) };\n            await Campaign.recoverDurableSendPartials()", 1, 'unified translation preference before the first route'],
   // The standalone package's usage metrics stay with the standalone package.
   ['    function telemetrySuppressed() {\n', '    function telemetrySuppressed() {\n        return true;\n', 1, 'no telemetry from the unified engine'],
 ]);

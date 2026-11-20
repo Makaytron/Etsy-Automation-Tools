@@ -10,6 +10,7 @@ import { drawerSide, tabRect, snapToEdge, drawerWidth } from '../src/core/drawer
 import { detectLanguage, textDirection, createI18n, validatePack, interpolate } from '../src/core/i18n.js';
 import { buildReport, scrubNote, browserInfo } from '../src/core/diagnostics.js';
 import { createHost } from '../src/core/host.js';
+import { createNotices } from '../src/core/notices.js';
 import { TOOLS } from '../src/modules/index.js';
 
 // ── Routes ──────────────────────────────────────────────────────────────
@@ -262,4 +263,24 @@ test('every routed tool is declared once', () => {
   const ids = TOOLS.map((t) => t.id);
   assert.equal(new Set(ids).size, ids.length);
   for (const route of ROUTES) assert.ok(ids.includes(route.module), route.id);
+});
+
+test('notices from two Etsy tabs sharing one store are merged, not overwritten', async () => {
+  const core = createStorage(createMemoryStore()).namespace('core');
+  const settings = { get: () => ({ notify: { events: {}, quiet: { on: false }, sound: false } }) };
+  let clock = 1_800_000_000_000;
+  const now = () => (clock += 1000);
+  const saleTab = createNotices({ store: core, settings, scope: {}, now });
+  const adsTab = createNotices({ store: core, settings, scope: {}, now });
+  await saleTab.load();
+  await adsTab.load();
+  await saleTab.add({ event: 'seriesStopped', tool: 'sale-manager', title: 'Series stopped' });
+  await adsTab.add({ event: 'scanDone', tool: 'ads-keyword-manager', title: 'Scan finished' });
+  const both = createNotices({ store: core, settings, scope: {}, now });
+  await both.load();
+  assert.deepEqual(both.list().map((n) => n.title), ['Scan finished', 'Series stopped'], 'the second tab keeps the first tab\'s notice');
+  await saleTab.markAllRead();
+  await adsTab.add({ event: 'scanDone', title: 'Another scan' });
+  await both.load();
+  assert.deepEqual(both.list().map((n) => [n.title, n.read]), [['Another scan', false], ['Scan finished', true], ['Series stopped', true]], 'read state from one tab survives a later add in another');
 });

@@ -107,6 +107,8 @@ export function renderKwPage(doc, { snap, data, language, actions, container }) 
   const head = pageHead(doc, {
     overline: 'Keyword & Market Analyzer', title: ts('title'), description: ts('description'),
     actions: [
+      // Importing a Listing Analyzer research request stays possible once research is saved.
+      items.length ? h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-kw': 'import', onclick: (e) => importDialog(e.currentTarget) }, icon(doc, ICONS.upload, 16), ts('importRequest')) : null,
       h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-kw': 'export', disabled: !saved.length, onclick: () => actions.exportJson() }, icon(doc, ICONS.download, 16), ts('exportJson')),
       h(doc, 'form', { class: 'row', 'data-role': 'kw-search', onsubmit: (e) => { e.preventDefault(); actions.search(e.currentTarget.elements.keyword.value); } },
         h(doc, 'input', { class: 'input', id: 'eat-kw-keyword', name: 'keyword', type: 'search', 'aria-label': ts('keyword'), maxlength: 80, autocomplete: 'off', placeholder: ts('keyword'), value: snap.keyword ?? '', style: 'width: 200px;' }),
