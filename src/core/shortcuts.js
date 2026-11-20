@@ -21,11 +21,12 @@ export function comboFromEvent(event) {
 }
 
 /** The action bound to an event, if shortcuts are on. Typing in a field never triggers one, except Ctrl+Enter style bindings. */
-export function actionForEvent(event, shortcuts) {
+export function actionForEvent(event, shortcuts, { focused = null } = {}) {
   if (!shortcuts?.on) return null;
   const combo = comboFromEvent(event);
   if (!combo) return null;
-  const target = event.composedPath?.()[0] ?? event.target;
+  // ocused: the field focused inside a closed shadow root, which the document only sees as its host.
+  const target = focused ?? event.composedPath?.()[0] ?? event.target;
   const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName ?? '') || target?.isContentEditable;
   for (const [action, binding] of Object.entries(shortcuts.keys)) {
     if (binding !== combo) continue;

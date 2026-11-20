@@ -288,7 +288,9 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
   function onShortcut(event) {
     // While Settings › Shortcuts records a new binding, the keys belong to the recorder, not to the bindings.
     if (workspace?.capturing) return;
-    const action = actionForEvent(event, settings.get().shortcuts);
+    // Typing in one of our own fields: the closed shadow root shows only its host to the document, so ask the root.
+    const focused = event.composedPath?.()[0] === hostEl ? root.activeElement : null;
+    const action = actionForEvent(event, settings.get().shortcuts, { focused });
     if (!action) return;
     if (action === 'drawer') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); setOpen(!state.open); return; }
     if (action === 'workspace') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); else openWorkspace(); return; }

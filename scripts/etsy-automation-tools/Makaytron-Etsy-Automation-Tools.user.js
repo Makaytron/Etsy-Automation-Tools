@@ -27514,7 +27514,12 @@
           UI.state.targetLanguage = next;
           return UI.state.reply ? __eatRun('regenerate-reply', () => UI.regenerateReply()) : Promise.resolve(true);
       },
-      editReply(text) { if (UI.state.reply != null) UI.state.reply = String(text ?? ''); },
+      // An edited reply no longer matches its translated preview: drop it, as the standalone editor does on input.
+      editReply(text) {
+          if (UI.state.reply == null) return;
+          UI.state.reply = String(text ?? '');
+          if (UI.state.replyTr) { UI.state.replyTr = ''; __eatChanged(); }
+      },
       insert: () => __eatRun('insert-reply', () => UI.insertReply()),
       copy: () => __eatRun('copy', () => UI.copySource('reply')),
       translateList: () => __eatRun('message-list-translate', () => UI.translateMessageListPreviews({ auto: false })),
@@ -44770,7 +44775,7 @@
                 h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'label grow', id: 'eat-ma-reply-label', text: ts('toBuyer') }),
                   h(doc, 'label', { class: 'row', style: 'gap: 6px;' }, h(doc, 'span', { class: 'xs mute2', text: ts('replyLanguage') }),
                     languageSelect(doc, ts, { value: replyLanguage, languages: actions.languages(), language, buyer: c.language, onChange: (code) => actions.setReplyLanguage(code) }))),
-                h(doc, 'textarea', { class: 'input', rows: '3', 'aria-labelledby': 'eat-ma-reply-label', 'data-ma': 'reply', oninput: (e) => actions.editReply(e.target.value) }, c.reply)),
+                h(doc, 'textarea', { class: 'input', rows: '3', name: 'ma-reply', 'aria-labelledby': 'eat-ma-reply-label', 'data-ma': 'reply', oninput: (e) => actions.editReply(e.target.value) }, c.reply)),
               c.replyTr ? h(doc, 'span', { class: 'xs mute', text: ts('inYours', { language: languageName('tr', language), text: c.replyTr }) }) : null,
               shieldLine(doc, ts)),
             h(doc, 'div', { class: 'card-f', style: 'flex-wrap: wrap; justify-content: flex-end;' },
@@ -45600,7 +45605,14 @@
         if (job?.active && job.paused && !before.paused) {
           void notify({ event: 'seriesStopped', tool: 'sale-manager', title: say('stoppedBanner', { n: index + 1 }), detail: snap.plans[index]?.saleName ?? '', needsAction: true, page: 'tool:sale-manager' });
         } else if (!job?.active) {
-          void notify({ event: 'seriesDone', tool: 'sale-manager', title: say('completed'), detail: `${done} / ${total}`, page: 'tool:sale-manager' });
+          // The engine moves an ended job into lastReport (job becomes null): read the outcome and counts from there.
+          const report = snap.lastReport && (!before.jobId || !snap.lastReport.jobId || snap.lastReport.jobId === before.jobId) ? snap.lastReport : null;
+          const results = report?.results ?? job?.results ?? [];
+          const created = results.filter((r) => r.status === 'SUCCESS').length;
+          const stopped = (report?.status ?? job?.terminalStatus) === 'stopped';
+          void notify(stopped
+            ? { event: 'seriesStopped', tool: 'sale-manager', title: say('stopped'), detail: `${created} / ${total} · ${say('repStoppedHint')}`, page: 'tool:sale-manager' }
+            : { event: 'seriesDone', tool: 'sale-manager', title: say('completed'), detail: `${created} / ${total}`, page: 'tool:sale-manager' });
         }
       }
 
@@ -45818,11 +45830,12 @@
     }
 
     /** The action bound to an event, if shortcuts are on. Typing in a field never triggers one, except Ctrl+Enter style bindings. */
-    function actionForEvent(event, shortcuts) {
+    function actionForEvent(event, shortcuts, { focused = null } = {}) {
       if (!shortcuts?.on) return null;
       const combo = comboFromEvent(event);
       if (!combo) return null;
-      const target = event.composedPath?.()[0] ?? event.target;
+      // ocused: the field focused inside a closed shadow root, which the document only sees as its host.
+      const target = focused ?? event.composedPath?.()[0] ?? event.target;
       const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName ?? '') || target?.isContentEditable;
       for (const [action, binding] of Object.entries(shortcuts.keys)) {
         if (binding !== combo) continue;
@@ -48639,7 +48652,9 @@
       function onShortcut(event) {
         // While Settings › Shortcuts records a new binding, the keys belong to the recorder, not to the bindings.
         if (workspace?.capturing) return;
-        const action = actionForEvent(event, settings.get().shortcuts);
+        // Typing in one of our own fields: the closed shadow root shows only its host to the document, so ask the root.
+        const focused = event.composedPath?.()[0] === hostEl ? root.activeElement : null;
+        const action = actionForEvent(event, settings.get().shortcuts, { focused });
         if (!action) return;
         if (action === 'drawer') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); setOpen(!state.open); return; }
         if (action === 'workspace') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); else openWorkspace(); return; }

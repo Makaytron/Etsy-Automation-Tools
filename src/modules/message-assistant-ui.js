@@ -248,7 +248,7 @@ export function renderMaPage(doc, { view, language, actions, tab = 'inbox', onTa
             h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'label grow', id: 'eat-ma-reply-label', text: ts('toBuyer') }),
               h(doc, 'label', { class: 'row', style: 'gap: 6px;' }, h(doc, 'span', { class: 'xs mute2', text: ts('replyLanguage') }),
                 languageSelect(doc, ts, { value: replyLanguage, languages: actions.languages(), language, buyer: c.language, onChange: (code) => actions.setReplyLanguage(code) }))),
-            h(doc, 'textarea', { class: 'input', rows: '3', 'aria-labelledby': 'eat-ma-reply-label', 'data-ma': 'reply', oninput: (e) => actions.editReply(e.target.value) }, c.reply)),
+            h(doc, 'textarea', { class: 'input', rows: '3', name: 'ma-reply', 'aria-labelledby': 'eat-ma-reply-label', 'data-ma': 'reply', oninput: (e) => actions.editReply(e.target.value) }, c.reply)),
           c.replyTr ? h(doc, 'span', { class: 'xs mute', text: ts('inYours', { language: languageName('tr', language), text: c.replyTr }) }) : null,
           shieldLine(doc, ts)),
         h(doc, 'div', { class: 'card-f', style: 'flex-wrap: wrap; justify-content: flex-end;' },

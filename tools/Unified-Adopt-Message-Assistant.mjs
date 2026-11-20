@@ -228,7 +228,12 @@ const EPILOGUE = `
             UI.state.targetLanguage = next;
             return UI.state.reply ? __eatRun('regenerate-reply', () => UI.regenerateReply()) : Promise.resolve(true);
         },
-        editReply(text) { if (UI.state.reply != null) UI.state.reply = String(text ?? ''); },
+        // An edited reply no longer matches its translated preview: drop it, as the standalone editor does on input.
+        editReply(text) {
+            if (UI.state.reply == null) return;
+            UI.state.reply = String(text ?? '');
+            if (UI.state.replyTr) { UI.state.replyTr = ''; __eatChanged(); }
+        },
         insert: () => __eatRun('insert-reply', () => UI.insertReply()),
         copy: () => __eatRun('copy', () => UI.copySource('reply')),
         translateList: () => __eatRun('message-list-translate', () => UI.translateMessageListPreviews({ auto: false })),

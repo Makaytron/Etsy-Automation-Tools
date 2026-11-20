@@ -12,6 +12,7 @@ import { buildReport, scrubNote, browserInfo } from '../src/core/diagnostics.js'
 import { createHost } from '../src/core/host.js';
 import { createNotices } from '../src/core/notices.js';
 import { createWaitingNotices } from '../src/core/waiting-notices.js';
+import { actionForEvent } from '../src/core/shortcuts.js';
 import { TOOLS } from '../src/modules/index.js';
 
 // ── Routes ──────────────────────────────────────────────────────────────
@@ -294,4 +295,11 @@ test('a step that starts waiting is announced once; what already waited at load 
   w.update([{ key: 'a:applying', detail: 'Old' }, { key: 'b:applying', detail: 'Mug' }], { notify, language: 'en' });
   w.update([{ key: 'b:applying', detail: 'Mug' }], { notify, language: 'en' });
   assert.deepEqual(sent.map((n) => [n.event, n.detail, n.needsAction, n.title]), [['queueWaiting', 'Mug', true, 'The edit queue waits for you']]);
+});
+test('a shortcut does not fire while typing in a field inside the closed shadow root', () => {
+  const shortcuts = { on: true, keys: { adsClosePage: 'Ctrl+Space' } };
+  const host = { tagName: 'DIV' };
+  const event = { key: ' ', code: 'Space', ctrlKey: true, composedPath: () => [host], target: host };
+  assert.equal(actionForEvent(event, shortcuts), 'adsClosePage', 'on the page itself it fires');
+  assert.equal(actionForEvent(event, shortcuts, { focused: { tagName: 'INPUT' } }), null, 'not while a workspace field has focus');
 });

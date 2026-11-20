@@ -61,7 +61,14 @@ export function createSaleManagerModule() {
     if (job?.active && job.paused && !before.paused) {
       void notify({ event: 'seriesStopped', tool: 'sale-manager', title: say('stoppedBanner', { n: index + 1 }), detail: snap.plans[index]?.saleName ?? '', needsAction: true, page: 'tool:sale-manager' });
     } else if (!job?.active) {
-      void notify({ event: 'seriesDone', tool: 'sale-manager', title: say('completed'), detail: `${done} / ${total}`, page: 'tool:sale-manager' });
+      // The engine moves an ended job into lastReport (job becomes null): read the outcome and counts from there.
+      const report = snap.lastReport && (!before.jobId || !snap.lastReport.jobId || snap.lastReport.jobId === before.jobId) ? snap.lastReport : null;
+      const results = report?.results ?? job?.results ?? [];
+      const created = results.filter((r) => r.status === 'SUCCESS').length;
+      const stopped = (report?.status ?? job?.terminalStatus) === 'stopped';
+      void notify(stopped
+        ? { event: 'seriesStopped', tool: 'sale-manager', title: say('stopped'), detail: `${created} / ${total} · ${say('repStoppedHint')}`, page: 'tool:sale-manager' }
+        : { event: 'seriesDone', tool: 'sale-manager', title: say('completed'), detail: `${created} / ${total}`, page: 'tool:sale-manager' });
     }
   }
 
