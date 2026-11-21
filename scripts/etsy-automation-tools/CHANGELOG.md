@@ -4,7 +4,7 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
-## [2.1.0] - Unreleased
+## [2.1.0] - 2026-11-22
 
 ### Added
 
@@ -26,7 +26,7 @@ Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak 
 - Keyword & Market Analyzer listed a just-saved search twice.
 - Saving the Ads word list from the workspace broke on a line break.
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 2026-11-20
 
 ### Added
 
