@@ -201,6 +201,8 @@ const scenarios = {
     S().activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true }));
     await wait(50);
     out.afterEscapeHidden = sheet().hidden;
+    const logo = tab().querySelector('img');
+    out.logo = logo ? { draggable: logo.draggable, pointer: getComputedStyle(logo).pointerEvents } : null;
     out.dragLeft = await drag(20, 300);
     out.savedLeft = saved(); out.tabLeft = rect(tab());
     await click();
@@ -600,6 +602,9 @@ const scenarios = {
 
 // An open Etsy conversation, reduced to what the Message Assistant engine reads.
 const MA_CONVERSATION = '<div id="dg-tabs-preact__tab-1--default_wt_tab_panel" role="tabpanel" data-conversation-id="1234567890"><div class="wt-grid"><div class="wt-rounded wt-text-body-01 wt-display-inline-block wt-break-word" data-message-direction="incoming">Hi! I just placed my order. Could the name be changed from Emma to Olivia?</div></div><textarea class="new-message-textarea-min-height" placeholder="Reply"></textarea></div>';
+// Etsy's Messages list with its "Drafted for you › Delivery issues" folder link next to a real conversation.
+const MA_LIST = '<nav aria-label="Folders"><ul><li><a href="https://www.etsy.com/messages/proactive_drafts">Delivery issues<span>0</span></a></li></ul></nav><ul aria-label="Conversations"><li><a href="https://www.etsy.com/messages/1234567890" aria-label="Conversation with Buyer Fixture">Buyer Fixture</a><p>Okay thank you!</p></li></ul>';
+const ADS_MANY_RULES = [ADS_RULES, ...Array.from({ length: 300 }, (_, i) => 'fixture-rule-' + i)].join(String.fromCharCode(10));
 const PAGES = {
   '/your/shops/me/sales-discounts': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.sellerPage },
   '/c/jewelry': { settings: { onboarded: true, language: 'tr' }, scenario: scenarios.shoppingPage },
@@ -618,6 +623,7 @@ const PAGES = {
   '/your/shops/me/advertising/listings/collapsed': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"], [data-ads-state="error"]')); return { state: window.__shadow.querySelector('[data-ads-state]')?.dataset.adsState, expanded: document.getElementById('kw-toggle').getAttribute('aria-expanded') }; }`, extra: ADS_TABLE_COLLAPSED, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/drawer-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/advertising/listings/page-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
+  '/your/shops/me/advertising/listings/rules-many': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; const S = () => window.__shadow; await wait(2000); await until(() => S().querySelector('[data-ads-state="warning"]')); S().querySelector('[data-ads="details"]').click(); await wait(200); S().querySelector('[data-name="ads-tab"][data-value="wordlist"]').click(); await until(() => S().querySelector('[data-role="ads-rules"]')); await wait(100); const add = S().querySelector('[data-ads="add-rule"]'); const card = add?.closest('section'); return { rules: S().querySelectorAll('[data-role="ads-rules"] tbody tr').length, addCard: card ? Math.round(card.getBoundingClientRect().height) : null, addButton: add ? Math.round(add.getBoundingClientRect().height) : null }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_MANY_RULES } },
   '/your/shops/me/advertising/listings/rules-shot': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-ads-state="warning"]')); window.__shadow.querySelector('[data-ads="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="ads-tab"][data-value="wordlist"]').click(); await until(() => window.__shadow.querySelector('[data-role="ads-rules"]')); return { ok: true }; }`, extra: ADS_TABLE, preload: { 'eat:v1:ads-keyword-manager:legacy.adWordlist': ADS_RULES } },
   '/your/shops/me/marketplace-insights/search?query=bts%20sticker': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.kwScreens, extra: KW_RESULT },
   '/your/shops/me/marketplace-insights/search?query=bts%20sticker&standalone=1': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.kwStandalone, extra: KW_RESULT + '<div id="makaytron-etsy-keyword-market-analyzer">standalone Keyword & Market Analyzer</div>' },
@@ -626,6 +632,7 @@ const PAGES = {
   '/your/shops/me/marketplace-insights/search?query=bts%20sticker&shot=saved': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { ${KW_WAIT} window.__shadow.querySelector('[data-kw="save"]').click(); await until(() => (window.__values.get('${KW_SAVED_KEY}') || []).length); window.__shadow.querySelector('[data-kw="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="kw-tab"][data-value="saved"]').click(); await until(() => window.__shadow.querySelector('[data-role="kw-saved"]')); return { ok: true }; }`, extra: KW_RESULT },
   '/messages/eat-engine': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maEngine },
   '/messages/eat-screens': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: scenarios.maScreens },
+  '/messages/all': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); window.__shadow.querySelector('[data-ma="details"]').click(); await wait(300); const rows = [...window.__shadow.querySelectorAll('[data-role="ma-list"] a.cv')]; return { names: rows.map((a) => a.querySelector('.sm')?.textContent ?? ''), ids: rows.map((a) => a.dataset.conversation) }; }`, extra: MA_LIST },
   '/messages/1234567890': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); return { ok: true }; }`, extra: MA_CONVERSATION },
   '/messages/1234567890?shot=page': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); window.__shadow.querySelector('[data-ma="details"]').click(); await wait(200); return { ok: true }; }`, extra: MA_CONVERSATION },
   '/messages/eat-shot-templates': { settings: { onboarded: true, language: 'tr', theme: 'light', drawer: { openOnLoad: true } }, scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-role="ma-drawer"]')); window.__shadow.querySelector('[data-ma="details"]').click(); await wait(200); window.__shadow.querySelector('[data-name="ma-tab"][data-value="templates"]').click(); await wait(200); return { ok: true }; }` },
@@ -641,7 +648,7 @@ const PAGES = {
   '/your/shops/me/advertising/listings/transfer': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.realTransfer, extra: REAL_STANDALONE_ADS },
   '/your/shops/me/stats/whats-new': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.0.0', scenario: `async ({ wait }) => { const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(500); await until(() => window.__shadow.querySelector('[data-role="whats-new"]')); const S = window.__shadow; const out = { title: S.querySelector('.modal-title')?.textContent ?? null, items: S.querySelectorAll('[data-role="whats-new"] .li').length, seen: window.__values.get('eat:v1:core:seenVersion') }; S.querySelector('[data-action="wn-ok"]').click(); await wait(50); out.closed = !S.querySelector('[data-role="whats-new"]'); return out; }` },
   '/your/shops/me/stats/whats-new-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.0.0', scenario: `async ({ wait }) => { await wait(1200); return { ok: true }; }` },
-  '/your/shops/me/stats/first-visit': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: '2.1.0', scenario: `async ({ wait }) => { await wait(800); return { shown: Boolean(window.__shadow.querySelector('[data-role="whats-new"]')) }; }` },
+  '/your/shops/me/stats/first-visit': { settings: { onboarded: true, language: 'tr', theme: 'light' }, seen: APP_VERSION, scenario: `async ({ wait }) => { await wait(800); return { shown: Boolean(window.__shadow.querySelector('[data-role="whats-new"]')) }; }` },
   '/your/shops/me/stats/feedback': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.feedback },
   // Screenshot-only pages.
   '/your/shops/me/stats/feedback-shot': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: `async ({ wait }) => { ${HELPERS} await click(); S().querySelector('[data-action="open-workspace"]').click(); await wait(120); S().querySelector('[data-action="report-problem"]').click(); await wait(150); return { ok: true }; }` },
@@ -723,6 +730,7 @@ test('seller page: edge button, drawer, Escape and dragging to other edges', asy
   assert.equal(r.focusOnClose, 'Makaytron çekmecesini kapat', 'focus moves into the drawer');
   assert.equal(r.afterEscapeHidden, true, 'Escape closes the drawer');
 
+  assert.deepEqual(r.logo, { draggable: false, pointer: 'none' }, 'grabbing the logo drags the button, not the image');
   assert.equal(r.dragLeft.zoneOn, 'left');
   assert.match(r.dragLeft.chip, /sol kenar\s*Çekmece soldan açılır/);
   assert.equal(r.savedLeft.edge, 'left');
@@ -897,6 +905,19 @@ test('Message Assistant engine runs inside the unified script, isolated from a s
   assert.equal(r.maDrawer, true, 'the drawer shows the new Message Assistant screen');
 });
 
+test('Message Assistant lists conversations only, never Etsy folders such as Delivery issues', async () => {
+  const r = await visit(chrome, base, '/messages/all');
+  assert.deepEqual(r.names, ['Buyer Fixture']);
+  assert.deepEqual(r.ids, ['1234567890']);
+});
+
+test('Ads word list keeps the add form visible however long the list is', async () => {
+  const r = await visit(chrome, base, '/your/shops/me/advertising/listings/rules-many');
+  assert.ok(r.rules > 300, 'the long list is shown');
+  assert.ok(r.addCard > 80, `the add card keeps its height (got ${r.addCard}px)`);
+  assert.ok(r.addButton > 20, 'and its button is clickable');
+});
+
 test('Message Assistant screens show the engine data and open its panel at a section', async () => {
   const r = await visit(chrome, base, '/messages/eat-screens');
   assert.equal(r.launcherHidden, true, 'the edge button replaces the floating launcher');
@@ -991,9 +1012,13 @@ test('the real standalone script hands its data over from its notice, with the s
 
 test("the What's new dialog shows once after an update, in the interface language", async () => {
   const r = await visit(chrome, base, '/your/shops/me/stats/whats-new');
-  assert.match(r.title, /Yenilikler · 2\.1\.0/);
-  assert.equal(r.items, 3);
-  assert.equal(r.seen, '2.1.0', 'the version is recorded, so it does not open again');
+  // The dialog shows the notes of the version being built, so this test follows src/meta.js and src/core/release-notes.js.
+  const { RELEASE_NOTES } = await import('../src/core/release-notes.js');
+  const notes = RELEASE_NOTES.find((n) => n.version === APP_VERSION);
+  assert.ok(notes, `src/core/release-notes.js has notes for ${APP_VERSION}`);
+  assert.equal(r.title, `Yenilikler · ${APP_VERSION}`);
+  assert.equal(r.items, notes.items.length);
+  assert.equal(r.seen, APP_VERSION, 'the version is recorded, so it does not open again');
   assert.equal(r.closed, true);
   const again = await visit(chrome, base, '/your/shops/me/stats/first-visit');
   assert.equal(again.shown, false, 'nothing to show for a version already seen');

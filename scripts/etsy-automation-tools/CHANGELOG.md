@@ -4,6 +4,18 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.1] - 2026-11-21
+
+### Fixed
+
+Found in a live test on a real shop.
+
+- The edge button could not be dragged when it was grabbed by its logo: the browser started dragging the image instead.
+- Ads Keyword Manager: with a long word list the "Add a new word" form was squeezed to nothing. Cards on every workspace page now keep their height next to a long table.
+- Listing Analyzer: listing photos now show in the overview, the listing table and the queue (only from Etsy's own image host).
+- Message Assistant: "Show in …" in the drawer now shows the translation right there instead of only in the workspace.
+- Message Assistant (engine 1.3.1): Etsy's "Drafted for you › Delivery issues" folder no longer appears as a conversation, and quick replies and drafts use the listing's real title: not a link the buyer pasted, and without the prices shown next to it.
+
 ## [2.1.0] - 2026-11-22
 
 ### Added

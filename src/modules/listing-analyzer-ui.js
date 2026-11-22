@@ -118,6 +118,18 @@ function suggestionBadge(doc, record) {
 }
 
 /** Drawer section on the Listings page and in the listing editor. */
+/** Listing photo inside the thumbnail box. Only Etsy's own image host is ever loaded; otherwise the empty box stays. */
+export function listingThumb(doc, row, size) {
+  const box = h(doc, 'span', { class: 'thumb', style: `width: ${size}px; height: ${size}px; overflow: hidden;` });
+  let url = '';
+  try {
+    const parsed = new URL(String(row?.imageUrl || ''));
+    if (parsed.protocol === 'https:' && (parsed.hostname === 'i.etsystatic.com' || parsed.hostname.endsWith('.etsystatic.com'))) url = parsed.href;
+  } catch { /* not a URL: keep the placeholder */ }
+  if (url) box.append(h(doc, 'img', { src: url, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', draggable: 'false', style: 'width: 100%; height: 100%; object-fit: cover; display: block;' }));
+  return box;
+}
+
 export function renderLaDrawer(doc, { snap, language, actions }) {
   const ts = texts(language);
   const onListings = snap.route === 'listings';
@@ -208,7 +220,7 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
             h(doc, 'button', { class: 'xs b ob-link', type: 'button', onclick: () => onTab('listings'), text: ts('seeAll') })),
           priority.length
             ? h(doc, 'table', { class: 'tbl tbl-tight' }, h(doc, 'tbody', {}, priority.map((r) => h(doc, 'tr', { 'data-listing': r.id },
-              h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 12px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 32px; height: 32px;' }),
+              h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 12px;' }, listingThumb(doc, r, 32),
                 h(doc, 'span', { class: 'sm b trunc', style: 'max-width: 320px;', text: r.title }), r.sku ? h(doc, 'span', { class: 'xs mute', text: `· ${r.sku}` }) : null)),
               h(doc, 'td', { class: 'xs mute r', text: ts('visitsSales', { visits: num(language, r.visits), sales: num(language, r.sales) }) }),
               h(doc, 'td', { class: 'r' }, healthCell(doc, r.score)),
@@ -254,7 +266,7 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
             h(doc, 'th', { text: ts('colSuggestion') }), h(doc, 'th', { text: ts('colPlan') }), h(doc, 'th', { class: 'r' }))),
           h(doc, 'tbody', {}, shown.map((r) => h(doc, 'tr', { class: r.selected ? 'sel' : null, 'data-listing': r.id },
             h(doc, 'td', {}, box(r.selected, ts('selectRow', { title: r.title }), (on) => actions.select([r.id], on))),
-            h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 32px; height: 32px;' }),
+            h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, listingThumb(doc, r, 32),
               h(doc, 'span', { class: 'col', style: 'min-width: 0;' }, h(doc, 'span', { class: 'b trunc', style: 'max-width: 240px;', text: r.title }), h(doc, 'span', { class: 'sub', text: [r.sku, r.state].filter(Boolean).join(' · ') })))),
             h(doc, 'td', {}, healthCell(doc, r.score)),
             h(doc, 'td', { class: 'r num' }, num(language, r.visits), r.visitsDelta ? h(doc, 'span', { class: 'sub', text: `${r.visitsDelta > 0 ? '+' : ''}${num(language, r.visitsDelta)}` }) : null),
@@ -338,7 +350,7 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
             h(doc, 'tbody', {}, queueItems.map((item) => {
               const [label, tone] = QUEUE_STATUS[item.status] ?? QUEUE_STATUS.pending;
               return h(doc, 'tr', { 'data-queue-item': item.id },
-                h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, h(doc, 'span', { class: 'thumb', style: 'width: 36px; height: 36px;' }),
+                h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, listingThumb(doc, item, 36),
                   h(doc, 'span', { class: 'col' }, h(doc, 'span', { class: 'b', text: item.title }), h(doc, 'span', { class: 'xs mute', text: item.id })))),
                 h(doc, 'td', {}, h(doc, 'span', { class: 'badge out', text: ts(item.action === 'DEACTIVATE_REVIEW' ? 'deactivateReview' : 'update') })),
                 h(doc, 'td', {}, h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge' }, tone ? null : h(doc, 'span', { class: 'dot soft' }), ts(label))),

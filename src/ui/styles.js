@@ -19,7 +19,7 @@ export const SHELL_CSS = `
 
 /* Edge button (Launcher-Closed: .etab .r/.l/.t/.b) */
 .etab { position: fixed; padding: 0; cursor: pointer; touch-action: none; user-select: none; font: inherit; transition: left .2s ease, top .2s ease; }
-.etab img { pointer-events: none; }
+.etab img { pointer-events: none; -webkit-user-drag: none; }
 .etab.t .grip, .etab.b .grip { transform: rotate(90deg); }
 /* Open beside the drawer it looks like the drawer's own handle (Main: .dock::before): logo only. */
 .etab.att { z-index: 2; box-shadow: -6px 4px 12px -4px rgb(0 0 0 / .12); }

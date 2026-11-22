@@ -66,7 +66,8 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
       onpointerenter: () => showTip(true), onpointerleave: () => showTip(false), onfocus: () => showTip(true), onblur: () => showTip(false),
     },
     h(doc, 'span', { class: 'st', 'data-role': 'tab-count', hidden: true }),
-    assets.logo ? h(doc, 'img', { src: assets.logo, alt: '' }) : null,
+    // draggable=false: otherwise the browser starts its own image drag and cancels the button drag.
+    assets.logo ? h(doc, 'img', { src: assets.logo, alt: '', draggable: 'false' }) : null,
     h(doc, 'span', { class: 'grip', 'aria-hidden': 'true' }));
     container.append(tab);
     workspace = createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, notices, updates, reports, assets, onClose: onWorkspaceClose });

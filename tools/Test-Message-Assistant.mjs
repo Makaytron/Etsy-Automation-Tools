@@ -11933,3 +11933,60 @@ test('outside supported routes the assistant never reads or intercepts unrelated
     }
     assert.equal(reads, 0);
 });
+
+test('Etsy "Drafted for you" folders such as Delivery issues are lists, not conversations', async () => {
+    const { api } = await loadAssistant();
+    assert.equal(api.Router.conversationIdFromUrl('https://www.etsy.com/messages/proactive_drafts'), '');
+    assert.equal(api.Router.conversationIdFromUrl('https://www.etsy.com/messages/1234567890'), '1234567890');
+});
+
+test('a listing link the buyer pasted into a message is not taken as the product name', async () => {
+    const { api } = await loadAssistant();
+    const link = (title, text) => ({ getAttribute: (name) => (name === 'title' ? title : null), textContent: text, querySelector: () => null });
+    const scope = {
+        querySelectorAll: () => [
+            link(null, 'www.etsy.com/listing/1111111111/fixture-bear-shirt-with-a-very-long-name'),
+            link(null, 'https://www.etsy.com/listing/1111111111/fixture-bear-shirt'),
+            link('Fixture Bear Shirt', 'Fixture Bear Shirt'),
+        ],
+    };
+    assert.equal(api.MessageAdapter.getItemTitle(scope), 'Fixture Bear Shirt');
+    const onlyLink = { querySelectorAll: () => [link(null, 'etsy.com/listing/1111111111/fixture-bear-shirt')] };
+    assert.equal(api.MessageAdapter.getItemTitle(onlyLink), '', 'a bare link gives no title rather than a wrong one');
+});
+
+test('the product name comes from the listing link text, without the prices Etsy shows next to it', async () => {
+    const { api } = await loadAssistant();
+    // Etsy's order card: <a><p>Title</p><p>$24.77</p><p>$43.45</p></a>, plus shortened links that say "Opens a new tab".
+    const leaf = (text) => ({ textContent: text, children: [] });
+    const card = (parts, extra = {}) => ({
+        getAttribute: () => null,
+        textContent: parts.join(''),
+        querySelector: () => (extra.alt === undefined ? null : { alt: extra.alt }),
+        querySelectorAll: () => parts.map(leaf),
+    });
+    const scope = {
+        querySelectorAll: () => [
+            card(['www.etsy.com/listing/1111111111/fixture-sweatshirt-bear']),
+            card(['Fixture Sweatshirt: Bear Design Tee', '$24.77', '$43.45']),
+            card(['Fixture Sweatshirt: Bear Design...', 'Opens a new tab']),
+        ],
+    };
+    assert.equal(api.MessageAdapter.getItemTitle(scope), 'Fixture Sweatshirt: Bear Design Tee');
+});
+
+test('a title written directly in the listing link next to an image is still found', async () => {
+    const { api } = await loadAssistant();
+    // <a href="/listing/1"><img alt="Listing image">Personalized Fixture Shirt</a>
+    const img = { nodeType: 1, textContent: '', children: [], childNodes: [], alt: 'Listing image' };
+    const text = { nodeType: 3, nodeValue: 'Personalized Fixture Shirt', textContent: 'Personalized Fixture Shirt' };
+    const link = {
+        getAttribute: () => null,
+        textContent: 'Personalized Fixture Shirt',
+        children: [img],
+        childNodes: [img, text],
+        querySelector: () => img,
+        querySelectorAll: () => [img],
+    };
+    assert.equal(api.MessageAdapter.getItemTitle({ querySelectorAll: () => [link] }), 'Personalized Fixture Shirt');
+});

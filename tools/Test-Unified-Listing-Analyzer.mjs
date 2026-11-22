@@ -48,3 +48,18 @@ test('adoption fails loudly when the standalone script changes shape', () => {
   assert.throws(() => adoptListingAnalyzer(source.replace("    const COLLECTION_HANDOFF_KEY = 'meli:v1:collection-navigation-handoff';", "    const COLLECTION_HANDOFF_KEY = 'meli:v2:handoff';")), /collection handoff/);
   assert.throws(() => adoptListingAnalyzer(source.replace('    if (window.__MAKAYTRON_LISTING_SKIP_INIT__ !== true) {\n        void RouteLifecycle', '    if (window.__MAKAYTRON_LISTING_SKIP_INIT__ !== true) {\n        RouteLifecycle')), /closing block/);
 });
+
+test('listing rows show the listing photo when Etsy gave one, and only from Etsy image hosts', async () => {
+  const { listingThumb } = await import('../src/modules/listing-analyzer-ui.js');
+  const { createFakeDocument } = await import('./Unified-Fake-Dom.mjs');
+  const doc = createFakeDocument();
+  const withPhoto = listingThumb(doc, { imageUrl: 'https://i.etsystatic.com/12345/r/il/abc/1/il_340x270.1.jpg' }, 32);
+  const img = withPhoto.find((n) => n.tagName === 'IMG');
+  assert.equal(img.length, 1);
+  assert.equal(img[0].getAttribute('src'), 'https://i.etsystatic.com/12345/r/il/abc/1/il_340x270.1.jpg');
+  assert.equal(img[0].getAttribute('alt'), '');
+  assert.equal(img[0].getAttribute('loading'), 'lazy');
+  assert.equal(listingThumb(doc, { imageUrl: '' }, 32).find((n) => n.tagName === 'IMG').length, 0, 'no photo: the placeholder stays');
+  assert.equal(listingThumb(doc, { imageUrl: 'https://tracker.example/pixel.gif' }, 32).find((n) => n.tagName === 'IMG').length, 0, 'other hosts are never loaded');
+  assert.equal(listingThumb(doc, { imageUrl: 'javascript:alert(1)' }, 32).find((n) => n.tagName === 'IMG').length, 0);
+});

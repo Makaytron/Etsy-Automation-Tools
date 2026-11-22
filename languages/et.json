@@ -408,6 +408,7 @@
     "set.channelStable": "Stabiilne",
     "set.channelBeta": "Beeta",
     "set.channelHint": "Beeta saab uued versioonid varem; neis võib olla rohkem puudujääke.",
+    "rn.211.fixes": "Parandused: servanupu lohistamine logost, Adsi sõnade lisamise vorm, kuulutuste fotod ning Message Assistanti tõlked ja mustandid.",
     "rn.210.design": "Uus välimus igal vaatel, ühesugune heledas ja tumedas režiimis.",
     "rn.210.settings": "Seadetes on nüüd AI-teenusepakkujad, teavitused, otseteed ja värskendused.",
     "rn.210.notices": "Teavitused annavad teada, kui töö lõpeb või sind ootab.",

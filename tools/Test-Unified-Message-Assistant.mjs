@@ -104,3 +104,18 @@ test('adoption fails loudly when the standalone script changes shape', () => {
   assert.throws(() => adoptMessageAssistant(source.replace('globalThis.GM?.addStyle', 'globalThis.GM.addStyle')), /global GM access/);
   assert.throws(() => adoptMessageAssistant(source.replace('    await App.init();\n})();\n', '    void App.init();\n})();\n')), /closing block/);
 });
+
+test('the drawer shows the translation of the open conversation once it is there', async () => {
+  const { renderMaDrawer } = await import('../src/modules/message-assistant-ui.js');
+  const { createFakeDocument, root } = await import('./Unified-Fake-Dom.mjs');
+  const doc = createFakeDocument();
+  const actions = new Proxy({ languages: () => ['en', 'tr'] }, { get: (t, k) => t[k] ?? (() => {}) });
+  const view = {
+    previewLanguage: 'tr', templates: [], ai: { hasKey: false },
+    conversation: { id: '1', name: 'Fixture Buyer', orderId: '', language: 'en', replyLanguage: 'en', last: 'Okay thank you!', translation: 'Tamam, teşekkür ederim!' },
+  };
+  const box = root(doc, renderMaDrawer(doc, { snap: { busy: false }, view, language: 'tr', actions }));
+  const shown = box.find((n) => n.getAttribute('data-role') === 'ma-translation');
+  assert.equal(shown.length, 1, 'the translation is visible in the drawer, not only in the workspace');
+  assert.match(shown[0].textContent, /Tamam, teşekkür ederim!/);
+});

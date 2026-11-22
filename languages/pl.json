@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilny",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dostaje nowe wersje wcześniej; mogą mieć więcej niedoróbek.",
+    "rn.211.fixes": "Poprawki: przeciąganie przycisku przy krawędzi za logo, formularz dodawania słów w Ads, zdjęcia ofert oraz tłumaczenia i szkice w Message Assistant.",
     "rn.210.design": "Nowy wygląd każdego ekranu, taki sam w jasnym i ciemnym motywie.",
     "rn.210.settings": "Ustawienia mają teraz dostawców AI, powiadomienia, skróty i aktualizacje.",
     "rn.210.notices": "Powiadomienia informują, gdy zadanie się skończy lub czeka na Ciebie.",

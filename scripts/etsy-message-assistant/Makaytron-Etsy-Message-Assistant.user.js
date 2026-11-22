@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.3.0
+// @version      1.3.1
 // @description  Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages into your selected language and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -517,7 +517,7 @@
     const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path));
 
 
-    const APP_VERSION = '1.3.0';
+    const APP_VERSION = '1.3.1';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
@@ -4377,6 +4377,8 @@ zu|Zulu
         'all', 'archive', 'archived', 'custom_requests', 'etsy_notifications',
         'from_potential_buyers', 'inbox', 'order_help_requests', 'spam', 'starred',
         'sent', 'trash', 'unread', 'with', 'new', 'compose',
+        // Etsy's 'Drafted for you' folders (for example Delivery issues) are lists, not conversations.
+        'proactive_drafts',
     ]);
     const CONVERSATION_ANCHOR_SELECTOR = [
         'a[href*="/messages/"]',
@@ -5120,10 +5122,32 @@ zu|Zulu
             const scope = resolvedScope || this.getConversationScope();
             if (!scope) return '';
             const generic = /^(image showing item from buyer(?:'s|’s) order|image|listing image|item image)$/i;
+            // Etsy's order card puts the title and its prices in separate elements inside one link; reading the
+            // link's own text pieces keeps "$24.77" and "Opens a new tab" out of the product name. Text written
+            // directly in the link (next to an image, for example) is a piece too.
+            const textPieces = (link) => {
+                const texts = [];
+                const walk = (node) => {
+                    for (const child of node?.childNodes || []) {
+                        if (child.nodeType === 3) texts.push(child.nodeValue);
+                        else if (child.nodeType === 1) walk(child);
+                    }
+                };
+                walk(link);
+                if (texts.some((text) => normalize(text))) return texts;
+                const leaves = [...(link.querySelectorAll?.('*') || [])]
+                    .filter((element) => !element.children?.length)
+                    .map((element) => element.textContent)
+                    .filter((text) => normalize(text));
+                return leaves.length ? leaves : [link.textContent];
+            };
             const candidates = [...scope.querySelectorAll('a[href*="/listing/"], a[href*="/transaction/"]')]
-                .flatMap((candidate) => [candidate.getAttribute('title'), candidate.textContent, candidate.querySelector('img')?.alt])
+                .flatMap((candidate) => [candidate.getAttribute('title'), ...textPieces(candidate), candidate.querySelector('img')?.alt])
                 .map(normalize)
-                .filter((title) => title.length > 4 && title.length < 300 && !generic.test(title));
+                .filter((title) => title.length > 4 && title.length < 300 && !generic.test(title))
+                .filter((title) => !/^opens a new tab$|^yeni sekmede açılır$/i.test(title) && !/^[\p{Sc}\s\d.,]+$/u.test(title))
+                // A link the buyer pasted into a message shows its address as text; that is not the product name.
+                .filter((title) => !/^(?:https?:\/\/|www\.)\S+$|^(?:[a-z0-9-]+\.)*etsy\.com\/\S*$/i.test(title));
             return [...new Set(candidates)].sort((a, b) => b.length - a.length)[0] || '';
         },
         context() {
