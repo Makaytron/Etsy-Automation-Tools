@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
-  "sourceDigest": "sha256:42deb8eb42f3fbf405e3cdac79f9fc12454e0f86377d674f94bcdd4f38c1cda1",
+  "sourceDigest": "sha256:d7cc48c9dce36cd6c466e2d3a7a2e52a78c4ec1886b20328f9566dd3517ea1a4",
   "status": "pass",
   "summary": {
     "scriptCount": 5,
@@ -716,9 +716,9 @@
       "id": "message-assistant",
       "label": "Message Assistant",
       "path": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
-      "bytes": 863943,
-      "lines": 13381,
-      "sha256": "2d440f82aac2b7d7b1efc5f028bf9fc31cd21ade8bcb8b764e11b610fba32634",
+      "bytes": 864525,
+      "lines": 13392,
+      "sha256": "1804e92ec802e1617d721ef85169d3be43708dde2a7df63bca85774d9597b301",
       "version": "1.3.1",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
@@ -943,7 +943,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 11451,
+          "line": 11462,
           "selector": ".ma-launcher",
           "top": null,
           "right": "var(--ma-s5)",
@@ -955,7 +955,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 11451,
+          "line": 11462,
           "selector": ".ma-app",
           "top": "var(--ma-s3)",
           "right": "var(--ma-s3)",
@@ -986,7 +986,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 5338,
+            "line": 5349,
             "bytes": 106,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -994,7 +994,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 11747,
+            "line": 11758,
             "bytes": 41,
             "selectorCount": 1,
             "unsafeSelectors": []
@@ -1002,7 +1002,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 11451,
+            "line": 11462,
             "bytes": 30464,
             "selectorCount": 292,
             "unsafeSelectors": []

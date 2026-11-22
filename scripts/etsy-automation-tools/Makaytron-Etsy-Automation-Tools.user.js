@@ -19105,11 +19105,22 @@
           if (!scope) return '';
           const generic = /^(image showing item from buyer(?:'s|’s) order|image|listing image|item image)$/i;
           // Etsy's order card puts the title and its prices in separate elements inside one link; reading the
-          // link's own text pieces keeps "$24.77" and "Opens a new tab" out of the product name.
+          // link's own text pieces keeps "$24.77" and "Opens a new tab" out of the product name. Text written
+          // directly in the link (next to an image, for example) is a piece too.
           const textPieces = (link) => {
+              const texts = [];
+              const walk = (node) => {
+                  for (const child of node?.childNodes || []) {
+                      if (child.nodeType === 3) texts.push(child.nodeValue);
+                      else if (child.nodeType === 1) walk(child);
+                  }
+              };
+              walk(link);
+              if (texts.some((text) => normalize(text))) return texts;
               const leaves = [...(link.querySelectorAll?.('*') || [])]
                   .filter((element) => !element.children?.length)
-                  .map((element) => element.textContent);
+                  .map((element) => element.textContent)
+                  .filter((text) => normalize(text));
               return leaves.length ? leaves : [link.textContent];
           };
           const candidates = [...scope.querySelectorAll('a[href*="/listing/"], a[href*="/transaction/"]')]

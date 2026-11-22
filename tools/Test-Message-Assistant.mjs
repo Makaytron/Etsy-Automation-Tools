@@ -11974,3 +11974,19 @@ test('the product name comes from the listing link text, without the prices Etsy
     };
     assert.equal(api.MessageAdapter.getItemTitle(scope), 'Fixture Sweatshirt: Bear Design Tee');
 });
+
+test('a title written directly in the listing link next to an image is still found', async () => {
+    const { api } = await loadAssistant();
+    // <a href="/listing/1"><img alt="Listing image">Personalized Fixture Shirt</a>
+    const img = { nodeType: 1, textContent: '', children: [], childNodes: [], alt: 'Listing image' };
+    const text = { nodeType: 3, nodeValue: 'Personalized Fixture Shirt', textContent: 'Personalized Fixture Shirt' };
+    const link = {
+        getAttribute: () => null,
+        textContent: 'Personalized Fixture Shirt',
+        children: [img],
+        childNodes: [img, text],
+        querySelector: () => img,
+        querySelectorAll: () => [img],
+    };
+    assert.equal(api.MessageAdapter.getItemTitle({ querySelectorAll: () => [link] }), 'Personalized Fixture Shirt');
+});
