@@ -50,7 +50,7 @@
     {
       "id": "message-assistant",
       "path": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
-      "scriptVersion": "1.3.0",
+      "scriptVersion": "1.3.1",
       "mkuiVersion": "1.0.0",
       "bundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "presentationHash": "sha256:069fea47e0f9ffd87aebdeeea6e9e588e0cffa5647aca4a494f763cdecf62f47",

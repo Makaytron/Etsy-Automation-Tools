@@ -33,6 +33,9 @@ export const WORKSPACE_CSS = `
 .nav-foot a, .nav-foot button { color: var(--muted); text-decoration: none; background: none; border: none; padding: 0; font: inherit; cursor: pointer; }
 .nav-foot a.site { color: var(--muted2); font-weight: 600; }
 .main { overflow-y: auto; }
+/* .main is a fixed-height flex column and .card hides overflow: without this a long table squeezed the cards before it to 0px.
+   Cards that should fill the height (Message Assistant inbox) set their own flex inline, which still wins. */
+.main > .card, .main > [style*="display: contents"] > .card { flex-shrink: 0; }
 
 /* Settings pages (Settings, Settings-*) */
 .cols { display: flex; gap: 16px; align-items: flex-start; }

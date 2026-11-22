@@ -357,6 +357,7 @@ export const WORKSPACE_STRINGS = Object.freeze({
     'set.channelStable': 'Stable',
     'set.channelBeta': 'Beta',
     'set.channelHint': 'Beta gets new versions earlier; they may have more rough edges.',
+    'rn.211.fixes': 'Fixes: dragging the edge button by its logo, the Ads add-word form, listing photos, and translations and drafts in Message Assistant.',
     'rn.210.design': 'A new look for every screen, the same in light and dark.',
     'rn.210.settings': 'Settings now has AI providers, notifications, shortcuts and updates.',
     'rn.210.notices': 'Notifications tell you when a job ends or waits for you.',

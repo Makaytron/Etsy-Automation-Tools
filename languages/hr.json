@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilno",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta ranije dobiva nove verzije; mogu imati više nedostataka.",
+    "rn.211.fixes": "Ispravci: povlačenje gumba na rubu za logotip, obrazac za dodavanje riječi u Ads, fotografije oglasa te prijevodi i skice u Message Assistantu.",
     "rn.210.design": "Novi izgled svakog zaslona, jednak u svijetloj i tamnoj temi.",
     "rn.210.settings": "Postavke sada imaju pružatelje UI, obavijesti, prečace i ažuriranja.",
     "rn.210.notices": "Obavijesti vam javljaju kad zadatak završi ili vas čeka.",

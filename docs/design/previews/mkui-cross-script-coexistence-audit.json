@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
-  "sourceDigest": "sha256:6e5a983e55f2af77eafd108224cebf9b0e468c8a6cc3e8d79e32c6c483c08ec0",
+  "sourceDigest": "sha256:42deb8eb42f3fbf405e3cdac79f9fc12454e0f86377d674f94bcdd4f38c1cda1",
   "status": "pass",
   "summary": {
     "scriptCount": 5,
@@ -716,10 +716,10 @@
       "id": "message-assistant",
       "label": "Message Assistant",
       "path": "scripts/etsy-message-assistant/Makaytron-Etsy-Message-Assistant.user.js",
-      "bytes": 862908,
-      "lines": 13368,
-      "sha256": "58122a0ded32bc87d8895deb9496e8e5d30a7f59129833bfdf4cbda66fe68aac",
-      "version": "1.3.0",
+      "bytes": 863943,
+      "lines": 13381,
+      "sha256": "2d440f82aac2b7d7b1efc5f028bf9fc31cd21ade8bcb8b764e11b610fba32634",
+      "version": "1.3.1",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -943,7 +943,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 11438,
+          "line": 11451,
           "selector": ".ma-launcher",
           "top": null,
           "right": "var(--ma-s5)",
@@ -955,7 +955,7 @@
         },
         {
           "source": "innerHTML<style>",
-          "line": 11438,
+          "line": 11451,
           "selector": ".ma-app",
           "top": "var(--ma-s3)",
           "right": "var(--ma-s3)",
@@ -986,7 +986,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 5325,
+            "line": 5338,
             "bytes": 106,
             "selectorCount": 2,
             "unsafeSelectors": []
@@ -994,7 +994,7 @@
           {
             "label": "style.textContent",
             "kind": "global",
-            "line": 11734,
+            "line": 11747,
             "bytes": 41,
             "selectorCount": 1,
             "unsafeSelectors": []
@@ -1002,7 +1002,7 @@
           {
             "label": "innerHTML<style>",
             "kind": "shadow-or-local",
-            "line": 11438,
+            "line": 11451,
             "bytes": 30464,
             "selectorCount": 292,
             "unsafeSelectors": []

@@ -2,7 +2,7 @@
 
 # Makaytron Etsy Automation Tools
 
-Version: `2.1.0` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
+Version: `2.1.1` · [Changelog](./CHANGELOG.md) · [Repository](../../README.md)
 
 Five Makaytron tools for Etsy sellers in one script: Sale Manager, Message Assistant, Ads Keyword Manager, Listing Analyzer and Keyword & Market Analyzer. The Makaytron button on the edge of the Etsy page opens a drawer with the tool that works on that page and shortcuts to the others. The workspace opens full-window for the details.
 

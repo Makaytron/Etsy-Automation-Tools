@@ -408,6 +408,7 @@
     "set.channelStable": "稳定版",
     "set.channelBeta": "测试版",
     "set.channelHint": "测试版会更早收到新版本，但可能有更多不完善之处。",
+    "rn.211.fixes": "修复：按住标志拖动边缘按钮、Ads 中的添加词语表单、商品照片，以及 Message Assistant 的翻译和草稿。",
     "rn.210.design": "所有界面焕然一新，浅色和深色模式外观一致。",
     "rn.210.settings": "设置中新增了 AI 服务商、通知、快捷键和更新。",
     "rn.210.notices": "任务完成或等你处理时，通知会告诉你。",

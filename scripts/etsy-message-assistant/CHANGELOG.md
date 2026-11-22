@@ -7,6 +7,13 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-21
+
+### Fixed
+
+- Etsy's new "Drafted for you" folders (for example **Delivery issues**, `/messages/proactive_drafts`) are no longer listed as conversations.
+- A listing link the buyer pasted into a message is no longer taken as the product name, and the prices Etsy shows next to the title on the order card are left out; quick replies and drafts use the listing's real title.
+
 ## [1.3.0] - 2026-11-20
 
 ### Added

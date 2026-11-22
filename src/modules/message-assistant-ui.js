@@ -115,6 +115,10 @@ export function renderMaDrawer(doc, { snap, view, language, actions, unread = 0 
         c.reply && c.replyCurrent ? h(doc, 'span', { class: 'badge ok', 'data-ma-state': 'draft', text: ts('draftAdded') }) : null),
       h(doc, 'label', { class: 'row', style: 'gap: 6px;' }, h(doc, 'span', { class: 'xs mute2 grow', text: ts('replyLanguage') }),
         languageSelect(doc, ts, { value: c.replyLanguage || c.language || 'en', languages: actions.languages(), language, buyer: c.language, onChange: (code) => actions.setReplyLanguage(code) })),
+      c.translation
+        ? h(doc, 'div', { class: 'sm', style: 'background: #f2f2f2; border-radius: 10px; padding: 8px 12px; max-height: 160px; overflow: auto;', 'data-role': 'ma-translation' },
+          h(doc, 'span', { class: 'xxs mute b', style: 'display: block; margin-bottom: 2px;', text: ts('translation', { language: languageName(view.previewLanguage, language) }) }), c.translation)
+        : null,
       h(doc, 'div', { class: 'row' },
         h(doc, 'button', { class: 'btn btn-o btn-sm grow', type: 'button', 'data-ma': 'translate', disabled: snap.busy, onclick: () => actions.translate(), text: ts('showTranslation', { language: languageName(view.previewLanguage, language) }) }),
         h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-ma': 'draft', disabled: snap.busy || !view.ai.hasKey, onclick: () => actions.draft(), text: ts('makeDraft') })),
