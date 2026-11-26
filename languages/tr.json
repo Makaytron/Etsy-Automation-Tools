@@ -408,7 +408,7 @@
     "set.channelStable": "Kararlı",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta yeni sürümleri daha erken alır; pürüzleri daha fazla olabilir.",
-    "rn.214.fixes": "Düzeltmeler: koyu temada seçili listing satırları, başarısız kampanya satırları ve mesaj kutuları yeniden okunuyor.",
+    "rn.214.fixes": "Düzeltmeler: listing taraması Etsy'nin kart görünümünü ve Stats'i kendisi açıp sonra görünümünü geri getiriyor, okunmamış mesajlar yeniden sayılıyor, anahtar kelimesi olmayan reklamlar artık hata göstermiyor, koyu temada seçili satırlar okunuyor ve yeni metinler senin dilinde görünüyor.",
     "rn.213.fixes": "Düzeltmeler: inceleme kuyruğu oluşturulamazsa nedeni artık gösteriliyor, durdurulan kuyruk artık etkin görünmüyor ve sağ kenarda kenar düğmesi kaydırma çubuğunun altında kalmıyor.",
     "rn.212.fixes": "Düzeltmeler: satış planı artık geçmiş günleri göstermiyor, kuyruktaki öğelerde listing fotoğrafı görünüyor ve sol kenarda kenar düğmesi Etsy simgelerini kapatmıyor.",
     "rn.211.fixes": "Düzeltmeler: kenar düğmesini logodan sürükleme, Ads'te kelime ekleme formu, listing fotoğrafları ve Message Assistant'ta çeviri ve taslaklar.",

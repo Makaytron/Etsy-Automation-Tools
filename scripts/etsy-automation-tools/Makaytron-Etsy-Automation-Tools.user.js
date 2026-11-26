@@ -7896,7 +7896,7 @@
   const ADOPTED_SALE_MANAGER_VERSION = '1.1.2';
   // END ADOPTED SALE MANAGER
 
-  // BEGIN ADOPTED ADS KEYWORD MANAGER 1.1.1
+  // BEGIN ADOPTED ADS KEYWORD MANAGER 1.1.2
   async function createAdoptedAdsKeywordManager(__env) {
   'use strict';
   // The engine talks to a storage, network and menu shim instead of the userscript manager directly.
@@ -7999,7 +7999,7 @@
 
   const SCRIPT_SOURCE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
   const WORD_LIST_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/keyword-rules.txt';
-  const APP_VERSION = '1.1.1';
+  const APP_VERSION = '1.1.2';
   const MKUI_VERSION = '1.0.0';
   const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
   const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -11247,7 +11247,7 @@
       updateList: ensureWord, restoreBackup: restoreWordlistBackup, editRules: openWordlistEditor,
   };
   }
-  const ADOPTED_ADS_KEYWORD_MANAGER_VERSION = '1.1.1';
+  const ADOPTED_ADS_KEYWORD_MANAGER_VERSION = '1.1.2';
   // END ADOPTED ADS KEYWORD MANAGER
 
   // BEGIN ADOPTED KEYWORD MARKET ANALYZER 1.1.0
@@ -14441,7 +14441,7 @@
   const ADOPTED_KEYWORD_MARKET_ANALYZER_VERSION = '1.1.0';
   // END ADOPTED KEYWORD MARKET ANALYZER
 
-  // BEGIN ADOPTED MESSAGE ASSISTANT 1.3.1
+  // BEGIN ADOPTED MESSAGE ASSISTANT 1.3.2
   async function createAdoptedMessageAssistant(__env) {
   'use strict';
   // The engine talks to a storage, network and menu shim instead of the userscript manager directly.
@@ -14529,7 +14529,7 @@
   const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path) && __env.isAllowed());
 
 
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.3.2';
   const MKUI_VERSION = '1.0.0';
   const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
   const CENTRAL_MESSAGE_CENTER_BUILD = false;
@@ -27653,10 +27653,10 @@
       translateLast: () => __eatCompose('translate'), generateReply: () => __eatCompose('reply'),
   };
   }
-  const ADOPTED_MESSAGE_ASSISTANT_VERSION = '1.3.1';
+  const ADOPTED_MESSAGE_ASSISTANT_VERSION = '1.3.2';
   // END ADOPTED MESSAGE ASSISTANT
 
-  // BEGIN ADOPTED LISTING ANALYZER 1.3.1
+  // BEGIN ADOPTED LISTING ANALYZER 1.3.2
   async function createAdoptedListingAnalyzer(__env) {
   'use strict';
   // The engine talks to a storage, network and menu shim instead of the userscript manager directly.
@@ -27757,7 +27757,7 @@
   }
 
 
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.3.2';
   const MKUI_VERSION = '1.0.0';
   const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
   const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -38523,7 +38523,7 @@
       scanPage: () => scanCurrentPage(), toggleCollection: () => Collection.toggle(), exportData: () => exportBackup(),
   };
   }
-  const ADOPTED_LISTING_ANALYZER_VERSION = '1.3.1';
+  const ADOPTED_LISTING_ANALYZER_VERSION = '1.3.2';
   // END ADOPTED LISTING ANALYZER
 
   // ── src/core/events.js ──
@@ -44077,7 +44077,7 @@
         'set.channelStable': 'Stable',
         'set.channelBeta': 'Beta',
         'set.channelHint': 'Beta gets new versions earlier; they may have more rough edges.',
-        'rn.214.fixes': 'Fixes: in the dark theme, selected listing rows, failed campaign rows and message boxes are readable again.',
+        'rn.214.fixes': 'Fixes: the listing scan turns on Etsy\'s card view and Stats itself and then restores your view, unread messages are counted again, ads without keywords no longer show an error, selected rows are readable in the dark theme, and new text appears in your language.',
         'rn.213.fixes': 'Fixes: if the review queue cannot be built, the reason is now shown; a stopped queue no longer looks active; and on the right edge the edge button stays clear of the scroll bar.',
         'rn.212.fixes': 'Fixes: the sale plan no longer lists days that have passed, queue items show the listing photo, and on the left edge the edge button leaves Etsy\'s icons free.',
         'rn.211.fixes': 'Fixes: dragging the edge button by its logo, the Ads add-word form, listing photos, and translations and drafts in Message Assistant.',

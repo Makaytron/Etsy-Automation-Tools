@@ -408,7 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta får nye versioner tidligere; de kan have flere skønhedsfejl.",
-    "rn.214.fixes": "Rettelser: i det mørke tema kan valgte annoncerækker, mislykkede kampagnerækker og beskedfelter læses igen.",
+    "rn.214.fixes": "Rettelser: annoncescanningen slår selv Etsys kortvisning og Stats til og gendanner bagefter din visning, ulæste beskeder tælles igen, annoncer uden søgeord viser ikke længere en fejl, valgte rækker kan læses i det mørke tema, og ny tekst vises på dit sprog.",
     "rn.213.fixes": "Rettelser: hvis gennemgangskøen ikke kan oprettes, vises årsagen nu; en stoppet kø ser ikke længere aktiv ud; og i højre kant holder kantknappen sig fri af rullepanelet.",
     "rn.212.fixes": "Rettelser: udsalgsplanen viser ikke længere dage, der er gået, elementer i køen viser annoncens foto, og i venstre kant dækker kantknappen ikke længere Etsys ikoner.",
     "rn.211.fixes": "Rettelser: træk kantknappen i logoet, formularen til at tilføje ord i Ads, opslagsbilleder samt oversættelser og kladder i Message Assistant.",

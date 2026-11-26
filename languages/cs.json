@@ -408,7 +408,7 @@
     "set.channelStable": "Stabilní",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dostává nové verze dříve; mohou mít více nedostatků.",
-    "rn.214.fixes": "Opravy: v tmavém motivu jsou vybrané řádky nabídek, řádky neúspěšných kampaní a pole zpráv opět čitelné.",
+    "rn.214.fixes": "Opravy: skenování nabídek si samo zapne zobrazení karet a Stats v Etsy a pak vrátí vaše zobrazení, nepřečtené zprávy se opět počítají, reklamy bez klíčových slov už neukazují chybu, vybrané řádky jsou v tmavém motivu čitelné a nový text se zobrazuje ve vašem jazyce.",
     "rn.213.fixes": "Opravy: pokud nelze vytvořit frontu ke kontrole, zobrazí se nyní důvod; zastavená fronta už nevypadá aktivně; a na pravém okraji tlačítko nezajíždí pod posuvník.",
     "rn.212.fixes": "Opravy: plán výprodejů už neukazuje dny, které uplynuly, položky ve frontě zobrazují fotku nabídky a na levém okraji tlačítko nezakrývá ikony Etsy.",
     "rn.211.fixes": "Opravy: přetažení tlačítka na okraji za logo, formulář pro přidání slov v Ads, fotky inzerátů a překlady a koncepty v Message Assistant.",

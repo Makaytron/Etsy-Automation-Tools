@@ -7,6 +7,12 @@ hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-11-26
+
+### Fixed
+
+- Unread conversations are counted again. Etsy's Messages list now marks an unread conversation only with a red badge beside its time, which the list reader did not recognise, so unread conversations showed as read.
+
 ## [1.3.1] - 2026-11-21
 
 ### Fixed

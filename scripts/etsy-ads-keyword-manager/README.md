@@ -10,7 +10,7 @@ Etsy Ads anahtar kelime satırlarını anlaşılır filtrelerle bulmak, vurgulam
 
 Script standalone çalışır; başka bir Etsy Automation Tools paketinin kurulması gerekmez.
 
-**Sürüm:** 1.1.1 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
+**Sürüm:** 1.1.2 · [Değişiklik günlüğü](./CHANGELOG.md) · [Ana depo](../../README.md)
 
 Etsy içinde yenilemesiz sayfa geçişleri desteklenir. İlk açılış desteklenmeyen bir Etsy sayfasında olsa da yalnız hafif URL dinleyicisi çalışır; araç kendi sayfasına girilince başlar, çıkılınca arayüzü kaldırılır ve sayfa işlemleri durur. Yeniden girişte mükerrer panel veya menü oluşmaz.
 

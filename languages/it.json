@@ -408,7 +408,7 @@
     "set.channelStable": "Stabile",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta riceve prima le nuove versioni, che possono essere meno rifinite.",
-    "rn.214.fixes": "Correzioni: nel tema scuro le righe delle inserzioni selezionate, le righe delle campagne non riuscite e i riquadri dei messaggi sono di nuovo leggibili.",
+    "rn.214.fixes": "Correzioni: la scansione delle inserzioni attiva da sola la vista a schede e le Stats di Etsy e poi ripristina la tua vista, i messaggi non letti tornano a essere contati, gli annunci senza parole chiave non mostrano più un errore, le righe selezionate sono leggibili nel tema scuro e il nuovo testo compare nella tua lingua.",
     "rn.213.fixes": "Correzioni: se la coda di revisione non può essere creata, ora ne viene mostrato il motivo; una coda interrotta non sembra più attiva; e sul bordo destro il pulsante di bordo non finisce più sotto la barra di scorrimento.",
     "rn.212.fixes": "Correzioni: il piano dei saldi non mostra più i giorni passati, gli elementi in coda mostrano la foto dell'inserzione e, sul bordo sinistro, il pulsante di bordo lascia libere le icone di Etsy.",
     "rn.211.fixes": "Correzioni: trascinare il pulsante sul bordo dal logo, il modulo per aggiungere parole in Ads, le foto delle inserzioni e traduzioni e bozze in Message Assistant.",

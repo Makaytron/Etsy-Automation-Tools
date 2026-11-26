@@ -408,7 +408,7 @@
     "set.channelStable": "Stabilno",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dobi nove različice prej; lahko imajo več pomanjkljivosti.",
-    "rn.214.fixes": "Popravki: v temni temi so izbrane vrstice oglasov, vrstice neuspelih kampanj in polja sporočil spet berljivi.",
+    "rn.214.fixes": "Popravki: pregled oglasov sam vklopi Etsyjev prikaz kartic in Stats ter nato povrne vaš prikaz, neprebrana sporočila se spet štejejo, oglasi brez ključnih besed ne prikazujejo več napake, izbrane vrstice so v temni temi berljive, novo besedilo pa se prikaže v vašem jeziku.",
     "rn.213.fixes": "Popravki: če čakalne vrste za pregled ni mogoče ustvariti, je zdaj prikazan razlog; ustavljena vrsta ni več videti aktivna; na desnem robu pa gumb ni več pod drsnim trakom.",
     "rn.212.fixes": "Popravki: načrt razprodaj ne prikazuje več preteklih dni, elementi v čakalni vrsti prikazujejo fotografijo oglasa, na levem robu pa gumb ne prekriva več Etsyjevih ikon.",
     "rn.211.fixes": "Popravki: vlečenje gumba na robu za logotip, obrazec za dodajanje besed v Ads, fotografije oglasov ter prevodi in osnutki v Message Assistantu.",

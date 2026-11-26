@@ -15,9 +15,9 @@ Open-source Etsy automation tools and Tampermonkey userscripts for sellers. The 
 | Script | Version | Purpose |
 |---|---:|---|
 | [Makaytron Etsy Sale Manager](./scripts/etsy-sale-campaign-batch-runner/README.en.md) | 1.1.2 | Bulk Sales & Discounts Automation that schedules, verifies, and reports Etsy sale campaigns in controlled, fail-closed batches. |
-| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.3.1 | Adds role-aware conversation translation, verified quick replies and review-response drafts while retaining the explicitly opted-in, one-recipient-at-a-time Otopilot. |
-| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.1.1 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
-| [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.en.md) | 1.3.1 | Collects every page in order, verifies Etsy metric scopes, and adds active-epoch analysis, context-aware cohorts, exact experiment intervals, quality-aware charts, AI comparison, and Health Engine workflows. |
+| [Makaytron Etsy Message Assistant](./scripts/etsy-message-assistant/README.en.md) | 1.3.2 | Adds role-aware conversation translation, verified quick replies and review-response drafts while retaining the explicitly opted-in, one-recipient-at-a-time Otopilot. |
+| [Makaytron Etsy Ads Keyword Manager](./scripts/etsy-ads-keyword-manager/README.en.md) | 1.1.2 | Enables or disables current-page matches and, after explicit confirmation, disables matches across all pages. |
+| [Makaytron Etsy Listing Analyzer](./scripts/etsy-listing-analyzer/README.en.md) | 1.3.2 | Collects every page in order, verifies Etsy metric scopes, and adds active-epoch analysis, context-aware cohorts, exact experiment intervals, quality-aware charts, AI comparison, and Health Engine workflows. |
 | [Makaytron Etsy Keyword & Market Analyzer](./scripts/etsy-keyword-market-analyzer/README.en.md) | 1.1.0 | Reads visible Marketplace Insights metrics, explains them beneath keyword rows, and can return evidence to Listing Analyzer, which derives the title/tag suggestion locally. |
 | [Makaytron Etsy Automation Tools](./scripts/etsy-automation-tools/README.en.md) | 2.1.4 | All five tools in one script: an edge button and drawer on Etsy seller pages, a full-window workspace, shared settings, and a one-time transfer of settings from the standalone scripts. |
 
