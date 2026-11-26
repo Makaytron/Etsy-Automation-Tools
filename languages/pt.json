@@ -408,6 +408,7 @@
     "set.channelStable": "Estável",
     "set.channelBeta": "Beta",
     "set.channelHint": "O Beta recebe novas versões antes; elas podem ter mais arestas.",
+    "rn.215.fixes": "Correções: após uma verificação na visualização em tabela ou com as Stats desligadas, os resultados continuam atuais quando a sua visualização volta, e essa visualização já não mostra uma mensagem de paragem.",
     "rn.214.fixes": "Correções: a verificação de anúncios ativa sozinha a visualização em cartões e as Stats do Etsy e depois restaura a sua visualização, as mensagens não lidas voltam a ser contadas, anúncios sem palavras-chave já não mostram erro, as linhas selecionadas ficam legíveis no tema escuro e o texto novo aparece no seu idioma.",
     "rn.213.fixes": "Correções: se a fila de revisão não puder ser criada, o motivo agora é mostrado; uma fila parada já não parece ativa; e na borda direita o botão de borda não fica mais sob a barra de rolagem.",
     "rn.212.fixes": "Correções: o plano de promoções já não mostra dias que passaram, os itens da fila mostram a foto do anúncio e, na borda esquerda, o botão de borda deixa os ícones do Etsy livres.",

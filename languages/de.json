@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta erhält neue Versionen früher; sie können noch Ecken und Kanten haben.",
+    "rn.215.fixes": "Korrekturen: Nach einem Scan in der Tabellenansicht oder mit ausgeschalteten Stats bleiben die Ergebnisse aktuell, wenn deine Ansicht zurückkehrt, und diese Ansicht zeigt keine Stopp-Meldung mehr.",
     "rn.214.fixes": "Korrekturen: Der Angebots-Scan schaltet die Kartenansicht und Stats von Etsy selbst ein und stellt danach deine Ansicht wieder her, ungelesene Nachrichten werden wieder gezählt, Anzeigen ohne Keywords zeigen keinen Fehler mehr, ausgewählte Zeilen sind im dunklen Design lesbar und neue Texte erscheinen in deiner Sprache.",
     "rn.213.fixes": "Korrekturen: Kann die Prüfwarteschlange nicht erstellt werden, wird jetzt der Grund angezeigt; eine gestoppte Warteschlange wirkt nicht mehr aktiv; und am rechten Rand liegt die Randschaltfläche nicht mehr unter der Bildlaufleiste.",
     "rn.212.fixes": "Korrekturen: Der Rabattplan zeigt keine vergangenen Tage mehr, Einträge in der Warteschlange zeigen das Angebotsfoto, und am linken Rand verdeckt die Randschaltfläche die Etsy-Symbole nicht mehr.",

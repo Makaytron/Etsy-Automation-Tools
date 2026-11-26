@@ -408,6 +408,7 @@
     "set.channelStable": "Estable",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta recibe las nuevas versiones antes; pueden estar menos pulidas.",
+    "rn.215.fixes": "Correcciones: tras un escaneo en la vista de tabla o con las Stats desactivadas, los resultados siguen vigentes cuando vuelve tu vista, y esa vista ya no muestra un mensaje de detención.",
     "rn.214.fixes": "Correcciones: el escaneo de anuncios activa por sí solo la vista de tarjetas y las Stats de Etsy y después restaura tu vista, los mensajes no leídos vuelven a contarse, los anuncios sin palabras clave ya no muestran un error, las filas seleccionadas se leen en el tema oscuro y el texto nuevo aparece en tu idioma.",
     "rn.213.fixes": "Correcciones: si no se puede crear la cola de revisión, ahora se muestra el motivo; una cola detenida ya no parece activa; y en el borde derecho el botón de borde queda fuera de la barra de desplazamiento.",
     "rn.212.fixes": "Correcciones: el plan de rebajas ya no muestra días pasados, los elementos de la cola muestran la foto del anuncio y, en el borde izquierdo, el botón de borde deja libres los iconos de Etsy.",

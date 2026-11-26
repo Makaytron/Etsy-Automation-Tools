@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta menerima versi baharu lebih awal; mungkin masih ada kekurangan.",
+    "rn.215.fixes": "Pembetulan: selepas imbasan dalam paparan jadual atau dengan Stats dimatikan, hasilnya kekal terkini apabila paparan anda kembali, dan paparan itu tidak lagi menunjukkan mesej berhenti.",
     "rn.214.fixes": "Pembetulan: imbasan penyenaraian menghidupkan sendiri paparan kad dan Stats Etsy, kemudian memulihkan paparan anda, mesej belum dibaca dikira semula, iklan tanpa kata kunci tidak lagi menunjukkan ralat, baris dipilih boleh dibaca dalam tema gelap dan teks baharu dipaparkan dalam bahasa anda.",
     "rn.213.fixes": "Pembetulan: jika baris gilir semakan tidak dapat dibina, sebabnya kini dipaparkan; baris gilir yang dihentikan tidak lagi kelihatan aktif; dan di tepi kanan butang tepi tidak lagi berada di bawah bar tatal.",
     "rn.212.fixes": "Pembetulan: pelan jualan tidak lagi menyenaraikan hari yang telah berlalu, item baris gilir menunjukkan foto penyenaraian, dan di tepi kiri butang tepi tidak lagi menutup ikon Etsy.",
