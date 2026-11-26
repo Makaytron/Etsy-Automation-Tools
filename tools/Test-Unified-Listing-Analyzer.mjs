@@ -114,3 +114,12 @@ test('the queue and listings tabs show the engine status line', async () => {
     assert.equal(status[0].textContent, 'Engine status line');
   }
 });
+
+test('a running scan names the page being read, not the pages already read', async () => {
+  // With 15 of 16 pages read the screen said "Reading page 15 of 16" while Etsy showed page 16.
+  const { readingPage } = await import('../src/modules/listing-analyzer-ui.js');
+  assert.equal(readingPage({ status: 'running', pages: 15, total: 16 }), 16);
+  assert.equal(readingPage({ status: 'running', pages: 0, total: 16 }), 1);
+  assert.equal(readingPage({ status: 'running', pages: 16, total: 16 }), 16, 'never past the last page');
+  assert.equal(readingPage({ status: 'paused', pages: 4, total: 16 }), 4, 'a paused scan reads nothing');
+});
