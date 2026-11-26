@@ -6022,6 +6022,9 @@ zu|Zulu
                 });
                 const unread = Boolean(
                     scope.querySelector?.('[data-unread="true"]')
+                    // Etsy's Messages list (November 2026) marks an unread conversation only with a red
+                    // notification badge next to its time; read rows are drawn in gray.
+                    || scope.querySelector?.('.convo-details-timestamp-image-badge-container .wt-badge--notificationPrimary')
                     || ariaUnread
                     || /(?:^|\s)(?:is-)?unread(?:\s|$)/i.test(classText)
                     || String(scope.innerText || '').split(/\n+/).some(line => /^(?:unread|okunmadı)$/i.test(normalize(line)))

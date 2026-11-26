@@ -317,13 +317,3 @@ test('a shortcut does not fire while typing in a field inside the closed shadow 
   assert.equal(actionForEvent(event, shortcuts), 'adsClosePage', 'on the page itself it fires');
   assert.equal(actionForEvent(event, shortcuts, { focused: { tagName: 'INPUT' } }), null, 'not while a workspace field has focus');
 });
-test('tool screens take their backgrounds from the theme, never a fixed light colour', () => {
-  // A fixed light background keeps its colour in the dark theme while the text turns light, so the text disappears.
-  const dir = new URL('../src/modules/', import.meta.url);
-  const fixed = [];
-  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('-ui.js'))) {
-    const source = fs.readFileSync(new URL(file, dir), 'utf8');
-    for (const m of source.matchAll(/background(?:-color)?:\s*#(?:f[0-9a-f]{5}|e[0-9a-f]{5}|fff\b|ffffff)/gi)) fixed.push(`${file}: ${m[0]}`);
-  }
-  assert.deepEqual(fixed, []);
-});

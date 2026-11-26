@@ -20021,6 +20021,9 @@
               });
               const unread = Boolean(
                   scope.querySelector?.('[data-unread="true"]')
+                  // Etsy's Messages list (November 2026) marks an unread conversation only with a red
+                  // notification badge next to its time; read rows are drawn in gray.
+                  || scope.querySelector?.('.convo-details-timestamp-image-badge-container .wt-badge--notificationPrimary')
                   || ariaUnread
                   || /(?:^|\s)(?:is-)?unread(?:\s|$)/i.test(classText)
                   || String(scope.innerText || '').split(/\n+/).some(line => /^(?:unread|okunmadı)$/i.test(normalize(line)))
@@ -44834,7 +44837,7 @@
           h(doc, 'label', { class: 'row', style: 'gap: 6px;' }, h(doc, 'span', { class: 'xs mute2 grow', text: ts('replyLanguage') }),
             languageSelect(doc, ts, { value: c.replyLanguage || c.language || 'en', languages: actions.languages(), language, buyer: c.language, onChange: (code) => actions.setReplyLanguage(code) })),
           c.translation
-            ? h(doc, 'div', { class: 'sm', style: 'background: var(--soft); border-radius: 10px; padding: 8px 12px; max-height: 160px; overflow: auto;', 'data-role': 'ma-translation' },
+            ? h(doc, 'div', { class: 'sm', style: 'background: #f2f2f2; border-radius: 10px; padding: 8px 12px; max-height: 160px; overflow: auto;', 'data-role': 'ma-translation' },
               h(doc, 'span', { class: 'xxs mute b', style: 'display: block; margin-bottom: 2px;', text: ts('translation', { language: languageName(view.previewLanguage, language) }) }), c.translation)
             : null,
           h(doc, 'div', { class: 'row' },
@@ -44992,11 +44995,11 @@
               h(doc, 'span', { class: 'h2', text: c.name }),
               h(doc, 'span', { class: 'xs mute trunc', text: [c.orderId ? ts('order', { id: c.orderId }) : ts('noOrder'), c.itemTitle, c.language ? ts('writesIn', { language: languageName(c.language, language) }) : ''].filter(Boolean).join(' · ') })),
             c.orderId ? h(doc, 'a', { class: 'btn btn-o btn-sm', href: `https://www.etsy.com/your/orders/sold?order_id=${encodeURIComponent(c.orderId)}`, target: '_blank', rel: 'noopener', text: ts('openOrder') }) : null),
-          h(doc, 'div', { style: 'flex: 1 1 auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow: auto; background: var(--side);' },
+          h(doc, 'div', { style: 'flex: 1 1 auto; padding: 20px; display: flex; flex-direction: column; gap: 12px; overflow: auto; background: #fcfcfc;' },
             h(doc, 'div', { style: 'max-width: 560px; display: flex; flex-direction: column; gap: 6px;' },
-              customer.map((m) => h(doc, 'div', { style: 'border-radius: 12px; padding: 12px 14px;', class: 'sm ma-bubble', 'data-role': 'ma-message', text: m.text })),
+              customer.map((m) => h(doc, 'div', { style: 'background: #ffffff; border: 1px solid #e7e7e7; border-radius: 12px; padding: 12px 14px;', class: 'sm', 'data-role': 'ma-message', text: m.text })),
               c.translation
-                ? h(doc, 'div', { style: 'background: var(--soft); border-radius: 12px; padding: 10px 14px;', class: 'sm', 'data-role': 'ma-translation' },
+                ? h(doc, 'div', { style: 'background: #f2f2f2; border-radius: 12px; padding: 10px 14px;', class: 'sm', 'data-role': 'ma-translation' },
                   h(doc, 'span', { class: 'xxs mute b', style: 'display: block; margin-bottom: 2px;', text: ts('translation', { language: preview }) }), c.translation)
                 : c.last ? h(doc, 'button', { class: 'btn btn-o btn-sm', style: 'align-self: flex-start;', type: 'button', 'data-ma': 'translate', disabled: busy, onclick: () => actions.translate() }, icon(doc, ICONS.globe, 14), ts('showTranslation', { language: preview })) : null),
             draftCard));
@@ -45066,7 +45069,7 @@
               segmented(doc, { labelledBy: 'eat-ma-preview-label', name: 'ma-preview', value: previewLanguage, options: PREVIEW_LANGUAGES.map((code) => ({ value: code, label: languageName(code, language) })),
                 onChange: (code) => actions.setLocal({ previewLanguage: code, previewKey: null, previewError: false }) }),
               h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', 'data-ma': 'preview-refresh', 'aria-label': ts('refresh'), onclick: () => actions.setLocal({ previewKey: null, previewError: false }) }, icon(doc, ICONS.refresh, 14))),
-            h(doc, 'div', { style: 'border: 1px solid var(--line); border-radius: 8.4px; background: var(--soft2); padding: 12px; white-space: pre-wrap;', class: 'sm', 'data-role': 'ma-preview', 'aria-live': 'polite' },
+            h(doc, 'div', { style: 'border: 1px solid #e7e7e7; border-radius: 8.4px; background: #fafafa; padding: 12px; white-space: pre-wrap;', class: 'sm', 'data-role': 'ma-preview', 'aria-live': 'polite' },
               local.previewText == null ? ts('previewLoading') : local.previewError ? ts('previewFailed') : local.previewText)),
           unknown.length
             ? banner(doc, { tone: 'warn', iconPaths: ICONS.alert, text: ts('checkBad', { list: unknown.map((v) => `{{${v}}}`).join(', ') }) })
@@ -45107,7 +45110,7 @@
               h(doc, 'tbody', {}, items.map((item) => {
                 const [label, tone] = STATUS[item.status] ?? STATUS.pending;
                 const needsYou = item.status === 'error' || item.status === 'inserted' || item.status === 'sent_pending_verification';
-                return h(doc, 'tr', { 'data-order': item.orderId, style: item.status === 'error' ? 'background: var(--soft2);' : null },
+                return h(doc, 'tr', { 'data-order': item.orderId, style: item.status === 'error' ? 'background: #fafafa;' : null },
                   h(doc, 'td', { class: 'b', text: item.name }),
                   h(doc, 'td', { class: 'mute2 trunc', style: 'max-width: 200px;', text: item.itemTitle || '—' }),
                   h(doc, 'td', { text: templateName(item.templateId) }),
@@ -45139,7 +45142,7 @@
             ? h(doc, 'div', { class: 'list' }, view.reviews.map((r) => h(doc, 'div', { class: 'col', style: 'padding: 14px 16px; gap: 8px;', 'data-review': r.id },
               h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'sm b grow', text: r.name }), r.rating != null ? h(doc, 'span', { class: r.rating >= 4 ? 'badge out num' : 'badge warn num', text: ts('rating', { n: r.rating }) }) : null),
               r.text ? h(doc, 'p', { class: 'sm mute2', text: `“${r.text}”` }) : null,
-              r.reply ? h(doc, 'div', { style: 'border: 1px solid var(--line); border-radius: 8.4px; background: var(--soft2); padding: 10px 12px;', class: 'sm', text: r.reply }) : null,
+              r.reply ? h(doc, 'div', { style: 'border: 1px solid #e7e7e7; border-radius: 8.4px; background: #fafafa; padding: 10px 12px;', class: 'sm', text: r.reply }) : null,
               h(doc, 'div', { class: 'row' },
                 r.risk && r.risk !== 'low' ? h(doc, 'span', { class: 'badge warn', text: ts('checkRisk', { risk: r.risk }) }) : null,
                 h(doc, 'span', { class: 'grow' }),
@@ -45542,7 +45545,7 @@
           h(doc, 'thead', {}, h(doc, 'tr', {}, ['#', ts('colCode'), ts('colDates'), ts('colStatus'), ts('colCheck')].map((c) => h(doc, 'th', { text: c })))),
           h(doc, 'tbody', {}, snap.plans.map((p, i) => {
             const st = rowStatus(p, job);
-            return h(doc, 'tr', { 'data-code': p.saleName, class: st.error ? 'row-err' : null, style: !st.error && st.current ? 'background: var(--soft2);' : null },
+            return h(doc, 'tr', { 'data-code': p.saleName, style: st.error ? 'background: #fef2f2;' : st.current ? 'background: var(--soft2);' : null },
               h(doc, 'td', { class: 'mute num', text: String(i + 1) }),
               h(doc, 'td', {}, h(doc, 'span', { class: 'mono b', text: p.saleName })),
               h(doc, 'td', { class: 'num', text: `${fmtDay(p.startDate, language)} → ${fmtDay(p.endDate, language)}` }),
@@ -46702,11 +46705,7 @@
     .theme-dark .nt-item { background: #1a1a1a; border-color: #262626; }
     .theme-dark .nt-item.unread, .theme-dark .nt-foot, .theme-dark .nt-well { background: #1e1e1e; border-color: #2e2e2e; }
     .theme-dark .nt-head, .theme-dark .nt-empty + .nt-foot { border-color: #262626; }
-    /* Rows and message boxes with their own background keep the text readable in both themes. */
-    .row-err { background: #fef2f2; }
-    .ma-bubble { background: #fff; border: 1px solid var(--line); }
-    .theme-dark .row-err { background: #2a1515; }
-    .theme-dark .ma-bubble { background: #1a1a1a; }
+    /* A selected listing row (screens.css: .lt tr.sel td) keeps its text readable in the dark theme. */
     .theme-dark .lt tr.sel td { background: #262626; }
     .theme-dark .win-h { background: #1a1a1a; border-color: #2e2e2e; }
     .theme-dark .nav-pro { background: #1a1a1a; border-color: #2e2e2e; }
@@ -46750,6 +46749,8 @@
     /* Edge button (Launcher-Closed: .etab .r/.l/.t/.b) */
     .etab { position: fixed; padding: 0; cursor: pointer; touch-action: none; user-select: none; font: inherit; transition: left .2s ease, top .2s ease; }
     .etab img { pointer-events: none; -webkit-user-drag: none; }
+    /* The edge button steps aside while the full workspace is open (suite.css gives .etab display:flex, which beats [hidden]). */
+    .etab[hidden] { display: none; }
     /* Etsy keeps its own icons on the left: there the closed button leaves a 12px handle and comes out on hover or keyboard focus. */
     .etab.l:not(.att):not(.dragging):not(:hover):not(:focus-visible) { transform: translateX(-34px); }
     .etab.l { transition: left .2s ease, top .2s ease, transform .15s ease; }

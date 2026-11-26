@@ -221,8 +221,9 @@ const CONTRAST = `
   };
 `;
 
-// Opens a tool's drawer and full screen and checks every tab in both themes. Probes add rows in states
-// the fixture data cannot reach (a selected listing, a failed campaign) so their colours are checked too.
+// Opens a tool's drawer and full screen and checks every tab in both themes. Probes add rows in states the
+// fixture data cannot reach (a selected listing, a failed campaign, a customer message), marked up as the
+// screens mark them up, so their colours are checked too.
 const contrastScenario = (ready, probes = '') => `async ({ wait }) => {${HELPERS}${CONTRAST}
     const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
     const q = (sel) => S().querySelector(sel);
@@ -290,6 +291,7 @@ const scenarios = {
     await click();
     await press('[data-action="open-workspace"]');
     out.wsVisible = Boolean(q('#eat-workspace')); out.tabHidden = tab().hidden; out.sheetHidden = sheet().hidden;
+    out.tabShown = getComputedStyle(tab()).display !== 'none';
     out.wsModal = q('#eat-workspace').getAttribute('aria-modal');
     out.firstPage = q('[aria-current="page"]')?.dataset.page; out.firstTitle = q('.ph .h1')?.textContent;
     out.focusStart = S().activeElement?.dataset.page ?? null;
@@ -730,8 +732,8 @@ const PAGES = {
 
 // The same tool pages, read for faint text in both themes.
 const LA_SELECTED_PROBE = "if (value === 'listings') q('[data-role=\"la-page\"]').insertAdjacentHTML('beforeend', '<table class=\"tbl lt\" data-probe><tbody><tr class=\"sel\"><td>Selected listing probe</td><td>42</td></tr></tbody></table>');";
-const SALE_FAILED_PROBE = "if (value === 'overview') q('[data-role=\"sale-plan\"]').insertAdjacentHTML('afterend', '<table class=\"tbl\" data-probe><tbody><tr class=\"row-err\"><td>Failed campaign probe</td></tr></tbody></table>');";
-const MA_BUBBLE_PROBE = "q('.ph').insertAdjacentHTML('afterend', '<div class=\"sm ma-bubble\" data-probe style=\"padding: 12px\">Customer message probe</div>');";
+const SALE_FAILED_PROBE = "if (value === 'overview') q('[data-role=\"sale-plan\"]').insertAdjacentHTML('afterend', '<table class=\"tbl\" data-probe><tbody><tr style=\"background: #fef2f2;\"><td>Failed campaign probe</td></tr></tbody></table>');";
+const MA_BUBBLE_PROBE = "q('.ph').insertAdjacentHTML('afterend', '<div class=\"sm\" data-probe style=\"background: #ffffff; border: 1px solid #e7e7e7; border-radius: 12px; padding: 12px 14px;\">Customer message probe</div>');";
 const CONTRAST_PAGES = {
   '/your/shops/me/sales-discounts/ui?contrast=1': ['/your/shops/me/sales-discounts/ui', "q('[data-role=\"sale-drawer\"]')", SALE_FAILED_PROBE],
   '/your/shops/me/advertising/listings/ui?contrast=1': ['/your/shops/me/advertising/listings/ui', "q('[data-ads-state=\"warning\"]')"],
@@ -851,6 +853,7 @@ test('workspace: navigation, settings, deleting local data, Escape back to the d
   const r = await visit(chrome, base, '/your/shops/me/tools/listings');
   assert.equal(r.wsVisible, true);
   assert.equal(r.tabHidden, true);
+  assert.equal(r.tabShown, false, 'the edge button is not drawn over the workspace');
   assert.equal(r.sheetHidden, true);
   assert.equal(r.wsModal, 'true');
   assert.equal(r.firstPage, 'tool:listing-analyzer', 'opens on the tool of this page');

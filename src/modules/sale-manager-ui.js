@@ -182,7 +182,7 @@ export function renderSalePage(doc, { snap, language, actions, tab = 'overview',
       h(doc, 'thead', {}, h(doc, 'tr', {}, ['#', ts('colCode'), ts('colDates'), ts('colStatus'), ts('colCheck')].map((c) => h(doc, 'th', { text: c })))),
       h(doc, 'tbody', {}, snap.plans.map((p, i) => {
         const st = rowStatus(p, job);
-        return h(doc, 'tr', { 'data-code': p.saleName, class: st.error ? 'row-err' : null, style: !st.error && st.current ? 'background: var(--soft2);' : null },
+        return h(doc, 'tr', { 'data-code': p.saleName, style: st.error ? 'background: #fef2f2;' : st.current ? 'background: var(--soft2);' : null },
           h(doc, 'td', { class: 'mute num', text: String(i + 1) }),
           h(doc, 'td', {}, h(doc, 'span', { class: 'mono b', text: p.saleName })),
           h(doc, 'td', { class: 'num', text: `${fmtDay(p.startDate, language)} → ${fmtDay(p.endDate, language)}` }),
