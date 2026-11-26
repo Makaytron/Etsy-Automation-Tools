@@ -408,6 +408,7 @@
     "set.channelStable": "Estable",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta rep les versions noves abans; poden estar menys polides.",
+    "rn.212.fixes": "Correccions: el pla de rebaixes ja no mostra dies passats, els elements de la cua mostren la foto de l'anunci i, a la vora esquerra, el botó de vora deixa lliures les icones d'Etsy.",
     "rn.211.fixes": "Correccions: arrossegar el botó de la vora pel logotip, el formulari per afegir paraules d'Ads, les fotos dels anuncis i les traduccions i esborranys de Message Assistant.",
     "rn.210.design": "Un aspecte nou per a cada pantalla, igual en clar i en fosc.",
     "rn.210.settings": "Configuració ara inclou proveïdors d'IA, notificacions, dreceres i actualitzacions.",

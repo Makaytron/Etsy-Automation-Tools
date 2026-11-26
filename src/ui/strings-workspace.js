@@ -357,6 +357,7 @@ export const WORKSPACE_STRINGS = Object.freeze({
     'set.channelStable': 'Stable',
     'set.channelBeta': 'Beta',
     'set.channelHint': 'Beta gets new versions earlier; they may have more rough edges.',
+    'rn.212.fixes': 'Fixes: the sale plan no longer lists days that have passed, queue items show the listing photo, and on the left edge the edge button leaves Etsy\'s icons free.',
     'rn.211.fixes': 'Fixes: dragging the edge button by its logo, the Ads add-word form, listing photos, and translations and drafts in Message Assistant.',
     'rn.210.design': 'A new look for every screen, the same in light and dark.',
     'rn.210.settings': 'Settings now has AI providers, notifications, shortcuts and updates.',

@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-11-26
+
+### Fixed
+
+- A start date saved earlier that is now in the past no longer starts a series from days that have passed: Etsy cannot start a sale in the past. The series starts at the first schedule day from today, keeping the rhythm of the campaign length, and a range that is entirely in the past is refused with a clear message.
+
 ## [1.1.1] - 2026-11-20
 
 ### Fixed

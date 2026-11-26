@@ -63,3 +63,11 @@ test('listing rows show the listing photo when Etsy gave one, and only from Etsy
   assert.equal(listingThumb(doc, { imageUrl: 'https://tracker.example/pixel.gif' }, 32).find((n) => n.tagName === 'IMG').length, 0, 'other hosts are never loaded');
   assert.equal(listingThumb(doc, { imageUrl: 'javascript:alert(1)' }, 32).find((n) => n.tagName === 'IMG').length, 0);
 });
+
+test('queue items carry the listing photo from the saved record', () => {
+  // The queue table draws listingThumb(item); without imageUrl every queue row had an empty box.
+  const queueLine = adopted.split('\n').find((line) => line.includes('items: state.queue.items.map('));
+  assert.ok(queueLine, 'the queue mapping exists');
+  assert.match(queueLine, /imageUrl: String\(__eatLaRecordImage\(item\.listingId\)\)/);
+  assert.match(adopted, /function __eatLaRecordImage\(listingId\) \{/);
+});

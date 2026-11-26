@@ -43,7 +43,8 @@ const ENGINE_API = `
     function __eatSnapshot() {
         const source = job?.active ? job : config;
         const plans = [];
-        let cursor = source?.batchStartDate;
+        // A saved start date in the past is not listed: the series starts at the first day from today.
+        let cursor = job?.active ? source?.batchStartDate : firstPlannableDate(source);
         for (let i = 0; i < 400 && cursor && !batchCompleteAt(source, cursor); i += 1) {
             const plan = buildPlan(cursor, source);
             if (!plan) break;

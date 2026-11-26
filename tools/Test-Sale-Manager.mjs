@@ -172,6 +172,7 @@ async function loadManager() {
         detectFlowStage,
         evaluateTransientSaleLoadingWait,
         exactCoreMatch,
+        firstPlannableDate,
         ensureCurrentSubmissionForVerification,
         getCreateSaleRefs,
         getStructuredCreateSaleRefs,
@@ -1919,4 +1920,18 @@ test('verification runs on the Sales & Discounts page instead of the retired Det
     const source = fs.readFileSync(scriptPath, 'utf8');
     assert.doesNotMatch(source, /DETAILS_STATS_URL/);
     assert.match(source, /sales-coupons\/combined/);
+});
+
+test('a saved start date in the past moves to the first schedule day from today', async () => {
+    const api = await loadManager();
+    const now = new Date();
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const day = (offset) => new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+    assert.equal(api.firstPlannableDate({ batchStartDate: iso(day(-10)), saleDurationDays: 1 }), iso(day(0)));
+    // Longer campaigns keep their rhythm: -10 + 4 * 3 = +2, the first step that is not in the past.
+    assert.equal(api.firstPlannableDate({ batchStartDate: iso(day(-10)), saleDurationDays: 3 }), iso(day(2)));
+    assert.equal(api.firstPlannableDate({ batchStartDate: iso(day(-9)), saleDurationDays: 3 }), iso(day(0)));
+    assert.equal(api.firstPlannableDate({ batchStartDate: iso(day(0)), saleDurationDays: 1 }), iso(day(0)));
+    assert.equal(api.firstPlannableDate({ batchStartDate: iso(day(5)), saleDurationDays: 2 }), iso(day(5)), 'a future start stays');
+    assert.equal(api.firstPlannableDate({ batchStartDate: 'not a date', saleDurationDays: 1 }), 'not a date');
 });

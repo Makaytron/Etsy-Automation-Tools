@@ -81,3 +81,8 @@ test('the adopted engine reads the promotion list from the all-time JSON endpoin
   assert.match(adopted, /const VERIFICATION_URL = PROMOTIONS_URL;/);
   assert.doesNotMatch(adopted, /DETAILS_STATS_URL/, 'the retired Details & Stats page is no longer a data source');
 });
+
+test('the plan list starts at the first day that is not in the past', () => {
+  // Without this the screens listed days that had already passed as planned campaigns.
+  assert.ok(adopted.includes('let cursor = job?.active ? source?.batchStartDate : firstPlannableDate(source);'));
+});

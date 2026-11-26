@@ -247,6 +247,11 @@ export function renderSalePage(doc, { snap, language, actions, tab = 'overview',
   const settingsForm = () => {
     const c = snap.config;
     const draft = { ...c };
+    // Etsy cannot start a sale in the past, so the date fields start at today.
+    const now = new Date();
+    const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    // A start date saved earlier that is now past shows the day the plan really starts from.
+    const startValue = !running && String(c.batchStartDate) < todayIso ? (snap.plans[0]?.startDate ?? todayIso) : c.batchStartDate;
     const input = (name, type, value, attrs = {}) => h(doc, 'input', { class: 'input', id: `eat-sale-${name}`, name, type, value: String(value ?? ''), disabled: running, oninput: () => mark(), ...attrs });
     const fld = (name, label, control) => h(doc, 'div', { class: 'field' }, h(doc, 'label', { class: 'label', for: `eat-sale-${name}`, text: label }), control);
     const codeOut = h(doc, 'span', { class: 'mono b', style: 'font-size: 20px; line-height: 26px; letter-spacing: .02em;' });
@@ -283,8 +288,8 @@ export function renderSalePage(doc, { snap, language, actions, tab = 'overview',
           h(doc, 'section', { class: 'card' },
             h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('datesTitle') })),
             h(doc, 'div', { class: 'card-b g3', style: 'gap: 12px;' },
-              fld('batchStartDate', ts('fStart'), input('batchStartDate', 'date', c.batchStartDate)),
-              fld('batchEndDate', ts('fEnd'), input('batchEndDate', 'date', c.batchEndDate)),
+              fld('batchStartDate', ts('fStart'), input('batchStartDate', 'date', startValue, { min: todayIso })),
+              fld('batchEndDate', ts('fEnd'), input('batchEndDate', 'date', c.batchEndDate, { min: todayIso })),
               fld('saleDurationDays', ts('fDuration'), h(doc, 'span', { class: 'row' }, input('saleDurationDays', 'number', c.saleDurationDays, { min: 1, max: 30, style: 'width: 80px;' }), h(doc, 'span', { class: 'sm mute2', text: ts('days') }))),
               fld('discount', ts('fDiscount'), h(doc, 'span', { class: 'row' }, h(doc, 'span', { class: 'sm mute2', text: '%' }), input('discount', 'number', c.discount, { min: 1, max: 90, style: 'width: 80px;' }))),
               fld('region', ts('fRegion'), h(doc, 'select', { class: 'input', id: 'eat-sale-region', disabled: true }, h(doc, 'option', { text: 'Everywhere' }))),

@@ -4,6 +4,14 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.2] - 2026-11-26
+
+### Fixed
+
+- Sale Manager (engine 1.1.2): the plan no longer lists days that have already passed as planned campaigns, and a series no longer starts from a past date. The date fields start at today.
+- Listing Analyzer: queue items now show the listing photo, like the overview and the listing table.
+- On the left edge, the closed edge button now leaves only a small handle and comes out on hover or keyboard focus, so it no longer covers Etsy's own left-side icons.
+
 ## [2.1.1] - 2026-11-21
 
 ### Fixed

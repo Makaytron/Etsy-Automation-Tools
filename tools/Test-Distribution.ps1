@@ -373,17 +373,46 @@ foreach ($relative in $repositoryFiles) {
     }
 }
 
-if ($Online) {
-    foreach ($url in @($onlineUrls | Sort-Object -Unique)) {
+# Follows redirects one hop at a time. Windows PowerShell 5.1 (.NET Framework) does not follow
+# 307/308 on its own, so a moved page such as a localized contact form failed the online check.
+function Get-OnlineUrlStatus {
+    param([System.Net.Http.HttpClient]$Client, [string]$Url)
+    $current = [uri]$Url
+    for ($hop = 0; $hop -le 8; $hop += 1) {
+        $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Head, $current)
+        $response = $Client.SendAsync($request).GetAwaiter().GetResult()
         try {
-            $response = Invoke-WebRequest -Uri $url -Method Head -MaximumRedirection 8 -TimeoutSec 30 -UseBasicParsing -Headers @{ 'User-Agent' = 'Makaytron-distribution-validator' }
-            Assert-True ([int]$response.StatusCode -eq 200) "Unexpected HTTP status for ${url}: $($response.StatusCode)"
-            Write-Host "HTTP 200 $url"
+            $status = [int]$response.StatusCode
+            if ($status -notin @(301, 302, 303, 307, 308)) { return $status }
+            Assert-True ($null -ne $response.Headers.Location) "Redirect without a target for $current."
+            $next = $response.Headers.Location
+            $current = if ($next.IsAbsoluteUri) { $next } else { [uri]::new($current, $next) }
+            Assert-True ($current.Scheme -eq 'https') "Redirect left HTTPS for ${Url}: $current"
         }
-        catch {
-            throw "Online URL validation failed for $url`: $($_.Exception.Message)"
+        finally { $response.Dispose(); $request.Dispose() }
+    }
+    throw "Too many redirects for $Url."
+}
+
+if ($Online) {
+    $onlineHandler = [System.Net.Http.HttpClientHandler]::new()
+    $onlineHandler.AllowAutoRedirect = $false
+    $onlineClient = [System.Net.Http.HttpClient]::new($onlineHandler)
+    $onlineClient.Timeout = [TimeSpan]::FromSeconds(30)
+    $onlineClient.DefaultRequestHeaders.UserAgent.ParseAdd('Makaytron-distribution-validator')
+    try {
+        foreach ($url in @($onlineUrls | Sort-Object -Unique)) {
+            try {
+                $status = Get-OnlineUrlStatus -Client $onlineClient -Url $url
+                Assert-True ($status -eq 200) "Unexpected HTTP status for ${url}: $status"
+                Write-Host "HTTP 200 $url"
+            }
+            catch {
+                throw "Online URL validation failed for $url`: $($_.Exception.Message)"
+            }
         }
     }
+    finally { $onlineClient.Dispose(); $onlineHandler.Dispose() }
 }
 
 if ($RemoteParity) {
