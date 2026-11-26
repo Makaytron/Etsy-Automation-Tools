@@ -57,6 +57,10 @@ const LEGACY = {
   },
 };
 
+// How long the requester collects answers. The requester always waits this long; the key exchange and
+// encryption of five tools must finish inside it, which 150-200 ms did not always allow on a busy CI runner.
+const ANSWER_WINDOW_MS = 2000;
+
 function responders(transport, { busy = [], armed = Object.keys(LEGACY) } = {}) {
   const done = [];
   const statuses = [];
@@ -76,7 +80,7 @@ test('all five tools transfer their data; secrets and private state stay behind'
   const side = responders(transport);
   const storage = createStorage(createMemoryStore());
   const requester = H.createMigrationRequester({ transport, cryptoApi: globalThis.crypto });
-  const summary = await runLegacyMigration({ requester, storage, rules, tools: Object.keys(LEGACY), timeoutMs: 200 });
+  const summary = await runLegacyMigration({ requester, storage, rules, tools: Object.keys(LEGACY), timeoutMs: ANSWER_WINDOW_MS });
   await new Promise((r) => setTimeout(r, 50));
 
   assert.deepEqual(summary.map((s) => `${s.tool}:${s.state}`).sort(), Object.keys(LEGACY).map((t) => `${t}:imported`).sort());
@@ -121,7 +125,7 @@ test('nothing is offered unless the user armed the standalone script', async () 
   responders(transport, { armed: ['ads-keyword-manager'] });
   const storage = createStorage(createMemoryStore());
   const requester = H.createMigrationRequester({ transport, cryptoApi: globalThis.crypto });
-  const summary = await runLegacyMigration({ requester, storage, rules, tools: Object.keys(LEGACY), timeoutMs: 150 });
+  const summary = await runLegacyMigration({ requester, storage, rules, tools: Object.keys(LEGACY), timeoutMs: ANSWER_WINDOW_MS });
   assert.deepEqual(summary.map((s) => s.tool), ['ads-keyword-manager']);
 });
 
@@ -130,7 +134,7 @@ test('a running job blocks the transfer of that tool', async () => {
   responders(transport, { busy: ['sale-manager'], armed: ['sale-manager'] });
   const storage = createStorage(createMemoryStore());
   const requester = H.createMigrationRequester({ transport, cryptoApi: globalThis.crypto });
-  const summary = await runLegacyMigration({ requester, storage, rules, tools: ['sale-manager'], timeoutMs: 150 });
+  const summary = await runLegacyMigration({ requester, storage, rules, tools: ['sale-manager'], timeoutMs: ANSWER_WINDOW_MS });
   assert.deepEqual(summary, [{ tool: 'sale-manager', state: 'busy' }]);
   assert.deepEqual(await migratedTools(storage, ['sale-manager']), []);
 });
@@ -147,7 +151,7 @@ test('tampered data is rejected and nothing is stored', async () => {
   const side = responders(transport, { armed: ['ads-keyword-manager'] });
   const storage = createStorage(createMemoryStore());
   const requester = H.createMigrationRequester({ transport: tampering, cryptoApi: globalThis.crypto });
-  const summary = await runLegacyMigration({ requester, storage, rules, tools: ['ads-keyword-manager'], timeoutMs: 150 });
+  const summary = await runLegacyMigration({ requester, storage, rules, tools: ['ads-keyword-manager'], timeoutMs: ANSWER_WINDOW_MS });
   assert.deepEqual(summary, [{ tool: 'ads-keyword-manager', state: 'error' }]);
   assert.deepEqual(await migratedTools(storage, ['ads-keyword-manager']), []);
   assert.deepEqual(side.done, []);
