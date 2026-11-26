@@ -408,6 +408,7 @@
     "set.channelStable": "Stable",
     "set.channelBeta": "Beta",
     "set.channelHint": "Mas maagang nakakakuha ng bagong bersyon ang Beta; maaaring may mas maraming kakulangan ang mga ito.",
+    "rn.215.fixes": "Mga ayos: pagkatapos mag-scan sa table view o nang naka-off ang Stats, nananatiling bago ang resulta kapag bumalik ang view mo, at hindi na nagpapakita ng mensaheng huminto ang view na iyon.",
     "rn.214.fixes": "Mga ayos: ang pag-scan ng listing ay kusang nag-o-on ng card view at Stats ng Etsy at pagkatapos ay ibinabalik ang view mo, nabibilang na ulit ang mga hindi pa nababasang mensahe, hindi na nagpapakita ng error ang mga ad na walang keyword, nababasa na ang mga napiling row sa dark theme, at lumalabas sa wika mo ang bagong teksto.",
     "rn.213.fixes": "Mga ayos: kapag hindi mabuo ang review queue, ipinapakita na ang dahilan; hindi na mukhang aktibo ang queue na itinigil; at sa kanang gilid hindi na natatakpan ng scroll bar ang edge button.",
     "rn.212.fixes": "Mga ayos: hindi na ipinapakita ng plano ng sale ang mga araw na lumipas na, may larawan na ng listing ang mga item sa queue, at sa kaliwang gilid hindi na tinatakpan ng edge button ang mga icon ng Etsy.",

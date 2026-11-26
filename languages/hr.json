@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilno",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta ranije dobiva nove verzije; mogu imati više nedostataka.",
+    "rn.215.fixes": "Ispravci: nakon skeniranja u prikazu tablice ili s isključenim Stats rezultati ostaju aktualni kada se vaš prikaz vrati, a taj prikaz više ne prikazuje poruku o zaustavljanju.",
     "rn.214.fixes": "Ispravci: skeniranje oglasa samo uključuje Etsyjev prikaz kartica i Stats, a zatim vraća vaš prikaz, nepročitane poruke ponovno se broje, reklame bez ključnih riječi više ne prikazuju pogrešku, odabrani redovi čitljivi su u tamnoj temi, a novi tekst prikazuje se na vašem jeziku.",
     "rn.213.fixes": "Ispravci: ako se red za pregled ne može izraditi, sada se prikazuje razlog; zaustavljeni red više ne izgleda aktivno; a na desnom rubu gumb više nije ispod trake za pomicanje.",
     "rn.212.fixes": "Ispravci: plan rasprodaja više ne prikazuje prošle dane, stavke u redu prikazuju fotografiju oglasa, a na lijevom rubu gumb više ne prekriva Etsyjeve ikone.",

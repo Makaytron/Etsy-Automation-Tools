@@ -4,6 +4,13 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.5] - 2026-11-26
+
+### Fixed
+
+- Listing Analyzer (engine 1.3.3): after a scan in the table view or with Stats off, the scan was counted as stale once the seller's view came back, so the review queue could not be built there. The view no longer affects whether a scan is current.
+- Listing Analyzer: in the seller's own table view or with Stats off, the panel explains that a scan switches the view itself instead of showing "Stopped · Listing cards not found".
+
 ## [2.1.4] - 2026-11-26
 
 ### Fixed

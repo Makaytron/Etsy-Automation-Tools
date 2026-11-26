@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3] - 2026-11-26
+
+### Fixed
+
+- After a scan put the seller's table view or Stats-off view back, the finished scan counted as stale there: its scope still carried the ?stats=true it was read with. The cards/table view and Stats only change how Etsy draws the same listings, so they are no longer part of a scan's scope (stored scans keep their key and still match).
+- In the seller's own table view or with Stats off, the panel no longer shows "Stopped · Listing cards not found": it says that a scan turns the card view and Stats on itself and puts the view back.
+
 ## [1.3.2] - 2026-11-26
 
 ### Fixed

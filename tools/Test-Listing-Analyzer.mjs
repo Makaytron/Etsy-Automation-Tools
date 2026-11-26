@@ -1979,7 +1979,10 @@ test('collection scope ignores pagination and tracking drift but preserves analy
     const shopKey = 'etsy-shop:fixture';
     const first = api.collectionScopeKey('https://www.etsy.com/your/shops/me/tools/listings?stats=true&page=1&ref=seller-platform-mcnav&utm_source=x', shopKey, 'active');
     const next = api.collectionScopeKey('https://www.etsy.com/your/shops/me/tools/listings?page=2&stats=true', shopKey, 'active');
-    const different = api.collectionScopeKey('https://www.etsy.com/your/shops/me/tools/listings?stats=false&page=2', shopKey, 'active');
+    const different = api.collectionScopeKey('https://www.etsy.com/your/shops/me/tools/listings?stats=true&search_query=mug&page=2', shopKey, 'active');
+    // Cards or table and Stats on or off draw the same listings: they are not part of the scope.
+    assert.equal(api.collectionScopeKey('https://www.etsy.com/your/shops/me/tools/listings?view=table', shopKey, 'active'), first);
+    assert.equal(api.collectionScopeKey('https://www.etsy.com/your/shops/me/tools/listings?stats=false', shopKey, 'active'), first);
     assert.equal(first, next);
     assert.notEqual(first, different);
     assert.notEqual(first, api.collectionScopeKey('https://www.etsy.com/your/shops/me/tools/listings?stats=true', shopKey, 'inactive'));
@@ -7131,4 +7134,17 @@ test('while the scan is switching the view, the URL change cannot undo it', asyn
     assert.equal(await CollectionView.restore(), false);
     assert.equal(view.stats, true);
     state.collectionViewHold = false;
+});
+
+test('a scan stays current when the seller is back in the table view or with Stats off', () => {
+    // The scan runs with ?stats=true and then puts back ?view=table; the finished scan looked stale there.
+    const { api } = loadAnalyzer();
+    const { sameCollectionScope } = api.collectionRuntime;
+    const stored = 'etsy-shop:fixture|status:active|/your/shops/me/tools/listings?stats=true';
+    assert.equal(sameCollectionScope(stored, 'etsy-shop:fixture|status:active|/your/shops/me/tools/listings?view=table'), true);
+    assert.equal(sameCollectionScope(stored, 'etsy-shop:fixture|status:active|/your/shops/me/tools/listings'), true);
+    assert.equal(sameCollectionScope(stored, 'etsy-shop:fixture|status:active|/your/shops/me/tools/listings?search_query=mug'), false, 'a filter is still scope');
+    assert.equal(sameCollectionScope(stored, 'etsy-shop:fixture|status:inactive|/your/shops/me/tools/listings'), false);
+    assert.equal(sameCollectionScope(stored, 'etsy-shop:other|status:active|/your/shops/me/tools/listings'), false);
+    assert.equal(api.collectionScopeMatches({ scopeKey: '' }, 'https://www.etsy.com/your/shops/me/tools/listings'), false, 'an unknown scope never matches the page');
 });

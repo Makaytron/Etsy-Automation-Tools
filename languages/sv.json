@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta får nya versioner tidigare; de kan ha fler skavanker.",
+    "rn.215.fixes": "Rättningar: efter en skanning i tabellvyn eller med Stats avstängt förblir resultaten aktuella när din vy kommer tillbaka, och den vyn visar inte längre ett stoppmeddelande.",
     "rn.214.fixes": "Rättningar: annonsskanningen slår själv på Etsys kortvy och Stats och återställer sedan din vy, olästa meddelanden räknas igen, annonser utan sökord visar inte längre ett fel, markerade rader går att läsa i det mörka temat och ny text visas på ditt språk.",
     "rn.213.fixes": "Rättningar: om granskningskön inte kan skapas visas nu orsaken; en stoppad kö ser inte längre aktiv ut; och vid högerkanten hamnar kantknappen inte längre under rullningslisten.",
     "rn.212.fixes": "Rättningar: reaplanen visar inte längre dagar som har passerat, objekt i kön visar annonsens foto och vid vänsterkanten täcker kantknappen inte längre Etsys ikoner.",

@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilny",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dostaje nowe wersje wcześniej; mogą mieć więcej niedoróbek.",
+    "rn.215.fixes": "Poprawki: po skanowaniu w widoku tabeli lub z wyłączonymi Stats wyniki pozostają aktualne, gdy wraca Twój widok, a ten widok nie pokazuje już komunikatu o zatrzymaniu.",
     "rn.214.fixes": "Poprawki: skanowanie ofert samo włącza widok kart i Stats w Etsy, a potem przywraca Twój widok, nieprzeczytane wiadomości znów są liczone, reklamy bez słów kluczowych nie pokazują już błędu, zaznaczone wiersze są czytelne w ciemnym motywie, a nowy tekst wyświetla się w Twoim języku.",
     "rn.213.fixes": "Poprawki: jeśli nie da się utworzyć kolejki do przeglądu, wyświetla się teraz powód; zatrzymana kolejka nie wygląda już na aktywną; a przy prawej krawędzi przycisk nie chowa się pod paskiem przewijania.",
     "rn.212.fixes": "Poprawki: plan wyprzedaży nie pokazuje już minionych dni, elementy kolejki pokazują zdjęcie oferty, a przy lewej krawędzi przycisk nie zasłania już ikon Etsy.",
