@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Ads Keyword Manager
 // @name:tr      Makaytron Etsy Ads Keyword Manager
 // @name:en      Makaytron Etsy Ads Keyword Manager
-// @version      1.1.1
+// @version      1.1.2
 // @description  Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:tr Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:en Manage Etsy Ads keyword matches from a form-based control panel.
@@ -515,7 +515,7 @@
 
     const SCRIPT_SOURCE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
     const WORD_LIST_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/keyword-rules.txt';
-    const APP_VERSION = '1.1.1';
+    const APP_VERSION = '1.1.2';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -1632,6 +1632,7 @@ oversized
             loadingKeywordTable: 'Anahtar kelime tablosu yükleniyor.',
             preparing: 'Hazırlanıyor',
             keywordTableFailed: 'Anahtar kelime tablosu yüklenemedi.',
+            noTargetedKeywords: 'Bu reklamda henüz hedeflenen anahtar kelime yok.',
             rowsReady: '{rows} bulundu · {matches} hazır.',
             appReady: 'Makaytron Etsy Ads Keyword Manager hazır · CTRL + ALT + K',
             consoleInitializationFailed: 'Başlatma başarısız:',
@@ -1786,6 +1787,7 @@ oversized
             loadingKeywordTable: 'Loading the keyword table.',
             preparing: 'Preparing',
             keywordTableFailed: 'The keyword table could not be loaded.',
+            noTargetedKeywords: 'This ad has no targeted keywords yet.',
             rowsReady: '{rows} found · {matches} ready.',
             appReady: 'Makaytron Etsy Ads Keyword Manager is ready · CTRL + ALT + K',
             consoleInitializationFailed: 'Initialization failed:',
@@ -2117,6 +2119,13 @@ oversized
         if (!(toggle instanceof HTMLElement)) return;
         lastAccordionExpandAt = Date.now();
         toggle.click();
+    }
+
+    // An ad without targeted keywords: Etsy draws no keyword accordion at all, only its title with a (0) count.
+    function keywordListIsEmpty() {
+        if (document.querySelector(KEYWORD_ACCORDION_SELECTOR) || getAllRows().length) return false;
+        const title = document.querySelector('[data-test-id="accordion-title"]');
+        return Boolean(title) && /\(\s*0\s*\)$/.test(normalizeText(title.textContent));
     }
 
     function waitForKeywordRows(timeoutMs = INITIAL_ROWS_TIMEOUT_MS) {
@@ -3602,6 +3611,12 @@ oversized
         scheduleAutomaticScriptUpdateCheck();
         setPanelStatus('loadingKeywordTable', 'running', 'preparing');
         const rowsReady = await waitForKeywordRows();
+        if (!rowsReady && keywordListIsEmpty()) {
+            // Nothing to match is not an error: say so plainly instead of "the table could not be loaded".
+            assertAdsRoute(route);
+            setPanelStatus('noTargetedKeywords', 'ready');
+            return;
+        }
         if (!rowsReady) {
             void trackTelemetryError('selector_ads_table');
             throw new Error(t('keywordTableFailed'));

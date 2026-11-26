@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Béta",
     "set.channelHint": "A béta korábban kapja az új verziókat; ezek kevésbé csiszoltak lehetnek.",
+    "rn.214.fixes": "Javítások: a hirdetések beolvasása maga kapcsolja be az Etsy kártyanézetét és a Statsot, majd visszaállítja a nézetedet, az olvasatlan üzeneteket ismét számolja, a kulcsszó nélküli hirdetések már nem mutatnak hibát, a kijelölt sorok olvashatók a sötét témában, az új szövegek pedig a nyelveden jelennek meg.",
     "rn.213.fixes": "Javítások: ha az ellenőrzési sor nem hozható létre, most megjelenik az ok; a leállított sor már nem tűnik aktívnak; a jobb szélen pedig a szélgomb nem kerül a görgetősáv alá.",
     "rn.212.fixes": "Javítások: az akciós terv már nem mutat elmúlt napokat, a sor elemei megjelenítik a hirdetés fotóját, a bal szélen pedig a szélgomb nem takarja el az Etsy ikonjait.",
     "rn.211.fixes": "Javítások: a szélső gomb húzása a logónál fogva, az Ads szóhozzáadó űrlapja, a hirdetésfotók, valamint a Message Assistant fordításai és piszkozatai.",

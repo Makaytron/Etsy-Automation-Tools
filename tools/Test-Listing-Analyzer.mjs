@@ -7045,3 +7045,90 @@ test('history chart markup reports missing and prior-currency exclusions explici
     ], 'revenue', 'Revenue', '€');
     assert.match(currencyMarkup, /2 prior observation\(s\) excluded because their currency differs from the current record\./);
 });
+
+test('a stopped or finished queue is not shown as waiting in the panel', () => {
+    // After "Stop queue" the panel kept showing the item with "Open first listing" and "1/1".
+    const { api } = loadAnalyzer();
+    const { state, UI } = api.updater;
+    const items = [{ listingId: '111', title: 'Fixture listing', status: 'pending', editUrl: 'https://www.etsy.com/your/shops/me/listing-editor/edit/111', proposal: { action: 'UPDATE' } }];
+    state.queue = { id: 'queue-1', status: 'ready', cursor: 0, items };
+    assert.match(UI.queueCard(), /data-action="go-current"/, 'a live queue offers its next listing');
+    for (const [status, text] of [['stopped', /İşlem kuyruğu durduruldu\./], ['completed', /İşlem kuyruğu tamamlandı\./]]) {
+        state.queue = { id: 'queue-1', status, cursor: 0, items };
+        const card = UI.queueCard();
+        assert.doesNotMatch(card, /data-action="go-current"/, status);
+        assert.match(card, text, status);
+        assert.match(UI.queueView(), text, status);
+    }
+});
+
+// Etsy's view controls on the Listings page: the cards/table buttons and the Stats switch, in one box.
+function fakeListingView(sandbox, initial) {
+    const view = { ...initial, clicks: [] };
+    const syncUrl = () => {
+        const query = [view.table ? 'view=table' : '', view.stats ? 'stats=true' : ''].filter(Boolean).join('&');
+        sandbox.location.pathname = '/your/shops/me/tools/listings';
+        sandbox.location.search = query ? `?${query}` : '';
+        sandbox.location.href = `https://www.etsy.com/your/shops/me/tools/listings${sandbox.location.search}`;
+    };
+    const button = (name) => ({
+        getAttribute: (attr) => (attr === 'aria-current' ? String(name === 'table' ? view.table : !view.table) : null),
+        click() { view.clicks.push(name); view.table = name === 'table'; syncUrl(); },
+    });
+    const grid = button('grid');
+    const table = button('table');
+    const stats = {
+        get checked() { return view.stats; },
+        click() { view.clicks.push('stats'); view.stats = !view.stats; syncUrl(); },
+    };
+    const box = { parentElement: null, querySelectorAll: (sel) => (sel === 'clg-switch' ? [stats] : []) };
+    const group = {
+        parentElement: box,
+        querySelector: (sel) => (sel === 'clg-icon[name="gridtwo"]' ? { closest: () => grid } : sel === 'clg-icon[name="rows"]' ? { closest: () => table } : null),
+    };
+    sandbox.document.querySelectorAll = (sel) => (sel === 'clg-button-group' ? [group] : []);
+    syncUrl();
+    return view;
+}
+
+test('the scan turns on cards and Stats for itself and puts back only what it changed', async () => {
+    // With the table view or Stats off, Etsy shows no statistics on cards and the scan found nothing.
+    for (const initial of [{ table: true, stats: true }, { table: false, stats: false }, { table: true, stats: false }]) {
+        const { api, sandbox, storage } = loadAnalyzer();
+        const { CollectionView, state, KEYS } = api.collectionRuntime;
+        const view = fakeListingView(sandbox, initial);
+        api.ListingPageAdapter.cardRoots = () => (view.table ? [] : [{}]);
+        state.collection = null;
+        assert.equal(await CollectionView.ensure(), true, JSON.stringify(initial));
+        assert.deepEqual({ table: view.table, stats: view.stats }, { table: false, stats: true }, 'cards with Stats for the scan');
+        assert.deepEqual(storage.get(KEYS.collectionView) && { table: storage.get(KEYS.collectionView).table, stats: storage.get(KEYS.collectionView).stats }, initial, 'the seller\'s view is remembered');
+        state.collection = { status: 'running' };
+        assert.equal(await CollectionView.restore(), false, 'nothing is put back while the scan runs');
+        state.collection = { status: 'completed' };
+        assert.equal(await CollectionView.restore(), true);
+        assert.deepEqual({ table: view.table, stats: view.stats }, initial, 'the seller gets the view back');
+        assert.equal(storage.has(KEYS.collectionView), false);
+    }
+});
+
+test('a seller already on cards with Stats sees nothing switched', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const { CollectionView, KEYS } = api.collectionRuntime;
+    const view = fakeListingView(sandbox, { table: false, stats: true });
+    assert.equal(await CollectionView.ensure(), true);
+    assert.deepEqual(view.clicks, []);
+    assert.equal(storage.has(KEYS.collectionView), false);
+});
+
+test('while the scan is switching the view, the URL change cannot undo it', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const { CollectionView, state, KEYS } = api.collectionRuntime;
+    const view = fakeListingView(sandbox, { table: false, stats: false });
+    storage.set(KEYS.collectionView, { table: false, stats: false });
+    view.stats = true;
+    state.collection = null;
+    state.collectionViewHold = true;
+    assert.equal(await CollectionView.restore(), false);
+    assert.equal(view.stats, true);
+    state.collectionViewHold = false;
+});

@@ -118,6 +118,13 @@ function suggestionBadge(doc, record) {
 }
 
 /** Drawer section on the Listings page and in the listing editor. */
+/** The page being read: the pages already read plus the current one, while a scan runs. */
+export function readingPage(c) {
+  const read = Number(c?.pages) || 0;
+  const total = Number(c?.total) || 0;
+  return c?.status === 'running' && (!total || read < total) ? read + 1 : read;
+}
+
 /** Listing photo inside the thumbnail box. Only Etsy's own image host is ever loaded; otherwise the empty box stays. */
 export function listingThumb(doc, row, size) {
   const box = h(doc, 'span', { class: 'thumb', style: `width: ${size}px; height: ${size}px; overflow: hidden;` });
@@ -138,7 +145,7 @@ export function renderLaDrawer(doc, { snap, language, actions }) {
     h(doc, 'div', { class: 'row' }, icon(doc, ICONS['listing-analyzer']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Listing Analyzer' }), stateBadge(doc, ts, snap)),
     h(doc, 'span', { class: 'xs mute2', 'data-role': 'la-summary', text: onListings ? ts('stored', { listings: num(language, snap.listings), page: num(language, snap.pageListings) }) : ts('editorLine') }),
     onListings && c && c.status !== 'completed' && c.total ? h(doc, 'div', { class: 'col', style: 'gap: 6px;' },
-      h(doc, 'span', { class: 'xs mute2', 'data-role': 'la-progress', text: `${ts('pageOf', { pages: c.pages, total: c.total })} · ${ts('foundLine', { found: c.found })}` }),
+      h(doc, 'span', { class: 'xs mute2', 'data-role': 'la-progress', text: `${ts('pageOf', { pages: readingPage(c), total: c.total })} · ${ts('foundLine', { found: c.found })}` }),
       h(doc, 'div', { class: 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(c.total), 'aria-valuenow': String(c.pages) }, h(doc, 'i', { style: `width: ${Math.min(100, (c.pages / Math.max(1, c.total)) * 100)}%;` }))) : null,
     h(doc, 'span', { class: 'xxs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
     h(doc, 'div', { class: 'row' },
@@ -189,7 +196,7 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
         h(doc, 'div', { class: 'card-b col', style: 'gap: 16px; padding: 22px 24px;' },
           h(doc, 'div', { class: 'row', style: 'gap: 14px;' },
             h(doc, 'span', { class: 'well' }, h(doc, 'span', { class: 'spin', style: 'width: 16px; height: 16px;' })),
-            h(doc, 'span', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h2', text: ts('pageOf', { pages: c.pages, total: c.total || '—' }) }), h(doc, 'span', { class: 'xs mute', text: ts('foundLine', { found: c.found }) })),
+            h(doc, 'span', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'h2', text: ts('pageOf', { pages: readingPage(c), total: c.total || '—' }) }), h(doc, 'span', { class: 'xs mute', text: ts('foundLine', { found: c.found }) })),
             h(doc, 'span', { class: 'num', style: 'font-size: 28px; font-weight: 700;', text: new Intl.NumberFormat(language, { style: 'percent' }).format(pct / 100) })),
           h(doc, 'div', { class: 'prog', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': String(pct) }, h(doc, 'i', { style: `width: ${pct}%;` })),
           h(doc, 'div', { class: 'g2' }, tile(ts('readPages'), `${c.pages} / ${c.total || '—'}`), tile(ts('collected'), num(language, c.found)))),

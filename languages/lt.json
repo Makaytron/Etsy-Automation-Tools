@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilus",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta naujas versijas gauna anksčiau; jose gali būti daugiau trūkumų.",
+    "rn.214.fixes": "Pataisymai: skelbimų nuskaitymas pats įjungia Etsy kortelių rodinį ir Stats, o vėliau grąžina jūsų rodinį, neperskaitytos žinutės vėl skaičiuojamos, reklamos be raktažodžių nebeskelbia klaidos, pasirinktos eilutės tamsioje temoje įskaitomos, o naujas tekstas rodomas jūsų kalba.",
     "rn.213.fixes": "Pataisymai: jei peržiūros eilės sukurti nepavyksta, dabar rodoma priežastis; sustabdyta eilė nebeatrodo aktyvi; o dešiniajame krašte krašto mygtukas nebelenda po slinkties juosta.",
     "rn.212.fixes": "Pataisymai: išpardavimų plane nebėra praėjusių dienų, eilės įrašuose rodoma skelbimo nuotrauka, o kairiajame krašte krašto mygtukas nebeuždengia Etsy piktogramų.",
     "rn.211.fixes": "Pataisymai: krašto mygtuko vilkimas už logotipo, Ads žodžių pridėjimo forma, skelbimų nuotraukos ir Message Assistant vertimai bei juodraščiai.",

@@ -408,6 +408,7 @@
     "set.channelStable": "Stabiel",
     "set.channelBeta": "Bèta",
     "set.channelHint": "Bèta krijgt nieuwe versies eerder; die kunnen nog wat ruwe randjes hebben.",
+    "rn.214.fixes": "Oplossingen: de advertentiescan zet zelf de kaartweergave en Stats van Etsy aan en zet daarna je eigen weergave terug, ongelezen berichten worden weer geteld, advertenties zonder zoekwoorden tonen geen fout meer, geselecteerde rijen zijn leesbaar in het donkere thema en nieuwe tekst verschijnt in jouw taal.",
     "rn.213.fixes": "Oplossingen: als de controlewachtrij niet kan worden gemaakt, wordt nu de reden getoond; een gestopte wachtrij lijkt niet meer actief; en aan de rechterrand valt de randknop niet meer onder de schuifbalk.",
     "rn.212.fixes": "Oplossingen: het uitverkoopplan toont geen verstreken dagen meer, items in de wachtrij tonen de advertentiefoto en aan de linkerrand bedekt de randknop de pictogrammen van Etsy niet meer.",
     "rn.211.fixes": "Verbeteringen: de randknop aan het logo slepen, het formulier om woorden toe te voegen in Ads, advertentiefoto’s en vertalingen en concepten in Message Assistant.",

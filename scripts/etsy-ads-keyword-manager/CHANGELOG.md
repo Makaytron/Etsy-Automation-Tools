@@ -4,6 +4,12 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.1.2] - 2026-11-26
+
+### Fixed
+
+- On an ad that has no targeted keywords yet, the panel no longer reports "The keyword table could not be loaded". When Etsy shows a keyword count of zero and no keyword table, the panel says the ad has no targeted keywords yet.
+
 ## [1.1.1] - 2026-11-20
 
 ### Fixed

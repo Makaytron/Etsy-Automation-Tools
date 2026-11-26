@@ -11990,3 +11990,28 @@ test('a title written directly in the listing link next to an image is still fou
     };
     assert.equal(api.MessageAdapter.getItemTitle({ querySelectorAll: () => [link] }), 'Personalized Fixture Shirt');
 });
+
+test('message-list scanner reads the unread badge of the current Etsy Messages list', async () => {
+    // Etsy marks an unread conversation only with a red badge beside its time. Without this rule the
+    // workspace counted 0 unread while Etsy showed 1.
+    const { api, sandbox } = await loadAssistant();
+    sandbox.location.pathname = '/messages/all';
+    sandbox.location.href = 'https://www.etsy.com/messages/all';
+    const nameNode = { textContent: 'Fixture Buyer' };
+    const row = (id, badge) => {
+        const scope = {
+            className: badge ? 'wt-pl-xs-1 wt-bb-xs' : 'wt-pl-xs-1 wt-bb-xs wt-text-gray',
+            innerText: 'Fixture Buyer\nHello there',
+            textContent: 'Fixture Buyer Hello there',
+            querySelectorAll: (selector) => (selector.includes('h1,h2,h3,h4,strong') ? [nameNode] : []),
+            querySelector: (selector) => (badge && selector === '.convo-details-timestamp-image-badge-container .wt-badge--notificationPrimary' ? {} : null),
+        };
+        return {
+            href: `https://www.etsy.com/messages/${id}`, className: '', textContent: 'Fixture Buyer', innerText: 'Fixture Buyer\nHello there',
+            querySelectorAll: () => [nameNode], closest: () => scope, getAttribute: () => '',
+        };
+    };
+    sandbox.document.querySelectorAll = (selector) => (selector.includes('a[href*="/messages/"]') ? [row('1001', true), row('1002', false)] : []);
+    const items = api.MessageCenterAgent.scanConversationList();
+    assert.equal(JSON.stringify(items.map((item) => [item.conversationId, item.unread])), JSON.stringify([['1001', true], ['1002', false]]));
+});

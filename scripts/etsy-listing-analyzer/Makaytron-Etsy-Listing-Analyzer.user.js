@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Listing Analyzer
 // @name:tr      Makaytron Etsy Listing Analyzer
 // @name:en      Makaytron Etsy Listing Analyzer
-// @version      1.3.1
+// @version      1.3.2
 // @description  Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:tr Etsy listing performansını izleyin, geçmişle karşılaştırın ve kullanıcı onaylı iyileştirme kuyrukları hazırlayın.
 // @description:en Track Etsy listing performance, compare history, and prepare user-approved improvement queues.
@@ -516,7 +516,7 @@
     }
 
 
-    const APP_VERSION = '1.3.1';
+    const APP_VERSION = '1.3.2';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -1339,6 +1339,7 @@
         lease: `${APP.storagePrefix}:lease`,
         collection: `${APP.storagePrefix}:collection`,
         collectionLease: `${APP.storagePrefix}:collection-lease`,
+        collectionView: `${APP.storagePrefix}:collection-view`,
         analysisFilters: `${APP.storagePrefix}:analysis-filters`,
         filterPresets: `${APP.storagePrefix}:filter-presets`,
         updateCheck: `${APP.storagePrefix}:update-check`,
@@ -1752,6 +1753,8 @@
         collection: null,
         collectionLoop: null,
         collectionStartTask: null,
+        collectionViewHold: false,
+        collectionViewRestore: null,
         collectionPauseRequested: false,
         collectionLeaseTimer: 0,
         collectionLeaseToken: '',
@@ -7330,6 +7333,68 @@
         return Boolean(pageInfo?.valid && Number(pageInfo.total) === Number(collection?.totalPages));
     }
 
+    // Etsy remembers the seller's listing layout (cards or table) and the Stats switch. The scan reads the
+    // statistics on the cards, so it turns cards and Stats on for itself and afterwards puts back only what
+    // it changed. The seller's original choice is stored, so it survives the page turns of the scan.
+    const CollectionView = {
+        controls() {
+            const groups = Array.from(document.querySelectorAll('clg-button-group'))
+                .filter((group) => group.querySelector('clg-icon[name="gridtwo"]') && group.querySelector('clg-icon[name="rows"]'));
+            if (groups.length !== 1) return null;
+            const grid = groups[0].querySelector('clg-icon[name="gridtwo"]').closest('clg-icon-button');
+            const table = groups[0].querySelector('clg-icon[name="rows"]').closest('clg-icon-button');
+            let stats = null;
+            for (let box = groups[0].parentElement, depth = 0; box && depth < 3 && !stats; box = box.parentElement, depth += 1) {
+                const switches = box.querySelectorAll('clg-switch');
+                if (switches.length > 1) return null;
+                if (switches.length === 1) stats = switches[0];
+            }
+            return grid && table && stats ? { grid, table, stats } : null;
+        },
+        read(controls = this.controls()) {
+            if (!controls) return null;
+            return { table: controls.table.getAttribute('aria-current') === 'true', stats: controls.stats.checked === true };
+        },
+        // Cards with Stats on. False only when a switch was tried and Etsy did not follow.
+        async ensure() {
+            const current = this.read();
+            if (!current || (!current.table && current.stats)) return true;
+            if (!await GMX.get(KEYS.collectionView, null)) await GMX.set(KEYS.collectionView, { table: current.table, stats: current.stats, savedAt: nowIso() });
+            if (current.table) {
+                this.controls()?.grid.click();
+                if (!await waitFor(() => this.read()?.table === false && ListingPageAdapter.cardRoots().length > 0, 10000, 100)) return false;
+            }
+            if (!this.read()?.stats) {
+                this.controls()?.stats.click();
+                if (!await waitFor(() => this.read()?.stats === true && statsViewEnabled(), 10000, 100)) return false;
+            }
+            return true;
+        },
+        restore(options = {}) {
+            // While a scan is switching the view or starting, the URL changes it causes must not undo the switch.
+            if (state.collectionViewHold && !options.own) return Promise.resolve(false);
+            if (state.collectionViewRestore) return state.collectionViewRestore;
+            const task = (async () => {
+                const saved = await GMX.get(KEYS.collectionView, null);
+                if (!saved || state.collection?.status === 'running' || routeKind() !== 'listings') return false;
+                if (!this.read()) return false;
+                if (saved.stats === false && this.read()?.stats) {
+                    this.controls()?.stats.click();
+                    await waitFor(() => this.read()?.stats === false, 10000, 100);
+                }
+                if (saved.table === true && this.read()?.table === false) {
+                    this.controls()?.table.click();
+                    await waitFor(() => this.read()?.table === true, 10000, 100);
+                }
+                await GMX.remove(KEYS.collectionView);
+                return true;
+            })().catch((error) => { console.error(`[${APP.name}] collection view restore`, error); return false; })
+                .finally(() => { state.collectionViewRestore = null; });
+            state.collectionViewRestore = task;
+            return task;
+        },
+    };
+
     const Collection = {
         pageCount() { return Object.keys(state.collection?.pages || {}).length; },
         async reconcileLeaseLoss(expectedCollectionId = state.collection?.id) {
@@ -7431,7 +7496,20 @@
             state.collectionStartTask = tracked;
             return tracked;
         },
-        start() { return this.serializeStart(() => this.startOnce()); },
+        start() { return this.serializeStart(() => this.withCollectionView(() => this.startOnce())); },
+        async withCollectionView(begin) {
+            state.collectionViewHold = true;
+            let result = null;
+            try {
+                if (routeKind() === 'listings' && !await CollectionView.ensure()) {
+                    await CollectionView.restore({ own: true });
+                    UI.setStatus('noCards', 'error'); UI.render(); return null;
+                }
+                result = await begin();
+            } finally { state.collectionViewHold = false; }
+            if (state.collection?.status !== 'running') void CollectionView.restore();
+            return result;
+        },
         async startOnce() {
             if (state.collectionLoop) await state.collectionLoop;
             state.collectionPauseRequested = false;
@@ -7462,7 +7540,7 @@
             UI.setStatus(pageInfo.current === 1 ? 'collectionStarting' : 'collectionFirstPage', 'scanning'); UI.render();
             return this.run();
         },
-        resume() { return this.serializeStart(() => this.resumeOnce()); },
+        resume() { return this.serializeStart(() => this.withCollectionView(() => this.resumeOnce())); },
         async resumeOnce() {
             state.collectionPauseRequested = false;
             if (routeKind() !== 'listings') { UI.setStatus('collectionRouteRequired', 'blocked'); UI.render(); return null; }
@@ -7498,6 +7576,7 @@
             clearCollectionHandoff();
             await CollectionLease.release();
             UI.setStatus('collectionPaused', 'blocked'); UI.render();
+            void CollectionView.restore();
             return state.collection;
         },
         async settleCancelledOperation() {
@@ -7781,7 +7860,10 @@
                 const storageFailure = ['STORAGE_READ_FAILED', 'STORAGE_WRITE_FAILED', 'STORAGE_QUOTA_EXCEEDED'].includes(error?.code);
                 if (!storageFailure) void trackTelemetryError('runtime_listing_scan');
                 return this.block(storageFailure ? 'collectionStorageFailed' : 'collectionPageChanged');
-            }).finally(() => { state.collectionLoop = null; UI.render(); });
+            }).finally(() => {
+                state.collectionLoop = null; UI.render();
+                if (state.collection?.status !== 'running') void CollectionView.restore();
+            });
             return state.collectionLoop;
         },
     };
@@ -8426,9 +8508,17 @@
                 ${this.aiComparisonView()}
             </section>`;
         },
+        // A stopped or finished queue keeps its items, but none of them is waiting any more.
+        liveQueueItem() {
+            return ['ready', 'running'].includes(String(state.queue?.status || '')) ? Queue.activeItem() : null;
+        },
+        queueEndedText() {
+            const status = String(state.queue?.status || '');
+            return status === 'stopped' ? t('queueStopped') : status === 'completed' ? t('queueComplete') : t('noQueue');
+        },
         queueView() {
-            const item = Queue.activeItem();
-            return `<section class="meli-view">${this.viewHeader(t('queueTitle'), item ? t('currentItem', { current: state.queue.cursor + 1, total: state.queue.items.length }) : t('noQueue'))}<article class="meli-card">${this.queueCard()}</article><p class="meli-note">${escapeHtml(t('manualApproval'))}</p></section>`;
+            const item = this.liveQueueItem();
+            return `<section class="meli-view">${this.viewHeader(t('queueTitle'), item ? t('currentItem', { current: state.queue.cursor + 1, total: state.queue.items.length }) : this.queueEndedText())}<article class="meli-card">${this.queueCard()}</article><p class="meli-note">${escapeHtml(t('manualApproval'))}</p></section>`;
         },
         settingsView() {
             const fields = ['minVisitsToImprove','minVisitsToProtect','minRenewalsToReview','declinePercent'];
@@ -8438,7 +8528,7 @@
         },
         queueCard() {
             const queue = state.queue;
-            const item = Queue.activeItem();
+            const item = this.liveQueueItem();
             const page = routeKind();
             const recovery = Queue.recoveryState();
             if (recovery) {
@@ -8449,7 +8539,7 @@
                     && ['submitted', 'submitted-unverified'].includes(String(item.status || ''));
                 return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueRecoveryTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + 1, queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body"><div class="meli-queue-recovery" data-queue-recovery role="alert"><strong>${escapeHtml(t('listing'))} ${escapeHtml(item.listingId)}</strong><p>${escapeHtml(copy)}</p><div class="meli-actions"><button class="meli-btn primary" data-recovery-open-listing type="button">${escapeHtml(t('queueRecoveryOpen'))}</button>${canVerifyPublish ? `<button class="meli-btn" data-action="verify-publish" type="button">${escapeHtml(t('verifyPublish'))}</button>` : ''}${canVerifyDeactivation ? `<button class="meli-btn" data-action="verify-deactivate" type="button">${escapeHtml(t('verifyDeactivate'))}</button>` : ''}${recovery.submitted ? '' : `<button class="meli-btn" data-queue-recover type="button">${escapeHtml(t('queueRecoveryRetry'))}</button>`}<button class="meli-btn danger" data-recovery-stop type="button">${escapeHtml(t('queueRecoveryStop'))}</button></div></div></div></div>`;
             }
-            return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + (item ? 1 : 0), queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body">${item ? `<p>${escapeHtml(item.title || item.listingId)} · ${escapeHtml(item.status)}</p>${page === 'editor' ? this.editorQueueActions(item) : `<div class="meli-actions"><button class="meli-btn primary" data-action="go-current" type="button">${escapeHtml(t('goFirst'))}</button></div>`}` : `<p>${escapeHtml(t('noQueue'))}</p>`}</div></div>`;
+            return `<div class="meli-queue"><div class="meli-queue-title"><span>${escapeHtml(t('queueTitle'))}</span>${queue?.items ? `<span>${Math.min(queue.cursor + (item ? 1 : 0), queue.items.length)}/${queue.items.length}</span>` : ''}</div><div class="meli-queue-body">${item ? `<p>${escapeHtml(item.title || item.listingId)} · ${escapeHtml(item.status)}</p>${page === 'editor' ? this.editorQueueActions(item) : `<div class="meli-actions"><button class="meli-btn primary" data-action="go-current" type="button">${escapeHtml(t('goFirst'))}</button></div>`}` : `<p>${escapeHtml(this.queueEndedText())}</p>`}</div></div>`;
         },
         editorQueueActions(item) {
             const mismatch = currentListingId() && currentListingId() !== String(item.listingId);
@@ -9395,6 +9485,20 @@
 
     async function scanCurrentPage(options = {}) {
         if (routeKind() !== 'listings') return [];
+        // A scan the seller starts turns cards and Stats on for itself and puts the seller's view back afterwards.
+        if (!options.collectionLeaseToken && !Array.isArray(options.listings) && !options.viewReady && state.collection?.status !== 'running') {
+            state.collectionViewHold = true;
+            try {
+                if (!await CollectionView.ensure()) {
+                    await CollectionView.restore({ own: true });
+                    UI.setStatus('noCards', 'error'); return [];
+                }
+                return await scanCurrentPage({ ...options, viewReady: true });
+            } finally {
+                state.collectionViewHold = false;
+                void CollectionView.restore();
+            }
+        }
         if (!options.silentStatus) UI.setStatus('pageReady', 'scanning');
         const stable = Array.isArray(options.listings) ? null : await ListingPageAdapter.readStable({ requirePagination: false });
         const listings = Array.isArray(options.listings) ? options.listings : (stable?.listings || []);
@@ -10716,6 +10820,7 @@
                     UI.setStatus('collectionProgress', 'scanning', Collection.progressParams(stable.pageInfo));
                     void Collection.run();
                 } else {
+                    if (state.collection?.status !== 'running') void CollectionView.restore();
                     UI.setStatus(state.collection?.status === 'running' ? 'collectionPageChanged' : stable ? 'pageReady' : 'noCards', state.collection?.status === 'running' || !stable ? 'blocked' : 'ready');
                 }
                 if (stable) state.routeKey = key;
@@ -10944,7 +11049,7 @@
             elementIsUsable,
             ListingPageAdapter,
             collectionRuntime: Object.freeze({
-                state, Store, KEYS, CollectionLease, Collection,
+                state, Store, KEYS, CollectionLease, Collection, CollectionView,
                 invalidateCollectionForRecordMutationLocked,
                 collectionListingsObservedAt,
             }),

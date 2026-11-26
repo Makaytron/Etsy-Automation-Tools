@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta primește versiunile noi mai devreme; pot fi mai puțin șlefuite.",
+    "rn.214.fixes": "Corecturi: scanarea anunțurilor activează singură vizualizarea pe carduri și Stats din Etsy, apoi îți restabilește vizualizarea, mesajele necitite sunt din nou numărate, reclamele fără cuvinte cheie nu mai afișează o eroare, rândurile selectate se citesc în tema întunecată, iar textul nou apare în limba ta.",
     "rn.213.fixes": "Corecturi: dacă coada de verificare nu poate fi creată, acum se afișează motivul; o coadă oprită nu mai pare activă; iar pe marginea dreaptă butonul nu mai ajunge sub bara de derulare.",
     "rn.212.fixes": "Corecturi: planul de reduceri nu mai afișează zilele trecute, elementele din coadă arată fotografia anunțului, iar pe marginea stângă butonul nu mai acoperă pictogramele Etsy.",
     "rn.211.fixes": "Remedieri: tragerea butonului de pe margine de logo, formularul de adăugare a cuvintelor din Ads, fotografiile listărilor și traducerile și ciornele din Message Assistant.",

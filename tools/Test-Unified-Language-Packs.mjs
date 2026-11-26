@@ -125,3 +125,37 @@ test('a pack cached from an older catalog is downloaded again', async () => {
   assert.deepEqual(gm.requests, [`${PACK_BASE_URL}nl.json`], 'the stale cached pack is replaced by a download');
   assert.equal(typeof (await cache.get('pack.nl')).strings['ma.inbox'], 'string');
 });
+test('after an update, a kept pack is used at once and replaced by the current one in the background', async () => {
+  // A pack kept from 2.1.0 had no notes for 2.1.1-2.1.3, so those showed in English in a Turkish interface.
+  const cache = createStorage(createMemoryStore()).namespace('core');
+  const old = { ...pack('tr'), strings: Object.fromEntries(Object.entries(pack('tr').strings).filter(([key]) => !key.startsWith('rn.21'))) };
+  await cache.set('pack.tr', old);
+  await cache.set('packFor.tr', '2.1.0');
+  const gm = fakeGm((d) => d.onload({ status: 200, responseText: JSON.stringify(pack('tr')) }));
+  const changes = [];
+  const packs = createLanguagePacks({ gm, cache, appVersion: META.version, onChange: (l, s) => changes.push(`${l}:${s.status}`) });
+  assert.deepEqual(await packs.ensure('tr'), { status: 'ready' }, 'the kept pack is ready without waiting');
+  assert.equal(await packs.settled('tr'), true);
+  assert.deepEqual(gm.requests, [`${PACK_BASE_URL}tr.json`]);
+  assert.equal(typeof packStrings('tr')['rn.212.fixes'], 'string', 'the new notes arrive');
+  assert.equal(await cache.get('packFor.tr'), META.version);
+  assert.ok(changes.includes('tr:ready'), 'the interface re-renders with the current pack');
+
+  // The next page of the same version asks for nothing.
+  const offline = fakeGm(() => assert.fail('no request expected'));
+  const again = createLanguagePacks({ gm: offline, cache, appVersion: META.version });
+  await again.ensure('tr');
+  assert.equal(await again.settled('tr'), false);
+  assert.deepEqual(offline.requests, []);
+});
+
+test('a failed refresh keeps the pack the user already has', async () => {
+  const cache = createStorage(createMemoryStore()).namespace('core');
+  await cache.set('pack.es', pack('es'));
+  const gm = fakeGm((d) => d.onerror(new Error('offline')));
+  const packs = createLanguagePacks({ gm, cache, appVersion: META.version });
+  assert.deepEqual(await packs.ensure('es'), { status: 'ready' });
+  assert.equal(await packs.settled('es'), false);
+  assert.equal(typeof packStrings('es')['lang.retry'], 'string', 'still in Spanish');
+  assert.equal((await cache.get('pack.es')).language, 'es');
+});

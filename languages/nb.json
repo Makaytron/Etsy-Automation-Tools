@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta får nye versjoner tidligere; de kan ha flere skjønnhetsfeil.",
+    "rn.214.fixes": "Rettelser: annonseskanningen slår selv på Etsys kortvisning og Stats og gjenoppretter etterpå visningen din, uleste meldinger telles igjen, annonser uten søkeord viser ikke lenger en feil, valgte rader kan leses i det mørke temaet, og ny tekst vises på språket ditt.",
     "rn.213.fixes": "Rettelser: hvis gjennomgangskøen ikke kan opprettes, vises årsaken nå; en stoppet kø ser ikke lenger aktiv ut; og på høyre kant havner kantknappen ikke lenger under rullefeltet.",
     "rn.212.fixes": "Rettelser: salgsplanen viser ikke lenger dager som har passert, elementer i køen viser annonsebildet, og på venstre kant dekker kantknappen ikke lenger Etsys ikoner.",
     "rn.211.fixes": "Rettelser: dra kantknappen etter logoen, skjemaet for å legge til ord i Ads, annonsebilder og oversettelser og utkast i Message Assistant.",

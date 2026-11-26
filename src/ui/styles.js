@@ -20,6 +20,8 @@ export const SHELL_CSS = `
 /* Edge button (Launcher-Closed: .etab .r/.l/.t/.b) */
 .etab { position: fixed; padding: 0; cursor: pointer; touch-action: none; user-select: none; font: inherit; transition: left .2s ease, top .2s ease; }
 .etab img { pointer-events: none; -webkit-user-drag: none; }
+/* The edge button steps aside while the full workspace is open (suite.css gives .etab display:flex, which beats [hidden]). */
+.etab[hidden] { display: none; }
 /* Etsy keeps its own icons on the left: there the closed button leaves a 12px handle and comes out on hover or keyboard focus. */
 .etab.l:not(.att):not(.dragging):not(:hover):not(:focus-visible) { transform: translateX(-34px); }
 .etab.l { transition: left .2s ease, top .2s ease, transform .15s ease; }

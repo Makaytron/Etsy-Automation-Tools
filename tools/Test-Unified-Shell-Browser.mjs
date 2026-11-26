@@ -95,7 +95,7 @@ function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, tr
   ${seen ? `values.set('eat:v1:core:seenVersion', ${safe(seen)});` : ''}
   values.set('eat:v1:sale-manager:legacy.eda-batch-config-v4', { discount: 25 });
   values.set('eat:secret:openai', 'fixture-placeholder');
-  ${trCached ? `values.set('eat:v1:core:pack.tr', ${safe(PACK_TR)});` : ''}
+  ${trCached ? `values.set('eat:v1:core:pack.tr', ${safe(PACK_TR)}); values.set('eat:v1:core:packFor.tr', ${safe(APP_VERSION)});` : ''}
   for (const [k, v] of Object.entries(${safe(preload)})) values.set(k, v);
   window.__values = values;
   window.__packs = ${safe(packs)};
@@ -175,6 +175,72 @@ const KW_RESULT = `<div role="main"><section>
 <tr><td>bts gift</td><td>8,100</td><td>1,200</td></tr><tr><td>kpop sticker</td><td>950</td><td>40,000</td></tr>
 </tbody></table></section></div>`;
 const KW_SAVED_KEY = 'eat:v1:keyword-market-analyzer:legacy.ekma.v1.captures';
+// Reads every visible piece of text in the unified interface and reports the ones too faint to read:
+// the text colour against the background actually behind it (WCAG contrast below 3:1). Used in both themes.
+const CONTRAST = `
+  const parseColor = (c) => { const m = String(c).match(/rgba?\\(([^)]+)\\)/); if (!m) return null; const p = m[1].split(/[\\s,\\/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+  const over = (top, bottom) => ({ r: top.r * top.a + bottom.r * (1 - top.a), g: top.g * top.a + bottom.g * (1 - top.a), b: top.b * top.a + bottom.b * (1 - top.a), a: 1 });
+  const luminance = ({ r, g, b }) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const backdrop = (el) => {
+    const layers = [];
+    for (let n = el; n; n = n.parentElement || n.getRootNode()?.host || null) {
+      const cs = getComputedStyle(n);
+      if (cs.backgroundImage && cs.backgroundImage !== 'none') return null;
+      const c = parseColor(cs.backgroundColor);
+      if (c && c.a > 0) { layers.push(c); if (c.a >= 1) break; }
+    }
+    return layers.reverse().reduce((acc, c) => over(c, acc), { r: 255, g: 255, b: 255, a: 1 });
+  };
+  const faintText = (label) => {
+    const found = [];
+    for (const el of S().querySelectorAll('*')) {
+      if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
+      const box = el.getBoundingClientRect();
+      if (!box.width || !box.height) continue;
+      const cs = getComputedStyle(el);
+      if (cs.visibility !== 'visible' || Number(cs.opacity) === 0) continue;
+      if (el.closest('[disabled], [aria-disabled="true"], [hidden], .sk-mode')) continue;
+      const fg = parseColor(cs.color);
+      if (!fg || fg.a === 0) continue;
+      const bg = backdrop(el);
+      if (!bg) continue;
+      const a = luminance(over(fg, bg)); const b = luminance(bg);
+      const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      if (ratio < 3) found.push(label + ' · ' + el.tagName.toLowerCase() + (el.className ? '.' + String(el.className).trim().split(/\\s+/).join('.') : '') + ' "' + el.textContent.trim().replace(/\\s+/g, ' ').slice(0, 40) + '" ' + ratio.toFixed(2));
+    }
+    return found;
+  };
+  // Runs a check in the light and the dark theme, then puts the page back as it was.
+  const bothThemes = (label) => {
+    const root = S().querySelector('.mkui-root');
+    const wasDark = root.classList.contains('theme-dark');
+    root.classList.remove('theme-dark'); const light = faintText(label + ' [light]');
+    root.classList.add('theme-dark'); const dark = faintText(label + ' [dark]');
+    root.classList.toggle('theme-dark', wasDark);
+    return [...light, ...dark];
+  };
+`;
+
+// Opens a tool's drawer and full screen and checks every tab in both themes. Probes add rows in states the
+// fixture data cannot reach (a selected listing, a failed campaign, a customer message), marked up as the
+// screens mark them up, so their colours are checked too.
+const contrastScenario = (ready, probes = '') => `async ({ wait }) => {${HELPERS}${CONTRAST}
+    const until = async (cond, limit = 200000) => { for (let i = 0; i < limit && !cond(); i += 1) await new Promise((r) => setTimeout(r, 0)); };
+    const q = (sel) => S().querySelector(sel);
+    await wait(2000);
+    await until(() => ${ready});
+    const faint = [...bothThemes('drawer')];
+    q('[data-sale="details"], [data-ads="details"], [data-kw="details"], [data-ma="details"], [data-la="details"]').click(); await wait(200);
+    faint.push(...bothThemes('page'));
+    const tabs = [...S().querySelectorAll('[data-name$="-tab"][data-value]')].map((b) => [b.dataset.name, b.dataset.value]);
+    for (const [name, value] of tabs) {
+      q('[data-name="' + name + '"][data-value="' + value + '"]').click(); await wait(200);
+      ${probes}
+      faint.push(...bothThemes(value));
+    }
+    return { tabs: tabs.length, faint };
+  }`;
+
 const KW_WAIT = `const until = async (c, l = 200000) => { for (let i = 0; i < l && !c(); i += 1) await new Promise((r) => setTimeout(r, 0)); }; await wait(2000); await until(() => window.__shadow.querySelector('[data-kw-state="analysed"]'));`;
 
 const PACK_DE = JSON.parse(fs.readFileSync(new URL('../languages/de.json', import.meta.url), 'utf8'));
@@ -225,6 +291,7 @@ const scenarios = {
     await click();
     await press('[data-action="open-workspace"]');
     out.wsVisible = Boolean(q('#eat-workspace')); out.tabHidden = tab().hidden; out.sheetHidden = sheet().hidden;
+    out.tabShown = getComputedStyle(tab()).display !== 'none';
     out.wsModal = q('#eat-workspace').getAttribute('aria-modal');
     out.firstPage = q('[aria-current="page"]')?.dataset.page; out.firstTitle = q('.ph .h1')?.textContent;
     out.focusStart = S().activeElement?.dataset.page ?? null;
@@ -663,6 +730,21 @@ const PAGES = {
   '/your/orders/sold': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.shoppingPage },
 };
 
+// The same tool pages, read for faint text in both themes.
+const LA_SELECTED_PROBE = "if (value === 'listings') q('[data-role=\"la-page\"]').insertAdjacentHTML('beforeend', '<table class=\"tbl lt\" data-probe><tbody><tr class=\"sel\"><td>Selected listing probe</td><td>42</td></tr></tbody></table>');";
+const SALE_FAILED_PROBE = "if (value === 'overview') q('[data-role=\"sale-plan\"]').insertAdjacentHTML('afterend', '<table class=\"tbl\" data-probe><tbody><tr style=\"background: #fef2f2;\"><td>Failed campaign probe</td></tr></tbody></table>');";
+const MA_BUBBLE_PROBE = "q('.ph').insertAdjacentHTML('afterend', '<div class=\"sm\" data-probe style=\"background: #ffffff; border: 1px solid #e7e7e7; border-radius: 12px; padding: 12px 14px;\">Customer message probe</div>');";
+const CONTRAST_PAGES = {
+  '/your/shops/me/sales-discounts/ui?contrast=1': ['/your/shops/me/sales-discounts/ui', "q('[data-role=\"sale-drawer\"]')", SALE_FAILED_PROBE],
+  '/your/shops/me/advertising/listings/ui?contrast=1': ['/your/shops/me/advertising/listings/ui', "q('[data-ads-state=\"warning\"]')"],
+  '/your/shops/me/marketplace-insights/search?query=bts%20sticker&contrast=1': ['/your/shops/me/marketplace-insights/search?query=bts%20sticker', "q('[data-kw-state=\"analysed\"]')"],
+  '/messages/1234567890?contrast=1': ['/messages/1234567890', "q('[data-role=\"ma-drawer\"]')", MA_BUBBLE_PROBE],
+  '/your/shops/me/tools/listings?eat=screens&contrast=1': ['/your/shops/me/tools/listings?eat=screens', "q('[data-role=\"la-drawer\"]')", LA_SELECTED_PROBE],
+};
+for (const [key, [from, ready, probes]] of Object.entries(CONTRAST_PAGES)) {
+  PAGES[key] = { ...PAGES[from], scenario: contrastScenario(ready, "S().querySelectorAll('[data-probe]').forEach((n) => n.remove()); " + (probes || '')) };
+}
+
 function startServer() {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
@@ -771,6 +853,7 @@ test('workspace: navigation, settings, deleting local data, Escape back to the d
   const r = await visit(chrome, base, '/your/shops/me/tools/listings');
   assert.equal(r.wsVisible, true);
   assert.equal(r.tabHidden, true);
+  assert.equal(r.tabShown, false, 'the edge button is not drawn over the workspace');
   assert.equal(r.sheetHidden, true);
   assert.equal(r.wsModal, 'true');
   assert.equal(r.firstPage, 'tool:listing-analyzer', 'opens on the tool of this page');
@@ -1075,4 +1158,14 @@ test('optional screenshots for visual review', { skip: !process.env.EAT_SCREENSH
     // A third value is a narrower window width (the design's narrow-window layout).
     await runChrome(chrome, `${base}${pathname}`, [`--screenshot=${path.join(process.env.EAT_SCREENSHOTS, `${name}.png`)}`, ...(width ? [`--window-size=${width},800`] : [])]);
   }
+});
+
+test('every tool screen stays readable in the light and the dark theme', async () => {
+  // A selected listing row turned white in the dark theme while its text stayed white.
+  const faint = [];
+  for (const key of Object.keys(CONTRAST_PAGES)) {
+    const r = await visit(chrome, base, key);
+    faint.push(...r.faint.map((f) => key.split('?')[0] + ' · ' + f));
+  }
+  assert.deepEqual(faint, [], 'text too faint to read');
 });

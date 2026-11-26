@@ -4,6 +4,22 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.4] - 2026-11-26
+
+### Fixed
+
+- Listing Analyzer (engine 1.3.2): the scan needs Etsy's card view with Stats on and found nothing in the table view or with Stats off. It now switches them on for itself, for a full scan and for "Scan this page", and afterwards puts back the seller's own view.
+- Listing Analyzer: in the dark theme a selected listing row turned light while its text stayed light, so it could not be read.
+- Listing Analyzer: the engine's own panel no longer shows a stopped or finished queue as waiting; during a scan the screen names the page being read.
+- Message Assistant (engine 1.3.2): unread conversations are counted again. Etsy now marks them only with a red badge, which was not recognised.
+- Ads Keyword Manager (engine 1.1.2): an ad without targeted keywords no longer shows "The keyword table could not be loaded"; it says the ad has no targeted keywords yet.
+- The edge button no longer stays over the full workspace while it is open.
+- Release notes and other new text appeared in English in a translated interface, because a language pack kept in the browser was never replaced. After an update the kept pack is still used at once and the current one is fetched once in the background.
+
+### Added
+
+- A check opens every tool screen in the light and the dark theme in real Chrome and fails if any text is too faint to read.
+
 ## [2.1.3] - 2026-11-26
 
 ### Fixed

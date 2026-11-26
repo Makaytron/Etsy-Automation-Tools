@@ -408,6 +408,7 @@
     "set.channelStable": "Ổn định",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta nhận phiên bản mới sớm hơn; có thể còn nhiều chỗ chưa hoàn thiện.",
+    "rn.214.fixes": "Sửa lỗi: quét tin đăng tự bật chế độ xem thẻ và Stats của Etsy rồi khôi phục chế độ xem của bạn, tin nhắn chưa đọc được đếm lại, quảng cáo không có từ khóa không còn báo lỗi, hàng đã chọn đọc được trong giao diện tối và văn bản mới hiển thị bằng ngôn ngữ của bạn.",
     "rn.213.fixes": "Sửa lỗi: nếu không tạo được hàng đợi xem xét, lý do giờ được hiển thị; hàng đợi đã dừng không còn trông như đang hoạt động; và ở cạnh phải nút cạnh không còn nằm dưới thanh cuộn.",
     "rn.212.fixes": "Sửa lỗi: kế hoạch giảm giá không còn liệt kê những ngày đã qua, các mục trong hàng đợi hiển thị ảnh tin đăng, và ở cạnh trái nút cạnh không còn che biểu tượng của Etsy.",
     "rn.211.fixes": "Sửa lỗi: kéo nút cạnh bằng logo, biểu mẫu thêm từ trong Ads, ảnh sản phẩm, cùng bản dịch và bản nháp trong Message Assistant.",

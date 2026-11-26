@@ -3,7 +3,7 @@
 // @name:tr      Makaytron Etsy Mesaj Asistanı
 // @name:en      Makaytron Etsy Message Assistant
 // @namespace    https://makaytron.com/
-// @version      1.3.1
+// @version      1.3.2
 // @description  Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:tr Etsy mesajlarını seçtiğiniz dilde görün; kendi AI sağlayıcınız, modeliniz ve API anahtarınızla cevap hazırlayın. Ayarlar güncellemelerde korunur.
 // @description:en Translate Etsy messages into your selected language and prepare replies with your own AI provider, model, and API key while preserving settings across updates.
@@ -517,7 +517,7 @@
     const RouteLifecycle = createRouteLifecycle(path => RUNTIME_ROUTE_PATTERN.test(path));
 
 
-    const APP_VERSION = '1.3.1';
+    const APP_VERSION = '1.3.2';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const CENTRAL_MESSAGE_CENTER_BUILD = false;
@@ -6022,6 +6022,9 @@ zu|Zulu
                 });
                 const unread = Boolean(
                     scope.querySelector?.('[data-unread="true"]')
+                    // Etsy's Messages list (November 2026) marks an unread conversation only with a red
+                    // notification badge next to its time; read rows are drawn in gray.
+                    || scope.querySelector?.('.convo-details-timestamp-image-badge-container .wt-badge--notificationPrimary')
                     || ariaUnread
                     || /(?:^|\s)(?:is-)?unread(?:\s|$)/i.test(classText)
                     || String(scope.innerText || '').split(/\n+/).some(line => /^(?:unread|okunmadı)$/i.test(normalize(line)))

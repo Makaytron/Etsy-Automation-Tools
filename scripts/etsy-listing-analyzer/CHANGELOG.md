@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2] - 2026-11-26
+
+### Fixed
+
+- The scan needs Etsy's card view with Stats on. With the table view or Stats off it found no listings and stopped. It now turns on the card view and Stats for itself, for a full scan and for "Scan this page", and afterwards puts back exactly the view the seller had (only what it changed). The seller's original view is remembered across the page turns of a scan.
+- A stopped or finished action queue is no longer shown as waiting in the panel: no "Open first listing" button, and the panel says the queue was stopped or completed.
+
 ## [1.3.1] - 2026-11-20
 
 ### Fixed
