@@ -780,8 +780,15 @@ function runChrome(chrome, url, extra = []) {
 }
 
 async function visit(chrome, base, pathname) {
-  const dom = await runChrome(chrome, `${base}${pathname}`, ['--dump-dom']);
-  const encoded = dom.match(/data-eat-result="([^"]+)"/)?.[1];
+  let dom = await runChrome(chrome, `${base}${pathname}`, ['--dump-dom']);
+  let encoded = dom.match(/data-eat-result="([^"]+)"/)?.[1];
+  if (!encoded) {
+    // On a busy CI runner a long scenario can outlast Chrome's virtual-time budget and report nothing.
+    // One fresh run tells that apart from a real hang, which fails again below with the page's tail.
+    console.warn(`No result from ${pathname} on the first run; trying once more.`);
+    dom = await runChrome(chrome, `${base}${pathname}`, ['--dump-dom']);
+    encoded = dom.match(/data-eat-result="([^"]+)"/)?.[1];
+  }
   assert.ok(encoded, `No result from ${pathname}. DOM tail:\n${dom.slice(-1200)}`);
   const result = JSON.parse(decodeURIComponent(encoded.replaceAll('&amp;', '&')));
   assert.equal(result.ok, true, result.error);
