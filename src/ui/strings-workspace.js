@@ -357,6 +357,7 @@ export const WORKSPACE_STRINGS = Object.freeze({
     'set.channelStable': 'Stable',
     'set.channelBeta': 'Beta',
     'set.channelHint': 'Beta gets new versions earlier; they may have more rough edges.',
+    'rn.213.fixes': 'Fixes: if the review queue cannot be built, the reason is now shown; a stopped queue no longer looks active; and on the right edge the edge button stays clear of the scroll bar.',
     'rn.212.fixes': 'Fixes: the sale plan no longer lists days that have passed, queue items show the listing photo, and on the left edge the edge button leaves Etsy\'s icons free.',
     'rn.211.fixes': 'Fixes: dragging the edge button by its logo, the Ads add-word form, listing photos, and translations and drafts in Message Assistant.',
     'rn.210.design': 'A new look for every screen, the same in light and dark.',

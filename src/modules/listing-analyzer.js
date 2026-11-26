@@ -45,7 +45,8 @@ export function createListingAnalyzerModule() {
     emit('running');
     // The edit queue's current listing waiting for the user (publish, deactivation or a check) is announced once.
     const q = state.engine.la?.view().queue;
-    const item = q?.items.find((i) => i.id === q.active);
+    // A stopped or finished queue waits for nobody.
+    const item = ['ready', 'running'].includes(q?.status) ? q.items.find((i) => i.id === q.active) : null;
     const waits = item && (q.recovery || ['applying', 'awaiting-user-review', 'awaiting-user-deactivation'].includes(item.status));
     waiting.update(waits ? [{ key: `${item.id}:${q.recovery ? 'recovery' : item.status}`, detail: item.title }] : [],
       { notify: state.ctx?.notify, language: state.ctx?.settings?.get().language });

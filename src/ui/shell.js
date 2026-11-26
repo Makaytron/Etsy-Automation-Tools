@@ -20,7 +20,7 @@ import { createWorkspace } from './workspace.js';
 import { openOnboarding } from './onboarding.js';
 import { maybeShowWhatsNew } from './whats-new.js';
 import { createToasts } from './toasts.js';
-import { tabRect, snapToEdge, drawerSide, drawerWidth, TAB_SHORT, TAB_LONG } from '../core/drawer-geometry.js';
+import { tabRect, snapToEdge, drawerSide, drawerWidth, viewportSize, TAB_SHORT, TAB_LONG } from '../core/drawer-geometry.js';
 import { TOOL_IDS } from '../core/settings.js';
 import { actionForEvent } from '../core/shortcuts.js';
 
@@ -41,7 +41,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
   // "Report a problem" anywhere in the interface opens the same dialog.
   text.report = (options = {}) => openFeedback({ doc, container, text, scope, appVersion, host, reports, ...options });
   const { t, language } = text;
-  const viewport = () => ({ width: scope.innerWidth, height: scope.innerHeight });
+  const viewport = () => viewportSize(scope, doc);
   const theme = () => {
     const pref = settings.get().theme;
     if (pref === 'light' || pref === 'dark') return pref;
@@ -72,6 +72,9 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     container.append(tab);
     workspace = createWorkspace({ scope, container, text, settings, storage, host, appVersion, migration, notices, updates, reports, assets, onClose: onWorkspaceClose });
     scope.addEventListener('resize', layout);
+    // The page's scroll bar can appear after load (the page grows) without a resize event.
+    const rootSize = typeof scope.ResizeObserver === 'function' ? new scope.ResizeObserver(() => layout()) : null;
+    rootSize?.observe(doc.documentElement);
     doc.addEventListener('keydown', onShortcut, true);
     const scheme = scope.matchMedia?.('(prefers-color-scheme: dark)');
     scheme?.addEventListener?.('change', applyChrome);
@@ -80,6 +83,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
       () => workspace.dispose(),
       text.onPackChange(() => { applyChrome(); render(); if (workspace?.isOpen) workspace.refresh(); }),
       () => scheme?.removeEventListener?.('change', applyChrome),
+      () => rootSize?.disconnect(),
     ];
     state.mounted = true;
     applyChrome();

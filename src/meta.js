@@ -11,7 +11,7 @@
 export const META = Object.freeze({
   name: 'Makaytron Etsy Automation Tools',
   namespace: 'https://makaytron.com/etsy-automation-tools',
-  version: '2.1.2',
+  version: '2.1.3',
   description: 'Sale Manager, Message Assistant, Ads Keyword Manager, Listing Analyzer and Keyword & Market Analyzer for Etsy sellers, in one drawer.',
   author: 'Makaytron',
   // Same canonical package page the standalone scripts use (tools/Test-Distribution.ps1).

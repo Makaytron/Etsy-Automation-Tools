@@ -16,6 +16,17 @@ export function drawerSide(edge) {
   return edge === 'right' ? 'right' : 'left';
 }
 
+/**
+ * The part of the window the page can use. innerWidth/innerHeight include the
+ * page scroll bars, and on Etsy the button on the right edge sat under the
+ * vertical one; the root element's client box leaves them out.
+ */
+export function viewportSize(scope, doc) {
+  const root = doc?.documentElement;
+  const usable = (client, inner) => (Number.isFinite(client) && client > 0 && client <= inner ? client : inner);
+  return { width: usable(root?.clientWidth, scope.innerWidth), height: usable(root?.clientHeight, scope.innerHeight) };
+}
+
 /** Drawer width for a viewport width. */
 export function drawerWidth(viewportWidth) {
   return viewportWidth < NARROW_VIEWPORT ? DRAWER_WIDTH_NARROW : DRAWER_WIDTH;

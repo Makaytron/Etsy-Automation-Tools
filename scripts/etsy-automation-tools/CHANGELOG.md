@@ -4,6 +4,14 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.3] - 2026-11-26
+
+### Fixed
+
+- Listing Analyzer: when the review queue could not be built (for example a plan saved before the latest scan), the workspace switched to an empty queue tab without saying why. It now stays on the listings tab and shows the reason; the queue tab shows it too.
+- Listing Analyzer: a stopped queue no longer looks active in the workspace. Its remaining items are marked stopped and the stop and open-next buttons are gone.
+- The edge button on the right edge no longer sits under the page's scroll bar.
+
 ## [2.1.2] - 2026-11-26
 
 ### Fixed

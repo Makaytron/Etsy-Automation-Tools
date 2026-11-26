@@ -408,6 +408,7 @@
     "set.channelStable": "Stable",
     "set.channelBeta": "Bêta",
     "set.channelHint": "La bêta reçoit les nouvelles versions plus tôt ; elles peuvent être moins abouties.",
+    "rn.213.fixes": "Corrections : si la file de révision ne peut pas être créée, la raison est désormais affichée ; une file arrêtée ne semble plus active ; et sur le bord droit, le bouton de bord ne passe plus sous la barre de défilement.",
     "rn.212.fixes": "Corrections : le plan de soldes n'affiche plus les jours passés, les éléments de la file affichent la photo de l'annonce et, sur le bord gauche, le bouton de bord laisse les icônes d'Etsy visibles.",
     "rn.211.fixes": "Corrections : glisser le bouton du bord par le logo, le formulaire d’ajout de mots d’Ads, les photos des fiches et les traductions et brouillons de Message Assistant.",
     "rn.210.design": "Un nouveau look pour chaque écran, identique en clair et en sombre.",
