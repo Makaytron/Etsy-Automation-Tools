@@ -114,9 +114,17 @@ const EPILOGUE = `
                 selected: state.selectedIds.has(record.listingId),
             };
         });
+        // Queue items keep only the id and title; the photo comes from the saved listing record.
+        function __eatLaRecordImage(listingId) {
+            const id = String(listingId);
+            const match = (list) => (Array.isArray(list) ? list : []).find((r) => String(r?.listingId) === id);
+            let record = match(state.records);
+            if (!record) { try { record = match(collectedAnalysisRecords()); } catch { record = null; } }
+            return record?.meta?.imageUrl || '';
+        }
         const queue = state.queue && Array.isArray(state.queue.items) ? {
             status: String(state.queue.status || ''), cursor: Number(state.queue.cursor) || 0, recovery: Boolean(Queue.recoveryState()),
-            items: state.queue.items.map((item) => ({ id: String(item.listingId), title: String(item.title || item.listingId), status: String(item.status || ''), action: String(item.proposal?.action || '') })),
+            items: state.queue.items.map((item) => ({ id: String(item.listingId), title: String(item.title || item.listingId), imageUrl: String(__eatLaRecordImage(item.listingId)), status: String(item.status || ''), action: String(item.proposal?.action || '') })),
             active: Queue.activeItem() ? String(Queue.activeItem().listingId) : '',
         } : null;
         return {

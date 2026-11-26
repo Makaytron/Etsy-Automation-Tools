@@ -204,7 +204,9 @@ const scenarios = {
     const logo = tab().querySelector('img');
     out.logo = logo ? { draggable: logo.draggable, pointer: getComputedStyle(logo).pointerEvents } : null;
     out.dragLeft = await drag(20, 300);
-    out.savedLeft = saved(); out.tabLeft = rect(tab());
+    // The button glides to the edge after the drop; measure once it has arrived and lost the drag's focus.
+    out.savedLeft = saved(); await wait(400); tab().blur(); await wait(50); out.tabLeft = rect(tab());
+    tab().focus(); await wait(260); out.tabLeftFocused = rect(tab()); tab().blur(); await wait(260);
     await click();
     out.leftSide = sheet().dataset.side; out.leftSheet = rect(sheet()); out.tabLeftOpen = rect(tab());
     await click();
@@ -734,7 +736,9 @@ test('seller page: edge button, drawer, Escape and dragging to other edges', asy
   assert.equal(r.dragLeft.zoneOn, 'left');
   assert.match(r.dragLeft.chip, /sol kenar\s*Çekmece soldan açılır/);
   assert.equal(r.savedLeft.edge, 'left');
-  assert.equal(r.tabLeft.left, 0);
+  // On the left edge the closed button leaves a 12px handle, so it does not cover Etsy's own left-side icons.
+  assert.equal(Math.round(r.tabLeft.right), 12, 'closed on the left, only a handle shows');
+  assert.equal(Math.round(r.tabLeftFocused.left), 0, 'keyboard focus brings the whole button out');
   assert.equal(r.leftSide, 'left');
   assert.equal(r.leftSheet.left, 0);
   assert.equal(r.tabLeftOpen.left, 400);

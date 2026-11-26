@@ -408,6 +408,7 @@
     "set.channelStable": "Vakaa",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta saa uudet versiot aiemmin; niissä voi olla enemmän keskeneräisyyttä.",
+    "rn.212.fixes": "Korjaukset: alennussuunnitelma ei enää näytä menneitä päiviä, jonon kohteissa näkyy ilmoituksen kuva ja vasemmassa reunassa reunapainike ei enää peitä Etsyn kuvakkeita.",
     "rn.211.fixes": "Korjaukset: reunapainikkeen vetäminen logosta, Adsin sanojen lisäyslomake, ilmoitusten kuvat sekä Message Assistantin käännökset ja luonnokset.",
     "rn.210.design": "Uusi ulkoasu jokaiselle näkymälle, sama vaaleassa ja tummassa tilassa.",
     "rn.210.settings": "Asetuksissa on nyt tekoälypalvelut, tiedotteet, pikanäppäimet ja päivitykset.",

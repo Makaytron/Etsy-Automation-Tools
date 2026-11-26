@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedBy": "tools/Audit-Mkui-Cross-Script-Coexistence.mjs",
-  "sourceDigest": "sha256:d7cc48c9dce36cd6c466e2d3a7a2e52a78c4ec1886b20328f9566dd3517ea1a4",
+  "sourceDigest": "sha256:525b3ca5e99256aed29ed0ce8fa24336e0a1f8cba73d03c588ee2f2a1d4f4c97",
   "status": "pass",
   "summary": {
     "scriptCount": 5,
@@ -427,10 +427,10 @@
       "id": "sale-manager",
       "label": "Sale Manager",
       "path": "scripts/etsy-sale-campaign-batch-runner/Etsy-Sale-Campaign-Batch-Runner.user.js",
-      "bytes": 455578,
-      "lines": 7903,
-      "sha256": "337b29d178b20a9a972738ef71fe4cd46ccaee70964fb5dd953aceb742c81e5d",
-      "version": "1.1.1",
+      "bytes": 456538,
+      "lines": 7919,
+      "sha256": "29713b2d6426c524e94944d9b5bd7db3467e1b95a5744e432513c89c67774f13",
+      "version": "1.1.2",
       "mkuiVersion": "1.0.0",
       "mkuiBundleHash": "sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b",
       "matches": [
@@ -663,7 +663,7 @@
       "globalShortcuts": [
         {
           "target": "document",
-          "line": 7794,
+          "line": 7810,
           "key": "e",
           "modifiers": [
             "Alt",
@@ -673,7 +673,7 @@
         },
         {
           "target": "document",
-          "line": 7794,
+          "line": 7810,
           "key": "r",
           "modifiers": [
             "Alt",
@@ -683,7 +683,7 @@
         },
         {
           "target": "document",
-          "line": 7794,
+          "line": 7810,
           "key": "u",
           "modifiers": [
             "Alt",

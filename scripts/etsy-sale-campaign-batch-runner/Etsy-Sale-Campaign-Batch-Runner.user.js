@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Sale Manager
 // @name:tr      Makaytron Etsy Sale Manager
 // @name:en      Makaytron Etsy Sale Manager
-// @version      1.1.1
+// @version      1.1.2
 // @description  Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
 // @description:tr Etsy Sales and Discounts kampanyalarını güvenli toplu seriler hâlinde planlar, doğrular ve raporlar
 // @description:en Bulk Sales & Discounts Automation for Etsy: schedule, verify, and report sale campaigns safely
@@ -517,7 +517,7 @@
     }
 
 
-    const VERSION = '1.1.1';
+    const VERSION = '1.1.2';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -4226,6 +4226,19 @@
         return date ? isoDate(addDays(date, scheduleStepDays(activeJob))) : null;
     }
 
+    // Etsy cannot start a sale in the past. A start date saved earlier moves to the first
+    // schedule day from today, keeping the rhythm of the campaign length.
+    function firstPlannableDate(source) {
+        const start = parseIso(String(source?.batchStartDate || ''));
+        if (!start) return source?.batchStartDate;
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        if (start.getTime() >= today.getTime()) return isoDate(start);
+        const step = scheduleStepDays(source);
+        const behind = daysInclusive(start, today) - 1;
+        return isoDate(addDays(start, Math.ceil(behind / step) * step));
+    }
+
     function batchCompleteAt(activeJob, dateIso) {
         const date = parseIso(dateIso);
         const end = parseIso(activeJob?.batchEndDate);
@@ -7397,6 +7410,9 @@ Açık sekme: ${shopLabel(earlyIdentity)}`);
         const end = parseIso(config.batchEndDate);
         if (!start || !end) { toast('Başlangıç ve bitiş tarihleri doğru değil.', 'error'); return; }
         if (start.getTime() > end.getTime()) { toast('Başlangıç tarihi bitiş tarihinden sonra olamaz.', 'error'); return; }
+        const firstDate = firstPlannableDate(config);
+        if (batchCompleteAt(config, firstDate)) { toast('Bu aralıktaki tüm günler geçmişte kaldı. Bugünden sonraki tarihleri seç.', 'error', 6200); return; }
+        config.batchStartDate = firstDate;
         const identity = detectShopIdentity(true);
         if (!identity?.shopId) { toast('Etsy mağaza kimliği okunamadı. Sayfayı yenileyip doğru mağazada tekrar başlat.', 'error', 6200); return; }
         config = normalizeConfig(config);

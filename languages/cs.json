@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilní",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dostává nové verze dříve; mohou mít více nedostatků.",
+    "rn.212.fixes": "Opravy: plán výprodejů už neukazuje dny, které uplynuly, položky ve frontě zobrazují fotku nabídky a na levém okraji tlačítko nezakrývá ikony Etsy.",
     "rn.211.fixes": "Opravy: přetažení tlačítka na okraji za logo, formulář pro přidání slov v Ads, fotky inzerátů a překlady a koncepty v Message Assistant.",
     "rn.210.design": "Nový vzhled všech obrazovek, stejný ve světlém i tmavém režimu.",
     "rn.210.settings": "Nastavení nyní obsahuje poskytovatele AI, oznámení, zkratky a aktualizace.",

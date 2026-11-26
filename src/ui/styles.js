@@ -20,6 +20,9 @@ export const SHELL_CSS = `
 /* Edge button (Launcher-Closed: .etab .r/.l/.t/.b) */
 .etab { position: fixed; padding: 0; cursor: pointer; touch-action: none; user-select: none; font: inherit; transition: left .2s ease, top .2s ease; }
 .etab img { pointer-events: none; -webkit-user-drag: none; }
+/* Etsy keeps its own icons on the left: there the closed button leaves a 12px handle and comes out on hover or keyboard focus. */
+.etab.l:not(.att):not(.dragging):not(:hover):not(:focus-visible) { transform: translateX(-34px); }
+.etab.l { transition: left .2s ease, top .2s ease, transform .15s ease; }
 .etab.t .grip, .etab.b .grip { transform: rotate(90deg); }
 /* Open beside the drawer it looks like the drawer's own handle (Main: .dock::before): logo only. */
 .etab.att { z-index: 2; box-shadow: -6px 4px 12px -4px rgb(0 0 0 / .12); }
@@ -73,5 +76,5 @@ export const SHELL_CSS = `
 .theme-dark .dock-idle .well-lg { background: #1e1e1e; border-color: #2e2e2e; }
 [dir="rtl"] .dock-h { padding: 0 14px 0 10px; }
 [dir="rtl"] .dock-foot { padding: 10px 14px 10px 10px; }
-@media (prefers-reduced-motion: reduce) { .etab, .dock { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .etab, .etab.l, .dock { transition: none; } }
 `;
