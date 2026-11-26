@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilni",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta ranije dobija nove verzije; one mogu imati više nedostataka.",
+    "rn.213.fixes": "Исправке: ако ред за преглед не може да се направи, сада се приказује разлог; заустављени ред више не изгледа активно; а на десној ивици дугме више није испод траке за померање.",
     "rn.212.fixes": "Исправке: план распродаја више не приказује прошле дане, ставке у реду приказују фотографију огласа, а на левој ивици дугме више не прекрива Etsy иконе.",
     "rn.211.fixes": "Ispravke: prevlačenje dugmeta na ivici za logo, obrazac za dodavanje reči u Ads, fotografije oglasa i prevodi i nacrti u Message Assistant-u.",
     "rn.210.design": "Novi izgled svakog ekrana, isti u svetloj i tamnoj temi.",

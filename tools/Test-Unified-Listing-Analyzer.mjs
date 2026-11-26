@@ -71,3 +71,46 @@ test('queue items carry the listing photo from the saved record', () => {
   assert.match(queueLine, /imageUrl: String\(__eatLaRecordImage\(item\.listingId\)\)/);
   assert.match(adopted, /function __eatLaRecordImage\(listingId\) \{/);
 });
+
+test('a queue that was not built counts as not done, so the screen stays where the reason is shown', () => {
+  // The engine returns nothing either way; the unified screen used to switch to an empty queue tab with no reason.
+  assert.match(adopted, /buildQueue: \(\) => __eatLaRun\(async \(\) => \{\n {12}const before = state\.queue\?\.id \|\| '';\n {12}await buildQueueFromSelection\(\);\n {12}return Boolean\(state\.queue\?\.id\) && state\.queue\.id !== before && \['ready', 'running'\]\.includes\(String\(state\.queue\.status \|\| ''\)\);/);
+});
+
+async function renderQueuePage(queueStatus, tab = 'queue') {
+  const { renderLaPage } = await import('../src/modules/listing-analyzer-ui.js');
+  const { createFakeDocument } = await import('./Unified-Fake-Dom.mjs');
+  const doc = createFakeDocument();
+  const view = {
+    route: 'listings', fresh: true,
+    records: [{ id: '111', title: 'Fixture listing', sku: '', state: 'Active', imageUrl: '', editUrl: '', score: 40, code: 'IMPROVE', assessment: 'Improve', reason: '', selected: true, plan: 'saved' }], lastAt: '', counts: {}, thresholds: {},
+    queue: { status: queueStatus, cursor: 0, recovery: false, active: '111', items: [{ id: '111', title: 'Fixture listing', imageUrl: '', status: 'pending', action: 'UPDATE' }] },
+  };
+  const snap = { collecting: false, collection: null, status: { tone: 'blocked', text: 'Engine status line' } };
+  const actions = new Proxy({}, { get: () => () => {} });
+  return renderLaPage(doc, { snap, view, language: 'en', actions, tab, onTab: () => {}, local: {} });
+}
+
+test('a stopped queue is shown as stopped, with nothing left to open or stop', async () => {
+  const live = await renderQueuePage('ready');
+  assert.equal(live.find((n) => n.getAttribute('data-la') === 'stop-queue').length, 1, 'a live queue can be stopped');
+  assert.equal(live.find((n) => n.getAttribute('data-la') === 'go-current').length, 1);
+
+  const stopped = await renderQueuePage('stopped');
+  assert.equal(stopped.find((n) => n.getAttribute('data-la') === 'stop-queue').length, 0, 'no stop button');
+  assert.equal(stopped.find((n) => n.getAttribute('data-la') === 'open-next').length, 0, 'no open-next button');
+  assert.equal(stopped.find((n) => n.getAttribute('data-la') === 'go-current').length, 0, 'no row action');
+  const row = stopped.find((n) => n.getAttribute('data-queue-item') === '111')[0];
+  assert.match(row.textContent, /Stopped/);
+  assert.doesNotMatch(row.textContent, /In the queue|Waiting/);
+  assert.equal(stopped.find((n) => n.getAttribute('data-la') === 'stop-queue').length + (await renderQueuePage('completed')).find((n) => n.getAttribute('data-la') === 'stop-queue').length, 0);
+});
+
+test('the queue and listings tabs show the engine status line', async () => {
+  for (const tab of ['queue', 'listings']) {
+    const page = await renderQueuePage('stopped', tab);
+    const status = page.find((n) => n.getAttribute('data-role') === 'la-status');
+    assert.equal(status.length, 1, tab);
+    assert.equal(status[0].textContent, 'Engine status line');
+  }
+});

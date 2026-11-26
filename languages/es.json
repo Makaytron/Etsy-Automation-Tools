@@ -408,6 +408,7 @@
     "set.channelStable": "Estable",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta recibe las nuevas versiones antes; pueden estar menos pulidas.",
+    "rn.213.fixes": "Correcciones: si no se puede crear la cola de revisión, ahora se muestra el motivo; una cola detenida ya no parece activa; y en el borde derecho el botón de borde queda fuera de la barra de desplazamiento.",
     "rn.212.fixes": "Correcciones: el plan de rebajas ya no muestra días pasados, los elementos de la cola muestran la foto del anuncio y, en el borde izquierdo, el botón de borde deja libres los iconos de Etsy.",
     "rn.211.fixes": "Correcciones: arrastrar el botón del borde por el logotipo, el formulario para añadir palabras de Ads, las fotos de los anuncios y las traducciones y borradores de Message Assistant.",
     "rn.210.design": "Un nuevo aspecto para cada pantalla, igual en claro y en oscuro.",

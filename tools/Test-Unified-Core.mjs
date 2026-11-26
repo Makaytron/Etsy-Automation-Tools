@@ -6,7 +6,7 @@ import { ROUTES, matchRoute, describePath } from '../src/core/routes.js';
 import { createMemoryStore } from '../src/core/gm.js';
 import { createStorage, KEY_PREFIX, SECRET_PREFIX } from '../src/core/storage.js';
 import { normalizeSettings, createSettings, DEFAULT_SETTINGS } from '../src/core/settings.js';
-import { drawerSide, tabRect, snapToEdge, drawerWidth } from '../src/core/drawer-geometry.js';
+import { drawerSide, tabRect, snapToEdge, drawerWidth, viewportSize } from '../src/core/drawer-geometry.js';
 import { detectLanguage, textDirection, createI18n, validatePack, interpolate } from '../src/core/i18n.js';
 import { buildReport, scrubNote, browserInfo } from '../src/core/diagnostics.js';
 import { createHost } from '../src/core/host.js';
@@ -128,6 +128,20 @@ test('drawer opens from the button side, from the left for top and bottom', () =
   assert.equal(drawerSide('bottom'), 'left');
   assert.equal(drawerWidth(1024), 360);
   assert.equal(drawerWidth(1440), 400);
+});
+
+test('the edge button keeps clear of the page scroll bar', () => {
+  // On Etsy the page scrolls on the root with a 15px bar; innerWidth counts it, so the right-edge logo sat under the bar.
+  const scope = { innerWidth: 1920, innerHeight: 953 };
+  const doc = { documentElement: { clientWidth: 1905, clientHeight: 953 } };
+  const vp = viewportSize(scope, doc);
+  assert.deepEqual(vp, { width: 1905, height: 953 });
+  const r = tabRect('right', 0.5, vp);
+  assert.equal(r.x + r.width, 1905, 'the button ends where the scroll bar starts');
+  // No root element, or a client box that cannot be right, falls back to the window size.
+  assert.deepEqual(viewportSize(scope, null), { width: 1920, height: 953 });
+  assert.deepEqual(viewportSize(scope, { documentElement: { clientWidth: 0, clientHeight: 0 } }), { width: 1920, height: 953 });
+  assert.deepEqual(viewportSize(scope, { documentElement: { clientWidth: 2400, clientHeight: 953 } }), { width: 1920, height: 953 });
 });
 
 test('edge button stays inside the viewport and snaps to the nearest edge', () => {

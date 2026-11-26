@@ -148,7 +148,12 @@ const EPILOGUE = `
             __eatLaNotify();
         },
         clearSelection() { state.selectedIds.clear(); __eatLaNotify(); },
-        buildQueue: () => __eatLaRun(() => buildQueueFromSelection()),
+        // The engine returns nothing whether or not a queue was made; only a new, live queue counts as done.
+        buildQueue: () => __eatLaRun(async () => {
+            const before = state.queue?.id || '';
+            await buildQueueFromSelection();
+            return Boolean(state.queue?.id) && state.queue.id !== before && ['ready', 'running'].includes(String(state.queue.status || ''));
+        }),
         research: () => __eatLaRun(() => startMarketplaceResearchSelection()),
         goCurrent: () => __eatLaRun(() => Queue.navigate()),
         apply: () => __eatLaRun(() => applyCurrentProposal()),

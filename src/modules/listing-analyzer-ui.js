@@ -156,7 +156,9 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
   const records = view.records;
   const selected = records.filter((r) => r.selected);
   const queueItems = view.queue?.items ?? [];
-  const openQueue = queueItems.filter((i) => !['verified', 'verified-deactivated', 'skipped'].includes(i.status)).length;
+  // A stopped or finished queue keeps its items for the record, but nothing in it is open any more.
+  const queueLive = ['ready', 'running'].includes(String(view.queue?.status || ''));
+  const openQueue = queueLive ? queueItems.filter((i) => !['verified', 'verified-deactivated', 'skipped'].includes(i.status)).length : 0;
   const tabs = pageTabs(doc, {
     label: ts('tabs'), name: 'la-tab', value: current, onChange: onTab,
     options: [{ value: 'overview', label: ts('overview') }, { value: 'listings', label: ts('listings') }, { value: 'ai', label: ts('ai') }, { value: 'queue', label: ts('queue'), count: openQueue }, { value: 'thresholds', label: ts('thresholds') }],
@@ -284,6 +286,8 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
           h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', disabled: page === 0, onclick: () => actions.setLocal({ page: page - 1 }), text: ts('prev') }),
           h(doc, 'span', { class: 'sm num', text: `${page + 1} / ${pages}` }),
           h(doc, 'button', { class: 'btn btn-g btn-sm', type: 'button', disabled: page >= pages - 1, onclick: () => actions.setLocal({ page: page + 1 }), text: ts('next') }))),
+      // Why the queue was not built (stale plan, nothing selected with a plan, another tab) shows here.
+      h(doc, 'span', { class: 'xs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
       selected.length ? h(doc, 'div', { class: 'savebar', 'data-role': 'la-bulk' },
         h(doc, 'span', { class: 'col grow', style: 'gap: 2px;' }, h(doc, 'span', { class: 'sm b', text: ts('barSelected', { n: selected.length }) }), h(doc, 'span', { class: 'xs mute', text: ts('barHint') })),
         h(doc, 'button', { class: 'btn btn-o', type: 'button', 'data-la': 'to-ai', onclick: () => onTab('ai'), text: ts('getAi') }),
@@ -324,7 +328,7 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
     const failed = queueItems.filter((i) => i.status === 'failed').length;
     const editingActive = q && view.editingId && view.editingId === q.active;
     const rowAction = (item) => {
-      if (item.id !== q?.active) return null;
+      if (!queueLive || item.id !== q?.active) return null;
       if (!editingActive) return h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-la': 'go-current', onclick: () => actions.goCurrent(), text: ts('openListing') });
       if (item.action === 'DEACTIVATE_REVIEW') {
         return ['awaiting-user-deactivation', 'deactivation-submitted', 'deactivation-submitted-unverified'].includes(item.status)
@@ -348,7 +352,8 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
           ? h(doc, 'table', { class: 'tbl' },
             h(doc, 'thead', {}, h(doc, 'tr', {}, [ts('colListing'), ts('colChange'), ts('colStatus'), ts('colAction')].map((label, i) => h(doc, 'th', { class: i === 3 ? 'r' : null, text: label })))),
             h(doc, 'tbody', {}, queueItems.map((item) => {
-              const [label, tone] = QUEUE_STATUS[item.status] ?? QUEUE_STATUS.pending;
+              const terminal = ['verified', 'verified-deactivated', 'skipped', 'failed'].includes(item.status);
+              const [label, tone] = !queueLive && !terminal ? ['stopped', 'out'] : QUEUE_STATUS[item.status] ?? QUEUE_STATUS.pending;
               return h(doc, 'tr', { 'data-queue-item': item.id },
                 h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, listingThumb(doc, item, 36),
                   h(doc, 'span', { class: 'col' }, h(doc, 'span', { class: 'b', text: item.title }), h(doc, 'span', { class: 'xs mute', text: item.id })))),
@@ -358,6 +363,7 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
             })))
           : h(doc, 'div', { class: 'card-b xs mute', text: ts('noQueue') })),
       banner(doc, { iconPaths: ICONS.info, text: ts('queueNote') }),
+      h(doc, 'span', { class: 'xs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
     ];
   };
 

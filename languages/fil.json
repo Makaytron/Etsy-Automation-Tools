@@ -408,6 +408,7 @@
     "set.channelStable": "Stable",
     "set.channelBeta": "Beta",
     "set.channelHint": "Mas maagang nakakakuha ng bagong bersyon ang Beta; maaaring may mas maraming kakulangan ang mga ito.",
+    "rn.213.fixes": "Mga ayos: kapag hindi mabuo ang review queue, ipinapakita na ang dahilan; hindi na mukhang aktibo ang queue na itinigil; at sa kanang gilid hindi na natatakpan ng scroll bar ang edge button.",
     "rn.212.fixes": "Mga ayos: hindi na ipinapakita ng plano ng sale ang mga araw na lumipas na, may larawan na ng listing ang mga item sa queue, at sa kaliwang gilid hindi na tinatakpan ng edge button ang mga icon ng Etsy.",
     "rn.211.fixes": "Mga ayos: pag-drag sa button sa gilid mula sa logo, ang form sa pagdagdag ng salita sa Ads, mga larawan ng listing, at mga salin at draft sa Message Assistant.",
     "rn.210.design": "Bagong itsura para sa bawat screen, pareho sa light at dark.",
