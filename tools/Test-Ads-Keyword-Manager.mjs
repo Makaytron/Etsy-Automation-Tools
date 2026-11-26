@@ -179,13 +179,14 @@ function loadManager() {
         getRowWord,
         getAllRows,
         waitForKeywordRows,
+        keywordListIsEmpty,
         getMetricValue,
         isHighClickRatioRow,
     });
 ${source.slice(closureIndex)}`;
     vm.runInContext(instrumented, context, { filename: scriptPath });
     assert.ok(sandbox.__MAW_TEST__);
-    return { api: sandbox.__MAW_TEST__, rows };
+    return { api: sandbox.__MAW_TEST__, rows, sandbox };
 }
 
 test('nested Etsy keyword wins over responsive, hidden, and control text', () => {
@@ -224,4 +225,27 @@ test('row readiness waits for keyword text hydration', async () => {
     rows.push(new FakeRow(cell));
     setTimeout(() => cell.candidates.push(textNode('bts concert shirt')), 20);
     assert.equal(await api.waitForKeywordRows(500), true);
+});
+
+test('an ad without targeted keywords is recognised as empty, not as a broken table', () => {
+    // Etsy draws only "Targeted keywords (0)" and no accordion; the panel used to say the table could not load.
+    const { api, rows, sandbox } = loadManager();
+    let title = { textContent: 'Targeted keywords (0)' };
+    let accordion = null;
+    sandbox.document.querySelector = (selector) => (selector === '[data-test-id="accordion-title"]' ? title
+        : selector === '#listing-detail-targeted-keywords-accordion' ? accordion : null);
+    assert.equal(api.keywordListIsEmpty(), true);
+    title = { textContent: 'Hedeflenen anahtar kelimeler ( 0 )' };
+    assert.equal(api.keywordListIsEmpty(), true, 'any language, as long as the count is zero');
+    title = { textContent: 'Targeted keywords (12)' };
+    assert.equal(api.keywordListIsEmpty(), false, 'keywords that have not loaded yet are not "empty"');
+    title = { textContent: 'Targeted keywords (0)' };
+    accordion = {};
+    assert.equal(api.keywordListIsEmpty(), false, 'an accordion on the page means a real table');
+    accordion = null;
+    rows.push(new FakeRow(new FakeCell('', [textNode('bts tshirt')])));
+    assert.equal(api.keywordListIsEmpty(), false, 'rows on the page are never empty');
+    rows.length = 0;
+    title = null;
+    assert.equal(api.keywordListIsEmpty(), false, 'no title: the old error stays');
 });

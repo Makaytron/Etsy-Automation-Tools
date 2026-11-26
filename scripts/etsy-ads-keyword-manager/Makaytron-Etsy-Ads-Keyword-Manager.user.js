@@ -1632,6 +1632,7 @@ oversized
             loadingKeywordTable: 'Anahtar kelime tablosu yükleniyor.',
             preparing: 'Hazırlanıyor',
             keywordTableFailed: 'Anahtar kelime tablosu yüklenemedi.',
+            noTargetedKeywords: 'Bu reklamda henüz hedeflenen anahtar kelime yok.',
             rowsReady: '{rows} bulundu · {matches} hazır.',
             appReady: 'Makaytron Etsy Ads Keyword Manager hazır · CTRL + ALT + K',
             consoleInitializationFailed: 'Başlatma başarısız:',
@@ -1786,6 +1787,7 @@ oversized
             loadingKeywordTable: 'Loading the keyword table.',
             preparing: 'Preparing',
             keywordTableFailed: 'The keyword table could not be loaded.',
+            noTargetedKeywords: 'This ad has no targeted keywords yet.',
             rowsReady: '{rows} found · {matches} ready.',
             appReady: 'Makaytron Etsy Ads Keyword Manager is ready · CTRL + ALT + K',
             consoleInitializationFailed: 'Initialization failed:',
@@ -2117,6 +2119,13 @@ oversized
         if (!(toggle instanceof HTMLElement)) return;
         lastAccordionExpandAt = Date.now();
         toggle.click();
+    }
+
+    // An ad without targeted keywords: Etsy draws no keyword accordion at all, only its title with a (0) count.
+    function keywordListIsEmpty() {
+        if (document.querySelector(KEYWORD_ACCORDION_SELECTOR) || getAllRows().length) return false;
+        const title = document.querySelector('[data-test-id="accordion-title"]');
+        return Boolean(title) && /\(\s*0\s*\)$/.test(normalizeText(title.textContent));
     }
 
     function waitForKeywordRows(timeoutMs = INITIAL_ROWS_TIMEOUT_MS) {
@@ -3602,6 +3611,12 @@ oversized
         scheduleAutomaticScriptUpdateCheck();
         setPanelStatus('loadingKeywordTable', 'running', 'preparing');
         const rowsReady = await waitForKeywordRows();
+        if (!rowsReady && keywordListIsEmpty()) {
+            // Nothing to match is not an error: say so plainly instead of "the table could not be loaded".
+            assertAdsRoute(route);
+            setPanelStatus('noTargetedKeywords', 'ready');
+            return;
+        }
         if (!rowsReady) {
             void trackTelemetryError('selector_ads_table');
             throw new Error(t('keywordTableFailed'));
