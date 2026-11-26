@@ -134,6 +134,12 @@ button.tab { border: none; border-bottom: 2px solid transparent; background: tra
 .theme-dark .nt-item { background: #1a1a1a; border-color: #262626; }
 .theme-dark .nt-item.unread, .theme-dark .nt-foot, .theme-dark .nt-well { background: #1e1e1e; border-color: #2e2e2e; }
 .theme-dark .nt-head, .theme-dark .nt-empty + .nt-foot { border-color: #262626; }
+/* Rows and message boxes with their own background keep the text readable in both themes. */
+.row-err { background: #fef2f2; }
+.ma-bubble { background: #fff; border: 1px solid var(--line); }
+.theme-dark .row-err { background: #2a1515; }
+.theme-dark .ma-bubble { background: #1a1a1a; }
+.theme-dark .lt tr.sel td { background: #262626; }
 .theme-dark .win-h { background: #1a1a1a; border-color: #2e2e2e; }
 .theme-dark .nav-pro { background: #1a1a1a; border-color: #2e2e2e; }
 .theme-dark .win-nav { background: #161616; border-color: #2e2e2e; }

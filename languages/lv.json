@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilais",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta saņem jaunās versijas agrāk; tajās var būt vairāk nepilnību.",
+    "rn.214.fixes": "Labojumi: tumšajā motīvā atlasītās sludinājumu rindas, neveiksmīgo kampaņu rindas un ziņojumu lodziņi atkal ir salasāmi.",
     "rn.213.fixes": "Labojumi: ja pārskatīšanas rindu nevar izveidot, tagad tiek parādīts iemesls; apturēta rinda vairs neizskatās aktīva; un labajā malā malas poga vairs nenonāk zem ritjoslas.",
     "rn.212.fixes": "Labojumi: atlaižu plānā vairs nav pagājušo dienu, rindas vienumos redzams sludinājuma foto, un kreisajā malā malas poga vairs neaizsedz Etsy ikonas.",
     "rn.211.fixes": "Labojumi: malas pogas vilkšana aiz logotipa, Ads vārdu pievienošanas veidlapa, sludinājumu fotoattēli un Message Assistant tulkojumi un melnraksti.",

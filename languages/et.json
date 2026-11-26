@@ -408,6 +408,7 @@
     "set.channelStable": "Stabiilne",
     "set.channelBeta": "Beeta",
     "set.channelHint": "Beeta saab uued versioonid varem; neis võib olla rohkem puudujääke.",
+    "rn.214.fixes": "Parandused: tumedas teemas on valitud kuulutuste read, ebaõnnestunud kampaaniate read ja sõnumikastid jälle loetavad.",
     "rn.213.fixes": "Parandused: kui ülevaatuse järjekorda ei saa luua, näidatakse nüüd põhjust; peatatud järjekord ei paista enam aktiivne; ja paremal serval ei jää servanupp enam kerimisriba alla.",
     "rn.212.fixes": "Parandused: allahindluste plaan ei näita enam möödunud päevi, järjekorra kirjetel on kuulutuse foto ja vasakul serval ei kata servanupp enam Etsy ikoone.",
     "rn.211.fixes": "Parandused: servanupu lohistamine logost, Adsi sõnade lisamise vorm, kuulutuste fotod ning Message Assistanti tõlked ja mustandid.",

@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta får nya versioner tidigare; de kan ha fler skavanker.",
+    "rn.214.fixes": "Rättningar: i det mörka temat går markerade annonsrader, misslyckade kampanjrader och meddelanderutor att läsa igen.",
     "rn.213.fixes": "Rättningar: om granskningskön inte kan skapas visas nu orsaken; en stoppad kö ser inte längre aktiv ut; och vid högerkanten hamnar kantknappen inte längre under rullningslisten.",
     "rn.212.fixes": "Rättningar: reaplanen visar inte längre dagar som har passerat, objekt i kön visar annonsens foto och vid vänsterkanten täcker kantknappen inte längre Etsys ikoner.",
     "rn.211.fixes": "Rättningar: dra kantknappen i logotypen, formuläret för att lägga till ord i Ads, annonsbilder samt översättningar och utkast i Message Assistant.",

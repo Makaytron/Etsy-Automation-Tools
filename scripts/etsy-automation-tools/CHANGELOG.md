@@ -4,6 +4,13 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.4] - 2026-11-26
+
+### Fixed
+
+- Dark theme: a selected row in the Listing Analyzer listing table turned light while its text stayed light, so the row could not be read. Selected rows, failed Sale Manager campaign rows and the Message Assistant message and preview boxes now take their colours from the theme.
+- A new check opens every tool screen in the light and the dark theme and fails if any text is too faint to read.
+
 ## [2.1.3] - 2026-11-26
 
 ### Fixed

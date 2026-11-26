@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta menerima versi baharu lebih awal; mungkin masih ada kekurangan.",
+    "rn.214.fixes": "Pembetulan: dalam tema gelap, baris penyenaraian yang dipilih, baris kempen yang gagal dan kotak mesej boleh dibaca semula.",
     "rn.213.fixes": "Pembetulan: jika baris gilir semakan tidak dapat dibina, sebabnya kini dipaparkan; baris gilir yang dihentikan tidak lagi kelihatan aktif; dan di tepi kanan butang tepi tidak lagi berada di bawah bar tatal.",
     "rn.212.fixes": "Pembetulan: pelan jualan tidak lagi menyenaraikan hari yang telah berlalu, item baris gilir menunjukkan foto penyenaraian, dan di tepi kiri butang tepi tidak lagi menutup ikon Etsy.",
     "rn.211.fixes": "Pembetulan: menyeret butang tepi pada logo, borang tambah perkataan dalam Ads, foto penyenaraian, serta terjemahan dan draf dalam Message Assistant.",

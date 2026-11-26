@@ -3,6 +3,7 @@
 // interface language. Newest first; keep it to the last few versions.
 
 export const RELEASE_NOTES = Object.freeze([
+  Object.freeze({ version: '2.1.4', date: '2026-11-26', items: Object.freeze(['rn.214.fixes']) }),
   Object.freeze({ version: '2.1.3', date: '2026-11-26', items: Object.freeze(['rn.213.fixes']) }),
   Object.freeze({ version: '2.1.2', date: '2026-11-26', items: Object.freeze(['rn.212.fixes']) }),
   Object.freeze({ version: '2.1.1', date: '2026-11-21', items: Object.freeze(['rn.211.fixes']) }),

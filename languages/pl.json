@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilny",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dostaje nowe wersje wcześniej; mogą mieć więcej niedoróbek.",
+    "rn.214.fixes": "Poprawki: w ciemnym motywie zaznaczone wiersze ofert, wiersze nieudanych kampanii i pola wiadomości są znów czytelne.",
     "rn.213.fixes": "Poprawki: jeśli nie da się utworzyć kolejki do przeglądu, wyświetla się teraz powód; zatrzymana kolejka nie wygląda już na aktywną; a przy prawej krawędzi przycisk nie chowa się pod paskiem przewijania.",
     "rn.212.fixes": "Poprawki: plan wyprzedaży nie pokazuje już minionych dni, elementy kolejki pokazują zdjęcie oferty, a przy lewej krawędzi przycisk nie zasłania już ikon Etsy.",
     "rn.211.fixes": "Poprawki: przeciąganie przycisku przy krawędzi za logo, formularz dodawania słów w Ads, zdjęcia ofert oraz tłumaczenia i szkice w Message Assistant.",

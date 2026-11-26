@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilno",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta ranije dobiva nove verzije; mogu imati više nedostataka.",
+    "rn.214.fixes": "Ispravci: u tamnoj temi odabrani redovi oglasa, redovi neuspjelih kampanja i okviri poruka ponovno su čitljivi.",
     "rn.213.fixes": "Ispravci: ako se red za pregled ne može izraditi, sada se prikazuje razlog; zaustavljeni red više ne izgleda aktivno; a na desnom rubu gumb više nije ispod trake za pomicanje.",
     "rn.212.fixes": "Ispravci: plan rasprodaja više ne prikazuje prošle dane, stavke u redu prikazuju fotografiju oglasa, a na lijevom rubu gumb više ne prekriva Etsyjeve ikone.",
     "rn.211.fixes": "Ispravci: povlačenje gumba na rubu za logotip, obrazac za dodavanje riječi u Ads, fotografije oglasa te prijevodi i skice u Message Assistantu.",

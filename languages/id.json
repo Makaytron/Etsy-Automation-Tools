@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta mendapatkan versi baru lebih awal; mungkin masih ada kekurangan.",
+    "rn.214.fixes": "Perbaikan: pada tema gelap, baris listing yang dipilih, baris kampanye yang gagal, dan kotak pesan kembali terbaca.",
     "rn.213.fixes": "Perbaikan: jika antrean tinjauan tidak dapat dibuat, alasannya kini ditampilkan; antrean yang dihentikan tidak lagi tampak aktif; dan di tepi kanan tombol tepi tidak lagi tertutup bilah gulir.",
     "rn.212.fixes": "Perbaikan: rencana obral tidak lagi menampilkan hari yang sudah lewat, item antrean menampilkan foto listing, dan di tepi kiri tombol tepi tidak lagi menutupi ikon Etsy.",
     "rn.211.fixes": "Perbaikan: menyeret tombol tepi dari logonya, formulir tambah kata di Ads, foto listing, serta terjemahan dan draf di Message Assistant.",

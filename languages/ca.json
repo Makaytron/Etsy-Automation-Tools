@@ -408,6 +408,7 @@
     "set.channelStable": "Estable",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta rep les versions noves abans; poden estar menys polides.",
+    "rn.214.fixes": "Correccions: al tema fosc, les files d'anuncis seleccionades, les files de campanyes fallides i els quadres de missatges tornen a ser llegibles.",
     "rn.213.fixes": "Correccions: si no es pot crear la cua de revisió, ara se'n mostra el motiu; una cua aturada ja no sembla activa; i a la vora dreta el botó de vora queda fora de la barra de desplaçament.",
     "rn.212.fixes": "Correccions: el pla de rebaixes ja no mostra dies passats, els elements de la cua mostren la foto de l'anunci i, a la vora esquerra, el botó de vora deixa lliures les icones d'Etsy.",
     "rn.211.fixes": "Correccions: arrossegar el botó de la vora pel logotip, el formulari per afegir paraules d'Ads, les fotos dels anuncis i les traduccions i esborranys de Message Assistant.",

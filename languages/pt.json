@@ -408,6 +408,7 @@
     "set.channelStable": "Estável",
     "set.channelBeta": "Beta",
     "set.channelHint": "O Beta recebe novas versões antes; elas podem ter mais arestas.",
+    "rn.214.fixes": "Correções: no tema escuro, as linhas de anúncios selecionadas, as linhas de campanhas com falha e as caixas de mensagem voltam a ser legíveis.",
     "rn.213.fixes": "Correções: se a fila de revisão não puder ser criada, o motivo agora é mostrado; uma fila parada já não parece ativa; e na borda direita o botão de borda não fica mais sob a barra de rolagem.",
     "rn.212.fixes": "Correções: o plano de promoções já não mostra dias que passaram, os itens da fila mostram a foto do anúncio e, na borda esquerda, o botão de borda deixa os ícones do Etsy livres.",
     "rn.211.fixes": "Correções: arrastar o botão da borda pelo logotipo, o formulário para adicionar palavras no Ads, as fotos dos anúncios e as traduções e rascunhos do Message Assistant.",
