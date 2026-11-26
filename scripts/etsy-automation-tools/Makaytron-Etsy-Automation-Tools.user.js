@@ -39701,6 +39701,10 @@
     const PACK_BASE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/languages/';
     const MAX_PACK_BYTES = 256 * 1024;
 
+    // A kept pack remembers the app version it was downloaded for (`packFor.<code>`). After an update it is
+    // still used straight away, and the current pack is fetched once in the background: new strings, such as
+    // the notes of each release, would otherwise stay in English until the pack happened to be replaced.
+
     // Strings of the packs loaded in this page, shared by the shell and the tool screens.
     const loaded = new Map();
 
@@ -39745,8 +39749,28 @@
     function createLanguagePacks({ gm, cache, appVersion, onChange = () => {} }) {
       const states = new Map(); // code -> { status: 'loading' | 'ready' | 'error', code? }
       const pending = new Map();
+      const refreshing = new Map();
 
       const set = (language, state) => { states.set(language, state); onChange(language, state); };
+
+      async function fetchAndKeep(language, onProgress = null) {
+        const pack = await download(gm, `${PACK_BASE_URL}${language}.json`, onProgress);
+        const strings = validatePack(pack, { language, appVersion });
+        await cache?.set(`pack.${language}`, pack).catch(() => {});
+        await cache?.set(`packFor.${language}`, appVersion).catch(() => {});
+        return strings;
+      }
+
+      /** Replaces a pack kept from an earlier version; on any failure the kept one stays in use. */
+      function refresh(language) {
+        if (refreshing.has(language)) return refreshing.get(language);
+        const job = fetchAndKeep(language)
+          .then((strings) => { loaded.set(language, strings); onChange(language, { status: 'ready' }); return true; })
+          .catch(() => false)
+          .finally(() => refreshing.delete(language));
+        refreshing.set(language, job);
+        return job;
+      }
 
       async function load(language) {
         const cached = await cache?.get(`pack.${language}`, null).catch(() => null);
@@ -39754,12 +39778,12 @@
           try {
             // A pack kept from an older catalog lacks the newer screens' keys: download the current one instead.
             loaded.set(language, validatePack(cached, { language, appVersion, requiredKeys: PACK_CURRENT_KEYS }));
+            const keptFor = await cache?.get(`packFor.${language}`, null).catch(() => null);
+            if (keptFor !== appVersion) void refresh(language);
             return;
           } catch { /* an old or damaged pack: download it again */ }
         }
-        const pack = await download(gm, `${PACK_BASE_URL}${language}.json`, (loadedBytes, total) => set(language, { status: 'loading', loaded: loadedBytes, total }));
-        loaded.set(language, validatePack(pack, { language, appVersion }));
-        await cache?.set(`pack.${language}`, pack).catch(() => {});
+        loaded.set(language, await fetchAndKeep(language, (loadedBytes, total) => set(language, { status: 'loading', loaded: loadedBytes, total })));
       }
 
       /** Makes sure the pack of `language` is loaded; resolves to its state. */
@@ -39790,13 +39814,19 @@
         return states.get(language) ?? { status: 'idle' };
       }
 
+      /** Resolves when a background refresh of `language` has finished (for tests and the settings page). */
+      function settled(language) {
+        return refreshing.get(language) ?? Promise.resolve(false);
+      }
+
       /** Size of a loaded pack in bytes (UTF-8 of its JSON), or 0. */
+
       function size(language) {
         const pack = loaded.get(language);
         return pack ? new TextEncoder().encode(JSON.stringify(pack)).length : 0;
       }
 
-      return { ensure, retry, state, size };
+      return { ensure, retry, state, size, settled };
     }
     return Object.freeze({ PACK_LANGUAGES, PACK_MIN_APP_VERSION, PACK_BASE_URL, packStrings, packText, PACK_CURRENT_KEYS, createLanguagePacks });
   })();

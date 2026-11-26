@@ -95,7 +95,7 @@ function pageHtml({ settings, scenario, extra = '', preload = {}, packs = {}, tr
   ${seen ? `values.set('eat:v1:core:seenVersion', ${safe(seen)});` : ''}
   values.set('eat:v1:sale-manager:legacy.eda-batch-config-v4', { discount: 25 });
   values.set('eat:secret:openai', 'fixture-placeholder');
-  ${trCached ? `values.set('eat:v1:core:pack.tr', ${safe(PACK_TR)});` : ''}
+  ${trCached ? `values.set('eat:v1:core:pack.tr', ${safe(PACK_TR)}); values.set('eat:v1:core:packFor.tr', ${safe(APP_VERSION)});` : ''}
   for (const [k, v] of Object.entries(${safe(preload)})) values.set(k, v);
   window.__values = values;
   window.__packs = ${safe(packs)};
