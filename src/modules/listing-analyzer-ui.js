@@ -324,6 +324,8 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
             h(doc, 'div', { class: 'row', style: 'justify-content: flex-end;' },
               h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'import-ai', onclick: async () => { const result = await actions.importAi(answer.value); actions.setLocal({ aiText: answer.value, aiResult: result }); }, text: ts('importAnswer') })))),
         h(doc, 'div', { class: 'card-f' }, icon(doc, ICONS.shield, 14), h(doc, 'span', { class: 'xs mute', text: ts('aiPrivacy') }))),
+      // "Copied to the clipboard" and similar engine replies show here; without it a copy looked like nothing happened.
+      h(doc, 'span', { class: 'xs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
     ];
   };
 

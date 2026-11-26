@@ -117,7 +117,7 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
       h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-action': 'open-language', 'aria-label': t('ws.languageButton', { language: languageName(text.language()) }), onclick: () => { state.page = 'settings'; state.tab = 'general'; render(); root.querySelector('[name="language"]')?.focus({ preventScroll: true }); } },
         icon(doc, ICONS.globe, 14), languageName(text.language())),
       h(doc, 'button', { class: 'ib o', type: 'button', 'data-action': 'back-to-drawer', 'aria-label': t('ws.backToDrawer'), onclick: () => close(true) }, icon(doc, ICONS.shrink)),
-      h(doc, 'button', { class: 'ib o', type: 'button', 'data-action': 'close-workspace', 'aria-label': t('ws.close'), onclick: () => close(false) }, icon(doc, ICONS.close)));
+      h(doc, 'button', { class: 'ib o', type: 'button', 'data-action': 'close-workspace', 'aria-label': t('ws.close'), onclick: (event) => close(false, { keyboard: event.detail === 0 }) }, icon(doc, ICONS.close)));
   }
 
   function nav(enabled, active) {
@@ -227,11 +227,12 @@ export function createWorkspace({ scope, container, text, settings, storage, hos
     migration?.done().then((done) => { state.migration = { ...state.migration, done }; render(); }).catch(() => {});
   }
 
-  function close(backToDrawer) {
+  // keyboard: false when the mouse closed it, so the edge button does not take focus (and slide out with its tooltip).
+  function close(backToDrawer, { keyboard = true } = {}) {
     state.open = false;
     root?.remove();
     root = null;
-    onClose?.(backToDrawer);
+    onClose?.(backToDrawer, { keyboard });
   }
 
   const unsubscribe = settings.subscribe(() => render());
