@@ -49,6 +49,11 @@ export const LA_EDITS = Object.freeze([
   ['            if (!state.panel || !state.launcher) return;\n', '            if (!state.panel || !state.launcher) return;\n            __env.onChange?.();\n', 1, 'visibility hook'],
   // The standalone package's usage metrics stay with the standalone package.
   ['    function telemetrySuppressed() {\n', '    function telemetrySuppressed() {\n        return true;\n', 1, 'no telemetry from the unified engine'],
+  // Shortcuts belong to the unified script (Settings › Shortcuts). The engine's fixed Ctrl+Alt+A would
+  // toggle the scan a second time after the unified "scan every page" shortcut, and would run even with
+  // shortcuts off; Ctrl+Alt+L only folds its hidden panel. Escape still closes the engine's own dialogs.
+  ["            if (event.altKey && event.ctrlKey && !event.shiftKey && !event.metaKey && event.code === 'KeyL') { event.preventDefault(); void UI.setCollapsed(!state.settings.collapsed); }\n            if (event.altKey && event.ctrlKey && !event.shiftKey && !event.metaKey && event.code === 'KeyA') { event.preventDefault(); void Collection.toggle(); }\n",
+    '', 1, 'engine keyboard shortcuts'],
 ]);
 
 // What the unified screens may read and do: a read-only summary, opening the
@@ -124,7 +129,7 @@ const EPILOGUE = `
         }
         const queue = state.queue && Array.isArray(state.queue.items) ? {
             status: String(state.queue.status || ''), cursor: Number(state.queue.cursor) || 0, recovery: Boolean(Queue.recoveryState()),
-            items: state.queue.items.map((item) => ({ id: String(item.listingId), title: String(item.title || item.listingId), imageUrl: String(__eatLaRecordImage(item.listingId)), status: String(item.status || ''), action: String(item.proposal?.action || '') })),
+            items: state.queue.items.map((item) => ({ id: String(item.listingId), title: String(item.title || item.listingId), imageUrl: String(__eatLaRecordImage(item.listingId)), status: String(item.status || ''), error: String(item.error || ''), action: String(item.proposal?.action || '') })),
             active: Queue.activeItem() ? String(Queue.activeItem().listingId) : '',
         } : null;
         return {

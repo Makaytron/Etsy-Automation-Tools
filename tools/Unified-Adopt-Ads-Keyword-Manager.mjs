@@ -30,6 +30,11 @@ export const ADS_EDITS = Object.freeze([
     '            pillEl.textContent = label;\n        }\n        __env.onChange?.();\n', 1, 'status hook'],
   ['            button.disabled = Boolean(busy);\n        });\n',
     '            button.disabled = Boolean(busy);\n        });\n        __env.onChange?.();\n', 1, 'busy hook'],
+  // Shortcuts belong to the unified script (Settings › Shortcuts: on/off, rebinding, the dialog before
+  // turning keywords off). The engine's own fixed Ctrl+Alt+K / Ctrl+Space listener would fire as well,
+  // ignore those settings and open the browser's window.confirm, so it is not installed.
+  ["    document.addEventListener('keydown', (e) => {\n        if (!RouteLifecycle.allowed() || e.repeat || e.isComposing",
+    "    if (false) document.addEventListener('keydown', (e) => {\n        if (!RouteLifecycle.allowed() || e.repeat || e.isComposing", 1, 'engine keyboard shortcuts'],
 ]);
 
 // What the unified screens may read and do. Every command is the engine's own
@@ -134,6 +139,25 @@ const ENGINE_API = `
         if (!['tr', 'en'].includes(language) || language === currentLanguage) return null;
         if (activeOperation || wordlistUpdateRunning || languageChangePromise) return null;
         return switchLanguage();
+    }
+    // "Scan every page" and the "this page" shortcut ask in the unified dialog (ask resolves true/false)
+    // instead of the browser's window.confirm. The engine's own gates run before the question and again
+    // after it, because the page or another operation can change while the dialog is open.
+    function __eatToggleGate() {
+        if (!RouteLifecycle.allowed()) return 'blocked';
+        if (activeOperation || wordlistUpdateRunning) { notify('warning', t('operationBusy')); return 'busy'; }
+        if (document.getElementById(EDITOR_MODAL_ID)) { notify('warning', t('editorOperationBlocked')); return 'blocked'; }
+        return '';
+    }
+    async function __eatConfirmedToggle(ask, allPages) {
+        const before = __eatToggleGate();
+        if (before) return before === 'busy' ? activeOperation : null;
+        // The answer belongs to the ad the dialog was opened on: if Etsy moved to another ad (or another
+        // view of it) while the dialog was open, the confirmation does nothing.
+        const route = RouteLifecycle.capture();
+        if (typeof ask !== 'function' || (await ask()) !== true) return null;
+        if (!RouteLifecycle.current(route) || __eatToggleGate()) return null;
+        return runToggleRows(false, allPages);
     }`;
 
 const EPILOGUE = `
@@ -146,7 +170,7 @@ const EPILOGUE = `
     return {
         start: __eatStart, suspend: suspendAdsRoute, version: APP_VERSION,
         snapshot: __eatSnapshot, rules: __eatRules, syncLanguage: __eatSyncLanguage, matches: __eatMatches, toggleOne: __eatToggleOne, saveRules: __eatSaveRules,
-        closePage: () => runToggleRows(false), openPage: () => runToggleRows(true), closeAllPages: requestDisableAllPages,
+        closePage: () => runToggleRows(false), openPage: () => runToggleRows(true), closeAllPages: (ask) => __eatConfirmedToggle(ask, true), closePageConfirmed: (ask) => __eatConfirmedToggle(ask, false),
         updateList: ensureWord, restoreBackup: restoreWordlistBackup, editRules: openWordlistEditor,
     };`;
 

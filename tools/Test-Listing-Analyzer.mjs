@@ -3720,6 +3720,35 @@ test('an unrecognized Etsy pill fails closed instead of looking like an empty ta
     }
 });
 
+test('the pill field counter item is not read as an unreadable pill', () => {
+    const { api } = loadAnalyzer();
+    const pill = (text) => ({
+        textContent: `${text} Delete`,
+        querySelector: (selector) => (selector.includes('le-chip-remove') ? {} : null),
+        cloneNode: () => ({ textContent: text, querySelectorAll: () => [{ remove() {} }] }),
+    });
+    const caption = (text) => ({ textContent: ` ${text} `, querySelector: () => null, cloneNode: () => ({ textContent: text, querySelectorAll: () => [] }) });
+    const field = (items) => ({ querySelectorAll: () => items });
+    for (const counter of ['All 13 used', '8 left']) {
+        const state = api.pillFieldState(field([pill('first tag'), pill('second tag'), caption(counter)]));
+        assert.deepEqual(plain(state), { values: ['first tag', 'second tag'], complete: true }, counter);
+    }
+    const unknown = api.pillFieldState(field([pill('first tag'), caption('first tag again')]));
+    assert.equal(unknown.complete, false);
+});
+
+test('the queue status is shown in words, not as its stored code', () => {
+    const { api } = loadAnalyzer();
+    for (const status of ['pending', 'applying', 'awaiting-user-review', 'submitted', 'submitted-unverified', 'deactivation-submitted',
+        'deactivation-submitted-unverified', 'verified', 'verified-deactivated', 'skipped', 'failed', 'awaiting-user-deactivation']) {
+        const text = api.queueStatusText(status);
+        assert.notEqual(text, status, status);
+        assert.doesNotMatch(text, /^qs[A-Z]/, status);
+    }
+    assert.equal(api.queueStatusText('failed'), 'Başarısız');
+    assert.equal(api.queueStatusText('unknown-code'), 'unknown-code');
+});
+
 test('deactivation menu re-resolves a React-replaced item and verifies focus without clicking it', async () => {
     const { api, sandbox } = loadAnalyzer();
     const adapter = api.actionRuntime.EditorAdapter;
@@ -4428,6 +4457,48 @@ test('sales experiment anchors prefer exact counts over a closer approximate cap
     assert.equal(experiment.current.rawSales, 10);
     assert.equal(experiment.baseline.windowDays, 30.1);
     assert.equal(experiment.current.windowDays, 30);
+});
+
+test('an applied proposal can be skipped only after the form is back to its baseline', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const adapter = runtime.EditorAdapter;
+    const listingId = '9200000011';
+    const editUrl = `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`;
+    const before = completeEditorSnapshot(api, { title: 'Original title', description: 'Text', tags: ['one'], materials: ['cotton'], quantity: '1', sku: '' });
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-applied', status: 'running', cursor: 0,
+        items: [
+            { listingId, status: 'awaiting-user-review', editUrl, before: plain(before), proposal: { action: 'UPDATE', fields: ['title'], title: 'Original title Gift' } },
+            { listingId: '9200000012', status: 'pending', editUrl: editUrl.replace(listingId, '9200000012'), proposal: { action: 'UPDATE' } },
+        ],
+    };
+    storage.set(runtime.KEYS.queue, plain(queue));
+    runtime.state.queue = plain(queue);
+    Object.assign(sandbox.location, { pathname: `/your/shops/me/listing-editor/edit/${listingId}`, href: editUrl });
+    let live = completeEditorSnapshot(api, { ...plain(before), title: 'Original title Gift' });
+    let clean = false;
+    const original = { read: adapter.read, formIsClean: adapter.formIsClean, publishButton: adapter.publishButton };
+    adapter.read = () => live;
+    adapter.formIsClean = () => clean;
+    adapter.publishButton = () => null;
+    try {
+        await runtime.skipCurrentItem();
+        assert.equal(runtime.state.status.key, 'skipNeedsRevert');
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+
+        clean = true;
+        await runtime.skipCurrentItem();
+        assert.equal(runtime.state.status.key, 'skipNeedsRevert', 'a saved-looking form that still differs is not skipped');
+
+        live = completeEditorSnapshot(api, plain(before));
+        await runtime.skipCurrentItem();
+        const stored = storage.get(runtime.KEYS.queue);
+        assert.equal(stored.items[0].status, 'skipped');
+        assert.equal(stored.cursor, 1);
+    } finally {
+        Object.assign(adapter, original);
+    }
 });
 
 test('stale skip cannot resurrect or overwrite a newer stored queue', async () => {

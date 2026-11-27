@@ -119,3 +119,22 @@ test('the drawer shows the translation of the open conversation once it is there
   assert.equal(shown.length, 1, 'the translation is visible in the drawer, not only in the workspace');
   assert.match(shown[0].textContent, /Tamam, teşekkür ederim!/);
 });
+
+test('a quick reply in the drawer is added to the Etsy box, not only prepared as an unseen draft', async () => {
+  const { renderMaDrawer } = await import('../src/modules/message-assistant-ui.js');
+  const { createFakeDocument, root } = await import('./Unified-Fake-Dom.mjs');
+  const doc = createFakeDocument();
+  const calls = [];
+  const actions = new Proxy({ languages: () => ['en', 'tr'], addTemplate: (id) => calls.push(['add', id]), useTemplate: (id) => calls.push(['prepare', id]) }, { get: (t, k) => t[k] ?? (() => {}) });
+  const view = {
+    previewLanguage: 'tr', ai: { hasKey: false }, templates: [{ id: 'thanks', name: 'Thanks for the order' }],
+    conversation: { id: '1', name: 'Fixture Buyer', orderId: '', language: 'en', replyLanguage: 'en', last: 'Okay thank you!' },
+  };
+  const box = root(doc, renderMaDrawer(doc, { snap: { busy: false }, view, language: 'tr', actions }));
+  const button = box.find((n) => n.getAttribute('data-ma-template') === 'thanks');
+  assert.equal(button.length, 1);
+  button[0].click();
+  assert.deepEqual(calls, [['add', 'thanks']]);
+  // The bridge refuses before preparing when Etsy's box already holds other unsent text.
+  assert.match(adopted, /async addTemplate\(id\) \{[\s\S]*?trimmedMessageText\(MessageAdapter\.getTextarea\(\)\?\.value[\s\S]*?__eatMessages\.useTemplate\(id\)\) \? __eatMessages\.insert\(\)/);
+});

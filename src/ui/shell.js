@@ -63,7 +63,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     tab = h(doc, 'button', {
       class: 'etab r', type: 'button', 'aria-haspopup': 'dialog', 'aria-controls': 'eat-sheet', 'aria-expanded': 'false',
       onpointerdown: onPointerDown, onkeydown: onTabKey,
-      onpointerenter: () => showTip(true), onpointerleave: () => showTip(false), onfocus: () => showTip(true), onblur: () => showTip(false),
+      onpointerenter: () => showTip(true), onpointerleave: () => showTip(false), onfocus: () => showTip(keyboardFocus()), onblur: () => showTip(false),
     },
     h(doc, 'span', { class: 'st', 'data-role': 'tab-count', hidden: true }),
     // draggable=false: otherwise the browser starts its own image drag and cancels the button drag.
@@ -187,7 +187,9 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
             assets.logo ? h(doc, 'img', { src: assets.logo, alt: '' }) : null,
             h(doc, 'span', {}, h(doc, 'b', { id: titleId, text: 'Makaytron.com' }), h(doc, 'small', { 'data-role': 'drawer-context', text: `Etsy Automation Tools · ${routeLabel}` })))),
         h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': t('ws.open'), 'data-action': 'open-workspace', onclick: openWorkspace }, icon(doc, ICONS.expand)),
-        h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': t('drawer.close'), 'data-action': 'close-drawer', onclick: () => setOpen(false) }, icon(doc, ICONS.close))),
+        // Closed with the mouse, focus stays where it was: moved to the edge button it would slide out over Etsy
+        // and show its tooltip. Closed with Enter or Space (detail 0), focus returns to the edge button.
+        h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': t('drawer.close'), 'data-action': 'close-drawer', onclick: (event) => setOpen(false, { focus: event.detail === 0 }) }, icon(doc, ICONS.close))),
       now, tools, footer);
     container.append(sheet);
     updateTab();
@@ -210,6 +212,11 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     const count = tab.querySelector('.st');
     count.hidden = !status?.count;
     count.textContent = status?.count ? String(status.count) : '';
+  }
+
+  // Focus a click put on the button is not a reason for the tooltip; keyboard focus is.
+  function keyboardFocus() {
+    try { return tab.matches(':focus-visible'); } catch { return true; }
   }
 
   function showTip(show) {
@@ -274,10 +281,10 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     return { doc, container, language: language(), openWorkspace: (page) => openWorkspace(page), hide: () => setOpen(false, { focus: false }), report: (options) => text.report(options) };
   }
 
-  function onWorkspaceClose(backToDrawer) {
+  function onWorkspaceClose(backToDrawer, { keyboard = true } = {}) {
     tab.hidden = false;
     layout();
-    if (backToDrawer) setOpen(true); else tab.focus({ preventScroll: true });
+    if (backToDrawer) setOpen(true); else if (keyboard) tab.focus({ preventScroll: true });
   }
 
   function onSheetKey(event) {
@@ -297,11 +304,19 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     const focused = event.composedPath?.()[0] === hostEl ? root.activeElement : null;
     const action = actionForEvent(event, settings.get().shortcuts, { focused });
     if (!action) return;
-    if (action === 'drawer') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); setOpen(!state.open); return; }
+    if (action === 'drawer') {
+      event.preventDefault();
+      if (workspace?.isOpen) workspace.close();
+      // Opening moves focus into the drawer. Closing returns it to the edge button only when it was inside the
+      // drawer; pressed while working on the Etsy page, the shortcut leaves focus there (no tooltip, no slide-out).
+      const opening = !state.open;
+      setOpen(opening, { focus: opening || Boolean(root?.activeElement && sheet.contains(root.activeElement)) });
+      return;
+    }
     if (action === 'workspace') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); else openWorkspace(); return; }
     // Tool actions go to the tool running on this page, if it handles them.
     const { active } = activeTool();
-    if (active && host.module?.(active)?.shortcut?.(action) === true) event.preventDefault();
+    if (active && host.module?.(active)?.shortcut?.(action, toolUi()) === true) event.preventDefault();
   }
 
   // ── Dragging the edge button (Launcher-Drag) ────────────────────────

@@ -106,8 +106,9 @@ test('a stopped queue is shown as stopped, with nothing left to open or stop', a
   assert.equal(stopped.find((n) => n.getAttribute('data-la') === 'stop-queue').length + (await renderQueuePage('completed')).find((n) => n.getAttribute('data-la') === 'stop-queue').length, 0);
 });
 
-test('the queue and listings tabs show the engine status line', async () => {
-  for (const tab of ['queue', 'listings']) {
+test('the queue, listings and AI tabs show the engine status line', async () => {
+  // On the AI tab, "Copy request" gave no visible reply although the engine had copied the request.
+  for (const tab of ['queue', 'listings', 'ai']) {
     const page = await renderQueuePage('stopped', tab);
     const status = page.find((n) => n.getAttribute('data-role') === 'la-status');
     assert.equal(status.length, 1, tab);
@@ -122,4 +123,10 @@ test('a running scan names the page being read, not the pages already read', asy
   assert.equal(readingPage({ status: 'running', pages: 0, total: 16 }), 1);
   assert.equal(readingPage({ status: 'running', pages: 16, total: 16 }), 16, 'never past the last page');
   assert.equal(readingPage({ status: 'paused', pages: 4, total: 16 }), 4, 'a paused scan reads nothing');
+});
+
+test('only the unified shortcuts run: the engine keeps Escape but not its own Ctrl+Alt+A and Ctrl+Alt+L', () => {
+  assert.doesNotMatch(adopted, /event\.code === 'KeyA'\) \{ event\.preventDefault\(\); void Collection\.toggle\(\); \}/);
+  assert.doesNotMatch(adopted, /event\.code === 'KeyL'\)/);
+  assert.match(adopted, /if \(event\.key === 'Escape' && state\.modal\) UI\.closeModal\(\);/);
 });

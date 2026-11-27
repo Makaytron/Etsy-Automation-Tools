@@ -664,6 +664,29 @@ const scenarios = {
     return out;
   }`,
   shoppingPage: `async () => ({ hostCount: document.querySelectorAll('#makaytron-eat-root').length, booted: window.__etsyAutomationToolsBooted === true })`,
+  closeByMouse: `async ({ wait }) => {${HELPERS}
+    const q = (sel) => S().querySelector(sel);
+    const out = {};
+    await click();
+    q('[data-action="close-drawer"]').dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, detail: 1 }));
+    await wait(300);
+    out.mouse = { open: !sheet().hidden, tabFocused: S().activeElement === tab(), tip: Boolean(q('.etab-tip')) };
+    await click();
+    q('[data-action="close-drawer"]').dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, detail: 0 }));
+    await wait(300);
+    out.keyboard = { open: !sheet().hidden, tabFocused: S().activeElement === tab() };
+    tab().blur(); await click();
+    q('[data-action="open-workspace"]').click(); await wait(200);
+    q('[data-action="close-workspace"]').dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true, detail: 1 }));
+    await wait(300);
+    out.workspaceMouse = { workspace: Boolean(q('#eat-workspace')), tabFocused: S().activeElement === tab(), tip: Boolean(q('.etab-tip')) };
+    const probe = document.querySelector('button.probe'); probe.focus();
+    const shortcut = () => probe.dispatchEvent(new KeyboardEvent('keydown', { key: 'M', code: 'KeyM', ctrlKey: true, shiftKey: true, bubbles: true, composed: true }));
+    shortcut(); await wait(300); const openedByKey = !sheet().hidden;
+    probe.focus(); shortcut(); await wait(300);
+    out.shortcutFromPage = { opened: openedByKey, open: !sheet().hidden, tabFocused: S().activeElement === tab(), tip: Boolean(q('.etab-tip')) };
+    return out;
+  }`,
   darkOpen: `async ({ wait }) => {${HELPERS}
     return { theme: S().querySelector('.mkui-root').dataset.theme, hidden: sheet().hidden, bg: getComputedStyle(sheet()).backgroundColor, noTool: S().querySelector('[data-role="no-tool"]')?.textContent ?? null };
   }`,
@@ -677,6 +700,7 @@ const ADS_MANY_RULES = [ADS_RULES, ...Array.from({ length: 300 }, (_, i) => 'fix
 const PAGES = {
   '/your/shops/me/sales-discounts': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.sellerPage },
   '/c/jewelry': { settings: { onboarded: true, language: 'tr' }, scenario: scenarios.shoppingPage },
+  '/your/shops/me/sales-discounts?close=mouse': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.closeByMouse },
   '/your/shops/me/stats': { settings: { onboarded: true, language: 'tr', theme: 'dark', drawer: { openOnLoad: true } }, scenario: scenarios.darkOpen },
   '/your/shops/me/tools/listings': { settings: { onboarded: true, language: 'tr', theme: 'light' }, scenario: scenarios.workspace, preload: { 'eat:v1:core:migration.sale-manager': { tool: 'sale-manager', at: '2026-11-19T00:00:00.000Z', keys: 1 } } },
   '/your/shops/me/orders': { settings: null, scenario: scenarios.onboarding },
@@ -1175,4 +1199,13 @@ test('every tool screen stays readable in the light and the dark theme', async (
     faint.push(...r.faint.map((f) => key.split('?')[0] + ' · ' + f));
   }
   assert.deepEqual(faint, [], 'text too faint to read');
+});
+
+test('closing the drawer with the mouse leaves the edge button tucked in, without its tooltip', async () => {
+  // After a mouse close the button took focus, slid out over Etsy and kept its tooltip until the next click.
+  const r = await visit(chrome, base, '/your/shops/me/sales-discounts?close=mouse');
+  assert.deepEqual(r.mouse, { open: false, tabFocused: false, tip: false });
+  assert.deepEqual(r.keyboard, { open: false, tabFocused: true }, 'from the keyboard, focus still returns to the edge button');
+  assert.deepEqual(r.workspaceMouse, { workspace: false, tabFocused: false, tip: false }, 'the same after closing the workspace with the mouse');
+  assert.deepEqual(r.shortcutFromPage, { opened: true, open: false, tabFocused: false, tip: false }, 'the drawer shortcut pressed on the Etsy page leaves focus there');
 });

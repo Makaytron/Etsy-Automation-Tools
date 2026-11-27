@@ -86,3 +86,7 @@ test('the plan list starts at the first day that is not in the past', () => {
   // Without this the screens listed days that had already passed as planned campaigns.
   assert.ok(adopted.includes('let cursor = job?.active ? source?.batchStartDate : firstPlannableDate(source);'));
 });
+
+test('only the unified shortcuts run: the engine does not install its own Alt+Shift keys', () => {
+  assert.match(adopted, /if \(false\) document\.addEventListener\('keydown', event => \{\n {12}if \(!isSupportedRoute\(\) \|\| !event\.altKey \|\| !event\.shiftKey\) return;/);
+});

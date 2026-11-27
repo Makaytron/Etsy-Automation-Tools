@@ -222,6 +222,16 @@ const EPILOGUE = `
             UI.state.selectedTemplateId = id;
             return __eatRun('template-reply', () => UI.generateReply({ method: 'template', replyMode: 'template' }));
         },
+        // Drawer Add: prepare the quick reply and put it in Etsy's box. Unsent text already
+        // in the box is checked first, so the seller sees only why nothing was added
+        // instead of "draft prepared" followed by the refusal.
+        async addTemplate(id) {
+            if (!TemplateEngine.get(id)) return false;
+            if (trimmedMessageText(MessageAdapter.getTextarea()?.value || '')) {
+                return __eatRun('insert-reply', () => { throw new Error('Etsy mesaj alanında farklı, gönderilmemiş bir taslak var. Mevcut metni korumak için üzerine yazılmadı; alanı kontrol edip temizledikten sonra yeniden deneyin.'); });
+            }
+            return (await __eatMessages.useTemplate(id)) ? __eatMessages.insert() : false;
+        },
         setReplyLanguage(code) {
             const next = String(code || '').trim().toLowerCase();
             if (!GOOGLE_TRANSLATION_LANGUAGE_NAMES[next] && !GOOGLE_TRANSLATION_LANGUAGE_NAMES[next.split('-')[0]]) return Promise.resolve(false);

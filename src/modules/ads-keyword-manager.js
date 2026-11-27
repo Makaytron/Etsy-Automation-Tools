@@ -12,7 +12,7 @@
 // here, and steps aside if that one appears later.
 
 import { createScopedGm } from '../core/scoped-gm.js';
-import { renderAdsDrawer, renderAdsPage } from './ads-keyword-manager-ui.js';
+import { renderAdsDrawer, renderAdsPage, confirmAdsDisable } from './ads-keyword-manager-ui.js';
 
 export const ADS_TOOL_ID = 'ads-keyword-manager';
 export const STANDALONE_ROOT_ID = 'makaytron-ad-wordlist';
@@ -116,13 +116,22 @@ export function createAdsKeywordManagerModule() {
     await state.engine.start();
   }
 
+  /** The engine's question before turning keywords off, shown as the unified dialog. */
+  function askFor(ui, scope, returnFocus = null) {
+    return () => new Promise((resolve) => {
+      if (!ui?.doc || !ui?.container) { resolve(false); return; }
+      const snap = state.engine?.snapshot?.();
+      confirmAdsDisable(ui.doc, ui.container, { scope, matches: snap?.stats?.matches ?? 0, language: ui.language, returnFocus, onAnswer: resolve });
+    });
+  }
+
   function actionsFor(ui) {
     const engine = state.engine;
     const run = (fn) => Promise.resolve().then(fn).catch((error) => console.error('[Etsy Automation Tools] Ads Keyword Manager', error));
     return {
       closePage: () => run(() => engine.closePage()),
       openPage: () => run(() => engine.openPage()),
-      closeAllPages: () => run(() => engine.closeAllPages()),
+      closeAllPages: (trigger) => run(() => engine.closeAllPages(askFor(ui, 'all', trigger))),
       updateList: () => run(() => engine.updateList()),
       restoreBackup: () => run(() => engine.restoreBackup()),
       // The rule editor is the engine's own dialog on the page, so the unified screens step out of its way.
@@ -153,10 +162,11 @@ export function createAdsKeywordManagerModule() {
     migrated: true,
     status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
     /** Shortcuts "Turn off the matches on this page" and "Scan every page" (Settings › Shortcuts). */
-    shortcut(action) {
+    shortcut(action, ui) {
       if (state.standalone || !state.engine) return false;
-      if (action === 'adsClosePage') { void Promise.resolve(state.engine.closePage()).catch(() => {}); return true; }
-      if (action === 'adsScanAll') { void Promise.resolve(state.engine.closeAllPages()).catch(() => {}); return true; }
+      // A key press is easy to make by accident, so both shortcuts ask first, like the standalone script.
+      if (action === 'adsClosePage') { void Promise.resolve(state.engine.closePageConfirmed(askFor(ui, 'page'))).catch(() => {}); return true; }
+      if (action === 'adsScanAll') { void Promise.resolve(state.engine.closeAllPages(askFor(ui, 'all'))).catch(() => {}); return true; }
       return false;
     },
     /** Drawer section; null keeps the generic status text. */
