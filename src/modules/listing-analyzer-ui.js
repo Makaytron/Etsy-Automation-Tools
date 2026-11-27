@@ -367,7 +367,10 @@ export function renderLaPage(doc, { snap, view, language, actions, tab = 'overvi
                 h(doc, 'td', {}, h(doc, 'div', { class: 'row', style: 'gap: 10px;' }, listingThumb(doc, item, 36),
                   h(doc, 'span', { class: 'col' }, h(doc, 'span', { class: 'b', text: item.title }), h(doc, 'span', { class: 'xs mute', text: item.id })))),
                 h(doc, 'td', {}, h(doc, 'span', { class: 'badge out', text: ts(item.action === 'DEACTIVATE_REVIEW' ? 'deactivateReview' : 'update') })),
-                h(doc, 'td', {}, h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge' }, tone ? null : h(doc, 'span', { class: 'dot soft' }), ts(label))),
+                // The engine keeps why an item failed or stopped; without it the row only said it failed.
+                h(doc, 'td', {}, h(doc, 'span', { class: 'col', style: 'gap: 4px; align-items: flex-start;' },
+                  h(doc, 'span', { class: tone ? `badge ${tone}` : 'badge' }, tone ? null : h(doc, 'span', { class: 'dot soft' }), ts(label)),
+                  item.error && ['failed', 'awaiting-user-review'].includes(item.status) ? h(doc, 'span', { class: 'xs mute', 'data-role': 'la-queue-error', text: item.error }) : null)),
                 h(doc, 'td', { class: 'r' }, h(doc, 'span', { class: 'row', style: 'justify-content: flex-end; gap: 6px;' }, rowAction(item))));
             })))
           : h(doc, 'div', { class: 'card-b xs mute', text: ts('noQueue') })),

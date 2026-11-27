@@ -4447,6 +4447,48 @@ test('sales experiment anchors prefer exact counts over a closer approximate cap
     assert.equal(experiment.current.windowDays, 30);
 });
 
+test('an applied proposal can be skipped only after the form is back to its baseline', async () => {
+    const { api, sandbox, storage } = loadAnalyzer();
+    const runtime = api.actionRuntime;
+    const adapter = runtime.EditorAdapter;
+    const listingId = '9200000011';
+    const editUrl = `https://www.etsy.com/your/shops/me/listing-editor/edit/${listingId}`;
+    const before = completeEditorSnapshot(api, { title: 'Original title', description: 'Text', tags: ['one'], materials: ['cotton'], quantity: '1', sku: '' });
+    const queue = {
+        schema: api.versions.queueSchema, id: 'queue-applied', status: 'running', cursor: 0,
+        items: [
+            { listingId, status: 'awaiting-user-review', editUrl, before: plain(before), proposal: { action: 'UPDATE', fields: ['title'], title: 'Original title Gift' } },
+            { listingId: '9200000012', status: 'pending', editUrl: editUrl.replace(listingId, '9200000012'), proposal: { action: 'UPDATE' } },
+        ],
+    };
+    storage.set(runtime.KEYS.queue, plain(queue));
+    runtime.state.queue = plain(queue);
+    Object.assign(sandbox.location, { pathname: `/your/shops/me/listing-editor/edit/${listingId}`, href: editUrl });
+    let live = completeEditorSnapshot(api, { ...plain(before), title: 'Original title Gift' });
+    let clean = false;
+    const original = { read: adapter.read, formIsClean: adapter.formIsClean, publishButton: adapter.publishButton };
+    adapter.read = () => live;
+    adapter.formIsClean = () => clean;
+    adapter.publishButton = () => null;
+    try {
+        await runtime.skipCurrentItem();
+        assert.equal(runtime.state.status.key, 'skipNeedsRevert');
+        assert.equal(storage.get(runtime.KEYS.queue).items[0].status, 'awaiting-user-review');
+
+        clean = true;
+        await runtime.skipCurrentItem();
+        assert.equal(runtime.state.status.key, 'skipNeedsRevert', 'a saved-looking form that still differs is not skipped');
+
+        live = completeEditorSnapshot(api, plain(before));
+        await runtime.skipCurrentItem();
+        const stored = storage.get(runtime.KEYS.queue);
+        assert.equal(stored.items[0].status, 'skipped');
+        assert.equal(stored.cursor, 1);
+    } finally {
+        Object.assign(adapter, original);
+    }
+});
+
 test('stale skip cannot resurrect or overwrite a newer stored queue', async () => {
     const { api, storage } = loadAnalyzer();
     const runtime = api.actionRuntime;
