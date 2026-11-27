@@ -375,7 +375,7 @@ export function renderSettingsPage(doc, ctx) {
     return twoCols([
       card(doc, { id: 'eat-notes', title: t('set.notesTitle'), list: true },
         RELEASE_NOTES.map((n) => h(doc, 'div', { class: 'col', style: 'padding: 12px 16px; gap: 6px;' },
-          h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'mono b', text: n.version }), h(doc, 'span', { class: 'xs mute grow', text: formatDate(Date.parse(`${n.date}T12:00:00Z`), s.format, language) }), n.version === appVersion ? h(doc, 'span', { class: 'badge dark', text: t('set.installed') }) : null),
+          h(doc, 'div', { class: 'row' }, h(doc, 'span', { class: 'mono b', text: n.version }), h(doc, 'span', { class: 'xs mute grow', text: formatDate(Date.parse(n.date), { ...s.format, timezone: 'UTC' }, language) }), n.version === appVersion ? h(doc, 'span', { class: 'badge dark', text: t('set.installed') }) : null),
           h(doc, 'ul', { class: 'sm mute2 notes' }, n.items.map((k) => h(doc, 'li', { text: t(k) })))))),
     ], [
       card(doc, { id: 'eat-version', title: t('set.versionTitle'), bodyClass: 'card-b col' },

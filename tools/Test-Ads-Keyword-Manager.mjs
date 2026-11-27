@@ -182,6 +182,9 @@ function loadManager() {
         keywordListIsEmpty,
         getMetricValue,
         isHighClickRatioRow,
+        watchKeywordRows,
+        stopWatchingKeywordRows,
+        decoratedSignature: () => decoratedRowsSignature,
     });
 ${source.slice(closureIndex)}`;
     vm.runInContext(instrumented, context, { filename: scriptPath });
@@ -248,4 +251,32 @@ test('an ad without targeted keywords is recognised as empty, not as a broken ta
     rows.length = 0;
     title = null;
     assert.equal(api.keywordListIsEmpty(), false, 'no title: the old error stays');
+});
+
+test('the counts follow the keyword rows shown, also when Etsy replaces them after the first read', async () => {
+    // Moving from one ad to another, Etsy kept the previous ad's table on screen for a moment; the panel
+    // counted those rows and kept the counts after the new ad's rows arrived.
+    const { api, rows } = loadManager();
+    const row = (word) => new FakeRow(new FakeCell('', [textNode(word)]));
+    rows.push(row('salem shirt'), row('witch tee'));
+    api.watchKeywordRows();
+    try {
+        const until = async (check) => { for (let i = 0; i < 100 && !check(); i += 1) await new Promise((r) => setTimeout(r, 50)); };
+        await until(() => api.decoratedSignature() === 'salem shirt\nwitch tee');
+        assert.equal(api.decoratedSignature(), 'salem shirt\nwitch tee', 'the first rows are read');
+        rows.length = 0;
+        rows.push(row('dolly shirt'), row('dolly parton tee'), row('dolly parton'));
+        await until(() => api.decoratedSignature().startsWith('dolly'));
+        assert.equal(api.decoratedSignature(), 'dolly shirt\ndolly parton tee\ndolly parton', 'the replaced rows are read again');
+        // Back on an ad whose keyword section Etsy left closed: the old rows go, the old counts are dropped.
+        rows.length = 0;
+        await until(() => api.decoratedSignature() === '');
+        assert.equal(api.decoratedSignature(), '', 'rows that left the page are not counted any more');
+        rows.push(row('salem shirt'));
+        await until(() => api.decoratedSignature() === 'salem shirt');
+        assert.equal(api.decoratedSignature(), 'salem shirt', 'the section\'s rows are read once they are shown');
+    } finally {
+        api.stopWatchingKeywordRows();
+    }
+    assert.equal(api.decoratedSignature(), '', 'leaving the ad forgets the rows');
 });

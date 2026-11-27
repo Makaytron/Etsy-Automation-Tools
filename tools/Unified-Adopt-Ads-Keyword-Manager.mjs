@@ -35,6 +35,9 @@ export const ADS_EDITS = Object.freeze([
   // ignore those settings and open the browser's window.confirm, so it is not installed.
   ["    document.addEventListener('keydown', (e) => {\n        if (!RouteLifecycle.allowed() || e.repeat || e.isComposing",
     "    if (false) document.addEventListener('keydown', (e) => {\n        if (!RouteLifecycle.allowed() || e.repeat || e.isComposing", 1, 'engine keyboard shortcuts'],
+  // Its ready notice named that fixed shortcut; in the unified script the key is whatever Settings › Shortcuts says.
+  ["appReady: 'Makaytron Etsy Ads Keyword Manager hazır · CTRL + ALT + K'", "appReady: 'Makaytron Etsy Ads Keyword Manager hazır'", 1, 'no fixed shortcut in the ready notice (tr)'],
+  ["appReady: 'Makaytron Etsy Ads Keyword Manager is ready · CTRL + ALT + K'", "appReady: 'Makaytron Etsy Ads Keyword Manager is ready'", 1, 'no fixed shortcut in the ready notice (en)'],
 ]);
 
 // What the unified screens may read and do. Every command is the engine's own

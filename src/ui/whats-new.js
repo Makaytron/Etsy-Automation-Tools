@@ -32,7 +32,7 @@ export async function maybeShowWhatsNew({ doc, container, text, settings, store,
   const show = h(doc, 'input', { type: 'checkbox', class: 'chk', name: 'wn-show', checked: true, onchange: (e) => settings.update({ updateNotes: e.target.checked }) });
   openDialog(doc, container, {
     title: `${t('set.notesTitle')} · ${appVersion}`,
-    description: t('wn.updated', { date: formatDate(Date.parse(notes.date), s.format, text.language()) }),
+    description: t('wn.updated', { date: formatDate(Date.parse(notes.date), { ...s.format, timezone: 'UTC' }, text.language()) }),
     body, closeLabel: t('fb.cancel'), width: 560,
     footer: (close) => [
       h(doc, 'label', { class: 'row xs mute2', style: 'gap: 8px; margin-inline-end: auto;' }, show, t('wn.show')),

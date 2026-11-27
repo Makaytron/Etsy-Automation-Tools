@@ -130,3 +130,8 @@ test('only the unified shortcuts run: the engine keeps Escape but not its own Ct
   assert.doesNotMatch(adopted, /event\.code === 'KeyL'\)/);
   assert.match(adopted, /if \(event\.key === 'Escape' && state\.modal\) UI\.closeModal\(\);/);
 });
+
+test('copying the example AI answer says so in the status line', () => {
+  // The engine's own button reports it in a toast the unified script does not show, so a copy looked like nothing happened.
+  assert.match(adopted, /copyAiTemplate: \(\) => __eatLaRun\(async \(\) => \{ if \(await copyText\(aiProposalTemplate\(\)\)\) UI\.setStatus\('aiTemplateCopied', 'ready'\); \}\),/);
+});

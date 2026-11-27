@@ -159,3 +159,51 @@ test('a failed refresh keeps the pack the user already has', async () => {
   assert.equal(typeof packStrings('es')['lang.retry'], 'string', 'still in Spanish');
   assert.equal((await cache.get('pack.es')).language, 'es');
 });
+
+test('a pack without this release\'s notes is not taken as current, so it is fetched again', async () => {
+  // raw.githubusercontent can serve a pack from before the release for a few minutes after the script
+  // updates; recorded as current, it would keep the new notes in English until the next version.
+  const { releaseKeys } = await import('../src/core/language-packs.js');
+  const keys = releaseKeys(META.version);
+  assert.ok(keys.length > 0, 'the current version has release notes');
+  const staleOf = (code) => ({ ...pack(code), strings: Object.fromEntries(Object.entries(pack(code).strings).filter(([key]) => !keys.includes(key))) });
+
+  // Downloaded stale: used, but not recorded as current.
+  const cache = createStorage(createMemoryStore()).namespace('core');
+  const first = createLanguagePacks({ gm: fakeGm((d) => d.onload({ status: 200, responseText: JSON.stringify(staleOf('fi')) })), cache, appVersion: META.version });
+  assert.deepEqual(await first.ensure('fi'), { status: 'ready' });
+  assert.notEqual(await cache.get('packFor.fi'), META.version, 'not recorded as current');
+
+  // Next page (packs load once per page, so a fresh language stands in for it): the stale pack kept by
+  // the first page is shown at once and the current one replaces it.
+  const cacheNext = createStorage(createMemoryStore()).namespace('core');
+  await cacheNext.set('pack.sv', staleOf('sv'));
+  await cacheNext.set('packFor.sv', await cache.get('packFor.fi'));
+  const gm = fakeGm((d) => d.onload({ status: 200, responseText: JSON.stringify(pack('sv')) }));
+  const second = createLanguagePacks({ gm, cache: cacheNext, appVersion: META.version });
+  await second.ensure('sv');
+  assert.equal(await second.settled('sv'), true);
+  assert.deepEqual(gm.requests, [`${PACK_BASE_URL}sv.json`]);
+  for (const key of keys) assert.equal(typeof packStrings('sv')[key], 'string', key);
+  assert.equal(await cacheNext.get('packFor.sv'), META.version);
+
+  // A pack already recorded as current for this version but missing the notes is fetched again too.
+  const cache2 = createStorage(createMemoryStore()).namespace('core');
+  await cache2.set('pack.lt', staleOf('lt'));
+  await cache2.set('packFor.lt', META.version);
+  const gm2 = fakeGm((d) => d.onload({ status: 200, responseText: JSON.stringify(pack('lt')) }));
+  const third = createLanguagePacks({ gm: gm2, cache: cache2, appVersion: META.version });
+  await third.ensure('lt');
+  assert.equal(await third.settled('lt'), true);
+  assert.deepEqual(gm2.requests, [`${PACK_BASE_URL}lt.json`]);
+});
+
+test('a release date is the same calendar day in every time zone', async () => {
+  // '2026-11-27' parses as UTC midnight; shown in the browser's zone it was 26 Nov west of Greenwich.
+  const { formatDate } = await import('../src/ui/format.js');
+  const whatsNew = fs.readFileSync(new URL('../src/ui/whats-new.js', import.meta.url), 'utf8');
+  const settingsPage = fs.readFileSync(new URL('../src/ui/settings-page.js', import.meta.url), 'utf8');
+  assert.ok(whatsNew.includes("formatDate(Date.parse(notes.date), { ...s.format, timezone: 'UTC' }"));
+  assert.ok(settingsPage.includes("formatDate(Date.parse(n.date), { ...s.format, timezone: 'UTC' }"));
+  for (const date of ['yyyy-mm-dd', 'auto']) assert.match(formatDate(Date.parse('2026-11-27'), { date, timezone: 'UTC' }, 'en'), /27/, date);
+});
