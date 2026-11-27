@@ -3737,6 +3737,18 @@ test('the pill field counter item is not read as an unreadable pill', () => {
     assert.equal(unknown.complete, false);
 });
 
+test('the queue status is shown in words, not as its stored code', () => {
+    const { api } = loadAnalyzer();
+    for (const status of ['pending', 'applying', 'awaiting-user-review', 'submitted', 'submitted-unverified', 'deactivation-submitted',
+        'deactivation-submitted-unverified', 'verified', 'verified-deactivated', 'skipped', 'failed', 'awaiting-user-deactivation']) {
+        const text = api.queueStatusText(status);
+        assert.notEqual(text, status, status);
+        assert.doesNotMatch(text, /^qs[A-Z]/, status);
+    }
+    assert.equal(api.queueStatusText('failed'), 'Başarısız');
+    assert.equal(api.queueStatusText('unknown-code'), 'unknown-code');
+});
+
 test('deactivation menu re-resolves a React-replaced item and verifies focus without clicking it', async () => {
     const { api, sandbox } = loadAnalyzer();
     const adapter = api.actionRuntime.EditorAdapter;

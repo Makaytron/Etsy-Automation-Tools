@@ -25,7 +25,7 @@ export function actionForEvent(event, shortcuts, { focused = null } = {}) {
   if (!shortcuts?.on) return null;
   const combo = comboFromEvent(event);
   if (!combo) return null;
-  // ocused: the field focused inside a closed shadow root, which the document only sees as its host.
+  // focused: the field focused inside a closed shadow root, which the document only sees as its host.
   const target = focused ?? event.composedPath?.()[0] ?? event.target;
   const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName ?? '') || target?.isContentEditable;
   for (const [action, binding] of Object.entries(shortcuts.keys)) {
