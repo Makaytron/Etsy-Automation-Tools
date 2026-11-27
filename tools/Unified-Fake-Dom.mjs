@@ -16,6 +16,10 @@ class FakeNode {
   getAttribute(name) { return this.attributes.has(name) ? this.attributes.get(name) : null; }
   addEventListener(type, fn) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), fn]); }
   append(...nodes) { for (const node of nodes) { node.parentNode = this; this.children.push(node); } }
+  remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter((c) => c !== this); this.parentNode = null; }
+  get isConnected() { return Boolean(this.parentNode); }
+  querySelector() { return null; }
+  focus() { this.ownerDocument.focused = this; }
   click() { for (const fn of this.listeners.get('click') ?? []) fn({ preventDefault() {}, currentTarget: this, target: this }); }
   set textContent(value) { this.children = []; this.ownText = String(value); }
   get textContent() { return this.ownText + this.children.map((c) => c.textContent).join(''); }

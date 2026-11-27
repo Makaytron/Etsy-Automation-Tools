@@ -35,6 +35,10 @@ export const SALE_MANAGER_EDITS = Object.freeze([
   ['    function telemetrySuppressed() {\n', '    function telemetrySuppressed() {\n        return true;\n', 1, 'no telemetry from the unified engine'],
   // The unified screens redraw when the engine redraws its own panel.
   ['    function renderPanel() {\n', '    function renderPanel() {\n        __env.onChange?.();\n', 1, 'state change hook'],
+  // Shortcuts belong to the unified script (Settings › Shortcuts). The engine's fixed Alt+Shift+E/R/U
+  // would open its hidden settings, report and update check on top of the unified screens.
+  ["        document.addEventListener('keydown', event => {\n            if (!isSupportedRoute() || !event.altKey || !event.shiftKey) return;\n",
+    "        if (false) document.addEventListener('keydown', event => {\n            if (!isSupportedRoute() || !event.altKey || !event.shiftKey) return;\n", 1, 'engine keyboard shortcuts'],
 ]);
 
 // Read and command surface for the unified screens. It only reads state and calls the

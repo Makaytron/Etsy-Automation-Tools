@@ -154,9 +154,9 @@ export function pageHead(doc, { overline, title, description, titleId, actions =
  * open and back to `returnFocus` on close; Escape and the overlay close it.
  * `width` follows the canvas (448 small, 576 medium, 768 large).
  */
-export function openDialog(doc, container, { title, description, body, footer, closeLabel, returnFocus, width = 448, iconWell = null, tone = '' }) {
+export function openDialog(doc, container, { title, description, body, footer, closeLabel, returnFocus, width = 448, iconWell = null, tone = '', onClose = null }) {
   const titleId = 'eat-dialog-title';
-  const close = () => { overlay.remove(); returnFocus?.focus(); };
+  const close = () => { overlay.remove(); returnFocus?.focus(); onClose?.(); };
   const dialog = h(doc, 'div', { class: 'modal', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, style: `width: ${width}px;` },
     h(doc, 'div', { class: 'modal-h' },
       iconWell ? h(doc, 'span', { class: tone === 'err' ? 'well well-err' : 'well' }, icon(doc, iconWell)) : null,

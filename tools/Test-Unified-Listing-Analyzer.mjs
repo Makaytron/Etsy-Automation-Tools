@@ -124,3 +124,9 @@ test('a running scan names the page being read, not the pages already read', asy
   assert.equal(readingPage({ status: 'running', pages: 16, total: 16 }), 16, 'never past the last page');
   assert.equal(readingPage({ status: 'paused', pages: 4, total: 16 }), 4, 'a paused scan reads nothing');
 });
+
+test('only the unified shortcuts run: the engine keeps Escape but not its own Ctrl+Alt+A and Ctrl+Alt+L', () => {
+  assert.doesNotMatch(adopted, /event\.code === 'KeyA'\) \{ event\.preventDefault\(\); void Collection\.toggle\(\); \}/);
+  assert.doesNotMatch(adopted, /event\.code === 'KeyL'\)/);
+  assert.match(adopted, /if \(event\.key === 'Escape' && state\.modal\) UI\.closeModal\(\);/);
+});

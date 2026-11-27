@@ -7763,7 +7763,7 @@
       try { GM.registerMenuCommand?.('Makaytron · Etsy Sale Manager ayarları', openSettings); } catch {}
       try { GM.registerMenuCommand?.('Makaytron · Güncellemeleri denetle', () => checkForUpdates({ manual: true, force: true })); } catch {}
       try { GM.registerMenuCommand?.(`GitHub @${GITHUB_USERNAME}`, openGitHubRepository); } catch {}
-      document.addEventListener('keydown', event => {
+      if (false) document.addEventListener('keydown', event => {
           if (!isSupportedRoute() || !event.altKey || !event.shiftKey) return;
           if (event.key.toLowerCase() === 'e') openSettings();
           if (event.key.toLowerCase() === 'r') openReport(lastReport, true);
@@ -11074,7 +11074,7 @@
       );
   }
 
-  document.addEventListener('keydown', (e) => {
+  if (false) document.addEventListener('keydown', (e) => {
       if (!RouteLifecycle.allowed() || e.repeat || e.isComposing || document.getElementById(EDITOR_MODAL_ID) || isEditableTarget(e.target)) return;
       if (e.getModifierState?.('AltGraph')) return;
 
@@ -11234,6 +11234,22 @@
       if (activeOperation || wordlistUpdateRunning || languageChangePromise) return null;
       return switchLanguage();
   }
+  // "Scan every page" and the "this page" shortcut ask in the unified dialog (ask resolves true/false)
+  // instead of the browser's window.confirm. The engine's own gates run before the question and again
+  // after it, because the page or another operation can change while the dialog is open.
+  function __eatToggleGate() {
+      if (!RouteLifecycle.allowed()) return 'blocked';
+      if (activeOperation || wordlistUpdateRunning) { notify('warning', t('operationBusy')); return 'busy'; }
+      if (document.getElementById(EDITOR_MODAL_ID)) { notify('warning', t('editorOperationBlocked')); return 'blocked'; }
+      return '';
+  }
+  async function __eatConfirmedToggle(ask, allPages) {
+      const before = __eatToggleGate();
+      if (before) return before === 'busy' ? activeOperation : null;
+      if (typeof ask !== 'function' || (await ask()) !== true) return null;
+      if (__eatToggleGate()) return null;
+      return runToggleRows(false, allPages);
+  }
   function __eatStart() {
       const begin = () => RouteLifecycle.start({ enter: startInitialization, leave: suspendAdsRoute, change: startInitialization });
       if (document.readyState === 'complete') return begin();
@@ -11243,7 +11259,7 @@
   return {
       start: __eatStart, suspend: suspendAdsRoute, version: APP_VERSION,
       snapshot: __eatSnapshot, rules: __eatRules, syncLanguage: __eatSyncLanguage, matches: __eatMatches, toggleOne: __eatToggleOne, saveRules: __eatSaveRules,
-      closePage: () => runToggleRows(false), openPage: () => runToggleRows(true), closeAllPages: requestDisableAllPages,
+      closePage: () => runToggleRows(false), openPage: () => runToggleRows(true), closeAllPages: (ask) => __eatConfirmedToggle(ask, true), closePageConfirmed: (ask) => __eatConfirmedToggle(ask, false),
       updateList: ensureWord, restoreBackup: restoreWordlistBackup, editRules: openWordlistEditor,
   };
   }
@@ -38296,8 +38312,6 @@
           if (event.key === 'Escape' && state.modal) UI.closeModal();
           const editable = event.composedPath().some((target) => target instanceof Element && Boolean(target.closest('input,textarea,select,button,a[href],[contenteditable="true"],[role="textbox"],[role="button"]')));
           if (event.repeat || event.isComposing || editable || event.getModifierState?.('AltGraph')) return;
-          if (event.altKey && event.ctrlKey && !event.shiftKey && !event.metaKey && event.code === 'KeyL') { event.preventDefault(); void UI.setCollapsed(!state.settings.collapsed); }
-          if (event.altKey && event.ctrlKey && !event.shiftKey && !event.metaKey && event.code === 'KeyA') { event.preventDefault(); void Collection.toggle(); }
       });
   }
 
@@ -40167,9 +40181,9 @@
      * open and back to `returnFocus` on close; Escape and the overlay close it.
      * `width` follows the canvas (448 small, 576 medium, 768 large).
      */
-    function openDialog(doc, container, { title, description, body, footer, closeLabel, returnFocus, width = 448, iconWell = null, tone = '' }) {
+    function openDialog(doc, container, { title, description, body, footer, closeLabel, returnFocus, width = 448, iconWell = null, tone = '', onClose = null }) {
       const titleId = 'eat-dialog-title';
-      const close = () => { overlay.remove(); returnFocus?.focus(); };
+      const close = () => { overlay.remove(); returnFocus?.focus(); onClose?.(); };
       const dialog = h(doc, 'div', { class: 'modal', role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, style: `width: ${width}px;` },
         h(doc, 'div', { class: 'modal-h' },
           iconWell ? h(doc, 'span', { class: tone === 'err' ? 'well well-err' : 'well' }, icon(doc, iconWell)) : null,
@@ -40207,7 +40221,7 @@
 
     const { h, icon } = __eat_ui_dom;
     const { ICONS } = __eat_ui_icons;
-    const { pageHead, pageTabs, toggle, alertBox } = __eat_ui_controls;
+    const { pageHead, pageTabs, toggle, alertBox, openDialog } = __eat_ui_controls;
     const { interpolate } = __eat_core_i18n;
     const { packText } = __eat_core_language_packs;
 
@@ -40222,7 +40236,11 @@
         tilePage: 'Page', tileRows: 'On this page', tileRowsHint: 'keywords', tileMatches: 'Matching', tileMatchesHint: 'by {n} rules', tileHigh: 'High spend ratio', tileHighHint: 'Spend without orders',
         matchesTitle: 'Matches on this page', colKeyword: 'Keyword', colRule: 'Matching rule', colClicks: 'Clicks', colSpend: 'Spend', colOrders: 'Orders', colOn: 'On',
         highBadge: 'High ratio', unmatched: '{n} keywords match no rule and stay as they are.', shortcut: 'Shortcut', noMatches: 'No keyword on this page matches your list.', reading: 'Reading the keywords…',
-        allTitle: 'Every page', allText: 'The ad’s pages are scanned one after another and the matches are turned off. Before it starts, it shows how many keywords will be turned off and asks you.',
+        allTitle: 'Every page', allText: 'The ad’s pages are scanned one after another and the matches are turned off. It asks you before it starts.',
+        confirmAllTitle: 'Turn off the matches on every page?',
+        confirmAllText: 'Every page of this ad is scanned in turn and the keywords that match your list are turned off. {n} match on this page; the other pages are counted as they are scanned.',
+        confirmPageTitle: 'Turn off the matches on this page?',
+        confirmPageText: '{n} keywords on this page match your list and will be turned off. You can turn them back on here afterwards.',
         lastTitle: 'Last action', reopen: 'Turn the matches back on here',
         rowOff: 'Turn off {keyword}', rowOn: 'Turn on {keyword}',
         addTitle: 'Add a new word', addWord: 'Word or phrase', addWordPlaceholder: 'For example t-shirt or comfort colors', addHow: 'Which keywords should turn off?',
@@ -40273,6 +40291,28 @@
           h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-ads': 'close-page', disabled: blocked || !snap.stats.matches, onclick: () => actions.closePage() }, icon(doc, ICONS.power ?? ICONS.close, 14), ts('closePage'))));
     }
 
+    /**
+     * The question before keywords are turned off from "Scan every page" or a shortcut.
+     * onAnswer gets true only from the confirm button; closing, Escape and Cancel give false.
+     */
+    function confirmAdsDisable(doc, container, { scope, matches, language, returnFocus = null, onAnswer }) {
+      const ts = texts(language);
+      const all = scope === 'all';
+      let answered = false;
+      const answer = (value) => { if (answered) return; answered = true; onAnswer(value); };
+      return openDialog(doc, container, {
+        title: ts(all ? 'confirmAllTitle' : 'confirmPageTitle'), description: ts(all ? 'confirmAllText' : 'confirmPageText', { n: matches }),
+        body: null, closeLabel: ts('cancel'), returnFocus, width: 480, iconWell: ICONS.power ?? ICONS.close,
+        // Any close that is not the confirm button (Cancel, X, Escape, a click outside) answers no.
+        onClose: () => answer(false),
+        footer: (close) => [
+          h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-ads': 'confirm-cancel', onclick: close, text: ts('cancel') }),
+          h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ads': 'confirm-disable', onclick: () => { answer(true); close(); } },
+            icon(doc, ICONS.power ?? ICONS.close, 14), all ? ts('closeAll') : ts('closePageN', { n: matches })),
+        ],
+      });
+    }
+
     /** Workspace page with Overview and Word list. */
     function renderAdsPage(doc, { snap, rules, matches, language, actions, tab = 'overview', onTab, shortcuts = null }) {
       const ts = texts(language);
@@ -40320,7 +40360,7 @@
                 h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('allTitle') })),
                 h(doc, 'div', { class: 'card-b col', style: 'gap: 12px;' },
                   h(doc, 'p', { class: 'sm mute2', text: ts('allText') }),
-                  h(doc, 'button', { class: 'btn btn-o', type: 'button', style: 'width: 100%;', 'data-ads': 'close-all', disabled: blocked, onclick: () => actions.closeAllPages(), text: ts('closeAll') }),
+                  h(doc, 'button', { class: 'btn btn-o', type: 'button', style: 'width: 100%;', 'data-ads': 'close-all', disabled: blocked, onclick: (e) => actions.closeAllPages(e.currentTarget), text: ts('closeAll') }),
                   keys.adsScanAll ? h(doc, 'span', { class: 'xs mute row', style: 'gap: 6px;' }, ts('shortcut'), kbd(doc, keys.adsScanAll)) : null)),
               snap.status.state === 'success'
                 ? h(doc, 'section', { class: 'card' },
@@ -40411,7 +40451,7 @@
         snap.busy ? h(doc, 'p', { class: 'xs mute2', role: 'status', text: ts('busy') }) : null,
       ];
     }
-    return Object.freeze({ ADS_STRINGS, renderAdsDrawer, renderAdsPage });
+    return Object.freeze({ ADS_STRINGS, renderAdsDrawer, confirmAdsDisable, renderAdsPage });
   })();
 
   // ── src/modules/ads-keyword-manager.js ──
@@ -40430,7 +40470,7 @@
     // here, and steps aside if that one appears later.
 
     const { createScopedGm } = __eat_core_scoped_gm;
-    const { renderAdsDrawer, renderAdsPage } = __eat_modules_ads_keyword_manager_ui;
+    const { renderAdsDrawer, renderAdsPage, confirmAdsDisable } = __eat_modules_ads_keyword_manager_ui;
 
     const ADS_TOOL_ID = 'ads-keyword-manager';
     const STANDALONE_ROOT_ID = 'makaytron-ad-wordlist';
@@ -40534,13 +40574,22 @@
         await state.engine.start();
       }
 
+      /** The engine's question before turning keywords off, shown as the unified dialog. */
+      function askFor(ui, scope, returnFocus = null) {
+        return () => new Promise((resolve) => {
+          if (!ui?.doc || !ui?.container) { resolve(false); return; }
+          const snap = state.engine?.snapshot?.();
+          confirmAdsDisable(ui.doc, ui.container, { scope, matches: snap?.stats?.matches ?? 0, language: ui.language, returnFocus, onAnswer: resolve });
+        });
+      }
+
       function actionsFor(ui) {
         const engine = state.engine;
         const run = (fn) => Promise.resolve().then(fn).catch((error) => console.error('[Etsy Automation Tools] Ads Keyword Manager', error));
         return {
           closePage: () => run(() => engine.closePage()),
           openPage: () => run(() => engine.openPage()),
-          closeAllPages: () => run(() => engine.closeAllPages()),
+          closeAllPages: (trigger) => run(() => engine.closeAllPages(askFor(ui, 'all', trigger))),
           updateList: () => run(() => engine.updateList()),
           restoreBackup: () => run(() => engine.restoreBackup()),
           // The rule editor is the engine's own dialog on the page, so the unified screens step out of its way.
@@ -40571,10 +40620,11 @@
         migrated: true,
         status: () => (state.standalone ? 'standalone' : state.engine ? 'running' : 'starting'),
         /** Shortcuts "Turn off the matches on this page" and "Scan every page" (Settings › Shortcuts). */
-        shortcut(action) {
+        shortcut(action, ui) {
           if (state.standalone || !state.engine) return false;
-          if (action === 'adsClosePage') { void Promise.resolve(state.engine.closePage()).catch(() => {}); return true; }
-          if (action === 'adsScanAll') { void Promise.resolve(state.engine.closeAllPages()).catch(() => {}); return true; }
+          // A key press is easy to make by accident, so both shortcuts ask first, like the standalone script.
+          if (action === 'adsClosePage') { void Promise.resolve(state.engine.closePageConfirmed(askFor(ui, 'page'))).catch(() => {}); return true; }
+          if (action === 'adsScanAll') { void Promise.resolve(state.engine.closeAllPages(askFor(ui, 'all'))).catch(() => {}); return true; }
           return false;
         },
         /** Drawer section; null keeps the generic status text. */
@@ -49042,7 +49092,7 @@
         if (action === 'workspace') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); else openWorkspace(); return; }
         // Tool actions go to the tool running on this page, if it handles them.
         const { active } = activeTool();
-        if (active && host.module?.(active)?.shortcut?.(action) === true) event.preventDefault();
+        if (active && host.module?.(active)?.shortcut?.(action, toolUi()) === true) event.preventDefault();
       }
 
       // ── Dragging the edge button (Launcher-Drag) ────────────────────────

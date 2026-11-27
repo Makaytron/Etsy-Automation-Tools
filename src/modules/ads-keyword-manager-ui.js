@@ -15,7 +15,7 @@
 
 import { h, icon } from '../ui/dom.js';
 import { ICONS } from '../ui/icons.js';
-import { pageHead, pageTabs, toggle, alertBox } from '../ui/controls.js';
+import { pageHead, pageTabs, toggle, alertBox, openDialog } from '../ui/controls.js';
 import { interpolate } from '../core/i18n.js';
 import { packText } from '../core/language-packs.js';
 
@@ -30,7 +30,11 @@ export const ADS_STRINGS = Object.freeze({
     tilePage: 'Page', tileRows: 'On this page', tileRowsHint: 'keywords', tileMatches: 'Matching', tileMatchesHint: 'by {n} rules', tileHigh: 'High spend ratio', tileHighHint: 'Spend without orders',
     matchesTitle: 'Matches on this page', colKeyword: 'Keyword', colRule: 'Matching rule', colClicks: 'Clicks', colSpend: 'Spend', colOrders: 'Orders', colOn: 'On',
     highBadge: 'High ratio', unmatched: '{n} keywords match no rule and stay as they are.', shortcut: 'Shortcut', noMatches: 'No keyword on this page matches your list.', reading: 'Reading the keywords…',
-    allTitle: 'Every page', allText: 'The ad’s pages are scanned one after another and the matches are turned off. Before it starts, it shows how many keywords will be turned off and asks you.',
+    allTitle: 'Every page', allText: 'The ad’s pages are scanned one after another and the matches are turned off. It asks you before it starts.',
+    confirmAllTitle: 'Turn off the matches on every page?',
+    confirmAllText: 'Every page of this ad is scanned in turn and the keywords that match your list are turned off. {n} match on this page; the other pages are counted as they are scanned.',
+    confirmPageTitle: 'Turn off the matches on this page?',
+    confirmPageText: '{n} keywords on this page match your list and will be turned off. You can turn them back on here afterwards.',
     lastTitle: 'Last action', reopen: 'Turn the matches back on here',
     rowOff: 'Turn off {keyword}', rowOn: 'Turn on {keyword}',
     addTitle: 'Add a new word', addWord: 'Word or phrase', addWordPlaceholder: 'For example t-shirt or comfort colors', addHow: 'Which keywords should turn off?',
@@ -81,6 +85,28 @@ export function renderAdsDrawer(doc, { snap, language, actions }) {
       h(doc, 'button', { class: 'btn btn-p btn-sm grow', type: 'button', 'data-ads': 'close-page', disabled: blocked || !snap.stats.matches, onclick: () => actions.closePage() }, icon(doc, ICONS.power ?? ICONS.close, 14), ts('closePage'))));
 }
 
+/**
+ * The question before keywords are turned off from "Scan every page" or a shortcut.
+ * onAnswer gets true only from the confirm button; closing, Escape and Cancel give false.
+ */
+export function confirmAdsDisable(doc, container, { scope, matches, language, returnFocus = null, onAnswer }) {
+  const ts = texts(language);
+  const all = scope === 'all';
+  let answered = false;
+  const answer = (value) => { if (answered) return; answered = true; onAnswer(value); };
+  return openDialog(doc, container, {
+    title: ts(all ? 'confirmAllTitle' : 'confirmPageTitle'), description: ts(all ? 'confirmAllText' : 'confirmPageText', { n: matches }),
+    body: null, closeLabel: ts('cancel'), returnFocus, width: 480, iconWell: ICONS.power ?? ICONS.close,
+    // Any close that is not the confirm button (Cancel, X, Escape, a click outside) answers no.
+    onClose: () => answer(false),
+    footer: (close) => [
+      h(doc, 'button', { class: 'btn btn-g', type: 'button', 'data-ads': 'confirm-cancel', onclick: close, text: ts('cancel') }),
+      h(doc, 'button', { class: 'btn btn-p', type: 'button', 'data-ads': 'confirm-disable', onclick: () => { answer(true); close(); } },
+        icon(doc, ICONS.power ?? ICONS.close, 14), all ? ts('closeAll') : ts('closePageN', { n: matches })),
+    ],
+  });
+}
+
 /** Workspace page with Overview and Word list. */
 export function renderAdsPage(doc, { snap, rules, matches, language, actions, tab = 'overview', onTab, shortcuts = null }) {
   const ts = texts(language);
@@ -128,7 +154,7 @@ export function renderAdsPage(doc, { snap, rules, matches, language, actions, ta
             h(doc, 'div', { class: 'card-h' }, h(doc, 'h2', { class: 'h2', text: ts('allTitle') })),
             h(doc, 'div', { class: 'card-b col', style: 'gap: 12px;' },
               h(doc, 'p', { class: 'sm mute2', text: ts('allText') }),
-              h(doc, 'button', { class: 'btn btn-o', type: 'button', style: 'width: 100%;', 'data-ads': 'close-all', disabled: blocked, onclick: () => actions.closeAllPages(), text: ts('closeAll') }),
+              h(doc, 'button', { class: 'btn btn-o', type: 'button', style: 'width: 100%;', 'data-ads': 'close-all', disabled: blocked, onclick: (e) => actions.closeAllPages(e.currentTarget), text: ts('closeAll') }),
               keys.adsScanAll ? h(doc, 'span', { class: 'xs mute row', style: 'gap: 6px;' }, ts('shortcut'), kbd(doc, keys.adsScanAll)) : null)),
           snap.status.state === 'success'
             ? h(doc, 'section', { class: 'card' },

@@ -316,7 +316,7 @@ export function createShell({ scope, settings, host, storage, appVersion, migrat
     if (action === 'workspace') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); else openWorkspace(); return; }
     // Tool actions go to the tool running on this page, if it handles them.
     const { active } = activeTool();
-    if (active && host.module?.(active)?.shortcut?.(action) === true) event.preventDefault();
+    if (active && host.module?.(active)?.shortcut?.(action, toolUi()) === true) event.preventDefault();
   }
 
   // ── Dragging the edge button (Launcher-Drag) ────────────────────────
