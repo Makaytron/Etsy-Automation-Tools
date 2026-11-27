@@ -53,7 +53,7 @@ test('turning keywords off from every page or a shortcut asks in the unified dia
   const body = bridge.slice(0, bridge.indexOf('\n    }\n') + 6);
   assert.doesNotMatch(body, /window\.confirm/);
   // The engine's gates run before the question and again after it; only an explicit true goes on.
-  assert.match(body, /const before = __eatToggleGate\(\);[\s\S]*\(await ask\(\)\) !== true\) return null;\s*if \(__eatToggleGate\(\)\) return null;\s*return runToggleRows\(false, allPages\);/);
+  assert.match(body, /const before = __eatToggleGate\(\);[\s\S]*const route = RouteLifecycle\.capture\(\);\s*if \(typeof ask !== 'function' \|\| \(await ask\(\)\) !== true\) return null;\s*if \(!RouteLifecycle\.current\(route\) \|\| __eatToggleGate\(\)\) return null;\s*return runToggleRows\(false, allPages\);/);
   assert.match(adopted, /function __eatToggleGate\(\) \{\s*if \(!RouteLifecycle\.allowed\(\)\) return 'blocked';\s*if \(activeOperation \|\| wordlistUpdateRunning\)[\s\S]*?EDITOR_MODAL_ID/);
 });
 

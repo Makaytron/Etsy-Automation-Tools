@@ -152,8 +152,11 @@ const ENGINE_API = `
     async function __eatConfirmedToggle(ask, allPages) {
         const before = __eatToggleGate();
         if (before) return before === 'busy' ? activeOperation : null;
+        // The answer belongs to the ad the dialog was opened on: if Etsy moved to another ad (or another
+        // view of it) while the dialog was open, the confirmation does nothing.
+        const route = RouteLifecycle.capture();
         if (typeof ask !== 'function' || (await ask()) !== true) return null;
-        if (__eatToggleGate()) return null;
+        if (!RouteLifecycle.current(route) || __eatToggleGate()) return null;
         return runToggleRows(false, allPages);
     }`;
 
