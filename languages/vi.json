@@ -408,6 +408,7 @@
     "set.channelStable": "Ổn định",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta nhận phiên bản mới sớm hơn; có thể còn nhiều chỗ chưa hoàn thiện.",
+    "rn.216.fixes": "Sửa lỗi: Áp dụng vào biểu mẫu hoạt động với bộ đếm thẻ và chất liệu của Etsy và cho biết lý do dừng; có thể bỏ qua sản phẩm đã áp dụng rồi hoàn tác; trả lời nhanh từ bảng được thêm vào ô tin nhắn; Ads hỏi trong cửa sổ riêng của công cụ trước khi tắt từ khóa; phím tắt chỉ làm theo cài đặt của bạn.",
     "rn.215.fixes": "Sửa lỗi: sau khi quét ở chế độ xem bảng hoặc khi tắt Stats, kết quả vẫn còn mới khi chế độ xem của bạn trở lại, và chế độ xem đó không còn hiện thông báo dừng.",
     "rn.214.fixes": "Sửa lỗi: quét tin đăng tự bật chế độ xem thẻ và Stats của Etsy rồi khôi phục chế độ xem của bạn, tin nhắn chưa đọc được đếm lại, quảng cáo không có từ khóa không còn báo lỗi, hàng đã chọn đọc được trong giao diện tối và văn bản mới hiển thị bằng ngôn ngữ của bạn.",
     "rn.213.fixes": "Sửa lỗi: nếu không tạo được hàng đợi xem xét, lý do giờ được hiển thị; hàng đợi đã dừng không còn trông như đang hoạt động; và ở cạnh phải nút cạnh không còn nằm dưới thanh cuộn.",

@@ -408,6 +408,7 @@
     "set.channelStable": "Stabiel",
     "set.channelBeta": "Bèta",
     "set.channelHint": "Bèta krijgt nieuwe versies eerder; die kunnen nog wat ruwe randjes hebben.",
+    "rn.216.fixes": "Oplossingen: In het formulier toepassen werkt met de tag- en materiaaltellers van Etsy en zegt waarom het stopt; een toegepaste en daarna ongedaan gemaakte vermelding kan worden overgeslagen; het snelle antwoord uit het paneel wordt in het berichtvak gezet; Ads vraagt in het eigen venster van de tool voordat zoekwoorden uitgaan; sneltoetsen volgen alleen je instellingen.",
     "rn.215.fixes": "Oplossingen: na een scan in de tabelweergave of met Stats uit blijven de resultaten actueel als je weergave terugkomt, en die weergave toont geen stopmelding meer.",
     "rn.214.fixes": "Oplossingen: de advertentiescan zet zelf de kaartweergave en Stats van Etsy aan en zet daarna je eigen weergave terug, ongelezen berichten worden weer geteld, advertenties zonder zoekwoorden tonen geen fout meer, geselecteerde rijen zijn leesbaar in het donkere thema en nieuwe tekst verschijnt in jouw taal.",
     "rn.213.fixes": "Oplossingen: als de controlewachtrij niet kan worden gemaakt, wordt nu de reden getoond; een gestopte wachtrij lijkt niet meer actief; en aan de rechterrand valt de randknop niet meer onder de schuifbalk.",

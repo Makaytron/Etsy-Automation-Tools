@@ -357,6 +357,7 @@ export const WORKSPACE_STRINGS = Object.freeze({
     'set.channelStable': 'Stable',
     'set.channelBeta': 'Beta',
     'set.channelHint': 'Beta gets new versions earlier; they may have more rough edges.',
+    'rn.216.fixes': 'Fixes: Apply to form works with Etsy’s tag and material counters and says why it stops; a listing applied and then undone can be skipped; the drawer’s quick reply is added to the message box; Ads asks in the tool’s own window before turning keywords off; keyboard shortcuts follow only your settings.',
     'rn.215.fixes': 'Fixes: after a scan in the table view or with Stats off, the results stay current when your view comes back, and that view no longer shows a stop message.',
     'rn.214.fixes': 'Fixes: the listing scan turns on Etsy\'s card view and Stats itself and then restores your view, unread messages are counted again, ads without keywords no longer show an error, selected rows are readable in the dark theme, and new text appears in your language.',
     'rn.213.fixes': 'Fixes: if the review queue cannot be built, the reason is now shown; a stopped queue no longer looks active; and on the right edge the edge button stays clear of the scroll bar.',

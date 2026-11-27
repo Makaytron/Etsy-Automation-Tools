@@ -4,6 +4,21 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.6] - 2026-11-27
+
+### Fixed
+
+- Listing Analyzer (engine 1.3.4): Apply to form always stopped with "form fields not ready", because Etsy's tag and material counter item ("All 13 used", "8 left") was read as a pill that could not be read. The counter is skipped.
+- Listing Analyzer (engine 1.3.4): Apply to form now names the reason it stops (unsaved changes, a publish already in progress, the queue item's state, or the Etsy field that is missing, unreadable or disabled), and the queue on the Listings page shows that reason under the item's status.
+- Listing Analyzer (engine 1.3.4): a proposal applied to the form and then undone can be skipped once the form is back to the state read before the apply.
+- Listing Analyzer: the engine's own panel shows queue statuses in words instead of codes such as "failed".
+- Message Assistant: Add on a quick reply in the drawer only prepared a draft the drawer does not show; it now puts the reply in Etsy's message box. Unsent text already in the box is never overwritten; the seller sees only why nothing was added.
+- Ads Keyword Manager: Scan every page and the Ads shortcuts ask in the tool's own dialog (Cancel has focus) instead of the browser's confirm window. The engine's checks run before and after the question.
+- Ads Keyword Manager, Listing Analyzer and Sale Manager: the engines also installed their standalone keyboard listeners, which ignored Settings › Shortcuts; Ads opened the browser's confirm window next to the unified dialog, and Listing Analyzer's Ctrl+Alt+A could toggle the scan a second time. Only the unified shortcuts run now; Escape still closes the engines' own dialogs.
+- Edge button: after the drawer is closed with the mouse or the shortcut while working on the page, the button no longer takes focus, slides out over Etsy and keeps its tooltip.
+- Listing Analyzer AI tab: replies such as "Copied to the clipboard" are shown in the status line.
+- Language packs: the new Ads dialog strings in all 42 packs; the Every page hint no longer promises a total count before the scan.
+
 ## [2.1.5] - 2026-11-26
 
 ### Fixed

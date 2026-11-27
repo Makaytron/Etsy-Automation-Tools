@@ -408,6 +408,7 @@
     "set.channelStable": "Kararlı",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta yeni sürümleri daha erken alır; pürüzleri daha fazla olabilir.",
+    "rn.216.fixes": "Düzeltmeler: Forma uygula, Etsy’nin etiket ve malzeme sayaçlarıyla çalışıyor ve neden durduğunu söylüyor; forma uygulanıp geri alınan ilan atlanabiliyor; çekmecedeki hızlı cevap mesaj kutusuna ekleniyor; Ads, anahtar kelimeleri kapatmadan önce aracın kendi penceresinde soruyor; klavye kısayolları yalnızca sizin ayarlarınıza uyuyor.",
     "rn.215.fixes": "Düzeltmeler: tablo görünümünde ya da Stats kapalıyken yapılan taramadan sonra görünümün geri geldiğinde sonuçlar güncel kalıyor ve bu görünümde artık durma mesajı çıkmıyor.",
     "rn.214.fixes": "Düzeltmeler: listing taraması Etsy'nin kart görünümünü ve Stats'i kendisi açıp sonra görünümünü geri getiriyor, okunmamış mesajlar yeniden sayılıyor, anahtar kelimesi olmayan reklamlar artık hata göstermiyor, koyu temada seçili satırlar okunuyor ve yeni metinler senin dilinde görünüyor.",
     "rn.213.fixes": "Düzeltmeler: inceleme kuyruğu oluşturulamazsa nedeni artık gösteriliyor, durdurulan kuyruk artık etkin görünmüyor ve sağ kenarda kenar düğmesi kaydırma çubuğunun altında kalmıyor.",

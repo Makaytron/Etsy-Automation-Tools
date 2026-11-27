@@ -408,6 +408,7 @@
     "set.channelStable": "Stable",
     "set.channelBeta": "Bêta",
     "set.channelHint": "La bêta reçoit les nouvelles versions plus tôt ; elles peuvent être moins abouties.",
+    "rn.216.fixes": "Corrections : Appliquer dans le formulaire fonctionne avec les compteurs de tags et de matériaux d'Etsy et indique pourquoi il s'arrête ; une fiche appliquée puis annulée peut être ignorée ; la réponse rapide du volet est ajoutée dans la zone de message ; Ads demande dans la fenêtre de l'outil avant de désactiver des mots-clés ; les raccourcis clavier suivent uniquement vos réglages.",
     "rn.215.fixes": "Corrections : après une analyse en vue tableau ou avec les Stats désactivées, les résultats restent à jour quand votre vue revient, et cette vue n'affiche plus de message d'arrêt.",
     "rn.214.fixes": "Corrections : l'analyse des annonces active elle-même la vue en cartes et les Stats d'Etsy puis rétablit votre vue, les messages non lus sont de nouveau comptés, les publicités sans mots-clés n'affichent plus d'erreur, les lignes sélectionnées sont lisibles dans le thème sombre et le nouveau texte s'affiche dans votre langue.",
     "rn.213.fixes": "Corrections : si la file de révision ne peut pas être créée, la raison est désormais affichée ; une file arrêtée ne semble plus active ; et sur le bord droit, le bouton de bord ne passe plus sous la barre de défilement.",

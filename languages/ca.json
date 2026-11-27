@@ -408,6 +408,7 @@
     "set.channelStable": "Estable",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta rep les versions noves abans; poden estar menys polides.",
+    "rn.216.fixes": "Correccions: Aplica al formulari funciona amb els comptadors d'etiquetes i materials d'Etsy i diu per què s'atura; es pot ometre un anunci aplicat i després desfet; la resposta ràpida del tauler s'afegeix al quadre del missatge; Ads pregunta a la finestra de l'eina abans de desactivar paraules clau; les dreceres de teclat només segueixen la teva configuració.",
     "rn.215.fixes": "Correccions: després d'un escaneig a la vista de taula o amb les Stats desactivades, els resultats continuen vigents quan torna la teva vista, i aquesta vista ja no mostra cap missatge d'aturada.",
     "rn.214.fixes": "Correccions: l'escaneig d'anuncis activa ell mateix la vista de targetes i les Stats d'Etsy i després restaura la teva vista, els missatges no llegits es tornen a comptar, els anuncis sense paraules clau ja no mostren cap error, les files seleccionades es llegeixen al tema fosc i el text nou surt en el teu idioma.",
     "rn.213.fixes": "Correccions: si no es pot crear la cua de revisió, ara se'n mostra el motiu; una cua aturada ja no sembla activa; i a la vora dreta el botó de vora queda fora de la barra de desplaçament.",

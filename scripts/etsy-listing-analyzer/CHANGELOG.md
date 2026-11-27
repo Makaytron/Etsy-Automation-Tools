@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.4] - 2026-11-27
+
+### Fixed
+
+- Apply to form always stopped with "form fields not ready": Etsy's tag and material counter item ("All 13 used", "8 left") was read as a pill that could not be read, so the read was never complete. The counter item is skipped; any other unreadable item still stops the apply.
+- Apply to form names the reason it stops: unsaved changes, a publish already in progress, the queue item's state, or the Etsy field that is missing, unreadable or disabled. Nothing is applied in any of these cases.
+- A proposal applied to the form and then undone in Etsy can be skipped. Skipping requires the editor on that listing, a clean form, no publish in progress, and every field equal to the state read before the apply.
+- Queue statuses are shown in words instead of codes such as "failed".
+
 ## [1.3.3] - 2026-11-26
 
 ### Fixed
