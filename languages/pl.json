@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilny",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dostaje nowe wersje wcześniej; mogą mieć więcej niedoróbek.",
+    "rn.217.fixes": "Poprawki: po przejściu do innej reklamy Ads liczy słowa kluczowe tej reklamy zamiast poprzedniej, a pytanie o wyłączenie zamyka się, gdy reklama się zmienia; daty wersji pokazują właściwy dzień w każdej strefie czasowej; nowe informacje o wersjach nie zostają już po angielsku; skopiowanie przykładowej odpowiedzi AI jest potwierdzane.",
     "rn.216.fixes": "Poprawki: Wpisz w formularz działa z licznikami tagów i materiałów Etsy i podaje, dlaczego się zatrzymuje; ofertę wpisaną, a potem cofniętą, można pominąć; szybka odpowiedź z panelu trafia do pola wiadomości; Ads pyta we własnym oknie narzędzia przed wyłączeniem słów kluczowych; skróty klawiszowe działają tylko według Twoich ustawień.",
     "rn.215.fixes": "Poprawki: po skanowaniu w widoku tabeli lub z wyłączonymi Stats wyniki pozostają aktualne, gdy wraca Twój widok, a ten widok nie pokazuje już komunikatu o zatrzymaniu.",
     "rn.214.fixes": "Poprawki: skanowanie ofert samo włącza widok kart i Stats w Etsy, a potem przywraca Twój widok, nieprzeczytane wiadomości znów są liczone, reklamy bez słów kluczowych nie pokazują już błędu, zaznaczone wiersze są czytelne w ciemnym motywie, a nowy tekst wyświetla się w Twoim języku.",

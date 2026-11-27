@@ -121,7 +121,14 @@ export function createAdsKeywordManagerModule() {
     return () => new Promise((resolve) => {
       if (!ui?.doc || !ui?.container) { resolve(false); return; }
       const snap = state.engine?.snapshot?.();
-      confirmAdsDisable(ui.doc, ui.container, { scope, matches: snap?.stats?.matches ?? 0, language: ui.language, returnFocus, onAnswer: resolve });
+      // The question is about this ad: if Etsy moves to another one while it is open, it closes as a no
+      // (the engine would not act on another ad anyway, but the dialog would still show this ad's count).
+      const location = ui.doc.defaultView?.location;
+      const href = location?.href;
+      let watch = null;
+      const dialog = confirmAdsDisable(ui.doc, ui.container, { scope, matches: snap?.stats?.matches ?? 0, language: ui.language, returnFocus,
+        onAnswer: (value) => { clearInterval(watch); resolve(value); } });
+      if (href) watch = setInterval(() => { if (location.href !== href) dialog?.close?.(); }, 250);
     });
   }
 

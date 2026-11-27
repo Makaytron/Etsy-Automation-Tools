@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta menerima versi baharu lebih awal; mungkin masih ada kekurangan.",
+    "rn.217.fixes": "Pembetulan: selepas beralih ke iklan lain, Ads mengira kata kunci iklan itu, bukan iklan sebelumnya, dan soalan untuk mematikannya ditutup apabila iklan bertukar; tarikh keluaran menunjukkan hari yang betul dalam setiap zon waktu; nota keluaran baharu tidak lagi kekal dalam bahasa Inggeris; menyalin contoh jawapan AI kini memberitahu bahawa ia telah disalin.",
     "rn.216.fixes": "Pembetulan: Gunakan dalam borang berfungsi dengan pembilang tag dan bahan Etsy serta memberitahu sebab ia berhenti; penyenaraian yang telah digunakan lalu dibatalkan boleh dilangkau; balasan pantas daripada panel ditambah ke kotak mesej; Ads bertanya dalam tetingkap alat itu sendiri sebelum mematikan kata kunci; pintasan papan kekunci hanya mengikut tetapan anda.",
     "rn.215.fixes": "Pembetulan: selepas imbasan dalam paparan jadual atau dengan Stats dimatikan, hasilnya kekal terkini apabila paparan anda kembali, dan paparan itu tidak lagi menunjukkan mesej berhenti.",
     "rn.214.fixes": "Pembetulan: imbasan penyenaraian menghidupkan sendiri paparan kad dan Stats Etsy, kemudian memulihkan paparan anda, mesej belum dibaca dikira semula, iklan tanpa kata kunci tidak lagi menunjukkan ralat, baris dipilih boleh dibaca dalam tema gelap dan teks baharu dipaparkan dalam bahasa anda.",

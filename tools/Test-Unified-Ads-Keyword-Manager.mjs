@@ -104,3 +104,19 @@ test('only the unified shortcuts run: the engine does not install its own Ctrl+A
   assert.match(adopted, /if \(false\) document\.addEventListener\('keydown', \(e\) => \{\n {8}if \(!RouteLifecycle\.allowed\(\) \|\| e\.repeat/);
   assert.equal(adopted.split("document.addEventListener('keydown'").length - 1, 2, 'the rule editor keeps its own keys; the shortcut listener is the disabled one');
 });
+
+test('the turn-off question closes as a no when Etsy moves to another ad', async () => {
+  const module = fs.readFileSync(new URL('../src/modules/ads-keyword-manager.js', import.meta.url), 'utf8');
+  assert.match(module, /const href = location\?\.href;[\s\S]*watch = setInterval\(\(\) => \{ if \(location\.href !== href\) dialog\?\.close\?\.\(\); \}, 250\);/);
+  assert.match(module, /onAnswer: \(value\) => \{ clearInterval\(watch\); resolve\(value\); \}/);
+  // Closing the dialog from outside (as the watch does) answers no.
+  const { confirmAdsDisable } = await import('../src/modules/ads-keyword-manager-ui.js');
+  const { createFakeDocument } = await import('./Unified-Fake-Dom.mjs');
+  const doc = createFakeDocument();
+  const container = doc.createElement('div');
+  const answers = [];
+  const dialog = confirmAdsDisable(doc, container, { scope: 'all', matches: 5, language: 'en', onAnswer: (v) => answers.push(v) });
+  dialog.close();
+  assert.deepEqual(answers, [false]);
+  assert.equal(container.children.length, 0);
+});

@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta får nye versjoner tidligere; de kan ha flere skjønnhetsfeil.",
+    "rn.217.fixes": "Rettelser: etter bytte til en annen annonse teller Ads søkeordene for den annonsen i stedet for den forrige, og spørsmålet om å slå av lukkes når annonsen endres; versjonsdatoer viser riktig dag i alle tidssoner; nye versjonsmerknader blir ikke lenger stående på engelsk; kopiering av eksempelsvaret fra AI gir beskjed om det.",
     "rn.216.fixes": "Rettelser: Bruk i skjemaet fungerer med Etsys tellere for stikkord og materialer og sier hvorfor den stopper; en annonse som er brukt og så angret, kan hoppes over; hurtigsvaret fra panelet legges inn i meldingsfeltet; Ads spør i verktøyets eget vindu før søkeord slås av; hurtigtaster følger bare innstillingene dine.",
     "rn.215.fixes": "Rettelser: etter en skanning i tabellvisning eller med Stats av forblir resultatene oppdaterte når visningen din kommer tilbake, og den visningen viser ikke lenger en stoppmelding.",
     "rn.214.fixes": "Rettelser: annonseskanningen slår selv på Etsys kortvisning og Stats og gjenoppretter etterpå visningen din, uleste meldinger telles igjen, annonser uten søkeord viser ikke lenger en feil, valgte rader kan leses i det mørke temaet, og ny tekst vises på språket ditt.",

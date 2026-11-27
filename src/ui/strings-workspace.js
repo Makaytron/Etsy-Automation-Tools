@@ -357,6 +357,7 @@ export const WORKSPACE_STRINGS = Object.freeze({
     'set.channelStable': 'Stable',
     'set.channelBeta': 'Beta',
     'set.channelHint': 'Beta gets new versions earlier; they may have more rough edges.',
+    'rn.217.fixes': 'Fixes: after moving to another ad, Ads counts that ad’s keywords instead of the previous ad’s, and its turn-off question closes when the ad changes; release dates show the right day in every time zone; new release notes no longer stay in English; copying the example AI answer says so.',
     'rn.216.fixes': 'Fixes: Apply to form works with Etsy’s tag and material counters and says why it stops; a listing applied and then undone can be skipped; the drawer’s quick reply is added to the message box; Ads asks in the tool’s own window before turning keywords off; keyboard shortcuts follow only your settings.',
     'rn.215.fixes': 'Fixes: after a scan in the table view or with Stats off, the results stay current when your view comes back, and that view no longer shows a stop message.',
     'rn.214.fixes': 'Fixes: the listing scan turns on Etsy\'s card view and Stats itself and then restores your view, unread messages are counted again, ads without keywords no longer show an error, selected rows are readable in the dark theme, and new text appears in your language.',

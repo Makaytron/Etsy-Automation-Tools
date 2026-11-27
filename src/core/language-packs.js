@@ -8,6 +8,7 @@
 // missing or fails, the interface stays in English and offers a retry.
 
 import { validatePack } from './i18n.js';
+import { RELEASE_NOTES } from './release-notes.js';
 
 export const PACK_LANGUAGES = Object.freeze(['ar', 'bg', 'bn', 'ca', 'cs', 'da', 'de', 'el', 'es', 'et', 'fa', 'fi', 'fil', 'fr', 'he', 'hi', 'hr', 'hu', 'id', 'it', 'ja', 'ko', 'lt', 'lv', 'ms', 'nb', 'nl', 'pl', 'pt', 'ro', 'ru', 'sk', 'sl', 'sr', 'sv', 'th', 'tr', 'uk', 'ur', 'vi', 'zh-CN', 'zh-TW']);
 export const PACK_MIN_APP_VERSION = '2.0.0';
@@ -17,6 +18,9 @@ const MAX_PACK_BYTES = 256 * 1024;
 // A kept pack remembers the app version it was downloaded for (`packFor.<code>`). After an update it is
 // still used straight away, and the current pack is fetched once in the background: new strings, such as
 // the notes of each release, would otherwise stay in English until the pack happened to be replaced.
+// A pack is only recorded as current when it carries this version's release-note keys: raw.githubusercontent
+// can serve a cached pack from before the release for a few minutes, and a pack recorded as current would
+// never be fetched again until the next version.
 
 // Strings of the packs loaded in this page, shared by the shell and the tool screens.
 const loaded = new Map();
@@ -59,7 +63,13 @@ function download(gm, url, onProgress = null) {
 /** Keys that only packs of the current catalog carry; a cached pack without them is refreshed. */
 export const PACK_CURRENT_KEYS = Object.freeze(['ma.inbox', 'la.overview', 'set.tab.ai']);
 
-export function createLanguagePacks({ gm, cache, appVersion, onChange = () => {} }) {
+/** The keys a pack made for `appVersion` carries: the notes of that release. */
+export function releaseKeys(appVersion) {
+  return RELEASE_NOTES.find((n) => n.version === appVersion)?.items ?? [];
+}
+
+export function createLanguagePacks({ gm, cache, appVersion, currentKeys = releaseKeys(appVersion), onChange = () => {} }) {
+  const isCurrent = (strings) => currentKeys.every((key) => typeof strings?.[key] === 'string');
   const states = new Map(); // code -> { status: 'loading' | 'ready' | 'error', code? }
   const pending = new Map();
   const refreshing = new Map();
@@ -70,7 +80,8 @@ export function createLanguagePacks({ gm, cache, appVersion, onChange = () => {}
     const pack = await download(gm, `${PACK_BASE_URL}${language}.json`, onProgress);
     const strings = validatePack(pack, { language, appVersion });
     await cache?.set(`pack.${language}`, pack).catch(() => {});
-    await cache?.set(`packFor.${language}`, appVersion).catch(() => {});
+    // A pack older than this release is kept and used, but fetched again on the next page.
+    await cache?.set(`packFor.${language}`, isCurrent(strings) ? appVersion : null).catch(() => {});
     return strings;
   }
 
@@ -90,9 +101,10 @@ export function createLanguagePacks({ gm, cache, appVersion, onChange = () => {}
     if (cached) {
       try {
         // A pack kept from an older catalog lacks the newer screens' keys: download the current one instead.
-        loaded.set(language, validatePack(cached, { language, appVersion, requiredKeys: PACK_CURRENT_KEYS }));
+        const strings = validatePack(cached, { language, appVersion, requiredKeys: PACK_CURRENT_KEYS });
+        loaded.set(language, strings);
         const keptFor = await cache?.get(`packFor.${language}`, null).catch(() => null);
-        if (keptFor !== appVersion) void refresh(language);
+        if (keptFor !== appVersion || !isCurrent(strings)) void refresh(language);
         return;
       } catch { /* an old or damaged pack: download it again */ }
     }

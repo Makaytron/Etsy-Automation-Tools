@@ -2,7 +2,7 @@
 // @name         Makaytron Etsy Ads Keyword Manager
 // @name:tr      Makaytron Etsy Ads Keyword Manager
 // @name:en      Makaytron Etsy Ads Keyword Manager
-// @version      1.1.2
+// @version      1.1.3
 // @description  Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:tr Etsy Ads anahtar kelime eşleşmelerini form tabanlı bir panelden yönetin.
 // @description:en Manage Etsy Ads keyword matches from a form-based control panel.
@@ -504,6 +504,7 @@
         }
     }
     function suspendAdsRoute() {
+        stopWatchingKeywordRows();
         editorOpenSequence += 1; editorCleanup?.();
         clearManagedRowColors();
         for (const id of [PANEL_ROOT_ID, TOAST_ROOT_ID, EDITOR_MODAL_ID, `makaytron-telemetry-settings-${TELEMETRY_SCRIPT_ID}`]) document.getElementById(id)?.remove();
@@ -515,7 +516,7 @@
 
     const SCRIPT_SOURCE_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/Makaytron-Etsy-Ads-Keyword-Manager.user.js';
     const WORD_LIST_URL = 'https://raw.githubusercontent.com/Makaytron/Etsy-Automation-Tools/main/scripts/etsy-ads-keyword-manager/keyword-rules.txt';
-    const APP_VERSION = '1.1.2';
+    const APP_VERSION = '1.1.3';
     const MKUI_VERSION = '1.0.0';
     const MKUI_BUNDLE_HASH = 'sha256:1a68a28b84ef567e03e70da38cfd15e133e3d092452fef0f5ace2c447d32128b';
     const TELEMETRY_ENDPOINT = 'https://sjwibgcflufmzaorlwqe.supabase.co/functions/v1/telemetry-ingest';
@@ -1206,6 +1207,7 @@
     const KEYWORD_ROW_SELECTOR = `${KEYWORD_ACCORDION_SELECTOR} tbody tr.wt-table__row`;
     const PAGE_CHANGE_TIMEOUT_MS = 15_000;
     const INITIAL_ROWS_TIMEOUT_MS = 15_000;
+    const ROW_WATCH_INTERVAL_MS = 700;
     const MAX_AUTO_PAGES = 100;
     const MAX_WORDLIST_BYTES = 250_000;
 
@@ -2199,6 +2201,52 @@ oversized
         });
     }
 
+    // Etsy can keep the previous ad's keyword table on screen for a moment after moving to another ad, and
+    // its own pagination replaces the rows too. The counts follow the rows actually shown: when the keywords
+    // in the table change outside a job, the rows are read again.
+    let decoratedRowsSignature = '';
+    let rowWatchTimer = null;
+    let rowWatchRunning = false;
+
+    function keywordRowsSignature() {
+        return getAllRows().map(getRowWord).join('\n');
+    }
+
+    function watchKeywordRows() {
+        if (rowWatchTimer) return;
+        rowWatchTimer = window.setInterval(() => {
+            if (rowWatchRunning || activeOperation || wordlistUpdateRunning || !RouteLifecycle.allowed()) return;
+            if (document.getElementById(EDITOR_MODAL_ID)) return;
+            const rows = getAllRows();
+            if (!rows.length) {
+                // The rows that were read are gone: another ad's table that Etsy had kept on screen, while
+                // this ad's keyword section is still closed. Open it once and stop showing the old counts.
+                if (!decoratedRowsSignature) return;
+                decoratedRowsSignature = '';
+                expandKeywordAccordion();
+                updatePanelStats([]);
+                if (keywordListIsEmpty()) setPanelStatus('noTargetedKeywords', 'ready');
+                else setPanelStatus('loadingKeywordTable', 'running', 'preparing');
+                return;
+            }
+            if (rows.some((row) => !getRowWord(row))) return;
+            if (keywordRowsSignature() === decoratedRowsSignature) return;
+            rowWatchRunning = true;
+            void decorateRows().then((filteredRows) => {
+                setPanelStatus('rowsReady', filteredRows.length ? 'warning' : 'ready', '', {
+                    rows: quantity(getAllRows().length, 'row'),
+                    matches: quantity(filteredRows.length, 'match'),
+                });
+            }).catch(() => {}).finally(() => { rowWatchRunning = false; });
+        }, ROW_WATCH_INTERVAL_MS);
+    }
+
+    function stopWatchingKeywordRows() {
+        window.clearInterval(rowWatchTimer);
+        rowWatchTimer = null;
+        decoratedRowsSignature = '';
+    }
+
     async function decorateRows() {
         const route = RouteLifecycle.capture();
         assertAdsRoute(route);
@@ -2208,6 +2256,7 @@ oversized
         filteredRows.forEach((row) => setManagedRowColor(row, '#fff8ed', '#8a5a00'));
         colorRoas();
         updatePanelStats(filteredRows);
+        decoratedRowsSignature = keywordRowsSignature();
         return filteredRows;
     }
 
@@ -3601,6 +3650,7 @@ oversized
     // ─── Page load ────────────────────────────────────────────────────────────
 
     async function initializePage() {
+        stopWatchingKeywordRows();
         const route = RouteLifecycle.capture();
         assertAdsRoute(route);
         await loadLanguage();
@@ -3615,6 +3665,7 @@ oversized
             // Nothing to match is not an error: say so plainly instead of "the table could not be loaded".
             assertAdsRoute(route);
             setPanelStatus('noTargetedKeywords', 'ready');
+            watchKeywordRows();
             return;
         }
         if (!rowsReady) {
@@ -3634,6 +3685,7 @@ oversized
             }
         );
         notify('success', t('appReady'));
+        watchKeywordRows();
     }
 
     function startInitialization() {

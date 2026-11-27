@@ -4,6 +4,17 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [2.1.7] - 2026-11-27
+
+### Fixed
+
+- Ads Keyword Manager (engine 1.1.3): after moving to another ad inside Etsy, the drawer and workspace showed the previous ad's keyword counts, because Etsy keeps the old keyword table on screen for a moment. The counts follow the rows actually shown, and a keyword section Etsy left closed is opened.
+- Ads Keyword Manager: the question before turning keywords off closes as a no when Etsy moves to another ad while it is open, instead of staying open with the previous ad's count.
+- Ads Keyword Manager and Listing Analyzer: the engines' ready notice and panel no longer name their old fixed shortcuts (Ctrl+Alt+K, Ctrl+Alt+A); the keys are whatever Settings › Shortcuts says.
+- What's new and Settings › Updates: release dates showed the day before west of Greenwich ("26 Nov" for 27 Nov). A release date is a calendar day and is shown the same everywhere.
+- Language packs: a pack downloaded before a release's notes were published (raw.githubusercontent can serve the previous file for a few minutes) was recorded as current, so the new notes stayed in English until the next version. A pack without the current release's notes is fetched again on the next page.
+- Listing Analyzer AI tab: "Copy answer schema" now says "Example AI JSON copied to the clipboard" in the status line.
+
 ## [2.1.6] - 2026-11-27
 
 ### Fixed

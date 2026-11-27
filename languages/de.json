@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta erhält neue Versionen früher; sie können noch Ecken und Kanten haben.",
+    "rn.217.fixes": "Korrekturen: Nach dem Wechsel zu einer anderen Anzeige zählt Ads die Keywords dieser Anzeige statt der vorherigen, und die Ausschalt-Frage schließt sich, wenn die Anzeige wechselt; Versionsdaten zeigen in jeder Zeitzone den richtigen Tag; neue Versionshinweise bleiben nicht mehr auf Englisch; das Kopieren der Beispielantwort der AI wird bestätigt.",
     "rn.216.fixes": "Korrekturen: Im Formular übernehmen funktioniert mit Etsys Zählern für Tags und Materialien und sagt, warum es anhält; ein übernommenes und dann rückgängig gemachtes Angebot lässt sich überspringen; die Schnellantwort aus der Leiste wird ins Nachrichtenfeld eingefügt; Ads fragt im eigenen Fenster des Tools, bevor Keywords ausgeschaltet werden; Tastenkürzel folgen nur deinen Einstellungen.",
     "rn.215.fixes": "Korrekturen: Nach einem Scan in der Tabellenansicht oder mit ausgeschalteten Stats bleiben die Ergebnisse aktuell, wenn deine Ansicht zurückkehrt, und diese Ansicht zeigt keine Stopp-Meldung mehr.",
     "rn.214.fixes": "Korrekturen: Der Angebots-Scan schaltet die Kartenansicht und Stats von Etsy selbst ein und stellt danach deine Ansicht wieder her, ungelesene Nachrichten werden wieder gezählt, Anzeigen ohne Keywords zeigen keinen Fehler mehr, ausgewählte Zeilen sind im dunklen Design lesbar und neue Texte erscheinen in deiner Sprache.",

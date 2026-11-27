@@ -54,6 +54,9 @@ export const LA_EDITS = Object.freeze([
   // shortcuts off; Ctrl+Alt+L only folds its hidden panel. Escape still closes the engine's own dialogs.
   ["            if (event.altKey && event.ctrlKey && !event.shiftKey && !event.metaKey && event.code === 'KeyL') { event.preventDefault(); void UI.setCollapsed(!state.settings.collapsed); }\n            if (event.altKey && event.ctrlKey && !event.shiftKey && !event.metaKey && event.code === 'KeyA') { event.preventDefault(); void Collection.toggle(); }\n",
     '', 1, 'engine keyboard shortcuts'],
+  // Its panel named that fixed shortcut; in the unified script the key is whatever Settings › Shortcuts says.
+  ["collectionShortcut: 'Kısayol: CTRL + ALT + A'", "collectionShortcut: ''", 1, 'no fixed shortcut hint (tr)'],
+  ["collectionShortcut: 'Shortcut: CTRL + ALT + A'", "collectionShortcut: ''", 1, 'no fixed shortcut hint (en)'],
 ]);
 
 // What the unified screens may read and do: a read-only summary, opening the
@@ -170,7 +173,8 @@ const EPILOGUE = `
         stop: () => __eatLaRun(() => stopCurrentQueue('user')),
         recover: () => __eatLaRun(() => recoverCurrentItem()),
         copyAiRequest: () => __eatLaRun(() => copyAiRequest()),
-        copyAiTemplate: () => __eatLaRun(() => copyText(aiProposalTemplate())),
+        // The engine's own button says so in a toast, which the unified script does not show; the status line does.
+        copyAiTemplate: () => __eatLaRun(async () => { if (await copyText(aiProposalTemplate())) UI.setStatus('aiTemplateCopied', 'ready'); }),
         async importAi(text) {
             const out = { text: '', ok: true };
             const feedback = { style: { set color(value) { out.ok = !/danger|red|#b|err/i.test(String(value)); } }, set textContent(value) { out.text = String(value); }, setAttribute() {}, dataset: {} };

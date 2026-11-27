@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta får nya versioner tidigare; de kan ha fler skavanker.",
+    "rn.217.fixes": "Rättningar: efter byte till en annan annons räknar Ads den annonsens sökord i stället för den förras, och avstängningsfrågan stängs när annonsen byts; versionsdatum visar rätt dag i alla tidszoner; nya versionsanteckningar stannar inte längre på engelska; kopiering av exempelsvaret från AI bekräftas.",
     "rn.216.fixes": "Rättningar: Tillämpa i formuläret fungerar med Etsys räknare för taggar och material och säger varför det stannar; en annons som tillämpats och sedan ångrats kan hoppas över; snabbsvaret från panelen läggs in i meddelanderutan; Ads frågar i verktygets eget fönster innan sökord stängs av; kortkommandon följer bara dina inställningar.",
     "rn.215.fixes": "Rättningar: efter en skanning i tabellvyn eller med Stats avstängt förblir resultaten aktuella när din vy kommer tillbaka, och den vyn visar inte längre ett stoppmeddelande.",
     "rn.214.fixes": "Rättningar: annonsskanningen slår själv på Etsys kortvy och Stats och återställer sedan din vy, olästa meddelanden räknas igen, annonser utan sökord visar inte längre ett fel, markerade rader går att läsa i det mörka temat och ny text visas på ditt språk.",

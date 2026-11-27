@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilní",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dostává nové verze dříve; mohou mít více nedostatků.",
+    "rn.217.fixes": "Opravy: po přechodu na jinou reklamu Ads počítá klíčová slova této reklamy místo té předchozí a dotaz na vypnutí se zavře, když se reklama změní; data verzí ukazují správný den v každém časovém pásmu; nové poznámky k verzím už nezůstávají v angličtině; zkopírování ukázkové odpovědi AI to oznámí.",
     "rn.216.fixes": "Opravy: Vyplnit do formuláře funguje s počítadly štítků a materiálů na Etsy a říká, proč se zastaví; nabídku vyplněnou a pak vrácenou lze přeskočit; rychlá odpověď z panelu se vloží do pole zprávy; Ads se před vypnutím klíčových slov ptá ve vlastním okně nástroje; klávesové zkratky se řídí jen vaším nastavením.",
     "rn.215.fixes": "Opravy: po skenování v zobrazení tabulky nebo s vypnutými Stats zůstávají výsledky aktuální i po návratu vašeho zobrazení a toto zobrazení už neukazuje zprávu o zastavení.",
     "rn.214.fixes": "Opravy: skenování nabídek si samo zapne zobrazení karet a Stats v Etsy a pak vrátí vaše zobrazení, nepřečtené zprávy se opět počítají, reklamy bez klíčových slov už neukazují chybu, vybrané řádky jsou v tmavém motivu čitelné a nový text se zobrazuje ve vašem jazyce.",
