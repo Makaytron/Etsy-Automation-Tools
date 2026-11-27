@@ -97,6 +97,9 @@ export function createMessageAssistantModule({ secrets }) {
       draft: () => run(() => m.draft()),
       regenerate: () => run(() => m.regenerate()),
       useTemplate: (id) => run(() => m.useTemplate(id)),
+      // The drawer has no draft view: its Add prepares the quick reply and puts it in Etsy's box.
+      // The engine refuses to overwrite a different unsent text in the box and says so.
+      addTemplate: (id) => run(() => m.addTemplate(id)),
       setReplyLanguage: (code) => run(() => m.setReplyLanguage(code)),
       editReply: (text) => m.editReply(text),
       insert: () => run(() => m.insert()),

@@ -125,7 +125,7 @@ export function renderMaDrawer(doc, { snap, view, language, actions, unread = 0 
       active.length ? [h(doc, 'span', { class: 'ov', text: ts('quick') }),
         h(doc, 'div', { class: 'list', style: 'border: 1px solid #e7e7e7; border-radius: 10.4px;' }, active.slice(0, 4).map((t) => h(doc, 'div', { class: 'li', style: 'padding: 8px 12px;' },
           h(doc, 'span', { class: 'sm grow trunc', text: t.name }),
-          h(doc, 'button', { class: 'btn btn-g btn-sm', style: 'height: 26px;', type: 'button', 'data-ma-template': t.id, disabled: snap.busy, onclick: () => actions.useTemplate(t.id), text: ts('add') }))))] : null,
+          h(doc, 'button', { class: 'btn btn-g btn-sm', style: 'height: 26px;', type: 'button', 'data-ma-template': t.id, disabled: snap.busy, onclick: () => actions.addTemplate(t.id), text: ts('add') }))))] : null,
       shieldLine(doc, ts))
     : h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
       h(doc, 'div', { class: 'row' }, icon(doc, ICONS['message-assistant']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Message Assistant' }), servicesBadge(doc, ts, view ?? { ai: snap.ai, translator: snap.translator })),

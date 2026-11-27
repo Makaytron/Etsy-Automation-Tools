@@ -27567,6 +27567,16 @@
           UI.state.selectedTemplateId = id;
           return __eatRun('template-reply', () => UI.generateReply({ method: 'template', replyMode: 'template' }));
       },
+      // Drawer Add: prepare the quick reply and put it in Etsy's box. Unsent text already
+      // in the box is checked first, so the seller sees only why nothing was added
+      // instead of "draft prepared" followed by the refusal.
+      async addTemplate(id) {
+          if (!TemplateEngine.get(id)) return false;
+          if (trimmedMessageText(MessageAdapter.getTextarea()?.value || '')) {
+              return __eatRun('insert-reply', () => { throw new Error('Etsy mesaj alanında farklı, gönderilmemiş bir taslak var. Mevcut metni korumak için üzerine yazılmadı; alanı kontrol edip temizledikten sonra yeniden deneyin.'); });
+          }
+          return (await __eatMessages.useTemplate(id)) ? __eatMessages.insert() : false;
+      },
       setReplyLanguage(code) {
           const next = String(code || '').trim().toLowerCase();
           if (!GOOGLE_TRANSLATION_LANGUAGE_NAMES[next] && !GOOGLE_TRANSLATION_LANGUAGE_NAMES[next.split('-')[0]]) return Promise.resolve(false);
@@ -44947,7 +44957,7 @@
           active.length ? [h(doc, 'span', { class: 'ov', text: ts('quick') }),
             h(doc, 'div', { class: 'list', style: 'border: 1px solid #e7e7e7; border-radius: 10.4px;' }, active.slice(0, 4).map((t) => h(doc, 'div', { class: 'li', style: 'padding: 8px 12px;' },
               h(doc, 'span', { class: 'sm grow trunc', text: t.name }),
-              h(doc, 'button', { class: 'btn btn-g btn-sm', style: 'height: 26px;', type: 'button', 'data-ma-template': t.id, disabled: snap.busy, onclick: () => actions.useTemplate(t.id), text: ts('add') }))))] : null,
+              h(doc, 'button', { class: 'btn btn-g btn-sm', style: 'height: 26px;', type: 'button', 'data-ma-template': t.id, disabled: snap.busy, onclick: () => actions.addTemplate(t.id), text: ts('add') }))))] : null,
           shieldLine(doc, ts))
         : h(doc, 'div', { class: 'col', style: 'gap: 12px;' },
           h(doc, 'div', { class: 'row' }, icon(doc, ICONS['message-assistant']), h(doc, 'span', { class: 'h3 grow', id: 'eat-current', text: 'Message Assistant' }), servicesBadge(doc, ts, view ?? { ai: snap.ai, translator: snap.translator })),
@@ -45381,6 +45391,9 @@
           draft: () => run(() => m.draft()),
           regenerate: () => run(() => m.regenerate()),
           useTemplate: (id) => run(() => m.useTemplate(id)),
+          // The drawer has no draft view: its Add prepares the quick reply and puts it in Etsy's box.
+          // The engine refuses to overwrite a different unsent text in the box and says so.
+          addTemplate: (id) => run(() => m.addTemplate(id)),
           setReplyLanguage: (code) => run(() => m.setReplyLanguage(code)),
           editReply: (text) => m.editReply(text),
           insert: () => run(() => m.insert()),
