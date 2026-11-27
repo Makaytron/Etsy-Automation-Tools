@@ -6115,8 +6115,18 @@
         return normalizeSpace(clone.textContent).replace(/All \d+ used|Tüm \d+.*$/i, '').trim();
     }
 
+    // Etsy draws the field's counter ("All 13 used", "8 left") as its own list item
+    // beside the pills. It has no buttons and only the counter text; anything else
+    // without a remove control is still an unreadable pill and fails closed.
+    const PILL_COUNTER_TEXT = /^(?:All \d+ used|\d+ left|Tüm \d+ .*kullanıldı|\d+ (?:tane )?kaldı)$/iu;
+
+    function pillCounterItem(item) {
+        if (!item || item.querySelector?.('button,input')) return false;
+        return PILL_COUNTER_TEXT.test(normalizeSpace(item.textContent));
+    }
+
     function pillFieldState(container) {
-        const items = Array.from(container?.querySelectorAll?.('li') || []);
+        const items = Array.from(container?.querySelectorAll?.('li') || []).filter((item) => !pillCounterItem(item));
         const parsed = items.map(pillItemValue);
         return { values: parsed.filter(Boolean), complete: parsed.every(Boolean) };
     }
@@ -11034,6 +11044,7 @@
             validateEditableProposal,
             validateAiProposal,
             pillReadIntegrity: PILL_READ_INTEGRITY,
+            pillFieldState,
             editorMatchesExpectedProposal,
             normalizeRecord,
             normalizeQueue,

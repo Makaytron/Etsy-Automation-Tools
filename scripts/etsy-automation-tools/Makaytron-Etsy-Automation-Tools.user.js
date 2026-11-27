@@ -33357,8 +33357,18 @@
       return normalizeSpace(clone.textContent).replace(/All \d+ used|Tüm \d+.*$/i, '').trim();
   }
 
+  // Etsy draws the field's counter ("All 13 used", "8 left") as its own list item
+  // beside the pills. It has no buttons and only the counter text; anything else
+  // without a remove control is still an unreadable pill and fails closed.
+  const PILL_COUNTER_TEXT = /^(?:All \d+ used|\d+ left|Tüm \d+ .*kullanıldı|\d+ (?:tane )?kaldı)$/iu;
+
+  function pillCounterItem(item) {
+      if (!item || item.querySelector?.('button,input')) return false;
+      return PILL_COUNTER_TEXT.test(normalizeSpace(item.textContent));
+  }
+
   function pillFieldState(container) {
-      const items = Array.from(container?.querySelectorAll?.('li') || []);
+      const items = Array.from(container?.querySelectorAll?.('li') || []).filter((item) => !pillCounterItem(item));
       const parsed = items.map(pillItemValue);
       return { values: parsed.filter(Boolean), complete: parsed.every(Boolean) };
   }
@@ -38280,6 +38290,7 @@
           validateEditableProposal,
           validateAiProposal,
           pillReadIntegrity: PILL_READ_INTEGRITY,
+          pillFieldState,
           editorMatchesExpectedProposal,
           normalizeRecord,
           normalizeQueue,
@@ -44521,6 +44532,8 @@
                 h(doc, 'div', { class: 'row', style: 'justify-content: flex-end;' },
                   h(doc, 'button', { class: 'btn btn-p btn-sm', type: 'button', 'data-la': 'import-ai', onclick: async () => { const result = await actions.importAi(answer.value); actions.setLocal({ aiText: answer.value, aiResult: result }); }, text: ts('importAnswer') })))),
             h(doc, 'div', { class: 'card-f' }, icon(doc, ICONS.shield, 14), h(doc, 'span', { class: 'xs mute', text: ts('aiPrivacy') }))),
+          // "Copied to the clipboard" and similar engine replies show here; without it a copy looked like nothing happened.
+          h(doc, 'span', { class: 'xs mute', role: 'status', 'aria-live': 'polite', 'data-role': 'la-status', text: snap.status.text }),
         ];
       };
 
@@ -48541,7 +48554,7 @@
           h(doc, 'button', { class: 'btn btn-o btn-sm', type: 'button', 'data-action': 'open-language', 'aria-label': t('ws.languageButton', { language: languageName(text.language()) }), onclick: () => { state.page = 'settings'; state.tab = 'general'; render(); root.querySelector('[name="language"]')?.focus({ preventScroll: true }); } },
             icon(doc, ICONS.globe, 14), languageName(text.language())),
           h(doc, 'button', { class: 'ib o', type: 'button', 'data-action': 'back-to-drawer', 'aria-label': t('ws.backToDrawer'), onclick: () => close(true) }, icon(doc, ICONS.shrink)),
-          h(doc, 'button', { class: 'ib o', type: 'button', 'data-action': 'close-workspace', 'aria-label': t('ws.close'), onclick: () => close(false) }, icon(doc, ICONS.close)));
+          h(doc, 'button', { class: 'ib o', type: 'button', 'data-action': 'close-workspace', 'aria-label': t('ws.close'), onclick: (event) => close(false, { keyboard: event.detail === 0 }) }, icon(doc, ICONS.close)));
       }
 
       function nav(enabled, active) {
@@ -48651,11 +48664,12 @@
         migration?.done().then((done) => { state.migration = { ...state.migration, done }; render(); }).catch(() => {});
       }
 
-      function close(backToDrawer) {
+      // keyboard: false when the mouse closed it, so the edge button does not take focus (and slide out with its tooltip).
+      function close(backToDrawer, { keyboard = true } = {}) {
         state.open = false;
         root?.remove();
         root = null;
-        onClose?.(backToDrawer);
+        onClose?.(backToDrawer, { keyboard });
       }
 
       const unsubscribe = settings.subscribe(() => render());
@@ -48733,7 +48747,7 @@
         tab = h(doc, 'button', {
           class: 'etab r', type: 'button', 'aria-haspopup': 'dialog', 'aria-controls': 'eat-sheet', 'aria-expanded': 'false',
           onpointerdown: onPointerDown, onkeydown: onTabKey,
-          onpointerenter: () => showTip(true), onpointerleave: () => showTip(false), onfocus: () => showTip(true), onblur: () => showTip(false),
+          onpointerenter: () => showTip(true), onpointerleave: () => showTip(false), onfocus: () => showTip(keyboardFocus()), onblur: () => showTip(false),
         },
         h(doc, 'span', { class: 'st', 'data-role': 'tab-count', hidden: true }),
         // draggable=false: otherwise the browser starts its own image drag and cancels the button drag.
@@ -48857,7 +48871,9 @@
                 assets.logo ? h(doc, 'img', { src: assets.logo, alt: '' }) : null,
                 h(doc, 'span', {}, h(doc, 'b', { id: titleId, text: 'Makaytron.com' }), h(doc, 'small', { 'data-role': 'drawer-context', text: `Etsy Automation Tools · ${routeLabel}` })))),
             h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': t('ws.open'), 'data-action': 'open-workspace', onclick: openWorkspace }, icon(doc, ICONS.expand)),
-            h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': t('drawer.close'), 'data-action': 'close-drawer', onclick: () => setOpen(false) }, icon(doc, ICONS.close))),
+            // Closed with the mouse, focus stays where it was: moved to the edge button it would slide out over Etsy
+            // and show its tooltip. Closed with Enter or Space (detail 0), focus returns to the edge button.
+            h(doc, 'button', { class: 'ib', type: 'button', 'aria-label': t('drawer.close'), 'data-action': 'close-drawer', onclick: (event) => setOpen(false, { focus: event.detail === 0 }) }, icon(doc, ICONS.close))),
           now, tools, footer);
         container.append(sheet);
         updateTab();
@@ -48880,6 +48896,11 @@
         const count = tab.querySelector('.st');
         count.hidden = !status?.count;
         count.textContent = status?.count ? String(status.count) : '';
+      }
+
+      // Focus a click put on the button is not a reason for the tooltip; keyboard focus is.
+      function keyboardFocus() {
+        try { return tab.matches(':focus-visible'); } catch { return true; }
       }
 
       function showTip(show) {
@@ -48944,10 +48965,10 @@
         return { doc, container, language: language(), openWorkspace: (page) => openWorkspace(page), hide: () => setOpen(false, { focus: false }), report: (options) => text.report(options) };
       }
 
-      function onWorkspaceClose(backToDrawer) {
+      function onWorkspaceClose(backToDrawer, { keyboard = true } = {}) {
         tab.hidden = false;
         layout();
-        if (backToDrawer) setOpen(true); else tab.focus({ preventScroll: true });
+        if (backToDrawer) setOpen(true); else if (keyboard) tab.focus({ preventScroll: true });
       }
 
       function onSheetKey(event) {
@@ -48967,7 +48988,15 @@
         const focused = event.composedPath?.()[0] === hostEl ? root.activeElement : null;
         const action = actionForEvent(event, settings.get().shortcuts, { focused });
         if (!action) return;
-        if (action === 'drawer') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); setOpen(!state.open); return; }
+        if (action === 'drawer') {
+          event.preventDefault();
+          if (workspace?.isOpen) workspace.close();
+          // Opening moves focus into the drawer. Closing returns it to the edge button only when it was inside the
+          // drawer; pressed while working on the Etsy page, the shortcut leaves focus there (no tooltip, no slide-out).
+          const opening = !state.open;
+          setOpen(opening, { focus: opening || Boolean(root?.activeElement && sheet.contains(root.activeElement)) });
+          return;
+        }
         if (action === 'workspace') { event.preventDefault(); if (workspace?.isOpen) workspace.close(); else openWorkspace(); return; }
         // Tool actions go to the tool running on this page, if it handles them.
         const { active } = activeTool();

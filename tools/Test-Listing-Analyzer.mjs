@@ -3720,6 +3720,23 @@ test('an unrecognized Etsy pill fails closed instead of looking like an empty ta
     }
 });
 
+test('the pill field counter item is not read as an unreadable pill', () => {
+    const { api } = loadAnalyzer();
+    const pill = (text) => ({
+        textContent: `${text} Delete`,
+        querySelector: (selector) => (selector.includes('le-chip-remove') ? {} : null),
+        cloneNode: () => ({ textContent: text, querySelectorAll: () => [{ remove() {} }] }),
+    });
+    const caption = (text) => ({ textContent: ` ${text} `, querySelector: () => null, cloneNode: () => ({ textContent: text, querySelectorAll: () => [] }) });
+    const field = (items) => ({ querySelectorAll: () => items });
+    for (const counter of ['All 13 used', '8 left']) {
+        const state = api.pillFieldState(field([pill('first tag'), pill('second tag'), caption(counter)]));
+        assert.deepEqual(plain(state), { values: ['first tag', 'second tag'], complete: true }, counter);
+    }
+    const unknown = api.pillFieldState(field([pill('first tag'), caption('first tag again')]));
+    assert.equal(unknown.complete, false);
+});
+
 test('deactivation menu re-resolves a React-replaced item and verifies focus without clicking it', async () => {
     const { api, sandbox } = loadAnalyzer();
     const adapter = api.actionRuntime.EditorAdapter;
