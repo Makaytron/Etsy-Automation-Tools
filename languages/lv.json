@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilais",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta saņem jaunās versijas agrāk; tajās var būt vairāk nepilnību.",
+    "rn.217.fixes": "Labojumi: pēc pāriešanas uz citu reklāmu Ads skaita šīs reklāmas atslēgvārdus, nevis iepriekšējās, un izslēgšanas jautājums aizveras, kad reklāma mainās; versiju datumi rāda pareizo dienu katrā laika joslā; jaunās versiju piezīmes vairs nepaliek angliski; AI atbildes piemēra kopēšana par to paziņo.",
     "rn.216.fixes": "Labojumi: Piemērot veidlapā darbojas ar Etsy tagu un materiālu skaitītājiem un pasaka, kāpēc apstājas; piemērotu un pēc tam atsauktu sludinājumu var izlaist; ātrā atbilde no paneļa tiek pievienota ziņojuma laukā; Ads pirms atslēgvārdu izslēgšanas jautā paša rīka logā; īsinājumtaustiņi seko tikai jūsu iestatījumiem.",
     "rn.215.fixes": "Labojumi: pēc skenēšanas tabulas skatā vai ar izslēgtu Stats rezultāti paliek aktuāli, kad atgriežas jūsu skats, un šis skats vairs nerāda apturēšanas ziņojumu.",
     "rn.214.fixes": "Labojumi: sludinājumu skenēšana pati ieslēdz Etsy kartīšu skatu un Stats un pēc tam atjauno jūsu skatu, nelasītās ziņas atkal tiek skaitītas, reklāmas bez atslēgvārdiem vairs nerāda kļūdu, atlasītās rindas tumšajā motīvā ir salasāmas, un jaunais teksts tiek rādīts jūsu valodā.",

@@ -408,6 +408,7 @@
     "set.channelStable": "Estável",
     "set.channelBeta": "Beta",
     "set.channelHint": "O Beta recebe novas versões antes; elas podem ter mais arestas.",
+    "rn.217.fixes": "Correções: depois de mudar para outro anúncio, o Ads conta as palavras-chave desse anúncio em vez das do anterior, e a pergunta de desativação fecha-se quando o anúncio muda; as datas das versões mostram o dia certo em todos os fusos horários; as notas de versão novas já não ficam em inglês; copiar a resposta de exemplo da AI passa a ser confirmado.",
     "rn.216.fixes": "Correções: Aplicar no formulário funciona com os contadores de etiquetas e materiais do Etsy e diz porque parou; um anúncio aplicado e depois desfeito pode ser ignorado; a resposta rápida do painel é adicionada à caixa de mensagem; o Ads pergunta na própria janela da ferramenta antes de desativar palavras-chave; os atalhos de teclado seguem apenas as suas definições.",
     "rn.215.fixes": "Correções: após uma verificação na visualização em tabela ou com as Stats desligadas, os resultados continuam atuais quando a sua visualização volta, e essa visualização já não mostra uma mensagem de paragem.",
     "rn.214.fixes": "Correções: a verificação de anúncios ativa sozinha a visualização em cartões e as Stats do Etsy e depois restaura a sua visualização, as mensagens não lidas voltam a ser contadas, anúncios sem palavras-chave já não mostram erro, as linhas selecionadas ficam legíveis no tema escuro e o texto novo aparece no seu idioma.",

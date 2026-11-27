@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta primește versiunile noi mai devreme; pot fi mai puțin șlefuite.",
+    "rn.217.fixes": "Corecturi: după trecerea la altă reclamă, Ads numără cuvintele cheie ale acelei reclame în locul celor ale reclamei anterioare, iar întrebarea de dezactivare se închide când se schimbă reclama; datele versiunilor arată ziua corectă în orice fus orar; notele de versiune noi nu mai rămân în engleză; copierea răspunsului AI de exemplu este confirmată.",
     "rn.216.fixes": "Corecturi: Aplică în formular funcționează cu contoarele de etichete și materiale ale Etsy și spune de ce se oprește; o listare aplicată și apoi anulată poate fi sărită; răspunsul rapid din panou se adaugă în caseta mesajului; Ads întreabă în fereastra proprie a instrumentului înainte de a dezactiva cuvintele cheie; comenzile rapide de la tastatură urmează doar setările tale.",
     "rn.215.fixes": "Corecturi: după o scanare în vizualizarea tabel sau cu Stats dezactivat, rezultatele rămân actuale când revine vizualizarea ta, iar acea vizualizare nu mai afișează un mesaj de oprire.",
     "rn.214.fixes": "Corecturi: scanarea anunțurilor activează singură vizualizarea pe carduri și Stats din Etsy, apoi îți restabilește vizualizarea, mesajele necitite sunt din nou numărate, reclamele fără cuvinte cheie nu mai afișează o eroare, rândurile selectate se citesc în tema întunecată, iar textul nou apare în limba ta.",

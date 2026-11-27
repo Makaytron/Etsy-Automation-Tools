@@ -4,6 +4,12 @@ Bu projedeki kayda değer tüm değişiklikler bu dosyada belgelenir.
 
 Biçim [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) temel alınarak hazırlanır ve proje [Semantic Versioning](https://semver.org/spec/v2.0.0.html) izler.
 
+## [1.1.3] - 2026-11-27
+
+### Fixed
+
+- After moving from one ad to another inside Etsy, the panel could count the previous ad's keywords: Etsy keeps the old keyword table on screen for a moment, and the panel read it once and never again. The panel now reads the rows again whenever the keywords in the table change outside a job (also after Etsy's own page buttons). When the rows it read leave the page and the ad's keyword section is closed, it opens the section once and drops the old counts.
+
 ## [1.1.2] - 2026-11-26
 
 ### Fixed

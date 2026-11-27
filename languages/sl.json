@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilno",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta dobi nove različice prej; lahko imajo več pomanjkljivosti.",
+    "rn.217.fixes": "Popravki: po prehodu na drug oglas Ads šteje ključne besede tega oglasa namesto prejšnjega, vprašanje o izklopu pa se zapre, ko se oglas zamenja; datumi izdaj prikazujejo pravi dan v vsakem časovnem pasu; nove opombe ob izdaji ne ostanejo več v angleščini; kopiranje primera odgovora AI to potrdi.",
     "rn.216.fixes": "Popravki: Uveljavi v obrazcu deluje z Etsyjevimi števci oznak in materialov in pove, zakaj se ustavi; oglas, ki je bil uveljavljen in nato razveljavljen, je mogoče preskočiti; hitri odgovor s plošče se doda v polje sporočila; Ads pred izklopom ključnih besed vpraša v lastnem oknu orodja; bližnjične tipke sledijo samo vašim nastavitvam.",
     "rn.215.fixes": "Popravki: po pregledu v pogledu tabele ali z izklopljenim Stats ostanejo rezultati aktualni, ko se vaš pogled vrne, ta pogled pa ne prikazuje več sporočila o ustavitvi.",
     "rn.214.fixes": "Popravki: pregled oglasov sam vklopi Etsyjev prikaz kartic in Stats ter nato povrne vaš prikaz, neprebrana sporočila se spet štejejo, oglasi brez ključnih besed ne prikazujejo več napake, izbrane vrstice so v temni temi berljive, novo besedilo pa se prikaže v vašem jeziku.",

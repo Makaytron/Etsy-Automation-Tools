@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta får nye versioner tidligere; de kan have flere skønhedsfejl.",
+    "rn.217.fixes": "Rettelser: efter skift til en anden annonce tæller Ads den annonces søgeord i stedet for den forriges, og spørgsmålet om at slå fra lukkes, når annoncen skifter; versionsdatoer viser den rigtige dag i alle tidszoner; nye versionsnoter forbliver ikke længere på engelsk; kopiering af eksempelsvaret fra AI giver besked om det.",
     "rn.216.fixes": "Rettelser: Anvend i formularen virker med Etsys tæller for tags og materialer og fortæller, hvorfor den stopper; en annonce, der er anvendt og derefter fortrudt, kan springes over; det hurtige svar fra panelet tilføjes i beskedfeltet; Ads spørger i værktøjets eget vindue, før søgeord slås fra; tastaturgenveje følger kun dine indstillinger.",
     "rn.215.fixes": "Rettelser: efter en scanning i tabelvisning eller med Stats slået fra forbliver resultaterne aktuelle, når din visning kommer tilbage, og den visning viser ikke længere en stopbesked.",
     "rn.214.fixes": "Rettelser: annoncescanningen slår selv Etsys kortvisning og Stats til og gendanner bagefter din visning, ulæste beskeder tælles igen, annoncer uden søgeord viser ikke længere en fejl, valgte rækker kan læses i det mørke tema, og ny tekst vises på dit sprog.",

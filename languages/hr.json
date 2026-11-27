@@ -408,6 +408,7 @@
     "set.channelStable": "Stabilno",
     "set.channelBeta": "Beta",
     "set.channelHint": "Beta ranije dobiva nove verzije; mogu imati više nedostataka.",
+    "rn.217.fixes": "Ispravci: nakon prelaska na drugu reklamu Ads broji ključne riječi te reklame umjesto prethodne, a pitanje o isključivanju zatvara se kad se reklama promijeni; datumi izdanja prikazuju točan dan u svakoj vremenskoj zoni; nove bilješke o izdanjima više ne ostaju na engleskom; kopiranje primjera odgovora AI to potvrđuje.",
     "rn.216.fixes": "Ispravci: Primijeni u obrascu radi s Etsyjevim brojačima oznaka i materijala i kaže zašto se zaustavlja; oglas koji je primijenjen pa poništen može se preskočiti; brzi odgovor s ploče dodaje se u okvir poruke; Ads pita u vlastitom prozoru alata prije isključivanja ključnih riječi; tipkovnički prečaci slijede samo vaše postavke.",
     "rn.215.fixes": "Ispravci: nakon skeniranja u prikazu tablice ili s isključenim Stats rezultati ostaju aktualni kada se vaš prikaz vrati, a taj prikaz više ne prikazuje poruku o zaustavljanju.",
     "rn.214.fixes": "Ispravci: skeniranje oglasa samo uključuje Etsyjev prikaz kartica i Stats, a zatim vraća vaš prikaz, nepročitane poruke ponovno se broje, reklame bez ključnih riječi više ne prikazuju pogrešku, odabrani redovi čitljivi su u tamnoj temi, a novi tekst prikazuje se na vašem jeziku.",

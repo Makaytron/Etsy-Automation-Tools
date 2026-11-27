@@ -408,6 +408,7 @@
     "set.channelStable": "Stabil",
     "set.channelBeta": "Béta",
     "set.channelHint": "A béta korábban kapja az új verziókat; ezek kevésbé csiszoltak lehetnek.",
+    "rn.217.fixes": "Javítások: másik hirdetésre váltás után az Ads az adott hirdetés kulcsszavait számolja, nem az előzőét, és a kikapcsolási kérdés bezárul, amikor a hirdetés megváltozik; a kiadási dátumok minden időzónában a helyes napot mutatják; az új kiadási megjegyzések már nem maradnak angolul; a példa AI-válasz másolása ezt jelzi.",
     "rn.216.fixes": "Javítások: az Alkalmazás az űrlapon működik az Etsy címke- és anyagszámlálóival, és megmondja, miért áll le; egy alkalmazott, majd visszavont hirdetés kihagyható; a panel gyors válasza bekerül az üzenetmezőbe; az Ads a kulcsszavak kikapcsolása előtt az eszköz saját ablakában kérdez; a billentyűparancsok csak a te beállításaidat követik.",
     "rn.215.fixes": "Javítások: táblázatnézetben vagy kikapcsolt Stats mellett végzett beolvasás után az eredmények frissek maradnak, amikor a nézeted visszaáll, és ez a nézet már nem mutat leállási üzenetet.",
     "rn.214.fixes": "Javítások: a hirdetések beolvasása maga kapcsolja be az Etsy kártyanézetét és a Statsot, majd visszaállítja a nézetedet, az olvasatlan üzeneteket ismét számolja, a kulcsszó nélküli hirdetések már nem mutatnak hibát, a kijelölt sorok olvashatók a sötét témában, az új szövegek pedig a nyelveden jelennek meg.",
